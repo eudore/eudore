@@ -1,0 +1,5 @@
+
+/*
+eudore doc
+*/
+package eudore
