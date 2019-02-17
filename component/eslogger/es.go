@@ -6,7 +6,7 @@ import (
 	"context"
 	"github.com/olivere/elastic"
 
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 

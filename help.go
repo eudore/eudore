@@ -45,7 +45,7 @@ func env2arg(str string) string {
 	return fmt.Sprintf("--%s=%s", k, v)
 }
 
-func getRandomString() string {
+func GetRandomString() string {
 	const letters = "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXY"
 	result := make([]byte, 16)
 	for i := range result {

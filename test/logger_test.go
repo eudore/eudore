@@ -2,12 +2,11 @@ package test
 
 import (
 	"testing"
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 func TestLogger(*testing.T) {
 	ls, _ := eudore.NewLoggerStd(nil)
-	ls.SetFromat(eudore.LoggerFormatJsonIndent)
 	ls.WithField("action", "ss").Info("info")
 
 	li, _ := eudore.NewLoggerInit(nil)

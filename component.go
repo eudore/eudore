@@ -42,14 +42,14 @@ const (
 type (
 	// New component func
 	ComponentFunc func(interface{}) (Component, error)
+	//
+	// Get/Set Name Used for get component name and clone component.
 	ComponentName interface {
 		GetName() string
 	}
 	// All Component Method.
 	//
 	// Version output component Info.
-	//
-	// Get/Set Name Used for get component name and clone component.
 	Component interface {
 		ComponentName
 		Version() string

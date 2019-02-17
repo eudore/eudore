@@ -3,7 +3,7 @@ package denials
 import (
 	"time"
 	"net/http"
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 const (

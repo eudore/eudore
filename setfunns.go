@@ -3,43 +3,55 @@ package eudore
 
 
 var (
-	handleFuncs				map[string]HandlerFunc
-	loggerFormatFuncs		map[string]LoggerFormatFunc
+	globalhandler				map[string]Handler
+	globalhandleFuncs				map[string]HandlerFunc
+	globalmiddlewares				map[string]Middleware
+	globalloggerFormatFuncs		map[string]LoggerFormatFunc
 )
 
 func init() {
-	loggerFormatFuncs = make(map[string]LoggerFormatFunc)
-	loggerFormatFuncs["default"] = LoggerFormatDefault
-	loggerFormatFuncs["json"] = LoggerFormatJson
-	loggerFormatFuncs["jsonindent"] = LoggerFormatJsonIndent
-	loggerFormatFuncs["xml"] = LoggerFormatXml
-	handleFuncs = make(map[string]HandlerFunc)
+	globalhandler = make(map[string]Handler)
+	globalhandleFuncs = make(map[string]HandlerFunc)
+	globalmiddlewares = make(map[string]Middleware)
+	globalloggerFormatFuncs = make(map[string]LoggerFormatFunc)
+	globalloggerFormatFuncs["default"] = LoggerFormatDefault
+	globalloggerFormatFuncs["json"] = LoggerFormatJson
+	globalloggerFormatFuncs["jsonindent"] = LoggerFormatJsonIndent
+	globalloggerFormatFuncs["xml"] = LoggerFormatXml
 }
 
-/*func ConfigRegisterHandler() {
+// Handler
+func ConfigSaveHandler(name string, fn Handler) {
+	globalhandler[name] = fn
+}
 
-}*/
+func ConfigLoadHandler(name string) Handler {
+	return globalhandler[name]
+}
 
+// HandleFunc
 func ConfigSaveHandleFunc(name string, fn HandlerFunc) {
-	handleFuncs[name] = fn
+	globalhandleFuncs[name] = fn
 }
 
 func ConfigLoadHandleFunc(name string) HandlerFunc {
-	fn, ok := handleFuncs[name]
-	if ok {
-		return fn
-	}
-	return nil
+	return globalhandleFuncs[name]
 }
 
+// Middleware
+func ConfigSaveMiddleware(name string, fn Middleware) {
+	globalmiddlewares[name] = fn
+}
+
+func ConfigLoadMiddleware(name string) Middleware {
+	return globalmiddlewares[name]
+}
+
+// LoggerFormatFunc
 func ConfigSaveLoggerFormatFunc(name string, fn LoggerFormatFunc) {
-	loggerFormatFuncs[name] = fn
+	globalloggerFormatFuncs[name] = fn
 }
 
 func ConfigLoadLoggerFormatFunc(name string) LoggerFormatFunc {
-	fn, ok := loggerFormatFuncs[name]
-	if ok {
-		return fn
-	}
-	return nil
+	return globalloggerFormatFuncs[name]
 }

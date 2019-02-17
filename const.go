@@ -43,9 +43,12 @@ const (
 	MimeApplicationForm				=	"application/x-www-form-urlencoded"
 	MimeMultipartForm				=	"multipart/form-data"
 	// Param
-	ParamAction				=	"action"
-	ParamRam				=	"ram"
-	ParamTemplate			=	"template"
+	ParamAction				=	"Action"
+	ParamRam				=	"Ram"
+	ParamTemplate			=	"Template"
+	ParamRoutes				=	"Routes"
+	ParamRoutePath			=	"Route-Path"
+	ParamRouteMethod		=	"Route-Method"
 	// Param value
 	ValueJwt				=	"jwt"
 	ValueSession			=	"session"

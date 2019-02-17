@@ -119,7 +119,7 @@ func (app *Application) Run(addr string) {
 
 Application的两个基本方法，ServeHTTP和Start，都是标准流程。
 
-其他方法就是路由方法(Get/Post...)和一个中间件方法(Use)，详情自己翻[函数文档][2]。
+其他方法就是路由方法(Get/Post...)和一个中间件方法(Use)，详情查看[函数文档][2]。
 
 ### Start
 

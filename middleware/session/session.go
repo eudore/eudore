@@ -2,7 +2,7 @@ package session
 
 import (
 	"time"
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 const (

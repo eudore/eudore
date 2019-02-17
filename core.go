@@ -2,6 +2,7 @@ package eudore
 
 
 import (
+	"fmt"
 	"sync"
 	"net/http"
 )
@@ -22,12 +23,12 @@ func NewCore() *Core {
 		poolctx:	sync.Pool{},
 		poolreq:	sync.Pool{
 			New: 	func() interface{} {
-				return NewRequestReaderHttp(nil)
+				return &RequestReaderHttp{}
 			},
 		},
 		poolresp:	sync.Pool{
 			New:	func() interface{} {
-				return NewResponseWriterHttp(nil)
+				return &ResponseWriterHttp{}
 			},
 		},
 	}
@@ -70,13 +71,27 @@ func (app *Core) Run() (err error) {
 	if fn, ok := app.Pools["response"];ok {
 		app.poolresp.New = fn
 	}
-	// start server
+	// start serverv
+	switch len(app.ports) {
+	case 0:
+		// 未注册Server信息
+		return fmt.Errorf("Undefined Server component, Please Listen or ListenTLS.")
+	case 1:
+		// 单端口启动
+		err = app.RegisterComponent("server-std", app.ports[0])
+	default:
+		// 多端口启动
+		err = app.RegisterComponent(ComponentServerMultiName, app.ports)
+	}
+	if err != nil {
+		return
+	}
 	return app.Server.Start()
 }
 
 
 func (app *Core) Listen(addr string) *Core {
-	app.RegisterComponent("server-std", &ServerConfigGeneral{
+	app.ports = append(app.ports, &ServerConfigGeneral{
 		Addr:		addr,
 		Http2:		false,
 		Handler:	app,
@@ -102,13 +117,9 @@ func (app *Core) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// init
 	ResetRequestReaderHttp(request, req)
 	ResetResponseWriterHttp(response, w)
-	ctx.Reset(req.Context(), response, request)
-	// match router
-	fn, routepath := app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params())
-	ctx.SetParam("route", routepath)
 	// handle
-	ctx.Handles(fn)
-	ctx.Next()
+	ctx.Reset(req.Context(), response, request)
+	app.Router.Handle(ctx)
 	// clean
 	app.poolreq.Put(request)
 	app.poolresp.Put(response)

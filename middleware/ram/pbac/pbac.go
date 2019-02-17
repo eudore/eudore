@@ -5,7 +5,7 @@ import (
 	"strings"
 	"encoding/json"
 
-	"eudore"
+	"github.com/eudore/eudore"
 	"eudore/middleware/ram"
 )
 

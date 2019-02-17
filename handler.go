@@ -1,9 +1,5 @@
 package eudore
 
-import (
-	// "net/http"
-)
-
 type (
 	// Context handle func
 	HandlerFunc func(Context)
@@ -11,55 +7,72 @@ type (
 	Handler interface {
 		Handle(Context)
 	}
-	ComposeHandler interface {
-		ComposeHandle([]Handler)
+
+	// Middleware interface
+	Middleware interface {
+		Handler
+		GetNext() Middleware
+		SetNext(Middleware)
 	}
-	// ArgsHandler struct {
-	// 	key		[]string
-	// 	val		[]string
-	// }
-	MutilHandler []Handler
+
+	MiddlewareBase struct {
+		Handler
+		Next Middleware
+	}
 )
-/*
-func NewHttpHandlerFunc(h http.HandlerFunc) Handler {
-	return HandlerFunc(func(ctx Context) {
-		// h(ctx.Response(), ctx.Request().(*http.Request))
-	})
-}
 
-func NewHttpHandler(h http.Handler) Handler {	
-	return HandlerFunc(func(ctx Context) {
-		// h.ServeHTTP(ctx.Response(), ctx.Request())
-	})
-}
-*/
-func NewMutilHandler(hs ...Handler) Handler {
-	return MutilHandler(hs)
-}
-
-func (hs MutilHandler) Handle(ctx Context) {
-	for _, h := range hs {
-		h.Handle(ctx)	
-	}
-}
-
-
-
-
+// Convert the HandlerFunc function to a Handler interface.
+//
+// 转换HandlerFunc函数成Handler接口。
 func (f HandlerFunc) Handle(ctx Context) {
 	f(ctx)
 }
 
-// func NewArgsHandler(ks, vs []string) Handler {
-// 	return &ArgsHandler{
-// 		key:	ks,
-// 		val:	vs,
-// 	}
-// }
 
-// func (h *ArgsHandler) Handle(ctx Context) {
-// 	for i, k := range h.key {
-// 		ctx.SetParam(k, h.val[i])
-// 	}	
-// }
+// 创建一个基础Middleware，组合一个Handler。
+func NewMiddlewareBase(h Handler) Middleware {
+	return &MiddlewareBase{
+		Handler:	h,
+		Next:		nil,
+	}
+}
 
+func (m *MiddlewareBase) GetNext() Middleware {
+	return m.Next
+}
+
+func (m *MiddlewareBase) SetNext(nm Middleware) {
+	m.Next = nm
+}
+
+
+// 将多个Handler转换成一个Middleware。
+// func NewMutilHandler(hs ...Handler) Middleware {
+func NewMiddlewareLink(hs ...Handler) Middleware {
+	var head, link Middleware
+	for _, h := range hs {
+		m, ok := h.(Middleware)
+		if !ok {
+			m = NewMiddlewareBase(h)
+		}
+		if link == nil {
+			head, link = m, m
+		}else {
+			link = GetMiddlewareEnd(link)
+			link.SetNext(m)
+		}
+	}
+	return head
+}
+
+
+// 读取Middleware的最后一个元素。
+func GetMiddlewareEnd(m Middleware) Middleware {
+	link := m
+	next := link.GetNext()
+	for next != nil {
+		link = next
+		next = link.GetNext()
+	}
+	return link
+}

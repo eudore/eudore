@@ -3,7 +3,7 @@ package test
 import (
 	"time"
 	"testing"
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 func TestCore(*testing.T) {

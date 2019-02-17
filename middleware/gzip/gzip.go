@@ -2,12 +2,13 @@ package gzip
 
 import (
 	"fmt"
+	"sync"
 	"strings"
 	"net/http"
 	"io/ioutil"
 	"path/filepath"
 	"compress/gzip"
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 type (
@@ -18,38 +19,65 @@ type (
 		code	int
 		rwcode	bool
 	}
+	Gzip struct {
+		pool	sync.Pool
+	}
 )
 
-func GzipFunc(ctx eudore.Context) {
+func NewGzip(level int) *Gzip {
+	return &Gzip{
+		pool:	sync.Pool{
+			New:	func() interface{} {
+				gz, err := gzip.NewWriterLevel(ioutil.Discard, level)
+				if err != nil {
+					return err
+				}
+				return &GzipResponse{
+					writer:	gz,
+				}
+			},
+		},
+	}
+}
+
+func (g *Gzip) Handle(ctx eudore.Context) {
 	// 检查是否使用Gzip
 	if !shouldCompress(ctx) {
 		ctx.Next()
 		return
 	}
 	// 初始化ResponseWriter
-	w, err := NewGzipResponse(ctx.Response()) 
+	w, err := g.NewGzipResponse(ctx.Response()) 
 	if err != nil {
 		// 初始化失败，正常写入
 		ctx.Error(err)
 		ctx.Next()
 		return
 	}
+	// 设置gzip header
 	w.Header().Set(eudore.HeaderContentEncoding, "gzip")
 	w.Header().Set(eudore.HeaderVary, eudore.HeaderAcceptEncoding)
+	// Next
 	ctx.SetResponse(w)
 	ctx.Next()
+	// 写入长度header 结束gzip写入
 	w.Header().Set(eudore.HeaderContentLength, fmt.Sprint(w.size))
 	w.writer.Close()
+	// 回收GzipResponse
+	g.pool.Put(w)
 }
 
-
-func NewGzipResponse(w eudore.ResponseWriter) (*GzipResponse, error) {
-	gz, err := gzip.NewWriterLevel(ioutil.Discard, 5)
-	if err != nil {
-		return nil, err
+func (g *Gzip) NewGzipResponse(w eudore.ResponseWriter) (*GzipResponse, error) {
+	switch val := g.pool.Get().(type) {
+	case *GzipResponse:
+		val.ResponseWriter = w
+		val.writer.Reset(w)
+		val.size, val.code, val.rwcode = 0, 200, true
+		return val, nil
+	case error:
+		return nil, val
 	}
-	gz.Reset(w)
-	return &GzipResponse{w, gz, 0, 200, true}, nil
+	return nil, fmt.Errorf("Create GzipResponse exception.")
 }
 
 func (w *GzipResponse) Write(data []byte) (int, error) {

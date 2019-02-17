@@ -5,11 +5,11 @@ import (
 	"time"
 	"syscall"
 	"testing"
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 func TestSignal(t *testing.T) {
-	e := eudore.New()
+	e := eudore.NewEudore()
 	e.RegisterSignal(syscall.Signal(0x01), true, func() error {
 			t.Log("0x01")
 			return nil

@@ -11,7 +11,7 @@ import (
 )
 
 type (
-	// net/http.ResponseWriter 用于写入http请求响应体status、header、body。
+	// ResponseWriter接口用于写入http请求响应体status、header、body。
 	//
 	// net/http.response实现了flusher、hijacker、pusher接口。
 	ResponseWriter interface {
@@ -24,7 +24,7 @@ type (
 		// http.Hijacker
 		Hijack() (net.Conn, *bufio.ReadWriter, error)
 		// http.Pusher
-		Push(target string, opts *PushOptions) error
+		Push(string, *PushOptions) error
 		Size() int
 		Status() int
 	}
@@ -49,12 +49,13 @@ type (
 		io.ReadCloser
 		Data 	*http.Response
 	}
-
+	// net/http.ResponseWriter接口封装
 	ResponseWriterHttp struct {
 		http.ResponseWriter
 		code		int
 		size		int
 	}
+	// 带缓存的ResponseWriter，需要调用Flush然后写入数据。
 	ResponseWriterBuffer struct {
 		ResponseWriter
 		Buf 	*bytes.Buffer
@@ -62,6 +63,7 @@ type (
 )
 
 var _ ResponseWriter	=	&ResponseWriterHttp{}
+var _ ResponseWriter	=	&ResponseWriterBuffer{}
 
 
 func NewResponseWriterHttp(w http.ResponseWriter) ResponseWriter{
@@ -101,15 +103,12 @@ func (w *ResponseWriterHttp) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return nil, nil, fmt.Errorf("http.Hijacker interface is not supported")
 }
 
+// 如果ResponseWriterHttp实现http.Push接口，则Push资源。
 func (w *ResponseWriterHttp) Push(target string, opts *PushOptions) error {	
 	if pusher, ok := w.ResponseWriter.(http.Pusher); ok {
 		return pusher.Push(target, opts)	
 	}	
 	return nil
-}
-
-func (w *ResponseWriterHttp) CloseNotify() <-chan bool {
-	return w.ResponseWriter.(http.CloseNotifier).CloseNotify()
 }
 
 func (w *ResponseWriterHttp) Size() int {
@@ -119,6 +118,8 @@ func (w *ResponseWriterHttp) Size() int {
 func (w *ResponseWriterHttp) Status() int {
 	return w.code
 }
+
+
 
 func NewResponseWriterBuffer(w ResponseWriter) ResponseWriter {
 	return &ResponseWriterBuffer{
@@ -136,6 +137,8 @@ func (w *ResponseWriterBuffer) Flush() {
 	io.Copy(w.ResponseWriter, w.Buf)
 	w.Buf.Reset()
 }
+
+
 
 func NewResponseReaderHttp(resp *http.Response) ResponseReader {
 	return &ResponseReaderHttp{
@@ -157,7 +160,7 @@ func (r *ResponseReaderHttp) Code() string {
 }
 
 func (r *ResponseReaderHttp) Header() Header {
-	return r.Data.Header
+	return Header(r.Data.Header)
 }
 
 func (r *ResponseReaderHttp) TLS() *tls.ConnectionState {

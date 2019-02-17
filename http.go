@@ -3,35 +3,22 @@ package eudore
 import (
 	"strings"
 	"net/http"
+	"net/textproto"
 )
 
 type (
-	Header = http.Header
-	Cookie = http.Cookie
+	Params = textproto.MIMEHeader
+	Header = textproto.MIMEHeader
+	// From net/http.Cookie
+	CookieWrite = http.Cookie
 	CookieRead struct {
 		Name  string
 		Value string
 	}
-	// From net/http.Cookie
-/*	CookieWrite struct {
-		Name  string
-		Value string
-
-		Path       string    // optional
-		Domain     string    // optional
-		Expires    time.Time // optional
-		RawExpires string    // for reading cookies only
-
-		// MaxAge=0 means no 'Max-Age' attribute specified.
-		// MaxAge<0 means delete cookie now, equivalently 'Max-Age: 0'
-		// MaxAge>0 means Max-Age attribute present and given in seconds
-		MaxAge   int
-		Secure   bool
-		HttpOnly bool
-		SameSite SameSite // Go 1.11
-		Raw      string
-		Unparsed []string // Raw text of unparsed attribute-value pairs
-	}*/
+	// source net/http
+	//
+	// 来源net/http
+	PushOptions = http.PushOptions
 )
 
 func ReadCookies(lines []string) []*CookieRead {

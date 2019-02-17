@@ -2,11 +2,11 @@ package test
 
 import (
 	"testing"
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 func TestReload(t *testing.T) {
-	e := eudore.New()
+	e := eudore.NewEudore()
 	e.RegisterReload("a", 02, func(*eudore.Eudore) error {
 			t.Log("aaa")
 			return nil

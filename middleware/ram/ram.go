@@ -4,7 +4,7 @@
 package ram
 
 import (
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 const (

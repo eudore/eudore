@@ -4,7 +4,7 @@ import (
 	"os"
 	"fmt"
 	"syscall"
-	"eudore/config"
+	"github.com/eudore/eudore/config"
 )
 
 func ReloadSignal(e *Eudore) error {
@@ -88,14 +88,6 @@ func ReloadServer(e *Eudore) error {
 				return err
 			}
 		}
-	}
-	return nil
-}
-
-func ReloadComposeHandler(e *Eudore) error {
-	ch, ok := e.Router.(ComposeHandler)
-	if ok {
-		ch.ComposeHandle(e.GlobalHandlers)
 	}
 	return nil
 }

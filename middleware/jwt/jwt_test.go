@@ -3,7 +3,7 @@ package jwt_test
 import (
 	"time"
 	"eudore/middleware/jwt"
-	"testing"
+	"github.com/eudore/eudore"
 )
 
 // eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIiLCJuYmYiOjE0NDQ0Nzg0MDB9.Nv24hvNy238QMrpHvYw-BxyCp00jbsTqjVgzk81PiYA

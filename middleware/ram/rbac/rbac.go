@@ -1,10 +1,7 @@
 package rbac
 
 import (
-	// "strings"
-
-	"eudore"
-	"eudore/middleware/ram"
+	"github.com/eudore/eudore"
 )
 
 type (
@@ -19,8 +16,15 @@ type (
 )
 
 
+func NewRbac() *Rbac {
+	return &Rbac{
+		Binds:	make(map[int][]*Role),
+		Roles:	make(map[string]*Role),
+	}
+}
+
 func (r *Rbac) NewRole(name string, perms []string) {
-	r.Roles[name] = &Roles{
+	r.Roles[name] = &Role{
 		Name:	name,
 		Binds:	perms,
 	}
@@ -31,7 +35,7 @@ func (r *Rbac) AddRoles(name string,role *Role) {
 }
 
 func (r *Rbac) BindRoles(id int, rolesname []string) {
-	roles := make([]Role, len(rolesname))
+	roles := make([]*Role, len(rolesname))
 	for i, name := range rolesname {
 		if role, ok := r.Roles[name]; ok {
 			roles[i] = role

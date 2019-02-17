@@ -5,13 +5,10 @@ import (
 	"fmt"
 	"time"
 	"strings"
-	// "strconv"
 	"context"
 	"net/http"
-	// "net/url"
 	"io/ioutil"
 	"crypto/tls"
-	// "html/template"
 	"golang.org/x/net/http2"
 )
 
@@ -26,7 +23,7 @@ type (
 		Response() ResponseWriter
 		SetRequest(RequestReader)
 		SetResponse(ResponseWriter)
-		Handles([]Handler)
+		SetHandler(Middleware)
 		Next()
 		End()
 		NewRequest(string, string, io.Reader) (ResponseReader, error)
@@ -58,7 +55,7 @@ type (
 		SetHeader(string, string)
 		Cookies() []*CookieRead
 		GetCookie(name string) string
-		SetCookie(cookie *Cookie)
+		SetCookie(cookie *CookieWrite)
 		SetCookieValue(string, string, int)
 
 
@@ -92,24 +89,22 @@ type (
 		context.Context
 		RequestReader
 		ResponseWriter
-		app			*App
-		index		int
-		handles		[]Handler
+		Middleware
+		// data
 		keys		map[interface{}]interface{}
-		// cancle		context.CancelFunc
-		// err 		error
 		path 		string
 		rawQuery	string
 		params 		Params
 		cookies 	[]*CookieRead
 		isReadBody	bool
 		postBody	[]byte
+		isrun		bool
+		handler		Handler
+		// component
+		app			*App
 		log			Logger
 	}
 
-	// source net/http
-	// 来源net/http
-	PushOptions = http.PushOptions
 )
 
 // check interface
@@ -121,8 +116,6 @@ func (ctx *ContextHttp) Reset(pctx context.Context, w ResponseWriter, r RequestR
 	ctx.RequestReader = r
 	ctx.ResponseWriter = w
 	ctx.keys = nil
-	ctx.index = -1
-	// c.err = nil
 	// path and raw
 	uri := r.RequestURI()
 	pos := strings.IndexByte(uri, '?')
@@ -134,7 +127,10 @@ func (ctx *ContextHttp) Reset(pctx context.Context, w ResponseWriter, r RequestR
 		ctx.rawQuery = uri[pos + 1:]
 	}
 
-	ctx.params = NewParamsValue()
+	ctx.isrun = true
+	ctx.params = make(Params)
+	ctx.AddParam(ParamRoutePath, ctx.path)
+	ctx.AddParam(ParamRouteMethod, ctx.Method())
 	ctx.cookies = ReadCookies(r.Header()[HeaderCookie])
 	ctx.isReadBody = false
 	ctx.postBody = ctx.postBody[0:0]
@@ -158,20 +154,20 @@ func (ctx *ContextHttp) SetResponse(w ResponseWriter) {
 	ctx.ResponseWriter = w
 }
 
-func (ctx *ContextHttp) Handles(Handlers []Handler) {
-	ctx.handles = Handlers
+func (ctx *ContextHttp) SetHandler(m Middleware) {
+	ctx.Middleware = m
 }
 
 func (ctx *ContextHttp) Next() {
-	len := len(ctx.handles) - 1
-	for ctx.index < len {
-		ctx.index++
-		ctx.handles[ctx.index].Handle(ctx)
+	for ctx.Middleware != nil && ctx.isrun {
+		ctx.handler = ctx.Middleware
+		ctx.Middleware = ctx.Middleware.GetNext()
+		ctx.handler.Handle(ctx)
 	}
 }
 
 func (ctx *ContextHttp) End() {
-	ctx.index = 0xffff
+	ctx.isrun = false
 }
 
 func (ctx *ContextHttp) NewRequest(method, url string, body io.Reader) (ResponseReader, error) {
@@ -300,7 +296,7 @@ func (ctx *ContextHttp) GetHeader(name string) string {
 }
 
 func (ctx *ContextHttp) SetHeader(name string, val string) {
-	ctx.RequestReader.Header().Set(name, val)
+	ctx.ResponseWriter.Header().Set(name, val)
 }
 
 func (ctx *ContextHttp) Cookies() []*CookieRead {
@@ -316,7 +312,7 @@ func (ctx *ContextHttp) GetCookie(name string) string {
 	return ""
 }
 
-func (ctx *ContextHttp) SetCookie(cookie *Cookie) {
+func (ctx *ContextHttp) SetCookie(cookie *CookieWrite) {
 	// ctx.RequestReader.AddCookie(cookie)	
 	if v := cookie.String(); v != "" {
 		ctx.ResponseWriter.Header().Add("Set-Cookie", v)

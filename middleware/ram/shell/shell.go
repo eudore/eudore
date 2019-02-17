@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"os/exec"
 
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 type Shell struct {

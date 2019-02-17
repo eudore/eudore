@@ -10,7 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 const (
@@ -38,16 +38,16 @@ func NewJwt(fn VerifyFunc) eudore.Handler {
 		if strings.HasPrefix(jwtstr, BearerStar) {
 			jwt, err := fn.ParseToken(jwtstr[7:])
 			if err != nil {
-				ctx.WithField("error", "jwt invalid").Error(err)
+				ctx.WithField("error", "jwt invalid").Warning(err)
 				return
 			}
 			if int64(jwt["exp"].(float64)) < time.Now().Unix() {
-				ctx.Error("jwt expirese")
+				ctx.Warning("jwt expirese")
 				return
 			}
 			ctx.SetValue(eudore.ValueJwt, jwt)
 		}else {
-			ctx.WithField("error", "bearer invalid").Error("")	
+			ctx.WithField("error", "bearer invalid").Warning("")	
 		}
 	})
 }

@@ -2,11 +2,11 @@ package test
 
 import (
 	"testing"
-	"eudore"
+	"github.com/eudore/eudore"
 	"encoding/json"
 )
 
-func TestLogger(t *testing.T) {
+func TestLoggerEntryStd(t *testing.T) {
 	e := &eudore.EntryStd{
 		Level: 0,
 	}

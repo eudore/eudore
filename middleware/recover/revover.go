@@ -2,7 +2,7 @@ package recover
 
 import (
 	"fmt"
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 func RecoverFunc(ctx eudore.Context) {

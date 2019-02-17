@@ -3,7 +3,7 @@ package test
 import (
 	"fmt"
 	"testing"
-	"eudore"
+	"github.com/eudore/eudore"
 )
 
 func TestErros(t *testing.T) {

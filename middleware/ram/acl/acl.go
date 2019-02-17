@@ -1,8 +1,8 @@
 package acl
 
 import (
-	"eudore"
-	"eudore/middleware/ram"
+	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/middleware/ram"
 )
 
 type Acl struct {

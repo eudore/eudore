@@ -45,7 +45,7 @@ type (
 		SetHandler(interface{}) error
 	}
 
-	// 通用路由配置信息。
+	// 通用Server配置信息。
 	//
 	// 记录一个sever的组件名称、监听地址、是否https、是否http2、https证书、双向https信任证书、超时时间、请求处理对象。
 	ServerConfigGeneral struct {

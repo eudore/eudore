@@ -8,7 +8,6 @@ import (
 	"context"
 	"strings"
 	"net/http"
-	// "eudore/config"
 )
 
 type (
@@ -16,9 +15,8 @@ type (
 	Eudore struct {
 		*App
 		pool			*pool
+		Handlers		[]Handler
 		reloads			map[string]ReloadInfo
-		GlobalHandlers	[]Handler
-		GetId			func() string
 	}
 	// eudore reload funcs.
 	ReloadFunc func(*Eudore) error
@@ -39,11 +37,10 @@ type (
 var defaultEudore *Eudore
 
 // Create a new Eudore.
-func New() *Eudore {
+func NewEudore() *Eudore {
 	e := &Eudore{
 		App:			NewApp(),
 		reloads:		make(map[string]ReloadInfo),
-		GetId:			getRandomString,
 	}
 	// set eudore pool
 	e.pool = &pool{
@@ -70,13 +67,6 @@ func New() *Eudore {
 		[]string{"config", "logger-init", "router", "cache", "view"}, 
 		[]interface{}{nil, nil, nil, nil, nil},
 	))
-/*	e.Config.ParseFuncs(func([]ConfigParseFunc) []ConfigParseFunc{
-		return []ConfigParseFunc{
-			ParseInitData,
-			ParseRead,
-			ParseConfig,
-		}
-	})*/
 	// Register eudore default reload func
 	// e.RegisterReload("eudore-keys", 0x008, ReloadKeys)
 	e.RegisterReload("eudore-config", 0x009, ReloadConfig)
@@ -93,9 +83,9 @@ func New() *Eudore {
 // Get the default eudore, if it is empty, create a new singleton.
 //
 // 获取默认的eudore，如果为空，创建一个新的单例。
-func Default() *Eudore {
+func DefaultEudore() *Eudore {
 	if defaultEudore == nil {
-		defaultEudore = New()
+		defaultEudore = NewEudore()
 	}
 	return defaultEudore
 }
@@ -263,31 +253,6 @@ func (e *Eudore) RegisterPool(name string, fn func() interface{}) {
 	}
 }
 
-
-// Set the global properties of eudore and specify the path to the eudore configuration.
-// If the path is not empty, use the default #eudore path
-//
-// 设置eudore的全局属性，并指定eudore配置的路径。
-// 如果路径未空使用默认#eudore的路径
-func (e *Eudore) SetGlobalConfig(i interface{}, path string) error {
-	// e.globalConfig = config.NewConfig(i)
-	// if len(path) == 0 || path == "#eudore" {
-	// 	path = "eudore"
-	// }else {
-	// 	e.globalConfig.SetKey("#eudore", path)
-	// }
-	// i, err := e.globalConfig.GetData(path)
-	// if err != nil {
-	// 	return err
-	// }
-	// c, ok := i.(*ConfigBody)
-	// if !ok {
-	// 	return fmt.Errorf("globalConfig not found attributes eudore.Config.")
-	// }
-	// e.config = c
-	return nil
-}
-
 func (e *Eudore) RegisterComponents(names []string, args []interface{}) error {
 	errs := NewErrors()
 	for i, name := range names {
@@ -312,29 +277,10 @@ func (e *Eudore) RegisterComponent(name string,  arg interface{}) (err error) {
 
 // Register a static file Handle.
 func (e *Eudore) RegisterStatic(path , dir string) {
-	e.Router.RegisterFunc("GET", path, func(ctx Context){
+	e.Router.GetFunc(path, func(ctx Context){
 			ctx.WriteFile(dir + ctx.Path())
 			// ctx.End()
 		})
-}
-
-// Register router method func.
-func (e *Eudore) RegisterFunc(method string, path string, handle HandlerFunc) Handler {
-	return e.Router.RegisterFunc(method, path, handle)
-}
-
-// Register router method handler.
-func (e *Eudore) RegisterHandler(method string, path string, handler Handler) Handler {
-	return e.Router.RegisterHandler(method, path, handler)
-}
-
-// Register a sub router.
-func (e *Eudore) RegisterSubRoute(path string, router Router) Handler {
-	return e.Router.RegisterSubRoute(path, router)
-}
-
-func (e *Eudore) RegisterGlobalHandler(hs ...Handler) {
-	e.GlobalHandlers = append(e.GlobalHandlers, hs...)
 }
 
 // log out
@@ -388,12 +334,6 @@ func (e *Eudore) HandleError(err error) {
 	}
 }
 
-
-func (e *Eudore) HandleHttp(w http.ResponseWriter, req *http.Request) {
-	e.ServeHTTP(w, req)
-}
-
-// http handler
 func (e *Eudore) Handle(ctx Context) {
 	e.Router.Handle(ctx)
 }
@@ -414,13 +354,12 @@ func (e *Eudore) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 
 func (e *Eudore) EudoreHTTP(pctx context.Context,w ResponseWriter, req RequestReader) {
+	// init
 	pool := e.pool.httpcontext
 	ctx := pool.Get().(Context)
-	ctx.Reset(pctx, w, req)
-	fn, routepath := e.Router.Match(ctx.Method(), ctx.Path(), ctx.Params())
-	ctx.SetParam("route", routepath)
 	// handle
-	ctx.Handles(fn)
-	ctx.Next()
+	ctx.Reset(pctx, w, req)
+	e.Router.Handle(ctx)
+	// release
 	pool.Put(ctx)
 }

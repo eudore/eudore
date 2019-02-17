@@ -2,11 +2,42 @@ package eudore_test
 
 import (
 	"eudore"
+	"eudore/middleware/gzip"
+	"eudore/middleware/recover"
 )
 
-// eudore
-func ExampleNew() {
-	eudore.New().Run()
+// eudore core
+func ExampleNewCore() {
+	// 创建App
+	e := eudore.NewCore()
+	// 全局级请求处理中间件
+	e.AddHandler(gzip.NewGzip(5))
+
+	// 创建子路由器
+	apiv1 := eudore.NewRouterMust("", nil)
+	// 路由级请求处理中间件
+	apiv1.AddHandler(eudore.HandlerFunc(recover.RecoverFunc))
+	{
+		apiv1.GetFunc("/get", handleget)
+		// Api级请求处理中间件
+		apiv1.Any("/", eudore.NewMiddlewareLink(
+			eudore.HandlerFunc(handlepre1),
+			eudore.HandlerFunc(handleget),
+		))
+	}
+	// app注册api子路由
+	e.SubRoute("/api/v1 version:v1", apiv1)
+
+	// 启动server
+	e.Run()
+}
+
+func handlepre1(ctx eudore.Context) {
+	ctx.AddParam("pre1", "1")
+	ctx.AddParam("pre1", "2")
+}
+func handleget(ctx eudore.Context) {
+	ctx.WriteJson(ctx.Params())
 }
 
 // router

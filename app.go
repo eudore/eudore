@@ -6,6 +6,7 @@ import (
 )
 
 type (
+	// sync.Pool对象使用的构造函数。
 	PoolGetFunc func() interface{}
 	// The App combines the main functional interfaces, and the instantiation operations such as startup require additional packaging.
 	//
@@ -49,9 +50,9 @@ func (app *App) RegisterComponents(names []string, args []interface{}) error {
 	return errs.GetError()
 }
 
-// Load a component and assign it to eudore.
+// Load a component and assign it to app.
 //
-// 加载一个组件，并赋值给eudore。
+// 加载一个组件，并赋值给app。
 func (app *App) RegisterComponent(name string,  arg interface{}) error {
 	c, err := NewComponent(name, arg)
 	if err != nil {

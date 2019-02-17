@@ -3,7 +3,7 @@ package showmem
 import (
 	"fmt"
 	"reflect"
-	"eudore"
+	"github.com/eudore/eudore"
 
 	//  "github.com/kr/pretty"
 )

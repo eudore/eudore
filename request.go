@@ -103,7 +103,7 @@ func (r *RequestReaderHttp) RequestURI() string {
 }
 
 func (r *RequestReaderHttp) Header() Header {
-	return r.Request.Header
+	return Header(r.Request.Header)
 } 
 
 func (r *RequestReaderHttp) RemoteAddr() string {

@@ -5,7 +5,7 @@ import (
 	"time"
 	"strings"
 	"net/http"
-	"eudore"
+	"github.com/eudore/eudore"
 	"golang.org/x/time/rate"
 )
 
