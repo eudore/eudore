@@ -28,6 +28,10 @@ const (
 	ComponentRouterName			=	"router"
 	ComponentRouterStdName		=	"router-std"
 	ComponentRouterStdVersion	=	"eudore router std v1.0."
+	ComponentRouterRadixName	=	"router-radix"
+	ComponentRouterRadixVersion	=	"eudore router radix."
+	ComponentRouterEmptyName	=	"router-empty"
+	ComponentRouterEmptyVersion	=	"eudore router empty."
 	ComponentCacheName			=	"cache"
 	ComponentCacheMapName		=	"cache-map"
 	ComponentCacheMapVersion	=	"eudore cache map v1.0, from sync.Map."
@@ -91,8 +95,17 @@ func init() {
 	RegisterComponent(ComponentServerMultiName, func(arg interface{}) (Component, error) {
 		return NewServerMulti(arg)
 	})
+	// RegisterComponent(ComponentRouterStdName, func(arg interface{}) (Component, error) {
+	// 	return NewRouterStd(arg)
+	// })
 	RegisterComponent(ComponentRouterStdName, func(arg interface{}) (Component, error) {
-		return NewRouterStd(arg)
+		return NewRouterRadix(arg)
+	})
+	RegisterComponent(ComponentRouterRadixName, func(arg interface{}) (Component, error) {
+		return NewRouterRadix(arg)
+	})
+	RegisterComponent(ComponentRouterEmptyName, func(arg interface{}) (Component, error) {
+		return NewRouterEmpty(arg)
 	})
 	RegisterComponent(ComponentCacheMapName, func(interface{}) (Component, error) {
 		return NewCacheMap()
@@ -175,3 +188,11 @@ func GetComponetName(i interface{}) string {
 	return ""
 }
 
+
+func SetComponent(c Component, key string, val interface{}) error {
+	s, ok := c.(Seter)
+	if ok {
+		return s.Set(key, val)
+	}
+	return fmt.Errorf("%s not support seter.", c.GetName())
+}

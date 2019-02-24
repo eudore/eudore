@@ -1,3 +1,23 @@
+# Eudore
+
+eudore具有以下对象，除Application以为均为接口，每个对象都具有明确语义，Application是最顶级对象可以通过组合方式实现重写，其他对象为接口定义直接重新实现，或组合接口实现部分重写。
+
+| 名称 | 作用 |
+| ------------ | ------------ |
+| Application | 运行对象主体 |
+| Context | 请求处理上下文 |
+| Request | Http请求数据 |
+| Response | http响应写入 |
+| Router | 请求路由选择 |
+| Middleware | 多Handler组合运行 |
+| Logger | App和Ctx日志输出 |
+| Server | http Server启动 |
+| Config | 配置数据管理 |
+| Cache | 全局缓存对象 |
+| Bind | 请求数据反序列化 |
+| Render | 响应数据序列化 |
+| View | 模板渲染 |
+
 # Application
 
 app是全局对象的集合，App对象组合了Config、Server、Logger、Router、Cache、Binder、Renderer、View这些全局对象。
@@ -9,6 +29,7 @@ App对象极简单，但是无法使用需要根据情况进一步封装然后�
 App对象定义：
 
 ```golang
+type (
 	PoolGetFunc func() interface{}
 	// The App combines the main functional interfaces, and the instantiation operations such as startup require additional packaging.
 	//
@@ -25,7 +46,10 @@ App对象定义：
 		// pools存储各种Context、、构造函数，用于sync.pool Get一个新对象。
 		Pools map[string]PoolGetFunc
 	}
+)
 ```
+
+func list:
 
 ```golang
 type App
@@ -58,7 +82,47 @@ type Core
 	func (app *Core) Run() (err error)
 	func (app *Core) ServeHTTP(w http.ResponseWriter, req *http.Request)
 ```
+
 ## Eudore
+
+```golang
+type Eudore struct {
+	*App
+	pool			*pool
+	reloads			map[string]ReloadInfo
+}
+```
+
+```golang
+type Eudore
+    func DefaultEudore() *Eudore
+    func NewEudore() *Eudore
+    func (e *Eudore) Debug(args ...interface{})
+    func (e *Eudore) Debugf(format string, args ...interface{})
+    func (e *Eudore) Error(args ...interface{})
+    func (e *Eudore) Errorf(format string, args ...interface{})
+    func (e *Eudore) EudoreHTTP(pctx context.Context, w ResponseWriter, req RequestReader)
+    func (e *Eudore) Handle(ctx Context)
+    func (e *Eudore) HandleError(err error)
+    func (e *Eudore) HandleSignal(sig os.Signal) error
+    func (e *Eudore) Info(args ...interface{})
+    func (e *Eudore) Infof(format string, args ...interface{})
+    func (e *Eudore) RegisterComponent(name string, arg interface{}) (err error)
+    func (e *Eudore) RegisterComponents(names []string, args []interface{}) error
+    func (e *Eudore) RegisterPool(name string, fn func() interface{})
+    func (e *Eudore) RegisterReload(name string, index int, fn ReloadFunc)
+    func (e *Eudore) RegisterSignal(sig os.Signal, bf bool, fn SignalFunc)
+    func (e *Eudore) RegisterStatic(path, dir string)
+    func (e *Eudore) Reload(names ...string) (err error)
+    func (e *Eudore) Restart() error
+    func (e *Eudore) Run() (err error)
+    func (e *Eudore) ServeHTTP(w http.ResponseWriter, req *http.Request)
+    func (e *Eudore) Shutdown() error
+    func (e *Eudore) Start() error
+    func (e *Eudore) Stop() error
+    func (e *Eudore) Warning(args ...interface{})
+    func (e *Eudore) Warningf(format string, args ...interface{})
+```
 
 # Context
 
@@ -260,6 +324,8 @@ func (ctx *ContextHttp) End() {
 
 Router对象由RouterCore和RouterMethod组合，RouterMethod实现各种路由注册封装，RouterCore用于实现路由器的注册和匹配。
 
+**Router以下部分未更新**
+
 在Router中有Handler、Middleware、Router三种处理对象，三者依次组合
 
 ```golang
@@ -376,6 +442,22 @@ func (m *MiddlewareRouter) SetNext(nm Middleware) {
 
 # Cache
 
-
 ```golang
+type Cache interface {
+	Component
+	// get cached value by key.
+	Get(string) interface{}
+	// set cached value with key and expire time.
+	Set(string, interface{}, time.Duration) error
+	// delete cached value by key.
+	Delete(string) error
+	// check if cached value exists or not.
+	IsExist(string) bool
+	// get all keys
+	GetAllKeys() []string
+	// get keys size
+	Count() int
+	// clean all cache.
+	CleanAll() error
+}
 ```

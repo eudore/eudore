@@ -1,6 +1,6 @@
 # http protocol
 
-详细信息请查看[rfc2616][rfc2616]。
+详细信息请查看[rfc2616][rfc2616][中文pdf][rfc2616cn]。
 
 ## Request
 
@@ -99,4 +99,5 @@ curl使用参数-v可以查看请求和响应的内容。
 
 
 [rfc2616]: https://tools.ietf.org/html/rfc2616
+[rfc2616cn]: ../resource/rfc-2616-hypertext-transfer-protocol-chinese.pdf
 [server-simple]: ../../component/server/simple

@@ -21,9 +21,9 @@ const (
 //
 // Command是一个命令解析器，根据当前命令执行对应行为。
 type Command struct {
-	pid		int
 	pidfile	string
 	cmd		string
+	file	*os.File
 	StartHandler	func() error
 }
 
@@ -33,7 +33,6 @@ type Command struct {
 // 返回一个命令解析对象，需要当前命令和进程pid文件路径，如果行为是start会执行handler。
 func NewCommand(cmd , pidfile string, handler func() error) *Command {
 	return &Command{	
-		pid:	-1,
 		cmd: 	cmd,
 		pidfile:		pidfile,
 		StartHandler:	handler,
@@ -44,7 +43,6 @@ func NewCommand(cmd , pidfile string, handler func() error) *Command {
 //
 // 解析命令并执行。
 func (c *Command) Run() (err error) {
-	c.readpid()
 	switch c.cmd {
 	case "start":
 		err = c.Start()
@@ -73,11 +71,17 @@ func (c *Command) Run() (err error) {
 //
 // 执行启动函数，并将pid写入文件。
 func (c *Command) Start() error{
-	c.writepid()
+	err := c.writepid()
+	if err != nil {
+		return err
+	}
+	defer c.release()
 	return c.StartHandler()
 }
 
-// 后台启动进程。
+// Start the process in the background. If it is not started in the background, create a background process.
+//
+// 后台启动进程。若不是后台启动，则创建一个后台进程。
 func (c *Command) Daemon() error {
 	if os.Getenv(DAEMON_ENVIRON_KEY) == "" {
 		cmd := exec.Command(os.Args[0], os.Args[1:]...)
@@ -89,23 +93,29 @@ func (c *Command) Daemon() error {
 }
 
 func (c *Command) Status() error {
-	return execsignal(c.pid, syscall.Signal(0x00))
+	return c.ExecSignal(syscall.Signal(0x00))
 }
 
 func (c *Command) Stop() error {
-	return execsignal(c.pid, syscall.SIGTERM)
+	return c.ExecSignal(syscall.SIGTERM)
 }
 
 func (c *Command) Reload() error {
-	return execsignal(c.pid, syscall.SIGUSR1)
+	return c.ExecSignal(syscall.SIGUSR1)
 }
 
 func (c *Command) Restart() error {
-	return execsignal(c.pid, syscall.SIGUSR2)
+	return c.ExecSignal(syscall.SIGUSR2)
 }
 
-
-func execsignal(pid int, sig os.Signal) error {
+// The process within the pidfile sends the specified command
+//
+// 像pidfile内的进程发送指定命令
+func (c *Command) ExecSignal(sig os.Signal) error {
+	pid, err := c.readpid()
+	if err != nil {
+		return err
+	}
 	process, err := os.FindProcess(pid)
 	if err != nil {
 		return err
@@ -113,23 +123,48 @@ func execsignal(pid int, sig os.Signal) error {
 	return process.Signal(sig)
 }
 
-func (c *Command) readpid() int {
-	go func(){
-			recover()
-		}()
-	file,err := os.Open(c.pidfile)  
-	if err == nil {
-		defer file.Close()  
-		id, _ := ioutil.ReadAll(file)
-		c.pid, _ = strconv.Atoi(string(id))
+// Read the value in the pid file.
+//
+// 读取pid文件内的值。
+func (c *Command) readpid() (int, error) {
+	file, err := os.OpenFile(c.pidfile, os.O_RDONLY, 0666)
+	if err != nil {
+		return 0, err
 	}
-	return c.pid
+	id, err := ioutil.ReadAll(file)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(string(id))
 }
 
-func (c *Command) writepid() {
-	file, _ := os.OpenFile(c.pidfile, os.O_WRONLY | os.O_TRUNC | os.O_CREATE, 0666)
-	defer file.Close()
+// Open and lock the pid file and write the value of pid.
+//
+// 打开并锁定pid文件，写入pid的值。
+func (c *Command) writepid() (err error) {
+	c.file, err = os.OpenFile(c.pidfile, os.O_WRONLY | os.O_CREATE , 0666)
+	if err != nil {
+		return
+	}
+	err = syscall.Flock(int(c.file.Fd()), syscall.LOCK_EX | syscall.LOCK_NB)
+	if err != nil {
+		c.file.Close()
+		return
+	}
 	byteSlice := []byte(fmt.Sprintf("%d", os.Getpid()))
-	file.Write(byteSlice)
-	// syscall.Flock(int(file.Fd()), syscall.LOCK_EX | syscall.LOCK_NB)
+	_, err = c.file.Write(byteSlice)
+	if err != nil {
+		c.file.Close()
+		return
+	}
+	return nil
+}
+
+// Close the delete pid file and release the exclusive lock
+//
+// 关闭删除pid文件，并解除独占锁
+func (c *Command) release() error {
+	defer os.Remove(c.pidfile)
+	defer c.file.Close()
+	return syscall.Flock(int(c.file.Fd()), syscall.LOCK_UN)
 }

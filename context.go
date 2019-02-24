@@ -4,6 +4,7 @@ import (
 	"io"
 	"fmt"
 	"time"
+	"unsafe"
 	"strings"
 	"context"
 	"net/http"
@@ -94,7 +95,8 @@ type (
 		keys		map[interface{}]interface{}
 		path 		string
 		rawQuery	string
-		params 		Params
+		pkeys		[]string
+		pvals		[]string
 		cookies 	[]*CookieRead
 		isReadBody	bool
 		postBody	[]byte
@@ -128,14 +130,16 @@ func (ctx *ContextHttp) Reset(pctx context.Context, w ResponseWriter, r RequestR
 	}
 
 	ctx.isrun = true
-	ctx.params = make(Params)
-	ctx.AddParam(ParamRoutePath, ctx.path)
-	ctx.AddParam(ParamRouteMethod, ctx.Method())
+	ctx.pkeys = ctx.pkeys[0:0]
+	ctx.pvals = ctx.pvals[0:0]
+	// ctx.params = make(Params)
+	// ctx.AddParam(ParamRoutePath, ctx.path)
+	// ctx.AddParam(ParamRouteMethod, ctx.Method())
 	ctx.cookies = ReadCookies(r.Header()[HeaderCookie])
 	ctx.isReadBody = false
 	ctx.postBody = ctx.postBody[0:0]
 	ctx.log = ctx.app.Logger
-	readQuery(ctx.rawQuery, ctx.params)
+	readQuery(ctx.rawQuery, ctx)
 }
 
 func (ctx *ContextHttp) Request() RequestReader {
@@ -271,15 +275,41 @@ func (ctx *ContextHttp) Body() []byte {
 
 
 
+func (ctx *ContextHttp) Params() Params {
+	return ctx
+}
 
+func (ctx *ContextHttp) GetParam(key string) string {
+	for i, str := range ctx.pkeys {
+		if str == key {
+			return ctx.pvals[i]
+		}
+	}
+	return ""
+}
 
+func (ctx *ContextHttp) AddParam(key string, val string) {
+	ctx.pkeys = append(ctx.pkeys, key)
+	ctx.pvals = append(ctx.pvals, val)
+}
+
+func (ctx *ContextHttp) SetParam(key string, val string) {
+	for i, str := range ctx.pkeys {
+		if str == key {
+			ctx.pvals[i] = val
+			return
+		}
+	}
+	ctx.AddParam(key, val)
+}
+/*
 
 func (ctx *ContextHttp) Params() Params {
 	return ctx.params
 }
 
 func (ctx *ContextHttp) GetParam(key string) string {
-	return ctx.params.Get(key)
+	return ctx.params.GetPa(key)
 }
 
 func (ctx *ContextHttp) SetParam(key string, val string) {
@@ -288,7 +318,7 @@ func (ctx *ContextHttp) SetParam(key string, val string) {
 
 func (ctx *ContextHttp) AddParam(key string, val string) {
 	ctx.params.Add(key, val)
-}
+}*/
 
 
 func (ctx *ContextHttp) GetHeader(name string) string {
@@ -371,8 +401,9 @@ func (ctx *ContextHttp) WriteView(path string,i interface{}) error {
 	return ctx.app.View.ExecuteTemplate(ctx.ResponseWriter, path, i)
 }
 
-func (ctx *ContextHttp) WriteString(i string) error {
-	return ctx.WriteRenderWith(i, RendererText)
+func (ctx *ContextHttp) WriteString(i string) (err error) {
+	_, err = ctx.Write(*(*[]byte)(unsafe.Pointer(&i)))
+	return 
 }
 
 func (ctx *ContextHttp) WriteJson(i interface{}) error {

@@ -6,18 +6,19 @@ var (
 	globalhandler				map[string]Handler
 	globalhandleFuncs				map[string]HandlerFunc
 	globalmiddlewares				map[string]Middleware
-	globalloggerFormatFuncs		map[string]LoggerFormatFunc
+	globalloggerHandleFuncs		map[string]LoggerHandleFunc
 )
 
 func init() {
 	globalhandler = make(map[string]Handler)
 	globalhandleFuncs = make(map[string]HandlerFunc)
 	globalmiddlewares = make(map[string]Middleware)
-	globalloggerFormatFuncs = make(map[string]LoggerFormatFunc)
-	globalloggerFormatFuncs["default"] = LoggerFormatDefault
-	globalloggerFormatFuncs["json"] = LoggerFormatJson
-	globalloggerFormatFuncs["jsonindent"] = LoggerFormatJsonIndent
-	globalloggerFormatFuncs["xml"] = LoggerFormatXml
+	//
+	globalloggerHandleFuncs = make(map[string]LoggerHandleFunc)
+	globalloggerHandleFuncs["default"] = LoggerHandleDefault
+	globalloggerHandleFuncs["json"] = LoggerHandleJson
+	globalloggerHandleFuncs["jsonindent"] = LoggerHandleJsonIndent
+	globalloggerHandleFuncs["xml"] = LoggerHandleXml
 }
 
 // Handler
@@ -47,11 +48,13 @@ func ConfigLoadMiddleware(name string) Middleware {
 	return globalmiddlewares[name]
 }
 
-// LoggerFormatFunc
-func ConfigSaveLoggerFormatFunc(name string, fn LoggerFormatFunc) {
-	globalloggerFormatFuncs[name] = fn
+
+// LoggerHandleFunc
+func ConfigSaveLoggerHandleFunc(name string, fn LoggerHandleFunc) {
+    globalloggerHandleFuncs[name] = fn
 }
 
-func ConfigLoadLoggerFormatFunc(name string) LoggerFormatFunc {
-	return globalloggerFormatFuncs[name]
+func ConfigLoadLoggerHandleFunc(name string) LoggerHandleFunc {
+    return globalloggerHandleFuncs[name]
 }
+

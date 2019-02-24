@@ -2,6 +2,7 @@ package jwt_test
 
 import (
 	"time"
+	"testing"
 	"eudore/middleware/jwt"
 	"github.com/eudore/eudore"
 )

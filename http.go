@@ -7,8 +7,15 @@ import (
 )
 
 type (
-	Params = textproto.MIMEHeader
 	Header = textproto.MIMEHeader
+	Params interface {
+		GetParam(string) string
+		AddParam(string, string)
+		SetParam(string, string)
+	}
+/*	Params3 struct {
+		Data	[]Param2
+	}*/
 	// From net/http.Cookie
 	CookieWrite = http.Cookie
 	CookieRead struct {
@@ -20,6 +27,8 @@ type (
 	// 来源net/http
 	PushOptions = http.PushOptions
 )
+
+
 
 func ReadCookies(lines []string) []*CookieRead {
 	if len(lines) == 0 {

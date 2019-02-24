@@ -1,45 +1,37 @@
-#
+#  Eudore
 
-[文档][docs]
-
-## Object
-
-Application、Context、Request、Response
-
-Router、Middleware、Logger、Server
-
-Bind、Render、View
-
-Config、Cache
+本框架为个人学习研究的重框架，每周最多同步更新一次，未稳定前不欢迎issue、pr、using，可查看http及go web框架[相关文档][docs]，联系方式q群373278915。
 
 ## Features
 
-- 核心对象接口化 支持重写
-- 标准库解耦 可自定义http协议解析
-- 多端口启动 热重启 热加载
-- 路由匹配参数 路由额外附加参数 子路由
-- 全局配置 自定义配置解析过程 远程读取 自动生成帮助信息
-- 自定义日志处理方式 全链路日志
-- 信号响应 systemctl支持
+- 核心全部接口化,支持重写Application、Context、Request、Response、Router、Middleware、Logger、Server、Config、Cache、Bind、Render、View。
+- 对象语义明确。
+- net/http库解耦,可实现或接入其他http协议解析库。
+- Middleware和Router自己重写实现，与其他框架相比性能不可能会是短板。
 
-### issue
+## issue
 
 Config setdata反射设置
 
-ReloadSignal 清除旧规则
+setting 基于配置初始化对象未实现
 
-binder from和url实现
-
-setting 基于配置初始化对象
-
-signal 未防止重复注册
+signal 可重复注册
 
 热重启失效
 
+没有i18n
 
+缺少完整websocket实现，仅有upgrade部分
 
+重写SubRouter未完成，并导致Group Middleare无法实现
+
+Gzip异常
+
+Logger基于GC优化
 
 ## Example
+
+**Example部分未更新**
 
 - [Application](#application)
 - [Server](#Server)
@@ -47,8 +39,7 @@ signal 未防止重复注册
 - [Router and Middleware](#router-and-middleware)
 - [Middleware](#middleware)
 	- [Jwt and Session](#jwt-and-session)
-	- [Ram]
-	- [Gzip]
+	- [Ram](#ram)
 - [Context]
 	- [Bind]
 	- [Param]
@@ -61,10 +52,10 @@ signal 未防止重复注册
 	- [Redirect]
 
 	- [Logger]
+- [Websocket](#websocket)
 
 
-
-- [Application]
+## Application
 
 
 ```golang
@@ -80,7 +71,7 @@ func main() {
 ```
 
 
-- [Server]
+## Server
 
 Server是eudore顶级接口对象之一。
 
@@ -120,7 +111,7 @@ func main() {
 }
 ```
 
-- [Logger] 
+## Logger
 
 NewEudore创建App时，会创建logger-init日志组件，实现LoggerInitHandler接口，改组件会将日志条目存储起来，直到加载下一个日志组件时，使用新日志组件处理所有存储的日子条目。
 
@@ -137,14 +128,14 @@ func main() {
 		Path:	"access.log",
 		Level:	"debug",
 //		Format:	"json",
-		Format:	"{{.time}} {{.level}} {{.message}}",
+		Format:	`[{{.Timestamp.Format "Jan 02, 2006 15:04:05 UTC"}}] {{.Level}}: {{.Message}}`,
 	})
 	e.Debug("init 2")
 	e.Run()
 }
 ```
 
-- [Router and Middleware]
+## Router and Middleware
 
 router-std路由器支持默认参数、路径参数、通配符参数，目前不支持正则参数和参数效验，可重新实现一个Router来实现这些功能。
 
@@ -213,13 +204,13 @@ func handlepre1(ctx eudore.Context) {
 func handleparam(ctx eudore.Context) {
 	// 将ctx的参数以Json格式返回
 	ctx.WriteJson(ctx.Params())
-	// 将ctx的参数感觉请求格式返回
+	// 将ctx的参数根据请求格式返回
 	ctx.WriteRender(ctx.Params())
 }
 ```
 
 
-- [Jwt and Session]
+### Jwt and Session
 
 ```golang
 func main() {
@@ -237,7 +228,7 @@ func any(ctx *eudore.Context) {
 	ctx.Info(ctx.Value(eudore.ValueSession))
 
 	// inti
-	sess := cast.NweMap(ctx.Value(eudore.ValueJwt))
+	sess := cast.NewMap(ctx.Value(eudore.ValueJwt))
 	// get
 	ctx.Info(sess.GetInt("uid"))
 	// set
@@ -246,20 +237,131 @@ func any(ctx *eudore.Context) {
 	ctx.SetValue(eudore.ValueSession, sess)
 
 	// inti
-	jwt := cast.NweMap(ctx.Value(eudore.ValueSession))
+	jwt := cast.NewMap(ctx.Value(eudore.ValueSession))
 	// get
 	ctx.Info(jwt.Get("exp"))
 }
 
 ```
-- []
-- []
-- []
+
+### Ram
+
+资源访问管理
+
+`github.com/eudore/eudore/middleware/ram`包共有acl、pbac、rbac、shell四种鉴权方式。
+
+ram.RamHttp对象定义：
+
+```golang
+type RamHttp struct {
+    RamHandler
+    GetId     GetIdFunc
+    GetAction GetActionFunc
+    Forbidden ForbiddenFunc
+}
+type RamHttp
+    func NewRamHttp(rams ...RamHandler) *RamHttp
+    func (r *RamHttp) Handle(ctx eudore.Context)
+    func (r *RamHttp) Set(f1 GetIdFunc, f2 GetActionFunc, f3 ForbiddenFunc) *RamHttp
+```
+
+RamHttp需要Set设置获取id、获取行为、403执行，三个行为参数。
+
+```golang
+// bug
+package main
+
+import (
+	"strconv"
+	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/middleware/ram"
+	"github.com/eudore/eudore/middleware/ram/acl"
+)
+
+func main() {
+	app := eudore.NewCore()	
+	eudore.SetComponent(app.Logger, eudore.LoggerHandleFunc(eudore.LoggerHandleJson))
+	// add
+	ramAcl := acl.NewAcl()
+	ramAcl.AddAllowPermission(1, []string{"Show", "Get"})
+	app.AddHandler(
+		ram.NewRamHttp(
+			// 执行acl鉴权
+			ramAcl,
+			// rbac.NewRbac(),
+			// 默认执行拒绝
+			ram.DenyHander,
+		).Set(getid, nil, nil),
+	)
+
+	app.AnyFunc("/:id/:action ss:00", func(ctx eudore.Context) {
+		ctx.Info(ctx.GetParam("action"))
+		ctx.WriteString("Allow " + ctx.GetParam("action"))
+	})
+	app.AnyFunc("/", func(ctx eudore.Context) {
+		ctx.Info(ctx.Path())
+	})
+	// start
+	app.Listen(":8088")
+	app.Run()
+}
+
+func getid(ctx eudore.Context) int {
+	i, err := strconv.Atoi(ctx.GetParam("id"))
+	if err != nil {
+		return 0
+	}
+	return i
+}
+```
 
 
+# Websocket
 
+目前没有独立的websocket库，且不与net/http兼容,推荐使用`github.com/gobwas/ws`库。
 
+eudore.UpgradeHttp获取net.Conn链接并写入建立请求响应，然后wsutil库读写数据。
 
+`ctx.Response().Hijack()`可以直接获得原始tcp连接，然后读取header判断请求，写入101数据，再操作websocket连接。
 
+```golang
+package main
 
-[docs]: tree/master/docs
+import (
+	"github.com/eudore/eudore"
+	"github.com/gobwas/ws/wsutil"
+)
+
+func main() {
+	app := eudore.NewCore()
+	eudore.SetComponent(app.Logger, eudore.LoggerHandleFunc(eudore.LoggerHandleJson))
+	app.RegisterComponent(eudore.ComponentRouterEmptyName, eudore.HandlerFunc(func(ctx eudore.Context){
+		conn, _, err := eudore.UpgradeHttp(ctx) 
+		if err != nil {
+			// handle error
+			ctx.Error(err)
+		}
+		go func() {
+			defer conn.Close()
+
+			for {
+				msg, op, err := wsutil.ReadClientData(conn)
+				if err != nil {
+					ctx.Error(err)
+					// handle error
+				}
+				ctx.Info(string(msg))
+				err = wsutil.WriteServerMessage(conn, op, msg)
+				if err != nil {
+					// handle error
+				}
+			}
+		}()
+	}))
+
+	app.Listen(":8088")
+	app.Run()
+}
+```
+
+[docs]: docs

@@ -4,7 +4,6 @@ import (
 	"os"
 	"fmt"
 	"syscall"
-	"github.com/eudore/eudore/config"
 )
 
 func ReloadSignal(e *Eudore) error {
@@ -39,25 +38,6 @@ func ReloadSignal(e *Eudore) error {
 }
 
 func ReloadConfig(*Eudore) error {
-	return nil
-}
-
-func ReloadKeys(e *Eudore) error {
-	// Get #keys data.
-	c := e.Config.Get("#keys")
-	if c == nil {
-		return nil
-	}
-	// Check if the type of #key is map[string]string.
-	// Get all key-values data.
-	keys, values, err := config.AllKeyVal(c)
-	if err != nil {
-		return err
-	}
-	// Set data.
-	for i, v  := range values {
-		e.Config.Set(keys[i], v)
-	}
 	return nil
 }
 

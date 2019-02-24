@@ -57,17 +57,25 @@ func (srv *Server) ListenAndServe(addr string, handle func(*Response, *Request))
 	return srv.Serve(ln)
 }
 
+// 服务处理监听
 func (srv *Server) Serve(l net.Listener) error {
 	for {
+		// 读取连接
 		rw, err := l.Accept()
+		// 错误连接丢弃
 		if err != nil {
 			break
 		}
+		// Handle new connections
+		// 处理新连接
 		srv.newConn(rw).serve(srv.ctx)
 	}
 	return nil
 }
 
+// Encapsulate an http connection object
+//
+// 封装一个http连接对象
 func (srv *Server) newConn(rwc net.Conn) *conn {
 	return &conn{
 		server:	srv,
@@ -75,13 +83,22 @@ func (srv *Server) newConn(rwc net.Conn) *conn {
 	}
 }
 
+// Handling http connections
+//
+// 处理http连接
 func (c *conn) serve(ctx context.Context) {
 	defer c.rwc.Close()
 	var ok bool
+	// Create the currently connected io buffer object.
+	// 创建当前连接的io缓冲对象。
 	rw := bufio.NewReadWriter(bufio.NewReader(c.rwc), bufio.NewWriter(c.rwc))
+	// Create a text protocol parsing object.
+	// 创建一个文本协议解析对象。
 	reader := textproto.NewReader(rw.Reader)
 	fmt.Println("conn serve:", c.rwc.RemoteAddr().String())
 	for {
+		// Initialize the request object.
+		// 初始化请求对象。
 		req := &Request{
 			header:	Header{},
 			reader: rw,
@@ -93,30 +110,42 @@ func (c *conn) serve(ctx context.Context) {
 			header:	Header{},
 			writer:	rw,
 		}
-		// head line
+		// Read the http request line.
+		// 读取http请求行。
 		line, err := reader.ReadLine()
 		if err != nil {
 			return
 		}
 		fmt.Println("read line:", line)
+		// Split the http request line.
+		// 拆分http请求行。
 		req.method, req.requestURI, req.proto, ok = parseRequestLine(line)
 		if !ok {
 			break
 		}
-		// header
+		// read http headers
+		// 读取http headers
 		for {
+			// Read a line of content.
+			// 读取一行内容。
 			line, err := reader.ReadLine()
 			if err != nil || len(line) == 0 {
 				break
 			}
 			fmt.Println("read header:", line)
+			// Split into headers and store them in the request.
+			// 分割成header存储到请求中。
 			req.header.Add(split2(line, ": "))
 		}
 		fmt.Println("handler start")
-		// handler request
+		// Call the handle object to handle the request.
+		// 调用handle对象处理这个请求。
 		c.server.Handler(resp, req)
-		// writer
+		// Write the cached data and send it back to the client.
+		// 将缓存数据写入，发送返回给客户端。
 		resp.Flush()
+		// // Close the connection and do not implement connection multiplexing.
+		// 关闭连接，未实现连接复用。
 		c.Close()
 		fmt.Println("handler end")
 	}
@@ -178,17 +207,25 @@ func (w *Response) Header() Header {
 }
 
 func (w *Response) Write(b []byte) (int, error) {
+	// If it is the first time to write to the body, write the response line and headers before this.
+	// 如果是第一次写入body，在此之前写入响应行和headers。
 	if !w.iswrite {
-		// set default header
+		// Set default headers
+		// 设置默认headers
 		w.Header().Add("Date", time.Now().Format(TimeFormat))
-		// write line and header
-		// w.writer.Write([]byte("HTTP/1.1 200 OK\r\n"))
+		// Write response line
+		// 写入响应行
 		fmt.Fprintf(w.writer, "%s: %d OK\r\n", w.request.Proto(), w.status, Status[w.status])
+		// Write headers
+		// 写入headers
 		for k, v := range w.header {
 			fmt.Fprintf(w.writer, "%s: %s\r\n", k, v)
 		}
+		// Write header separator
+		// 写入header后分割符
 		w.writer.Write([]byte("\r\n"))
-		// set write flag is true.
+		// Set the write standard to true.
+		// 设置写入标准为true。
 		w.iswrite = true
 	}
 	return w.writer.Write(b)

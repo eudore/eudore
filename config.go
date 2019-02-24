@@ -11,6 +11,10 @@ import (
 )
 
 type (
+	// 修改参数
+	Seter interface {
+		Set(string, interface{}) error
+	}
 	//
 	ConfigParseFunc func(Config) error
 	ConfigReadFunc func(string) (string, error)
@@ -19,7 +23,7 @@ type (
 	Config interface {
 		Component
 		Get(string) interface{}
-		Set(string, interface{})
+		Set(string, interface{}) error
 		// Help(io.Writer) error
 		ParseFuncs(ConfigParseOption)
 		Parse() error
@@ -108,7 +112,7 @@ func searchMap(source map[string]interface{}, path []string) interface{} {
 	return nil
 }
 
-func (c *ConfigMap) Set(key string, val interface{}) {
+func (c *ConfigMap) Set(key string, val interface{}) error {
 	c.mu.Lock()
 	if len(key) == 0 {
 		keys, ok := val.(map[string]interface{})
@@ -125,6 +129,7 @@ func (c *ConfigMap) Set(key string, val interface{}) {
 		m[path[len(path)-1]] = val
 	}
 	c.mu.Unlock()
+	return nil
 }
 
 

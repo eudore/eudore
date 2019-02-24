@@ -53,6 +53,8 @@ Context包含Request和Response两部分，Request部分是请求，Response是�
 
 # Request & Response
 
+http协议解析[文档][my_proto_http_zh]。
+
 实现RequestReader和ResponseWriter接口。
 
 根据http协议请求报文和响应报文RequestReader和ResponseWriter大概定义如下：
@@ -166,7 +168,7 @@ if err := h(c); err != nil {
 }
 ```
 
-gin中间件使用装饰器模式。
+echo中间件使用装饰器模式。
 
 echo中间件使用HandlerFunc进行一层层装饰，最后返回一个HandlerFunc处理Context
 
@@ -183,6 +185,10 @@ func (c *Context) Next() {
 	}
 }
 ```
+
+echo通过路由匹配返回一个[]HandlerFunc对象，并保存到Context里面，执行时按ctx.index一个个执行。
+
+如果HandlerFunc里面调用ctx.Next(),就会提前将后序HandlerFunc执行，返回执行ctx.Next()后的内容，可以简单的指定调用顺序，ctx.Next()之前的在Handler前执行，ctx.Next()之后的在Handler后执行。
 
 Context.handlers存储本次请求所有HandlerFunc，然后使用c.index标记当然处理中HandlerFunc，
 
@@ -381,7 +387,11 @@ type (
 
 `Session.Release(w http.ResponseWriter)`从名称上是释放这个Seesion,但是一般实际作用是将对应Session对象序列化,然后存储到对应的存储实现中,如果只是读取Session可以不Release。
 
+简单的Seession实现可以使用一个map，那么你的操作就是操作这个map。
 
+在初始化Session对象的时候，使用sessionId去存储里面取数据，数据不在内存中，你们通常不是map，比较常用的是[]byte，例如memcache就是[]byte，[]byte可以map之间就需要序列化和反序列化了。
+
+在初始化时，从存储读取[]map，反序列化成一个map，然后返回给用户操作；最后释放Session对象时，就要将map序列化成[]byte，然后再回写到存储之中，保存新修改的数据。
 
 ### Beego.Seesion
 
@@ -447,10 +457,10 @@ type Cache interface {
 
 # Websocket
 
-基于http协议Upgrade机制。
+协议见[文档][my_proto_websocket_zh]
 
-Websocket依靠http.Hijacker接口，获得net.Conn的tcp连接，然后利用tcp协议连接封装生成WebSocket协议，重写定义协议行为。
-
+[my_proto_http_zh]: ../webname/proto_http_zh.md
+[my_proto_websocket_zh]: ../webname/proto_websocket_zh.md
 
 [1]: https://github.com/valyala/fasthttp
 [2]: readDineverGolf_zh.md

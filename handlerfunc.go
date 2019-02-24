@@ -227,7 +227,7 @@ func readQuery(query string, p Params) (err error) {
 			}
 			continue
 		}
-		p.Add(key, value)
+		p.AddParam(key, value)
 	}
 	return err
 }

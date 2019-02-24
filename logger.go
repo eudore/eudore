@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"encoding/json"
 	"encoding/xml"
-	// "gopkg.in/yaml.v2"
+	"text/template"
 )
 
 const (
@@ -29,7 +29,7 @@ type (
 	LoggerTime time.Time
 	LoggerLevel int
 	Fields map[string]interface{}
-	LoggerFormatFunc		func(Entry) []byte
+	LoggerHandleFunc		func(io.Writer, Entry) 
 	// 日志输出接口
 	LogOut interface {
 		Debug(...interface{})
@@ -75,8 +75,7 @@ type (
 	}
 	LoggerStd struct {
 		*LoggerStdConfig
-		LoggerFormatFunc		func(Entry) []byte
-		handler			LoggerFormatFunc
+		LoggerHandleFunc
 		out				io.Writer
 	}
 
@@ -169,11 +168,11 @@ func (l *LoggerInit) NextHandler(logger Logger) {
 	l.data = l.data[0:0]
 }
 
-func (l *LoggerInit) SetLevel( LoggerLevel) {
+func (*LoggerInit) SetLevel( LoggerLevel) {
 	// Do nothing because Initialization logger does not process entries
 }
 
-func (l *LoggerInit) SetFromat( LoggerFormatFunc) {
+func (*LoggerInit) SetFromat( LoggerHandleFunc) {
 	// Do nothing because Initialization logger does not process entries
 }
 
@@ -218,7 +217,7 @@ func (l *LoggerInit) Version() string {
 func NewLoggerStd(arg interface{}) (Logger, error) {
 	// New
 	l := &LoggerStd {
-		LoggerFormatFunc: LoggerFormatDefault,
+		LoggerHandleFunc: LoggerHandleDefault,
 		LoggerStdConfig:		&LoggerStdConfig{
 			Std:	true,
 			Level:	LogDebug,
@@ -237,9 +236,9 @@ func NewLoggerStd(arg interface{}) (Logger, error) {
 			}
 		}
 		// set logger format func
-		fn := ConfigLoadLoggerFormatFunc(l.LoggerStdConfig.Format)
+		fn := ConfigLoadLoggerHandleFunc(l.LoggerStdConfig.Format)
 		if fn != nil {
-			l.LoggerFormatFunc = fn
+			l.LoggerHandleFunc = fn
 		}
 		
 	}
@@ -257,22 +256,34 @@ func NewLoggerStd(arg interface{}) (Logger, error) {
 			l.out = out
 		}
 	}
+//	l.SetFromat(NewLoggerHandleTemplate(`[{{.Timestamp.Format "Jan 02, 2006 15:04:05 UTC"}}] {{.Level}}: {{.Message}}`))
 	return l, nil
 }
 
 func (l *LoggerStd) Handle(e Entry) {
 	if e.GetLevel() >= l.Level {
-		fmt.Fprintln(l.out, string(l.LoggerFormatFunc(e)))
+//		fmt.Fprintln(l.out, string(l.LoggerFormatFunc(e)))
 		// e.Fields = nil
+		l.LoggerHandleFunc(l.out, e)
 	}
+}
+
+func (l *LoggerStd) Set(key string, val interface{}) error {
+	switch i := val.(type) {
+	case LoggerHandleFunc:
+		l.LoggerHandleFunc = i
+	case LoggerLevel:
+		l.Level = i
+	}
+	return nil
 }
 
 func (l *LoggerStd) SetLevel(level LoggerLevel) {
 	l.Level = level
 }
 
-func (l *LoggerStd) SetFromat(fn LoggerFormatFunc) {
-	l.LoggerFormatFunc = fn
+func (l *LoggerStd) SetFromat(fn LoggerHandleFunc) {
+	l.LoggerHandleFunc = fn
 }
 
 
@@ -507,24 +518,36 @@ func (e *EntryContext) WithFields(fields Fields) LogOut {
 
 
 
-
-func LoggerFormatJson(e Entry) []byte {
-	body, _ := json.Marshal(e)
-	return body
+func NewLoggerHandleTemplate(str string) LoggerHandleFunc {
+	tmpl, err := template.New("test").Parse(str)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	return func(w io.Writer, e Entry) {
+		err := tmpl.Execute(w, e)
+		fmt.Println(err)
+	}
 }
 
-func LoggerFormatJsonIndent(e Entry) []byte {
-	indent, _ := json.MarshalIndent(e, "", "\t")
-	return indent
-}
-func LoggerFormatXml(e Entry) []byte {
-	body, _ := xml.Marshal(e)
-	return body
+func LoggerHandleJson(w io.Writer, e Entry) {
+	json.NewEncoder(w).Encode(e)
 }
 
-func LoggerFormatDefault(e Entry) []byte {
-	return []byte(fmt.Sprint(e))
+func LoggerHandleJsonIndent(w io.Writer, e Entry) {
+	en := json.NewEncoder(w)
+	en.SetIndent("", "\t")
+	en.Encode(e)
 }
+
+func LoggerHandleXml(w io.Writer, e Entry) {
+	xml.NewEncoder(w).Encode(e)
+}
+
+func LoggerHandleDefault(w io.Writer, e Entry) {
+	fmt.Fprintln(w, e)
+}
+
 
 func LogFormatFileLine(depth int) (string, int) {
 	_, file, line, ok := runtime.Caller(3 + depth)

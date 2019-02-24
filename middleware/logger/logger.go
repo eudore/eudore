@@ -2,7 +2,7 @@ package logger
 
 import (
 	"time"
-	"strings"
+	// "strings"
 	"github.com/eudore/eudore"
 )
 
@@ -44,8 +44,8 @@ func (l *Logger) Handle(ctx eudore.Context) {
 	if ram := ctx.GetParam(eudore.ParamRam); len(ram) > 0 {
 		f["ram"] = ram
 	}
-	if routes := ctx.Params()[eudore.ParamRoutes]; len(routes) > 0 {
-		f["routes"] = strings.Join(routes, " ")
-	}
+	// if routes := ctx.Params()[eudore.ParamRoutes]; len(routes) > 0 {
+	// 	f["routes"] = strings.Join(routes, " ")
+	// }
 	ctx.WithFields(f).Info()
 }

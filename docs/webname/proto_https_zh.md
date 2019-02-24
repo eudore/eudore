@@ -2,6 +2,8 @@
 
 ## golang https
 
+实现思路使用标准库`crypto/tls`将net.Listener对象连接升级成tls连接。
+
 ### 标准库定义
 
 ```go

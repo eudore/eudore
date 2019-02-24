@@ -14,8 +14,9 @@ type (
 	// eudore 
 	Eudore struct {
 		*App
-		pool			*pool
-		Handlers		[]Handler
+		httprequest		sync.Pool
+		httpresponse	sync.Pool
+		httpcontext		sync.Pool
 		reloads			map[string]ReloadInfo
 	}
 	// eudore reload funcs.
@@ -26,12 +27,6 @@ type (
 		index	int
 		fn		ReloadFunc
 	}
-	// Define pool.
-	pool struct {
-		httprequest  sync.Pool
-		httpresponse sync.Pool
-		httpcontext  sync.Pool
-	}
 )
 
 var defaultEudore *Eudore
@@ -41,9 +36,6 @@ func NewEudore() *Eudore {
 	e := &Eudore{
 		App:			NewApp(),
 		reloads:		make(map[string]ReloadInfo),
-	}
-	// set eudore pool
-	e.pool = &pool{
 		httprequest: sync.Pool {
 			New: func() interface{} {
 				return &RequestReaderHttp{}
@@ -54,12 +46,13 @@ func NewEudore() *Eudore {
 				return &ResponseWriterHttp{}
 			},
 		},
-		httpcontext: sync.Pool {
-			New: func() interface{} {
-				return &ContextHttp{
-					app:	e.App,
-				}
-			},
+	}
+	// set eudore pool
+	e.httpcontext = sync.Pool {
+		New: func() interface{} {
+			return &ContextHttp{
+				app:	e.App,
+			}
 		},
 	}
 	// Register eudore default components
@@ -245,11 +238,11 @@ func (e *Eudore) RegisterSignal(sig os.Signal, bf bool, fn SignalFunc) {
 func (e *Eudore) RegisterPool(name string, fn func() interface{}) {
 	switch name{
 	case "httpcontext":
-		e.pool.httpcontext.New = fn
+		e.httpcontext.New = fn
 	case "httprequest":
-		e.pool.httprequest.New = fn
+		e.httprequest.New = fn
 	case "httpresponse":
-		e.pool.httpresponse.New = fn
+		e.httpresponse.New = fn
 	}
 }
 
@@ -339,27 +332,25 @@ func (e *Eudore) Handle(ctx Context) {
 }
 
 func (e *Eudore) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	pool := e.pool
 	// get
-	request := pool.httprequest.Get().(*RequestReaderHttp)
-	response := pool.httpresponse.Get().(*ResponseWriterHttp)
+	request := e.httprequest.Get().(*RequestReaderHttp)
+	response := e.httpresponse.Get().(*ResponseWriterHttp)
 	// init
 	ResetRequestReaderHttp(request, req)
 	ResetResponseWriterHttp(response, w)
 	e.EudoreHTTP(req.Context(), response, request)
 	// clean
-	pool.httprequest.Put(request)
-	pool.httpresponse.Put(response)
+	e.httprequest.Put(request)
+	e.httpresponse.Put(response)
 }
 
 
 func (e *Eudore) EudoreHTTP(pctx context.Context,w ResponseWriter, req RequestReader) {
 	// init
-	pool := e.pool.httpcontext
-	ctx := pool.Get().(Context)
+	ctx := e.httpcontext.Get().(Context)
 	// handle
 	ctx.Reset(pctx, w, req)
 	e.Router.Handle(ctx)
 	// release
-	pool.Put(ctx)
+	e.httpcontext.Put(ctx)
 }

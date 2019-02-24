@@ -28,6 +28,13 @@ func (f HandlerFunc) Handle(ctx Context) {
 	f(ctx)
 }
 
+func NewMiddleware(h Handler) Middleware {
+	m, ok := h.(Middleware)
+	if ok {
+		return m
+	}
+	return NewMiddlewareBase(h)
+}
 
 // 创建一个基础Middleware，组合一个Handler。
 func NewMiddlewareBase(h Handler) Middleware {
@@ -75,4 +82,8 @@ func GetMiddlewareEnd(m Middleware) Middleware {
 		next = link.GetNext()
 	}
 	return link
+}
+
+func HandleEmpty(Context) {
+	// Do nothing because empty handler does not process entries.
 }
