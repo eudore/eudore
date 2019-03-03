@@ -29,7 +29,9 @@ const (
 	ComponentRouterStdName		=	"router-std"
 	ComponentRouterStdVersion	=	"eudore router std v1.0."
 	ComponentRouterRadixName	=	"router-radix"
-	ComponentRouterRadixVersion	=	"eudore router radix."
+	ComponentRouterRadixVersion	=	"eudore router radix,use radix tree std router."
+	ComponentRouterFullName		=	"router-full"
+	ComponentRouterFullVersion	=	"eudore router full,use radix tree full router."
 	ComponentRouterEmptyName	=	"router-empty"
 	ComponentRouterEmptyVersion	=	"eudore router empty."
 	ComponentCacheName			=	"cache"
@@ -57,6 +59,9 @@ type (
 	Component interface {
 		ComponentName
 		Version() string
+	}
+	Releaser interface {
+		Release()
 	}
 )
 
@@ -103,6 +108,9 @@ func init() {
 	})
 	RegisterComponent(ComponentRouterRadixName, func(arg interface{}) (Component, error) {
 		return NewRouterRadix(arg)
+	})
+	RegisterComponent(ComponentRouterFullName, func(arg interface{}) (Component, error) {
+		return NewRouterFull(arg)
 	})
 	RegisterComponent(ComponentRouterEmptyName, func(arg interface{}) (Component, error) {
 		return NewRouterEmpty(arg)

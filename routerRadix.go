@@ -5,41 +5,48 @@ import (
 )
 
 const (
-	kindConst	uint8	=	iota
-	kindParam
-	kindWildcard
-	kindRegex
+	radixNodeKindConst	uint8	=	iota
+	radixNodeKindParam
+	radixNodeKindWildcard
 )
 
 type (
+	// Basic function router based on radix tree implementation
+	//
+	// 基于基数树实现的基本功能路由器
 	RouterRadix struct {
 		RouterMethod
-		link 		Middleware
+		node404		HandlerFuncs
+		node405		*radixNode
 		root		radixNode
-		get 		radixNode
+		get			radixNode
 		post		radixNode
 		put			radixNode
 		delete		radixNode
-		options 	radixNode
+		options		radixNode
 		head		radixNode
-		patch 		radixNode
+		patch		radixNode
 	}
 	radixNode struct {
-		path		string
 		kind		uint8
+		path		string
 		name		string
 		Cchildren	[]*radixNode
 		Pchildren	[]*radixNode
 		Wchildren	*radixNode
 		// data
-		key			string
-		val			Middleware
+		tags		[]string
+		vals		[]string
+		handlers		HandlerFuncs
 	}
 )
 
 
 func NewRouterRadix(interface{}) (Router, error) {
-	r := &RouterRadix{}
+	r := &RouterRadix{
+		node404:	HandlerFuncs{RouterDefault404Func},
+		node405:	newRadixNode405("405", RouterDefault405Func),
+	}
 	r.RouterMethod = &RouterMethodStd{RouterCore:	r}
 	return r, nil
 }
@@ -47,38 +54,71 @@ func NewRouterRadix(interface{}) (Router, error) {
 
 func (r *RouterRadix) Handle(ctx Context) {
 	h := r.Match(ctx.Method(), ctx.Path(), ctx)
-	ctx.SetHandler(r.link)
-	ctx.Next()
 	ctx.SetHandler(h)
 	ctx.Next()
 }
 
-func (r *RouterRadix) GetNext() Middleware {
-	return r.link
-}
-
-func (r *RouterRadix) SetNext(m Middleware)  {
-	if r.link == nil {
-		r.link = m
-	}else {
-		GetMiddlewareEnd(r.link).SetNext(m)
-	}
-}
-
-func (r *RouterRadix) RegisterMiddleware(hs ...Handler) {
-	r.SetNext(NewMiddlewareLink(hs...))
-}
-
-func (r *RouterRadix) RegisterHandler(method string, path string, handler Handler) {
+func (r *RouterRadix) RegisterHandler(method string, path string, handler HandlerFuncs) {
 	if method == MethodAny{
 		for _, method := range r.AllRouterMethod() {
-			r.InsertRoute(method, path, NewMiddleware(handler))		
+			r.InsertRoute(method, path, handler)
 		}
 	}else {
-		r.InsertRoute(method, path, NewMiddleware(handler))	
+		r.InsertRoute(method, path, handler)
 	}
 }
 
+// 添加一个新的Node
+func (t *RouterRadix) InsertRoute(method, key string, val HandlerFuncs) {
+	var currentNode, newNode *radixNode = t.getTree(method), nil
+	// 未支持的请求方法
+	if currentNode == t.node405 {
+		return
+	}
+	args := strings.Split(key, " ")
+	// 将路径按Node切割，然后依次向下追加。
+	for _, path := range getSpiltPath(args[0]) {
+		// 创建一个新的radixNode，并设置Node类型
+		newNode = NewRadixNode(path)
+		if newNode.kind == radixNodeKindConst {
+			currentNode = currentNode.recursiveInsertTree(path, newNode)
+		}else {
+			currentNode = currentNode.InsertNode(path, newNode)
+		}		
+	}
+	// 树分叉结尾Node添加这次Route数据。
+	newNode.handlers = val
+	newNode.SetTags(args)
+}
+
+
+// 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
+func (t *RouterRadix) Match(method, path string, params Params) HandlerFuncs {
+	if n := t.getTree(method).recursiveLoopup(path, params); n != nil {
+		return n
+	}
+	// t.node404.GetTags(params)
+	return t.node404
+}
+
+func (r *RouterRadix) Set(key string, i interface{}) error {
+	h, ok := i.(HandlerFunc)
+	if !ok {
+		h, ok = i.(func(Context))
+	}
+	if !ok {
+		return ErrRouterSetNoSupportType
+	}
+	// m := NewMiddleware(h)
+	args := strings.Split(key, " ")
+	switch args[0] {
+	case "404":
+		r.node404 = HandlerFuncs{h}
+	case "405":
+		r.node405 = newRadixNode405(key, h)
+	}
+	return nil
+}
 
 func (*RouterRadix) GetName() string {
 	return ComponentRouterRadixName
@@ -94,24 +134,36 @@ func (*RouterRadix) AllRouterMethod() []string {
 }
 
 
+func newRadixNode405(args string, h HandlerFunc) *radixNode {
+	newNode := &radixNode{
+		Wchildren:	&radixNode{
+			handlers:	HandlerFuncs{h},
+		},
+	}
+	newNode.Wchildren.SetTags(strings.Split(args, " "))
+	return newNode
+}
 
-func NewRadixNode(path, key string, val Middleware) *radixNode {
-		newNode := &radixNode{path: path, key: key, val: val}
+func NewRadixNode(path string) *radixNode {
+		newNode := &radixNode{path: path}
+		// 更具路径前缀类型，创建不同的Node
 		switch path[0] {
+		// 通配符Node
 		case '*':
-			newNode.kind = kindWildcard
+			newNode.kind = radixNodeKindWildcard
 			if len(path) == 1 {
+				// 设置默认名称
 				newNode.name = "*"
 			}else{
 				newNode.name = path[1:]
 			}
+		// 参数Node
 		case ':':
-			newNode.kind = kindParam
+			newNode.kind = radixNodeKindParam
 			newNode.name = path[1:]
-		case '#':
-			newNode.kind = kindRegex
+		// 常量Node
 		default:
-			newNode.kind = kindConst
+			newNode.kind = radixNodeKindConst
 		}
 		return newNode
 }
@@ -123,7 +175,7 @@ func (r *radixNode) InsertNode(path string, newNode *radixNode) *radixNode {
 	}
 	newNode.path = path
 	switch newNode.kind {
-	case kindParam:
+	case radixNodeKindParam:
 		// 路径存在返回旧Node
 		for _, i := range r.Pchildren {
 			if i.path == path {
@@ -131,9 +183,7 @@ func (r *radixNode) InsertNode(path string, newNode *radixNode) *radixNode {
 			}
 		}
 		r.Pchildren = append(r.Pchildren, newNode)
-	case kindRegex:
-		// 正则Node，未实现
-	case kindWildcard:
+	case radixNodeKindWildcard:
 		// 设置通配符Node数据。
 		r.Wchildren = newNode
 	default:
@@ -141,6 +191,28 @@ func (r *radixNode) InsertNode(path string, newNode *radixNode) *radixNode {
 		r.Cchildren = append(r.Cchildren, newNode)
 	}
 	return newNode
+}
+
+// 给当前Node设置tags
+func (r *radixNode) SetTags(args []string) {
+	if len(args) == 0 {
+		return
+	}
+	r.tags = make([]string, len(args))
+	r.vals = make([]string, len(args))
+	// 第一个参数名称默认为route
+	r.tags[0] = "route"
+	r.vals[0] = args[0]
+	for i, str := range args[1:] {
+		r.tags[i + 1], r.vals[i + 1] = split2byte(str, ':')
+	}
+}
+
+// 将当前Node的tags给予Params
+func (r *radixNode) GetTags(p Params) {
+	for i, _ := range r.tags {
+		p.AddParam(r.tags[i], r.vals[i])
+	}
 }
 
 // 对指定路径为edgeKey的Node分叉，公共前缀路径为pathKey
@@ -164,51 +236,30 @@ func (r *radixNode) SplitNode(pathKey, edgeKey string) *radixNode {
 // 获取对应方法的Tree
 func (t *RouterRadix) getTree(method string) *radixNode {
 	switch method {
-	case "GET":
+	case MethodGet:
 		return &t.get
-	case "POST":
+	case MethodPost:
 		return &t.post
-	case "DELETE":
+	case MethodDelete:
 		return &t.delete
-	case "PUT":
+	case MethodPut:
 		return &t.put
-	case "HEAD":
+	case MethodHead:
 		return &t.head
-	case "OPTIONS":
+	case MethodOptions:
 		return &t.options
-	case "PATCH":
+	case MethodPatch:
 		return &t.patch
 	default:
-		return &t.root
+		return t.node405
 	}
 }
-
-// 添加一个新的Node
-func (t *RouterRadix) InsertRoute(method, key string, val Middleware) {
-	var currentNode, newNode *radixNode = t.getTree(method), nil
-	// 兼容带默认变量的路径
-	key = strings.Split(key, " ")[0]
-	// 将路径按Node切割，然后依次向下追加。
-	for _, path := range getSpiltPath(key) {
-		// 创建一个新的radixNode，并设置Node类型
-		newNode = NewRadixNode(path, "", nil)
-		if newNode.kind == kindConst {
-			currentNode = t.recursiveInsertTree(currentNode, path, newNode)
-		}else {
-			currentNode = currentNode.InsertNode(path, newNode)
-		}		
-	}
-	// 追加一个Node设置数据。
-	newNode.key = key
-	newNode.val = val
-}
-
 
 
 // 给currentNode递归添加，路径为containKey的Node
 //
 // targetKey和targetValue为新Node数据。
-func (t *RouterRadix) recursiveInsertTree(currentNode *radixNode, containKey string, targetNode *radixNode) *radixNode {
+func (currentNode *radixNode) recursiveInsertTree(containKey string, targetNode *radixNode) *radixNode {
 	for i, _ := range currentNode.Cchildren {
 		// 检查当前遍历的Node和插入路径是否有公共路径
 		// subStr是两者的公共路径，find表示是否有
@@ -219,7 +270,7 @@ func (t *RouterRadix) recursiveInsertTree(currentNode *radixNode, containKey str
 			if subStr == currentNode.Cchildren[i].path {
 				nextTargetKey := strings.TrimPrefix(containKey, currentNode.Cchildren[i].path)
 				// 当前node新增子Node可能原本有多个child，所以需要递归添加
-				return t.recursiveInsertTree(currentNode.Cchildren[i], nextTargetKey, targetNode)	
+				return currentNode.Cchildren[i].recursiveInsertTree(nextTargetKey, targetNode)	
 			}else {
 				// 如果公共路径不等于当前node的路径
 				// 则将currentNode.children[i]路径分叉
@@ -239,24 +290,23 @@ func (t *RouterRadix) recursiveInsertTree(currentNode *radixNode, containKey str
 	return currentNode.InsertNode(containKey, targetNode)
 }
 
-func (t *RouterRadix) Match(method, path string, params Params) Middleware {
-	return t.recursiveLoopup(t.getTree(method), path, params)
-}
 
-func (t *RouterRadix) recursiveLoopup(searchNode *radixNode, searchKey string, params Params) Middleware {
+
+func (searchNode *radixNode) recursiveLoopup(searchKey string, params Params) HandlerFuncs {
 	// 常量Node匹配，返回数据
-	if len(searchKey) == 0 && searchNode.val != nil {
-		return searchNode.val
+	if len(searchKey) == 0 && searchNode.handlers != nil {
+		searchNode.GetTags(params)
+		return searchNode.handlers
 	}
 	// 遍历常量Node匹配
 	for _, edgeObj := range searchNode.Cchildren {
 		// 寻找相同前缀node进一步匹配
-		if subStr, find := getSubsetPrefix(searchKey, edgeObj.path); find && subStr == edgeObj.path{
+		// 当前Node的路径必须为searchKey的前缀。
+		if IsPrefix(searchKey, edgeObj.path) {
 			// 除去前缀路径，获得未匹配路径。
-			nextSearchKey := searchKey[len(subStr):]
+			nextSearchKey := searchKey[len(edgeObj.path):]
 			// 然后当前Node递归判断
-			n := t.recursiveLoopup(edgeObj, nextSearchKey, params)
-			if n != nil {
+			if n := edgeObj.recursiveLoopup(nextSearchKey, params);n != nil {
 				return n
 			}
 		}
@@ -274,8 +324,8 @@ func (t *RouterRadix) recursiveLoopup(searchNode *radixNode, searchKey string, p
 
 		// 变量Node依次匹配是否满足
 		for _, edgeObj := range searchNode.Pchildren {
-			n := t.recursiveLoopup(edgeObj, nextSearchKey, params)
-			if n != nil {
+			// 递归判断
+			if n := edgeObj.recursiveLoopup(nextSearchKey, params);n != nil {
 				// 添加变量参数
 				params.AddParam(edgeObj.name, searchKey[:pos])
 				return n
@@ -283,28 +333,29 @@ func (t *RouterRadix) recursiveLoopup(searchNode *radixNode, searchKey string, p
 		}
 	}
 	// 通配符
-	// 若当前Node有通配符处理方法直接匹配，返回结果
+	// 若当前Node有通配符处理方法直接匹配，返回结果。
 	if searchNode.Wchildren != nil {
+		searchNode.Wchildren.GetTags(params)
 		params.AddParam(searchNode.Wchildren.name, searchKey)
-		return searchNode.Wchildren.val
+		return searchNode.Wchildren.handlers
 	}
 	// 无法匹配
 	return nil
 }
 
 /*
-将字符串按Node类型切割
+将字符串按Node类型切割，当前分割规则不够详细。
 
 字符串路径切割例子：
-/ 				[/ *]
-/api/note/ 		[/api/note/ *]
-//api/* 		[/api/ *]
-//api/*name 	[/api/ *name]
-/api/get/ 		[/api/get/ *]
-/api/get 		[/api/get]
-/api/:get 		[/api/ :get]
-/api/:get/* 		[/api/ :get / *]
-/api/:name/info/* 	[/api/ :name /info/ *]
+/				[/]
+/api/note/		[/api/note/]
+//api/*			[/api/ *]
+//api/*name		[/api/ *name]
+/api/get/		[/api/get/]
+/api/get		[/api/get]
+/api/:get		[/api/ :get]
+/api/:get/*			[/api/ :get / *]
+/api/:name/info/*	[/api/ :name /info/ *]
 */
 func getSpiltPath(key string) []string {
 	if len(key) < 2 {
@@ -328,14 +379,14 @@ func getSpiltPath(key string) []string {
 			lastappend(strs, '/')
 		}
 		// 处理特殊前缀路径
-		if str[0] == ':' || str[0] == '*' {
+		if lastisbyte(strs, '/') && (str[0] == ':' || str[0] == '*') {
 			strs = append(strs, str)
 			last = true
 			continue
 		}
 		// 追加常量
 		num := len(strs) - 1
-		strs[num] = strs[num] + str //+ "/" 
+		strs[num] = strs[num] + str
 	
 	}
 	return strs
@@ -349,6 +400,17 @@ func lastappend(strs []string, b byte) {
 		strs[num] = strs[num] + string(b)
 	}
 }
+
+// 检测最后一个字符串的结尾是否为指导byte
+func lastisbyte(strs []string, b byte) bool {
+	num := len(strs) - 1
+	if num < 0 {
+		return false
+	}
+	laststr := strs[num]
+	return laststr[len(laststr) - 1 ] == b
+}
+
 
 // 获取两个字符串的最大公共前缀，返回最大公共前缀和是否拥有最大公共前缀
 func getSubsetPrefix(str1, str2 string) (string, bool) {
@@ -369,4 +431,18 @@ func getSubsetPrefix(str1, str2 string) (string, bool) {
 	}
 
 	return str1, findSubset
+}
+
+// 获取两个字符串的最大公共前缀，返回最大公共前缀和是否拥有最大公共前缀
+func IsPrefix(str1, str2 string) bool {
+	if len(str1) < len(str2) {
+		return false
+	}
+	for i := 0; i < len(str2) ; i++ {
+		if str1[i] != str2[i] {
+			return false
+		}
+	}
+
+	return true
 }

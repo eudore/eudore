@@ -119,7 +119,8 @@ func (app *Core) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ResetResponseWriterHttp(response, w)
 	// handle
 	ctx.Reset(req.Context(), response, request)
-	app.Router.Handle(ctx)
+	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx))
+	ctx.Next()
 	// clean
 	app.poolreq.Put(request)
 	app.poolresp.Put(response)

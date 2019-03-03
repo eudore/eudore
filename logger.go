@@ -5,6 +5,7 @@ import (
 	"os"
 	"fmt"
 	"time"
+	"bufio"
 	"strings"
 	"strconv"
 	"runtime"
@@ -76,7 +77,8 @@ type (
 	LoggerStd struct {
 		*LoggerStdConfig
 		LoggerHandleFunc
-		out				io.Writer
+		out			*bufio.Writer
+		// out				io.Writer
 	}
 
 	LoggerMultiConfig struct {
@@ -244,18 +246,23 @@ func NewLoggerStd(arg interface{}) (Logger, error) {
 	}
 	// Init
 	if len(l.Path) == 0 {
-		l.out = os.Stdout
+		l.out = bufio.NewWriter(os.Stdout) 
 	}else {
-		out, err := os.OpenFile(l.Path, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0666)
+		file, err := os.OpenFile(l.Path, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0666)
 		if err != nil {
 			return nil, err
 		}
 		if l.Std {
-			l.out = io.MultiWriter(os.Stdout, out)
+			l.out = bufio.NewWriter(io.MultiWriter(os.Stdout, file)) 
 		}else{
-			l.out = out
+			l.out = bufio.NewWriter(file) 
 		}
 	}
+	go func(){
+		for range time.NewTicker(time.Millisecond * 50).C {
+			l.out.Flush()
+		}
+	}()
 //	l.SetFromat(NewLoggerHandleTemplate(`[{{.Timestamp.Format "Jan 02, 2006 15:04:05 UTC"}}] {{.Level}}: {{.Message}}`))
 	return l, nil
 }

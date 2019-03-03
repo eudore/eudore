@@ -38,6 +38,7 @@ type (
 
 	}
 	Header map[string][]string
+	Params = Header
 )
 
 const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
@@ -68,7 +69,7 @@ func (srv *Server) Serve(l net.Listener) error {
 		}
 		// Handle new connections
 		// 处理新连接
-		srv.newConn(rw).serve(srv.ctx)
+		go srv.newConn(rw).serve(srv.ctx)
 	}
 	return nil
 }
@@ -215,11 +216,11 @@ func (w *Response) Write(b []byte) (int, error) {
 		w.Header().Add("Date", time.Now().Format(TimeFormat))
 		// Write response line
 		// 写入响应行
-		fmt.Fprintf(w.writer, "%s: %d OK\r\n", w.request.Proto(), w.status, Status[w.status])
+		fmt.Fprintf(w.writer, "%s %d %s\r\n", w.request.Proto(), w.status, Status[w.status])
 		// Write headers
 		// 写入headers
 		for k, v := range w.header {
-			fmt.Fprintf(w.writer, "%s: %s\r\n", k, v)
+			fmt.Fprintf(w.writer, "%s: %s\r\n", k, v[0])
 		}
 		// Write header separator
 		// 写入header后分割符

@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"crypto/tls"
 	"golang.org/x/net/http2"
+	"github.com/eudore/eudore/protocol"
 )
 
 const sniffLen = 512
@@ -19,12 +20,12 @@ const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
 type (
 	Context interface {
 		// context
-		Reset(context.Context, ResponseWriter, RequestReader)
-		Request() RequestReader
-		Response() ResponseWriter
-		SetRequest(RequestReader)
-		SetResponse(ResponseWriter)
-		SetHandler(Middleware)
+		Reset(context.Context, protocol.ResponseWriter, protocol.RequestReader)
+		Request() protocol.RequestReader
+		Response() protocol.ResponseWriter
+		SetRequest(protocol.RequestReader)
+		SetResponse(protocol.ResponseWriter)
+		SetHandler(HandlerFuncs)
 		Next()
 		End()
 		NewRequest(string, string, io.Reader) (ResponseReader, error)
@@ -64,7 +65,7 @@ type (
 		Write([]byte) (int, error)
 		WriteHeader(int)
 		Redirect(int, string)
-		Push(string, *PushOptions) error
+		Push(string, *protocol.PushOptions) error
 		// render writer 
 		WriteString(string) error
 		WriteView(string, interface{}) error
@@ -88,9 +89,9 @@ type (
 	/* 实现Context接口 */
 	ContextHttp struct {
 		context.Context
-		RequestReader
-		ResponseWriter
-		Middleware
+		protocol.RequestReader
+		protocol.ResponseWriter
+		// Middleware
 		// data
 		keys		map[interface{}]interface{}
 		path 		string
@@ -101,7 +102,8 @@ type (
 		isReadBody	bool
 		postBody	[]byte
 		isrun		bool
-		handler		Handler
+		index		int
+		handler		HandlerFuncs
 		// component
 		app			*App
 		log			Logger
@@ -113,7 +115,7 @@ type (
 var _ Context			=	&ContextHttp{}
 
 // context
-func (ctx *ContextHttp) Reset(pctx context.Context, w ResponseWriter, r RequestReader) {
+func (ctx *ContextHttp) Reset(pctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
 	ctx.Context = pctx
 	ctx.RequestReader = r
 	ctx.ResponseWriter = w
@@ -135,39 +137,46 @@ func (ctx *ContextHttp) Reset(pctx context.Context, w ResponseWriter, r RequestR
 	// ctx.params = make(Params)
 	// ctx.AddParam(ParamRoutePath, ctx.path)
 	// ctx.AddParam(ParamRouteMethod, ctx.Method())
-	ctx.cookies = ReadCookies(r.Header()[HeaderCookie])
+	ctx.cookies = ctx.cookies[0:0]
+	ctx.readCookies(r.Header().Get(HeaderCookie))
 	ctx.isReadBody = false
 	ctx.postBody = ctx.postBody[0:0]
 	ctx.log = ctx.app.Logger
 	readQuery(ctx.rawQuery, ctx)
 }
 
-func (ctx *ContextHttp) Request() RequestReader {
+func (ctx *ContextHttp) Request() protocol.RequestReader {
 	return ctx.RequestReader
 }
 
-func (ctx *ContextHttp) Response() ResponseWriter {
+func (ctx *ContextHttp) Response() protocol.ResponseWriter {
 	return ctx.ResponseWriter
 }
 
-func (ctx *ContextHttp) SetRequest(r RequestReader) {
+func (ctx *ContextHttp) SetRequest(r protocol.RequestReader) {
 	ctx.RequestReader = r
 }
 
-func (ctx *ContextHttp) SetResponse(w ResponseWriter) {
+func (ctx *ContextHttp) SetResponse(w protocol.ResponseWriter) {
 	ctx.ResponseWriter = w
 }
 
-func (ctx *ContextHttp) SetHandler(m Middleware) {
-	ctx.Middleware = m
+func (ctx *ContextHttp) SetHandler(fs HandlerFuncs) {
+	ctx.index = -1
+	ctx.handler = fs
 }
 
 func (ctx *ContextHttp) Next() {
-	for ctx.Middleware != nil && ctx.isrun {
+	ctx.index++
+	for ctx.index < len(ctx.handler) {
+		ctx.handler[ctx.index](ctx)
+		ctx.index++
+	}
+/*	for ctx.Middleware != nil && ctx.isrun {
 		ctx.handler = ctx.Middleware
 		ctx.Middleware = ctx.Middleware.GetNext()
 		ctx.handler.Handle(ctx)
-	}
+	}*/
 }
 
 func (ctx *ContextHttp) End() {
@@ -343,7 +352,7 @@ func (ctx *ContextHttp) GetCookie(name string) string {
 }
 
 func (ctx *ContextHttp) SetCookie(cookie *CookieWrite) {
-	// ctx.RequestReader.AddCookie(cookie)	
+	// ctx.protocol.RequestReader.AddCookie(cookie)	
 	if v := cookie.String(); v != "" {
 		ctx.ResponseWriter.Header().Add("Set-Cookie", v)
 	}
@@ -359,9 +368,9 @@ func (ctx *ContextHttp) SetCookieValue(name, value string, maxAge int) {
 
 // response
 //
-// func (ctx *ContextHttp) Write([]byte) (int, error) from ResponseWriter
+// func (ctx *ContextHttp) Write([]byte) (int, error) from protocol.ResponseWriter
 //
-// func (ctx *ContextHttp) WriteHeader(int) from ResponseWriter
+// func (ctx *ContextHttp) WriteHeader(int) from protocol.ResponseWriter
 
 // Implement request redirection, divided into internal redirection and external redirection.
 //
@@ -378,14 +387,15 @@ func (ctx *ContextHttp) Redirect(code int, url string) {
 	Redirect(ctx, url, code)
 }
 
-func (ctx *ContextHttp) Push(target string, opts *PushOptions) error {
+func (ctx *ContextHttp) Push(target string, opts *protocol.PushOptions) error {
 	if opts == nil {
-		opts = &PushOptions{
-			Header: http.Header{
-				HeaderAcceptEncoding: ctx.RequestReader.Header()[HeaderAcceptEncoding],
-			},
+		opts = &protocol.PushOptions{
+			// Header: Header{
+				// HeaderAcceptEncoding: ctx.RequestReader.Header()[HeaderAcceptEncoding],
+			// },
 		}
 	}
+	// TODO: add opts
 	err := ctx.ResponseWriter.Push(target, opts)
 	if err != nil {
 		ctx.Debug(fmt.Sprintf("Failed to push: %v, Resource path: %s.", err, target))
@@ -472,7 +482,7 @@ func (ctx *ContextHttp) WriteRenderWith(i interface{}, r Renderer) error {
 		i = ctx.keys
 	}
 	header := ctx.ResponseWriter.Header()
-	if val := header[HeaderContentType]; len(val) == 0 {
+	if val := header.Get(HeaderContentType); len(val) == 0 {
 		header.Add(HeaderContentType, r.ContentType())
 	}
 	err := r.Render(ctx.ResponseWriter, i)
@@ -519,16 +529,35 @@ func (ctx *ContextHttp) WithFields(fields Fields) LogOut {
 }
 
 
-
 func (ctx *ContextHttp) App() *App {
 	return ctx.app
 }
 
 
-
-
-
-
+func (ctx *ContextHttp) readCookies(line string) {
+	if len(line) == 0 {
+		return
+	}
+	parts := strings.Split(line, "; ")
+	// Per-line attributes
+	for i := 0; i < len(parts); i++ {
+		if len(parts[i]) == 0 {
+			continue
+		}
+		name, val := parts[i], ""
+		if j := strings.Index(name, "="); j >= 0 {
+			name, val = name[:j], name[j+1:]
+		}
+		if !isCookieNameValid(name) {
+			continue
+		}
+		val, ok := parseCookieValue(val, true)
+		if !ok {
+			continue
+		}
+		// ctx.cookies = append(ctx.cookies, &CookieRead{Name: name, Value: val})
+	}
+}
 
 
 

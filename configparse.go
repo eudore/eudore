@@ -46,7 +46,7 @@ func ParseArgs(c Config) (err error) {
 			// fmt.Println("invalid args", str)
 			continue
 		}
-		c.Set(split2(str[2:], "="))
+		c.Set(split2byte(str[2:], '='))
 	}
 	return
 }
@@ -55,7 +55,7 @@ func ParseArgs(c Config) (err error) {
 func ParseEnvs(c Config) error {
 	for _, value := range os.Environ() {
 		if strings.HasPrefix(value, "ENV_") {
-			k, v := split2(value, "=")
+			k, v := split2byte(value, '=')
 			k = strings.ToLower(strings.Replace(k, "_", ".", -1))[4:]
 			c.Set(k, v)
 		}

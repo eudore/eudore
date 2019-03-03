@@ -49,7 +49,7 @@ func ReadHttp(path string) (string, error) {
 //
 // example: etcd://127.0.0.1:2379/config
 func ReadEtcd(path string) (string, error) {
-	server, key := split2(path[7:], "/")
+	server, key := split2byte(path[7:], '/')
 	cfg := etcd.Config{
 		Endpoints:               []string{"http://" + server},
 		Transport:               etcd.DefaultTransport,

@@ -1,13 +1,12 @@
 #  Eudore
 
-本框架为个人学习研究的重框架，每周最多同步更新一次，未稳定前不欢迎issue、pr、using，可查看http及go web框架[相关文档][docs]，联系方式q群373278915。
+本框架为个人学习研究的重框架，每周最多同步更新一次，未稳定前不欢迎issue、pr、using，可查看http及go web框架[相关文档][docs]，交流q群373278915。
 
 ## Features
 
 - 核心全部接口化,支持重写Application、Context、Request、Response、Router、Middleware、Logger、Server、Config、Cache、Bind、Render、View。
 - 对象语义明确。
 - net/http库解耦,可实现或接入其他http协议解析库。
-- Middleware和Router自己重写实现，与其他框架相比性能不可能会是短板。
 
 ## issue
 
@@ -23,11 +22,15 @@ signal 可重复注册
 
 缺少完整websocket实现，仅有upgrade部分
 
-重写SubRouter未完成，并导致Group Middleare无法实现
-
 Gzip异常
 
 Logger基于GC优化
+
+http实现细节优化
+
+新独立server实现
+
+中间件机制优化设计
 
 ## Example
 
@@ -57,6 +60,7 @@ Logger基于GC优化
 
 ## Application
 
+Application默认有两种实现Core和Eudore，Core只有启动函数，Eudore多一些复制函数封装。
 
 ```golang
 func main() {

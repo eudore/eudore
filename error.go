@@ -3,11 +3,16 @@ package eudore
 import (
 	"log"
 	"fmt"
+	"errors"
 )
 const (
 	StatueRouter		=	610
 	StatusLogger		=	611
 	StatusCache			=	612
+)
+
+var (
+	ErrRouterSetNoSupportType		=	errors.New("router set type is nosupport")
 )
 
 type (

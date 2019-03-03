@@ -1,60 +1,120 @@
 package eudore
 
-
+import (
+	"regexp"
+	"strconv"
+)
 
 var (
-	globalhandler				map[string]Handler
-	globalhandleFuncs				map[string]HandlerFunc
-	globalmiddlewares				map[string]Middleware
-	globalloggerHandleFuncs		map[string]LoggerHandleFunc
+	globalHandler				map[string]Handler
+	globalHandleFuncs				map[string]HandlerFunc
+	// globalMiddlewares				map[string]Middleware
+	globalLoggerHandleFuncs		map[string]LoggerHandleFunc
+	globalRouterCheckFunc		map[string]RouterCheckFunc
+	globalRouterNewCheckFunc		map[string]RouterNewCheckFunc
 )
 
 func init() {
-	globalhandler = make(map[string]Handler)
-	globalhandleFuncs = make(map[string]HandlerFunc)
-	globalmiddlewares = make(map[string]Middleware)
-	//
-	globalloggerHandleFuncs = make(map[string]LoggerHandleFunc)
-	globalloggerHandleFuncs["default"] = LoggerHandleDefault
-	globalloggerHandleFuncs["json"] = LoggerHandleJson
-	globalloggerHandleFuncs["jsonindent"] = LoggerHandleJsonIndent
-	globalloggerHandleFuncs["xml"] = LoggerHandleXml
+	globalHandler = make(map[string]Handler)
+	globalHandleFuncs = make(map[string]HandlerFunc)
+	// globalMiddlewares = make(map[string]Middleware)
+	globalLoggerHandleFuncs = make(map[string]LoggerHandleFunc)
+	globalRouterCheckFunc = make(map[string]RouterCheckFunc)
+	globalRouterNewCheckFunc = make(map[string]RouterNewCheckFunc)
+	// LoggerHandle
+	globalLoggerHandleFuncs["default"] = LoggerHandleDefault
+	globalLoggerHandleFuncs["json"] = LoggerHandleJson
+	globalLoggerHandleFuncs["jsonindent"] = LoggerHandleJsonIndent
+	globalLoggerHandleFuncs["xml"] = LoggerHandleXml
+	// RouterCheckFunc
+	globalRouterCheckFunc["isnum"] = RouterCheckFuncIsnm
+	// RouterNewCheckFunc
+	globalRouterNewCheckFunc["min"] = RouterNewCheckFuncMin
+	globalRouterNewCheckFunc["regexp"] = RouterNewCheckFuncRegexp
 }
 
 // Handler
 func ConfigSaveHandler(name string, fn Handler) {
-	globalhandler[name] = fn
+	globalHandler[name] = fn
 }
 
 func ConfigLoadHandler(name string) Handler {
-	return globalhandler[name]
+	return globalHandler[name]
 }
 
 // HandleFunc
 func ConfigSaveHandleFunc(name string, fn HandlerFunc) {
-	globalhandleFuncs[name] = fn
+	globalHandleFuncs[name] = fn
 }
 
 func ConfigLoadHandleFunc(name string) HandlerFunc {
-	return globalhandleFuncs[name]
+	return globalHandleFuncs[name]
 }
 
 // Middleware
-func ConfigSaveMiddleware(name string, fn Middleware) {
-	globalmiddlewares[name] = fn
+/*func ConfigSaveMiddleware(name string, fn Middleware) {
+	globalMiddlewares[name] = fn
 }
 
 func ConfigLoadMiddleware(name string) Middleware {
-	return globalmiddlewares[name]
+	return globalMiddlewares[name]
 }
-
+*/
 
 // LoggerHandleFunc
 func ConfigSaveLoggerHandleFunc(name string, fn LoggerHandleFunc) {
-    globalloggerHandleFuncs[name] = fn
+    globalLoggerHandleFuncs[name] = fn
 }
 
 func ConfigLoadLoggerHandleFunc(name string) LoggerHandleFunc {
-    return globalloggerHandleFuncs[name]
+    return globalLoggerHandleFuncs[name]
 }
 
+// RouterCheckFunc
+func ConfigSaveRouterCheckFunc(name string, fn RouterCheckFunc) {
+	globalRouterCheckFunc[name] = fn
+}
+
+func ConfigLoadRouterCheckFunc(name string) RouterCheckFunc {
+	return globalRouterCheckFunc[name]
+}
+
+func RouterCheckFuncIsnm(arg string) bool {
+	_, err := strconv.Atoi(arg)
+	return err == nil
+}
+
+// RouterNewCheckFunc
+func ConfigSaveRouterNewCheckFunc(name string, fn RouterNewCheckFunc) {
+	globalRouterNewCheckFunc[name] = fn
+}
+
+func ConfigLoadRouterNewCheckFunc(name string) RouterNewCheckFunc {
+	return globalRouterNewCheckFunc[name]
+}
+
+func RouterNewCheckFuncMin(str string) RouterCheckFunc {
+	n, err := strconv.Atoi(str)
+	if err != nil {
+		return nil
+	}
+	return func(arg string) bool {
+		num, err := strconv.Atoi(arg)
+		if err != nil {
+			return false
+		}
+		return num >= n
+	}
+}
+
+func RouterNewCheckFuncRegexp(str string) RouterCheckFunc {
+	// 创建正则表达式
+	re, err := regexp.Compile(str)
+	if err != nil {
+		return nil
+	}
+	// 返回正则匹配校验函数
+	return func(arg string) bool {
+		return re.MatchString(arg)
+	}
+}

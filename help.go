@@ -29,6 +29,15 @@ func eachstring(strs []string, fn func(string) string) (s []string){
 }
 
 // Use sep to split str into two strings.
+func split2byte(str string,b byte) (string, string) {
+	pos := strings.IndexByte(str, b)
+	if pos == -1 {
+		return "", ""
+	}
+	return str[:pos], str[pos + 1:]
+}
+
+/*
 func split2(str string,sep string) (string, string) {
 	pos := strings.IndexByte(str, sep[0])
 	if pos == -1 {
@@ -36,11 +45,11 @@ func split2(str string,sep string) (string, string) {
 	}
 	return str[:pos], str[pos + len(sep):]
 }
-
+*/
 
 // Env to Arg
 func env2arg(str string) string {
-	k, v := split2(str, "=")
+	k, v := split2byte(str, '=')
 	k = strings.ToLower(strings.Replace(k, "_", ".", -1))[4:]
 	return fmt.Sprintf("--%s=%s", k, v)
 }

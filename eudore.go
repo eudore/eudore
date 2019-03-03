@@ -8,6 +8,7 @@ import (
 	"context"
 	"strings"
 	"net/http"
+	"github.com/eudore/eudore/protocol"
 )
 
 type (
@@ -328,7 +329,8 @@ func (e *Eudore) HandleError(err error) {
 }
 
 func (e *Eudore) Handle(ctx Context) {
-	e.Router.Handle(ctx)
+	ctx.SetHandler(e.Router.Match(ctx.Method(), ctx.Path(), ctx))
+	ctx.Next()
 }
 
 func (e *Eudore) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -345,12 +347,13 @@ func (e *Eudore) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 
-func (e *Eudore) EudoreHTTP(pctx context.Context,w ResponseWriter, req RequestReader) {
+func (e *Eudore) EudoreHTTP(pctx context.Context,w protocol.ResponseWriter, req protocol.RequestReader) {
 	// init
 	ctx := e.httpcontext.Get().(Context)
 	// handle
 	ctx.Reset(pctx, w, req)
-	e.Router.Handle(ctx)
+	ctx.SetHandler(e.Router.Match(ctx.Method(), ctx.Path(), ctx))
+	ctx.Next()
 	// release
 	e.httpcontext.Put(ctx)
 }

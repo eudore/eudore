@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"mime/multipart"
+	"github.com/eudore/eudore/protocol"
 )
 
 const (
@@ -33,16 +34,16 @@ var (
 
 type (
 	Binder interface {
-		Bind(RequestReader, interface{}) error
+		Bind(protocol.RequestReader, interface{}) error
 	}
-	BindFunc func(RequestReader, interface{}) error
+	BindFunc func(protocol.RequestReader, interface{}) error
 )
 
-func (fn BindFunc) Bind(r RequestReader, i interface{}) error {
+func (fn BindFunc) Bind(r protocol.RequestReader, i interface{}) error {
 	return fn(r, i)
 }
 
-func BinderDefaultFunc(r RequestReader, i interface{}) error {
+func BinderDefaultFunc(r protocol.RequestReader, i interface{}) error {
 	switch r.Header().Get("Content-Type") {
 	case MimeApplicationJson:
 		return BinderJSON.Bind(r, i)
@@ -55,7 +56,7 @@ func BinderDefaultFunc(r RequestReader, i interface{}) error {
 	}
 }
 
-func BindFormFunc(r RequestReader, i interface{}) error {
+func BindFormFunc(r protocol.RequestReader, i interface{}) error {
 	d, params, err := mime.ParseMediaType(r.Header().Get("Content-Type"))
 	if err != nil {
 		return nil
@@ -71,7 +72,7 @@ func BindFormFunc(r RequestReader, i interface{}) error {
 }
 
 // body读取限制32kb.
-func BindUrlFunc(r RequestReader, i interface{}) error {
+func BindUrlFunc(r protocol.RequestReader, i interface{}) error {
 	body, err := ioutil.ReadAll(io.LimitReader(r, 32 << 10))
 	if err != nil {
 		return nil
@@ -83,11 +84,11 @@ func BindUrlFunc(r RequestReader, i interface{}) error {
 	return mapFormByTag(i, uri, "uri")
 }
 
-func BindJsonFunc(r RequestReader, i interface{}) error {
+func BindJsonFunc(r protocol.RequestReader, i interface{}) error {
 	return json.NewDecoder(r).Decode(i)
 }
 
-func BindXmlFunc(r RequestReader, i interface{}) error {
+func BindXmlFunc(r protocol.RequestReader, i interface{}) error {
 	return xml.NewDecoder(r).Decode(i)
 }
 

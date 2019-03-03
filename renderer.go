@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"encoding/json"
 	"encoding/xml"
+	"github.com/eudore/eudore/protocol"
 )
 
 type (
 	Renderer interface {
-		Render(ResponseWriter, interface{}) error
+		Render(protocol.ResponseWriter, interface{}) error
 		ContentType() string
 	}
 	rendererText struct {}
@@ -26,7 +27,7 @@ var (
 
 
 
-func (rendererText) Render(w ResponseWriter, i interface{}) error {
+func (rendererText) Render(w protocol.ResponseWriter, i interface{}) error {
 	_, err := fmt.Fprint(w, i)
 	return err
 }
@@ -37,7 +38,7 @@ func (rendererText) ContentType() string {
 }
 
 
-func (rendererJson) Render(w ResponseWriter, i interface{}) error {
+func (rendererJson) Render(w protocol.ResponseWriter, i interface{}) error {
 	return json.NewEncoder(w).Encode(i)
 }
 
@@ -46,7 +47,7 @@ func (rendererJson) ContentType() string {
 	return jsonContentType
 }
 
-func (rendererIndentJson) Render(w ResponseWriter, i interface{}) error {
+func (rendererIndentJson) Render(w protocol.ResponseWriter, i interface{}) error {
 	en := json.NewEncoder(w)
 	en.SetIndent("", "\t")
 	return en.Encode(i)
@@ -57,7 +58,7 @@ func (rendererIndentJson) ContentType() string {
 	return jsonContentType
 }
 
-func (rendererXml) Render(w ResponseWriter, i interface{}) error {
+func (rendererXml) Render(w protocol.ResponseWriter, i interface{}) error {
 	return xml.NewEncoder(w).Encode(i)
 }
 

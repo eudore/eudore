@@ -24,7 +24,7 @@ type (
 	RouterMethod interface {
 		// SubRoute(path string, router Router)
 		Group(string) RouterMethod
-		AddHandler(...Handler)
+		AddHandler(...HandlerFunc)
 		Any(string, Handler)
 		AnyFunc(string, HandlerFunc)
 		Delete(string, Handler)
@@ -44,10 +44,10 @@ type (
 	}
 	// Router Core
 	RouterCore interface {
-		Middleware
-		RegisterMiddleware(...Handler)
-		RegisterHandler(method string, path string, handler Handler)
-		Match(string, string, Params) Middleware
+		// Middleware
+		// RegisterMiddleware(...Handler)
+		RegisterHandler(method string, path string, handler HandlerFuncs)
+		Match(string, string, Params) HandlerFuncs
 	}
 	// router
 	Router interface {
@@ -64,10 +64,11 @@ type (
 	}
 	RouterMethodStd struct {
 		RouterCore
-		prefix 	string
+		prefix		string
+		handlers	HandlerFuncs
 	}
 	RouterEmpty struct {
-		Middleware
+		// Middleware
 		RouterMethod
 	}
 	// router config
@@ -117,7 +118,7 @@ func NewRouterClone(r Router) Router {
 }
 
 // 未实现。
-func SetRouterConfig(r Router, c *RouterConfig) error {
+/*func SetRouterConfig(r Router, c *RouterConfig) error {
 	// add Middleware
 	for _, i := range c.Middleware {
 		r.RegisterMiddleware(ConfigLoadMiddleware(i))
@@ -137,6 +138,19 @@ func SetRouterConfig(r Router, c *RouterConfig) error {
 	// r.SubRoute(c.Path, r2)
 	return nil 
 }
+*/
+func RouterDefault405Func(ctx Context) {
+	const page405 string = "405 method not allowed"
+	ctx.Response().Header().Add("Allow", "HEAD, GET, POST, PUT, DELETE, PATCH")
+	ctx.WriteHeader(405)
+	ctx.WriteString(page405)
+}
+
+func RouterDefault404Func(ctx Context) {
+	const page404 string = "404 page not found"
+	ctx.WriteHeader(404)
+	ctx.WriteString(page404)
+}
 
 func (*RouterStd) GetName() string {
 	return ComponentRouterStdName
@@ -149,26 +163,27 @@ func (*RouterStd) Version() string {
 
 
 func NewRouterEmpty(arg interface{}) (Router, error) {
-	m, ok := arg.(Middleware)
-	if !ok {
-		h, ok := arg.(Handler)
-		if !ok {
-			h = HandlerFunc(HandleEmpty)
-		}
-		m = NewMiddlewareBase(h)
-	}
-	r := &RouterEmpty{Middleware:	m}
+	// m, ok := arg.(Middleware)
+	// if !ok {
+	// 	h, ok := arg.(Handler)
+	// 	if !ok {
+	// 		h = HandlerFunc(HandleEmpty)
+	// 	}
+	// 	m = NewMiddlewareBase(h)
+	// }
+	// r := &RouterEmpty{Middleware:	m}
+	r := &RouterEmpty{}
 	r.RouterMethod = &RouterMethodStd{RouterCore: r}
 	return r, nil
 }
 
-func (*RouterEmpty) RegisterMiddleware(...Handler) {
+/*func (*RouterEmpty) RegisterMiddleware(...Handler) {
+	// Do nothing because empty router does not process entries.
+}*/
+func (*RouterEmpty) RegisterHandler(method string, path string, handler HandlerFuncs) {
 	// Do nothing because empty router does not process entries.
 }
-func (*RouterEmpty) RegisterHandler(method string, path string, handler Handler) {
-	// Do nothing because empty router does not process entries.
-}
-func (*RouterEmpty) Match(string, string, Params) (Middleware ) {
+func (*RouterEmpty) Match(string, string, Params) (HandlerFuncs) {
 	// Do nothing because empty router does not process entries.
 	return nil
 }
@@ -187,84 +202,97 @@ func (m *RouterMethodStd) Register(mr RouterCore) {
 	m.RouterCore = mr
 }
 
-func (m *RouterMethodStd) SubRoute(path string, router Router) {
-	m.RegisterHandler(MethodAny, path, router)
-}
-
 func (m *RouterMethodStd) Group(prefix string) RouterMethod {
 	return &RouterMethodStd{
 		RouterCore:	m.RouterCore,
-		prefix:		prefix,
+		prefix:		m.prefix + prefix,
+		handlers:	m.handlers,
 	}
 }
 
-func (m *RouterMethodStd) AddHandler(hs ...Handler) {
-	m.RegisterMiddleware(hs...)
+func (m *RouterMethodStd) AddHandler(hs ...HandlerFunc) {
+	m.handlers =m.combineHandlers(hs)
+}
+
+func (m *RouterMethodStd) RegisterHandlers(method ,path string, hs ...HandlerFunc) {
+	m.RouterCore.RegisterHandler(method, m.prefix + path, m.combineHandlers(hs))
+}
+
+func (m *RouterMethodStd) combineHandlers(handlers HandlerFuncs) HandlerFuncs {
+	const abortIndex int8 = 63
+	finalSize := len(m.handlers) + len(handlers)
+	if finalSize >= int(abortIndex) {
+		panic("too many handlers")
+	}
+	mergedHandlers := make(HandlerFuncs, finalSize)
+	copy(mergedHandlers, m.handlers)
+	copy(mergedHandlers[len(m.handlers):], handlers)
+	return mergedHandlers
 }
 
 // Router Register handler
 func (m *RouterMethodStd) Any(path string, h Handler) {
-	m.RegisterHandler(MethodAny, m.prefix + path, h)
+	m.RegisterHandlers(MethodAny, path, h.Handle)
 }
 
 func (m *RouterMethodStd) Get(path string, h Handler) {
-	m.RegisterHandler(MethodGet, m.prefix + path, h)
+	m.RegisterHandlers(MethodGet, path, h.Handle)
 }
 
 func (m *RouterMethodStd) Post(path string, h Handler) {
-	m.RegisterHandler(MethodPost, m.prefix + path, h)
+	m.RegisterHandlers(MethodPost, path, h.Handle)
 }
 
 func (m *RouterMethodStd) Put(path string, h Handler) {
-	m.RegisterHandler(MethodPut, m.prefix + path, h)
+	m.RegisterHandlers(MethodPut, path, h.Handle)
 }
 
 func (m *RouterMethodStd) Delete(path string, h Handler) {
-	m.RegisterHandler(MethodDelete, m.prefix + path, h)
+	m.RegisterHandlers(MethodDelete, path, h.Handle)
 }
 
 func (m *RouterMethodStd) Head(path string, h Handler) {
-	m.RegisterHandler(MethodHead, m.prefix + path, h)
+	m.RegisterHandlers(MethodHead, path, h.Handle)
 }
 
 func (m *RouterMethodStd) Patch(path string, h Handler) {
-	m.RegisterHandler(MethodPatch, m.prefix + path, h)
+	m.RegisterHandlers(MethodPatch, path, h.Handle)
 }
 
 func (m *RouterMethodStd) Options(path string, h Handler) {
-	m.RegisterHandler(MethodOptions, m.prefix + path, h)
+	m.RegisterHandlers(MethodOptions, path, h.Handle)
 }
 
 
 // RouterRegister handle func
 func (m *RouterMethodStd) AnyFunc(path string, h HandlerFunc) {
-	m.RegisterHandler(MethodAny, m.prefix + path, h)
+	m.RegisterHandlers(MethodAny, path, h)
 }
 
 func (m *RouterMethodStd) GetFunc(path string, h HandlerFunc) {
-	m.RegisterHandler(MethodGet, m.prefix + path, h)
+	m.RegisterHandlers(MethodGet, path, h)
 }
 
 func (m *RouterMethodStd) PostFunc(path string, h HandlerFunc) {
-	m.RegisterHandler(MethodPost, m.prefix + path, h)
+	m.RegisterHandlers(MethodPost, path, h)
 }
 
 func (m *RouterMethodStd) PutFunc(path string, h HandlerFunc) {
-	m.RegisterHandler(MethodPut, m.prefix + path, h)
+	m.RegisterHandlers(MethodPut, path, h)
 }
 
 func (m *RouterMethodStd) DeleteFunc(path string, h HandlerFunc) {
-	m.RegisterHandler(MethodDelete, m.prefix + path, h)
+	m.RegisterHandlers(MethodDelete, path, h)
 }
 
 func (m *RouterMethodStd) HeadFunc(path string, h HandlerFunc) {
-	m.RegisterHandler(MethodHead, m.prefix + path, h)
+	m.RegisterHandlers(MethodHead, path, h)
 }
 
 func (m *RouterMethodStd) PatchFunc(path string, h HandlerFunc) {
-	m.RegisterHandler(MethodPatch, m.prefix + path, h)
+	m.RegisterHandlers(MethodPatch, path, h)
 }
 
 func (m *RouterMethodStd) OptionsFunc(path string, h HandlerFunc) {
-	m.RegisterHandler(MethodOptions, m.prefix + path, h)
+	m.RegisterHandlers(MethodOptions, path, h)
 }

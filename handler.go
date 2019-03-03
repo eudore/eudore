@@ -7,8 +7,8 @@ type (
 	Handler interface {
 		Handle(Context)
 	}
-
-	// Middleware interface
+	HandlerFuncs	[]HandlerFunc
+/*	// Middleware interface
 	Middleware interface {
 		Handler
 		GetNext() Middleware
@@ -18,9 +18,9 @@ type (
 	MiddlewareBase struct {
 		Handler
 		Next Middleware
-	}
+	}*/
 )
-
+/*
 // Convert the HandlerFunc function to a Handler interface.
 //
 // 转换HandlerFunc函数成Handler接口。
@@ -42,6 +42,10 @@ func NewMiddlewareBase(h Handler) Middleware {
 		Handler:	h,
 		Next:		nil,
 	}
+}
+
+func (m *MiddlewareBase) Handle(ctx Context) {
+	m.Handler.Handle(ctx)
 }
 
 func (m *MiddlewareBase) GetNext() Middleware {
@@ -82,7 +86,7 @@ func GetMiddlewareEnd(m Middleware) Middleware {
 		next = link.GetNext()
 	}
 	return link
-}
+}*/
 
 func HandleEmpty(Context) {
 	// Do nothing because empty handler does not process entries.

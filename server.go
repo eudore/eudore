@@ -384,6 +384,7 @@ func (s *stdServerPort) ListenAndServeTLS(certFile, keyFile string) error {
 	if config.NextProtos == nil {
 		config.NextProtos = []string{"http/1.1"}
 	}
+	
 	var err error
 	config.Certificates = make([]tls.Certificate, 1)
 	config.Certificates[0], err = tls.LoadX509KeyPair(certFile, keyFile)

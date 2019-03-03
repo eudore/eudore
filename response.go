@@ -8,17 +8,15 @@ import (
 	"bytes"
 	"net/http"
 	"crypto/tls"
+	"github.com/eudore/eudore/protocol"
 )
 
 type (
-	// ResponseWriter接口用于写入http请求响应体status、header、body。
-	//
-	// net/http.response实现了flusher、hijacker、pusher接口。
-	ResponseWriter interface {
+/*	ResponseWriter interface {
 		// http.ResponseWriter
-		Header() http.Header
+		Header() Header
 		Write([]byte) (int, error)
-		WriteHeader(codeCode int)
+		WriteHeader(int)
 		// http.Flusher 
 		Flush()
 		// http.Hijacker
@@ -27,7 +25,7 @@ type (
 		Push(string, *PushOptions) error
 		Size() int
 		Status() int
-	}
+	}*/
 
 	// ResponseReader is used to read the http protocol response message information.
 	//
@@ -36,7 +34,7 @@ type (
 		Proto() string
 		Statue() int
 		Code() string
-		Header() Header
+		Header() protocol.Header
 		Read([]byte) (int, error)
 		TLS() *tls.ConnectionState
 		Close() error
@@ -48,37 +46,43 @@ type (
 	ResponseReaderHttp struct {
 		io.ReadCloser
 		Data 	*http.Response
+		header	protocol.Header
 	}
 	// net/http.ResponseWriter接口封装
 	ResponseWriterHttp struct {
 		http.ResponseWriter
+		header	protocol.Header
 		code		int
 		size		int
 	}
 	// 带缓存的ResponseWriter，需要调用Flush然后写入数据。
 	ResponseWriterBuffer struct {
-		ResponseWriter
+		protocol.ResponseWriter
 		Buf 	*bytes.Buffer
 	}
 )
 
-var _ ResponseWriter	=	&ResponseWriterHttp{}
-var _ ResponseWriter	=	&ResponseWriterBuffer{}
+var _ protocol.ResponseWriter	=	&ResponseWriterHttp{}
+var _ protocol.ResponseWriter	=	&ResponseWriterBuffer{}
 
 
-func NewResponseWriterHttp(w http.ResponseWriter) ResponseWriter{
-	return &ResponseWriterHttp{ResponseWriter: w}
+func NewResponseWriterHttp(w http.ResponseWriter) protocol.ResponseWriter {
+	return &ResponseWriterHttp{
+		ResponseWriter: w,
+		header:			httpHeader(w.Header()),
+	}
 }
 
-func ResetResponseWriterHttp(hw *ResponseWriterHttp, w http.ResponseWriter) ResponseWriter {
+func ResetResponseWriterHttp(hw *ResponseWriterHttp, w http.ResponseWriter) protocol.ResponseWriter {
 	hw.ResponseWriter = w
+	hw.header = httpHeader(w.Header())
 	hw.code = http.StatusOK
 	hw.size = 0
 	return hw
 }
 
-func (w *ResponseWriterHttp) Header() http.Header {
-	return w.ResponseWriter.Header()
+func (w *ResponseWriterHttp) Header() protocol.Header {
+	return w.header
 }
 
 func (w *ResponseWriterHttp) Write(data []byte) (int, error) {
@@ -104,9 +108,12 @@ func (w *ResponseWriterHttp) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 // 如果ResponseWriterHttp实现http.Push接口，则Push资源。
-func (w *ResponseWriterHttp) Push(target string, opts *PushOptions) error {	
+func (w *ResponseWriterHttp) Push(target string, opts *protocol.PushOptions) error {	
 	if pusher, ok := w.ResponseWriter.(http.Pusher); ok {
-		return pusher.Push(target, opts)	
+		// TODO: add con
+		return pusher.Push(target, &http.PushOptions{
+
+		})	
 	}	
 	return nil
 }
@@ -121,7 +128,7 @@ func (w *ResponseWriterHttp) Status() int {
 
 
 
-func NewResponseWriterBuffer(w ResponseWriter) ResponseWriter {
+func NewResponseWriterBuffer(w protocol.ResponseWriter) protocol.ResponseWriter {
 	return &ResponseWriterBuffer{
 		ResponseWriter:		w,
 		Buf:				new(bytes.Buffer),
@@ -144,6 +151,7 @@ func NewResponseReaderHttp(resp *http.Response) ResponseReader {
 	return &ResponseReaderHttp{
 		ReadCloser:	resp.Body,
 		Data:		resp,
+		header:		httpHeader(resp.Header),
 	}
 }
 
@@ -159,8 +167,8 @@ func (r *ResponseReaderHttp) Code() string {
 	return r.Data.Status
 }
 
-func (r *ResponseReaderHttp) Header() Header {
-	return Header(r.Data.Header)
+func (r *ResponseReaderHttp) Header() protocol.Header {
+	return r.header
 }
 
 func (r *ResponseReaderHttp) TLS() *tls.ConnectionState {

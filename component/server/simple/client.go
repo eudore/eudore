@@ -22,7 +22,7 @@ func NewRequest(method, host , url string) error {
 	// 创建Http Client
 	c := &Client{
 		nc:	nc,
-		header:	NewParamsMap(),
+		header:	make(Params),
 		rw:   bufio.NewReadWriter(bufio.NewReader(nc), bufio.NewWriter(nc)),
 	}
 	// 设置net/http.Server唯一必要Header host
@@ -30,9 +30,9 @@ func NewRequest(method, host , url string) error {
 	// 写入请求行
 	fmt.Fprintf(c.rw, "%s %s HTTP/1.1\r\n", method, url)
 	// 写入Header
-	c.header.Range(func(k, v string) {
-		fmt.Fprintf(c.rw, "%s: %s\r\n", k, v)
-	})
+	for k, v := range c.header {
+		fmt.Fprintf(c.rw, "%s: %s\r\n", k, v[0])
+	}
 	// header结束换行
 	fmt.Fprintf(c.rw, "\r\n")
 	// body结束换行

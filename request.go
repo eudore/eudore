@@ -7,17 +7,11 @@ import (
 	"io/ioutil"
 	"net/http"
 	"crypto/tls"
+	"github.com/eudore/eudore/protocol"
 )
 
 type (
-	// Get the method, version, uri, header, body from the RequestReader according to the http protocol request body. (There is no host in the golang net/http library header)
-	//
-	// Read the remote connection address and TLS information from the net.Conn connection.
-	//
-	// 根据http协议请求体，从RequestReader获取方法、版本、uri、header、body。(golang net/http库header中没有host)
-	//
-	// 从net.Conn连接读取远程连接地址和TLS信息。
-	RequestReader interface {
+/*	protocol.RequestReader interface {
 		// http protocol data
 		Method() string
 		Proto() string
@@ -28,33 +22,34 @@ type (
 		// conn data
 		RemoteAddr() string
 		TLS() *tls.ConnectionState
-	}
+	}*/
 	RequestReadSeeker interface {
-		RequestReader
+		protocol.RequestReader
 		io.Seeker
 	}
-	// Convert RequestReader to the net.http.Request object interface.
+	// Convert protocol.RequestReader to the net.http.Request object interface.
 	//
 	// 将RequestReader转换成net.http.Request对象接口。
 	RequestConvertNetHttp interface {
 		GetNetHttpRequest() *http.Request
 	}
-	// Convert net.http.Request to RequestReader.
+	// Convert net.http.Request to protocol.RequestReader.
 	//
 	// 将net/http.Request转换成RequestReader。
 	RequestReaderHttp struct {
 		http.Request
+		header	protocol.Header
 	}
-	// Modify the RequestReader method and request uri inside the internal redirect.
+	// Modify the protocol.RequestReader method and request uri inside the internal redirect.
 	//
 	// 内部重定向内修改RequestReader的方法和请求uri。
 	RequestReaderRedirect struct {
-		RequestReader
+		protocol.RequestReader
 		method string
 		uri	string
 	}
 	RequestReaderSeeker struct {
-		RequestReader
+		protocol.RequestReader
 		reader *bytes.Reader
 	}
 	RequestReaderEudore struct {
@@ -69,16 +64,18 @@ type (
 )
 
 
-var _ RequestReader		=	&RequestReaderHttp{}
+var _ protocol.RequestReader		=	&RequestReaderHttp{}
 
-func NewRequestReaderHttp(r *http.Request) RequestReader {
+func NewRequestReaderHttp(r *http.Request) protocol.RequestReader {
 	return &RequestReaderHttp{
 		Request:	*r,
+		header:	httpHeader(r.Header),
 	}
 }
 
-func ResetRequestReaderHttp(r *RequestReaderHttp, req *http.Request) RequestReader {
+func ResetRequestReaderHttp(r *RequestReaderHttp, req *http.Request) protocol.RequestReader {
 	r.Request = *req
+	r.header = httpHeader(req.Header)
 	return r
 }
 
@@ -102,8 +99,8 @@ func (r *RequestReaderHttp) RequestURI() string {
 	return r.Request.RequestURI
 }
 
-func (r *RequestReaderHttp) Header() Header {
-	return Header(r.Request.Header)
+func (r *RequestReaderHttp) Header() protocol.Header {
+	return r.header
 } 
 
 func (r *RequestReaderHttp) RemoteAddr() string {
@@ -119,7 +116,7 @@ func (r *RequestReaderHttp) GetNetHttpRequest() *http.Request {
 }
 
 
-func NewRequestReaderRedirect(r RequestReader, method, uri string) (RequestReader) {
+func NewRequestReaderRedirect(r protocol.RequestReader, method, uri string) (protocol.RequestReader) {
 	return &RequestReaderRedirect{
 		RequestReader:	r,
 		method:			method,
@@ -135,7 +132,7 @@ func (r *RequestReaderRedirect) RemoteAddr() string {
 	return r.uri
 }
 
-func NewRequestReaderSeeker(r RequestReader) (RequestReadSeeker) {
+func NewRequestReaderSeeker(r protocol.RequestReader) (RequestReadSeeker) {
 	rs, ok := r.(RequestReadSeeker)
 	if ok {
 		return rs

@@ -37,6 +37,7 @@ func TestRadix(t *testing.T) {
 //	fmt.Printf("%# v\n", pretty.Formatter(tree))
 	tree.Insert("team", 3)
 	tree.Insert("apple", 4)
+	tree.Insert("append", 12)
 	tree.Insert("app", 5)
 	tree.Insert("append", 6)
 	tree.Insert("interface", 7)

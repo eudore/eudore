@@ -14,3 +14,11 @@ func TestLogger(*testing.T) {
 	li.WithField("init", true).Info("-------")
 	li.(eudore.LoggerInitHandler).NextHandler(ls)
 }
+
+func BenchmarkLogger(b *testing.B) {
+	b.ReportAllocs()
+	log, _ := eudore.NewLoggerStd(nil)
+	for i := 0; i < b.N; i++ {
+		log.WithField("bench", true).WithField("test", true).Info("Info")
+	}
+}

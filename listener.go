@@ -7,6 +7,11 @@ import (
 )
 
 type (
+	Listeninfo struct {
+		Using bool
+		Addrs string
+		Listener net.Listener
+	}
 	globalListener struct {
 		Using		[]bool
 		Addrs		[]string
@@ -28,6 +33,7 @@ func init() {
 func (gl *globalListener) GetListener(addr string) net.Listener {
 	for i, v := range gl.Addrs {
 		if addr == v {
+			gl.Using[i] = true
 			return gl.Listeners[i]
 		}
 	}

@@ -93,7 +93,7 @@ func RedirectExternal(ctx Context, redirectUrl string, code int) {
 	// RFC 7231 notes that a short HTML body is usually included in
 	// the response because older user agents may not understand 301/307.
 	// Do it only if the request didn't already have a Content-Type header.
-	_, hadCT := h[HeaderContentType]
+	hadCT := len(h.Get(HeaderContentType)) > 0
 
 	h.Set(HeaderLocation, hexEscapeNonASCII(redirectUrl))
 	if !hadCT && (method == MethodGet || method == MethodHead) {
@@ -162,9 +162,9 @@ func ServeFile(ctx Context, path string) (int, error) {
 	}
 	h := ctx.Response().Header()
 
-	ctypes, haveType := h["Content-Type"]
+	ctypes := h.Get(HeaderContentType)
 	var ctype string
-	if !haveType {
+	if len(ctypes) == 0 {
 		ctype = mime.TypeByExtension(filepath.Ext(path))
 		if ctype == "" {
 			// read a chunk to decide between utf-8 text and binary
@@ -178,8 +178,8 @@ func ServeFile(ctx Context, path string) (int, error) {
 			}
 		}
 		h.Set("Content-Type", ctype)
-	} else if len(ctypes) > 0 {
-		ctype = ctypes[0]
+	} else {
+		ctype = ctypes
 	}
 
 
