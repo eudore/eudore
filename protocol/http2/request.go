@@ -2,6 +2,7 @@ package http2
 
 import (
 	"crypto/tls"
+	"github.com/eudore/eudore/protocol"
 )
 type (
 	requestReader struct {
@@ -9,11 +10,11 @@ type (
 		method		string
 		uri			string
 		remoteAddr	string
-		header		Header
+		header		protocol.Header
 		proto		string
 		host		string
 		length		int64
-		trailer		Header
+		trailer		protocol.Header
 		tls			*tls.ConnectionState
 	}
 )
@@ -30,7 +31,7 @@ func (r *requestReader) RequestURI() string {
 	return r.uri
 }
 
-func (r *requestReader) Header() Header {
+func (r *requestReader) Header() protocol.Header {
 	return r.header
 }
 

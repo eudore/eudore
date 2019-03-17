@@ -9,7 +9,7 @@ import (
 )
 
 type record struct {
-	h   header
+	h   cgiHeader
 	buf [maxWrite + maxPad]byte
 }
 

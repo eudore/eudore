@@ -5,7 +5,7 @@ import (
 	"github.com/eudore/eudore/protocol"
 	"github.com/eudore/eudore/protocol/server"
 	"github.com/eudore/eudore/protocol/http"
-	"github.com/eudore/eudore/protocol/http2"
+	// "github.com/eudore/eudore/protocol/http2"
 	"github.com/eudore/eudore/protocol/fastcgi"
 	"testing"
 )
@@ -17,7 +17,7 @@ func TestServerHttp(t *testing.T) {
 			w.Write([]byte("hello http server. your remote addr is " + r.RemoteAddr()))
 		}),
 	}
-	server.SetHandler(&http.HttpHandler{})
+	server.SetHandler(http.NewHttpHandler())
 	t.Log(server.ListenAndServe(":8085", nil))
 }
 
@@ -28,8 +28,8 @@ func TestServerTls(t *testing.T) {
 			w.Write([]byte("hello http server. your remote addr is " + r.RemoteAddr()))
 		}),
 	}
-	server.SetHandler(&http.HttpHandler{})
-	server.SetNextHandler("h2", http2.NewServer())
+	server.SetHandler(http.NewHttpHandler())
+	// server.SetNextHandler("h2", http2.NewServer())
 	t.Log(server.ListenAndServeTls(":8085", "/etc/nginx/openssl/wejass.com/wejass.com.cer", "/etc/nginx/openssl/wejass.com/wejass.com.key", nil))
 }
 

@@ -15,7 +15,7 @@ func TestLogger(*testing.T) {
 	li.(eudore.LoggerInitHandler).NextHandler(ls)
 }
 
-func BenchmarkLogger(b *testing.B) {
+func BenchmarkStdLogger(b *testing.B) {
 	b.ReportAllocs()
 	log, _ := eudore.NewLoggerStd(nil)
 	for i := 0; i < b.N; i++ {

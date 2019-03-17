@@ -69,13 +69,13 @@ var _ protocol.RequestReader		=	&RequestReaderHttp{}
 func NewRequestReaderHttp(r *http.Request) protocol.RequestReader {
 	return &RequestReaderHttp{
 		Request:	*r,
-		header:	httpHeader(r.Header),
+		header:	HeaderHttp(r.Header),
 	}
 }
 
 func ResetRequestReaderHttp(r *RequestReaderHttp, req *http.Request) protocol.RequestReader {
 	r.Request = *req
-	r.header = httpHeader(req.Header)
+	r.header = HeaderHttp(req.Header)
 	return r
 }
 

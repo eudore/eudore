@@ -29,18 +29,19 @@ const (
 	acceptSize = 28 // base64.StdEncoding.EncodedLen(sha1.Size)
 )
 
-func UpgradeHttp(ctx Context) (net.Conn, *bufio.ReadWriter, error) {
-	conn, rw, err := ctx.Response().Hijack()
+func UpgradeHttp(ctx Context) (net.Conn, error) {
+	conn, err := ctx.Response().Hijack()
 	if err != nil {
 
 	}
+	rw := bufio.NewWriter(conn)
 	var nonce string
 	nonce = ctx.GetHeader("Sec-Websocket-Key")
 	if err == nil {
-		httpWriteResponseUpgrade(rw.Writer, []byte(nonce))
-		err = rw.Writer.Flush()
+		httpWriteResponseUpgrade(rw, []byte(nonce))
+		err = rw.Flush()
 	}
-	return conn, rw, nil
+	return conn, nil
 }
 
 func httpWriteResponseUpgrade(bw *bufio.Writer, nonce []byte) {

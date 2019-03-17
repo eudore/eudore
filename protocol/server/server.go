@@ -3,6 +3,8 @@ package server
 import (
 	"net"
 	"fmt"
+	"time"
+	"sync"
 	"context"
 	"crypto/tls"
 	"github.com/eudore/eudore/protocol"
@@ -14,6 +16,8 @@ type (
 	Server struct {
 		ctx			context.Context
 		Handler		protocol.Handler
+		mu			sync.Mutex
+		listeners	[]net.Listener
 		proto		string
 		nextHandle		protocol.HandlerConn
 		defaultHandle	protocol.HandlerConn
@@ -60,17 +64,30 @@ func (srv *Server) ListenAndServeTls(addr , certFile, keyFile string, handle pro
 }
 
 // 服务处理监听
-func (srv *Server) Serve(l net.Listener) error {
+func (srv *Server) Serve(ln net.Listener) error {
+	srv.mu.Lock()
+	for _, i := range srv.listeners {
+		if i == ln {
+			return fmt.Errorf("ln is serve status")
+		}
+	}
+	srv.listeners = append(srv.listeners, ln)
 	if srv.defaultHandle == nil {
 		srv.defaultHandle = &http.HttpHandler{}
 	}
 	srv.ctx = context.Background()
+	srv.mu.Unlock()
 	for {
 		// 读取连接
-		c, err := l.Accept()
+		c, err := ln.Accept()
 		// 错误连接丢弃
 		if err != nil {
-			break
+			// 等待重试
+			if ne, ok := err.(net.Error); ok && ne.Temporary() {
+				time.Sleep(5 * time.Millisecond)
+				continue
+			}
+			return err
 		}
 		// Handle new connections
 		// 处理新连接
@@ -98,12 +115,40 @@ func (srv *Server) newConnServe(c net.Conn) {
 			return
 		}
 
-		if proto := tlsConn.ConnectionState().NegotiatedProtocol; validNPN(proto) {
+		if proto := tlsConn.ConnectionState().NegotiatedProtocol; validNPN(proto) && proto == srv.proto {
 			srv.nextHandle.EudoreConn(ctx, c, srv.Handler)
 			return
 		}
 	}
 	srv.defaultHandle.EudoreConn(ctx, c , srv.Handler)
+}
+
+func (srv *Server) Close() (err error) {
+	srv.mu.Lock()
+	for _, ln := range srv.listeners {
+		if e := ln.Close(); e != nil && err == nil {
+			err = e
+		}
+	}
+	srv.listeners = nil
+	srv.mu.Unlock()
+	return err
+}
+
+func (srv *Server) Shutdown(ctx context.Context) error {
+	var stop = make(chan error)
+	go func(){
+		stop <- srv.Close()
+	}()
+	for {
+		select {
+		case <- ctx.Done():
+			return ctx.Err()
+		case err := <- stop:
+			return err
+		}
+	}
+	return nil
 }
 
 func (srv *Server) SetHandler(h protocol.HandlerConn) {

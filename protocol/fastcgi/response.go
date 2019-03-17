@@ -5,13 +5,14 @@ import (
 	"time"
 	"net"
 	"net/http"
-	"bufio"
+	"github.com/eudore/eudore/protocol"
+	"github.com/eudore/eudore/protocol/header"
 )
 
 // response implements http.ResponseWriter.
 type response struct {
 	req         *request
-	header      Header
+	header      protocol.Header
 	w           *bufWriter
 	wroteHeader bool
 }
@@ -19,12 +20,12 @@ type response struct {
 func newResponse(c *child, req *request) *response {
 	return &response{
 		req:    req,
-		header: Header{},
+		header: make(header.HeaderMap),
 		w:      newWriter(c.conn, typeStdout, req.reqId),
 	}
 }
 
-func (r *response) Header() Header {
+func (r *response) Header() protocol.Header {
 	return r.header
 }
 
@@ -55,9 +56,12 @@ func (r *response) WriteHeader(code int) {
 
 	fmt.Fprintf(r.w, "Status: %d %s\r\n", code, http.StatusText(code))
 	
-	for k, v := range r.header {
+	/*for k, v := range r.header {
 		fmt.Fprintf(r.w, "%s: %s\r\n", k, v[0])
-	}
+	}*/
+	r.header.Range(func(k, v string){
+		fmt.Fprintf(r.w, "%s: %s\r\n", k, v)
+	})
 
 	r.w.WriteString("\r\n")
 }
@@ -69,8 +73,12 @@ func (r *response) Flush() {
 	r.w.Flush()
 }
 
-func (r *response) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return nil, nil, nil
+func (r *response) Hijack() (net.Conn, error) {
+	return nil, nil
+}
+
+func (*response) Push(string, *protocol.PushOptions) error {
+	return nil
 }
 
 

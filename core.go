@@ -2,7 +2,7 @@ package eudore
 
 
 import (
-	"fmt"
+	// "fmt"
 	"sync"
 	"net/http"
 )
@@ -13,7 +13,7 @@ type (
 		poolctx sync.Pool
 		poolreq	sync.Pool
 		poolresp sync.Pool
-		ports []*ServerConfigGeneral
+		// ports []*ServerConfigGeneral
 	}
 )
 
@@ -72,7 +72,7 @@ func (app *Core) Run() (err error) {
 		app.poolresp.New = fn
 	}
 	// start serverv
-	switch len(app.ports) {
+/*	switch len(app.ports) {
 	case 0:
 		// 未注册Server信息
 		return fmt.Errorf("Undefined Server component, Please Listen or ListenTLS.")
@@ -82,7 +82,8 @@ func (app *Core) Run() (err error) {
 	default:
 		// 多端口启动
 		err = app.RegisterComponent(ComponentServerMultiName, app.ports)
-	}
+	}*/
+	SetComponent(app.Server, "handler", app)
 	if err != nil {
 		return
 	}
@@ -91,21 +92,30 @@ func (app *Core) Run() (err error) {
 
 
 func (app *Core) Listen(addr string) *Core {
-	app.ports = append(app.ports, &ServerConfigGeneral{
+	SetComponent(app.Server, "add-listen", 	&ServerListenConfig{
+		Addr:		addr,
+	})
+
+/*	app.ports = append(app.ports, &ServerConfigGeneral{
 		Addr:		addr,
 		Http2:		false,
 		Handler:	app,
-	})
+	})*/
 	return app
 }
 
 func (app *Core) ListenTLS(addr, key, cert string) *Core {
-	app.ports = append(app.ports, &ServerConfigGeneral{
+/*	app.ports = append(app.ports, &ServerConfigGeneral{
 		Addr:		addr,
 		Http2:		true,
 		Keyfile:	key,
 		Certfile:	cert,
 		Handler:	app,
+	})*/	
+	SetComponent(app.Server, "add-listen", 	&ServerListenConfig{
+		Addr:		addr,
+		Keyfile:	key,
+		Certfile:	cert,
 	})
 	return app
 }

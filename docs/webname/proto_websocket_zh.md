@@ -16,4 +16,4 @@ websocket协议是分帧传输，目前标准有继续帧、二进制帧、文�
 
 
 [rfc6455]: https://tools.ietf.org/html/rfc6455
-[rfc6455cn]: ../resource/rfc-6455-websocket-protocol-in-chinese.pdf
+[rfc6455cn]: ../resource/pdf/rfc-6455-websocket-protocol-in-chinese.pdf

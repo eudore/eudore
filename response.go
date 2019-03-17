@@ -4,7 +4,6 @@ import (
 	"io"
 	"fmt"
 	"net"
-	"bufio"
 	"bytes"
 	"net/http"
 	"crypto/tls"
@@ -27,18 +26,7 @@ type (
 		Status() int
 	}*/
 
-	// ResponseReader is used to read the http protocol response message information.
-	//
-	// ResponseReader用于读取http协议响应报文信息。
-	ResponseReader interface {
-		Proto() string
-		Statue() int
-		Code() string
-		Header() protocol.Header
-		Read([]byte) (int, error)
-		TLS() *tls.ConnectionState
-		Close() error
-	}
+
 
 	// Encapsulate the net/http.Response response message and convert it to the ResponseReader interface.
 	//
@@ -69,13 +57,13 @@ var _ protocol.ResponseWriter	=	&ResponseWriterBuffer{}
 func NewResponseWriterHttp(w http.ResponseWriter) protocol.ResponseWriter {
 	return &ResponseWriterHttp{
 		ResponseWriter: w,
-		header:			httpHeader(w.Header()),
+		header:			HeaderHttp(w.Header()),
 	}
 }
 
 func ResetResponseWriterHttp(hw *ResponseWriterHttp, w http.ResponseWriter) protocol.ResponseWriter {
 	hw.ResponseWriter = w
-	hw.header = httpHeader(w.Header())
+	hw.header = HeaderHttp(w.Header())
 	hw.code = http.StatusOK
 	hw.size = 0
 	return hw
@@ -100,11 +88,13 @@ func (w *ResponseWriterHttp) Flush() {
 	w.ResponseWriter.(http.Flusher).Flush()
 }
 
-func (w *ResponseWriterHttp) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+func (w *ResponseWriterHttp) Hijack() (conn net.Conn, err error) {
 	if hj, ok := w.ResponseWriter.(http.Hijacker); ok {
-		return hj.Hijack()
+		conn, _, err =  hj.Hijack()
+		return 
 	}
-	return nil, nil, fmt.Errorf("http.Hijacker interface is not supported")
+	err = fmt.Errorf("http.Hijacker interface is not supported")
+	return
 }
 
 // 如果ResponseWriterHttp实现http.Push接口，则Push资源。
@@ -147,11 +137,11 @@ func (w *ResponseWriterBuffer) Flush() {
 
 
 
-func NewResponseReaderHttp(resp *http.Response) ResponseReader {
+func NewResponseReaderHttp(resp *http.Response) protocol.ResponseReader {
 	return &ResponseReaderHttp{
 		ReadCloser:	resp.Body,
 		Data:		resp,
-		header:		httpHeader(resp.Header),
+		header:		HeaderHttp(resp.Header),
 	}
 }
 

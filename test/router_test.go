@@ -1,34 +1,45 @@
 package test
 
 import (
-	"time"
+	"fmt"
 	"testing"
 	"github.com/eudore/eudore"
-	// _ "eudore/component/bone"
 )
 
 func TestSubRouter(t *testing.T) {
-	e := eudore.NewEudore()
-	t.Log(e.RegisterComponent("router", nil))
-	t.Log(e.Router.Version())
+	e := eudore.NewCore()
+	e.RegisterMiddleware("", "", eudore.HandlerFuncs{echoHandle})
+	e.RegisterMiddleware("GET", "", eudore.HandlerFuncs{echoHandle})
+	e.AnyFunc("/*", echoHandle)
 
-	e.SubRoute("/api", eudore.NewRouterMust("", nil))
-	r := eudore.GetSubRouter(e.Router, "/api")
-	if r != nil {
-		t.Log(r.Version())
+	api := e.Group("/api/* group:api2")
+	api.AddMiddleware(argHandle("3", "true"))
+	api.AnyFunc("/*", echoHandle)
+
+	v := api.Group("/:name")
+	v.AnyFunc("/:id", echoHandle)
+
+	eudore.TestHttpHandler(e, "HEAD", "/api/22")
+	eudore.TestHttpHandler(e, "GET", "/api")
+	eudore.TestHttpHandler(e, "POST", "/api/name/22")
+	eudore.TestHttpHandler(e, "GET", "/api/name/22/info")
+
+}
+func argHandle(key, val string) eudore.HandlerFunc {
+	return func(ctx eudore.Context) {
+		ctx.AddParam(key, val)
 	}
+}
+
+func echoHandle(ctx eudore.Context) {
+	fmt.Println(ctx.GetParam("Route"), ctx.Path())
 }
 
 func TestRouterEmpty(t *testing.T) {
 	app := eudore.NewCore()
-	app.Listen(":8088")
-	time.AfterFunc(5 * time.Second, func() {
-		app.Server.Close()
-	})
 	app.RegisterComponent(eudore.ComponentRouterEmptyName, eudore.HandlerFunc(func(ctx eudore.Context){
 		ctx.WriteString(app.Router.Version())
 		t.Log(app.Router.Version())
 	}))
-	// app.RegisterComponent(eudore.ComponentRouterEmptyName, nil)
-	app.Run()
+	eudore.TestHttpHandler(app, "GET", "/api/name/22/info")
 }

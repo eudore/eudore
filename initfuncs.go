@@ -6,18 +6,17 @@ import (
 	"syscall"
 )
 
-func ReloadSignal(e *Eudore) error {
+func InitSignal(e *Eudore) error {
 	// Register signal
 	// signal 9
 	SignalRegister(syscall.SIGKILL, false, func() error {
-		// graceOutput("received SIGKILL, graceful shutting down HTTP server.")
+		e.WithField("signal", 9).Info("eudore received SIGKILL, eudore stop HTTP server.")
 		return e.Stop()
 	})
 	// signal 10
 	SignalRegister(syscall.SIGUSR1, false, func() error {
-		// graceOutput("received SIGUSR1, graceful reloading HTTP server.")
-		e.WithField("signal", 12).Info("eudore accept signal 12")
-		err := e.Reload()
+		e.WithField("signal", 10).Info("eudore received SIGUSR1, eudore reloading HTTP server.")
+		err := e.Init()
 		if err != nil {
 			e.Error("eudore reload error: ", err)
 		}
@@ -25,25 +24,33 @@ func ReloadSignal(e *Eudore) error {
 	})
 	// signal 12
 	SignalRegister(syscall.SIGUSR2, false, func() error {
-		// graceOutput("received SIGUSR2, graceful restarting HTTP server.")
-		return e.Restart()
+		e.WithField("signal", 12).Info("eudore received SIGUSR2, eudore restarting HTTP server.")
+		err := e.Restart()
+		if err != nil {
+			e.Error("eudore reload error: ", err)
+		}
+		return err
 	})
 	// signal 15
 	SignalRegister(syscall.SIGTERM, false, func() error {
-		// graceOutput("received SIGTERM, graceful shutting down HTTP server.")
-		e.Debug("signal 15")
+		e.WithField("signal", 15).Info("eudore received SIGTERM, eudore shutting down HTTP server.")
 		return e.Shutdown()
 	})
 	return nil
 }
 
-func ReloadConfig(*Eudore) error {
-	return nil
+func InitConfig(app *Eudore) error {
+	return app.Config.Parse()
+}
+
+func InitCommand(app *Eudore) error {
+	cmd := app.Config.Get("#command").(string)
+	pid := app.Config.Get("#pidfile").(string)
+	return NewCommand(cmd , pid).Run()
 }
 
 
-
-func ReloadLogger(e *Eudore) error {
+func InitLogger(e *Eudore) error {
 	c := e.Config.Get("#logger")
 	if c != nil {
 		name := GetComponetName(c)
@@ -53,22 +60,42 @@ func ReloadLogger(e *Eudore) error {
 			if err != nil {
 				return err
 			}
+		}else {
+			return fmt.Errorf("logger name is nil.")
 		}
 	}
 	return nil
 }
 
-func ReloadServer(e *Eudore) error {
-	c := e.Config.Get("#server")
+func InitServer(app *Eudore) error {
+	// Json(e.Config)
+	c := app.Config.Get("#server")
 	if c != nil {
 		name := GetComponetName(c)
 		if len(name) > 0 {
-			err := e.RegisterComponent(name, c)
+			err := app.RegisterComponent(name, c)
 			if err != nil {
 				return err
 			}
+		}else {
+			return fmt.Errorf("server name is nil.")
 		}
 	}
+	return nil 
+}
+
+func InitServerStart(app *Eudore) error {
+	if app.Server == nil {
+		err := fmt.Errorf("Eudore can't start the service, the server is empty.")
+		app.Error(err)
+		return err
+	}
+
+	SetComponent(app.Server, "errorhandle", app.HandleError)
+	SetComponent(app.Server, "handler", app)
+	go func() {
+		app.stop <- app.Server.Start()
+	}()
 	return nil
 }
 
@@ -87,11 +114,11 @@ func ReloadDefaultLogger(e *Eudore) error {
 func ReloadDefaultServer(e *Eudore) error {
 	if e.Server == nil {
 		e.Warning("eudore use default server.")
-		return e.RegisterComponent(ComponentServerStdName, &ServerConfigGeneral{
-			Addr:		":8082",
-			Https:		false,
-			Handler:	e,
-		})
+		// return e.RegisterComponent(ComponentServerStdName, &ServerConfigGeneral{
+		// 	Addr:		":8082",
+		// 	Https:		false,
+		// 	Handler:	e,
+		// })
 	}
 	return nil
 }

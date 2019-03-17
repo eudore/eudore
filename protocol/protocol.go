@@ -5,10 +5,8 @@ package protocol
 
 import (
 	"net"
-	"bufio"
 	"context"
 	"crypto/tls"
-	// "net/textproto"
 )
 
 type (
@@ -24,6 +22,7 @@ type (
 		Get(string) string
 		Set(string, string)
 		Add(string, string)
+		Del(string)
 		Range(func(string, string))
 	}
 	// Get the method, version, uri, header, body from the RequestReader according to the http protocol request body. (There is no host in the golang net/http library header)
@@ -57,11 +56,32 @@ type (
 		// http.Flusher
 		Flush()
 		// http.Hijacker
-		Hijack() (net.Conn, *bufio.ReadWriter, error)
+		Hijack() (net.Conn, error)
 		// http.Pusher
 		Push(string, *PushOptions) error
 		Size() int
 		Status() int
+	}
+
+
+/*	RequestWriter interface {
+		Host(string)
+		Method(string)
+		Path(string)
+		Body(io.Reader)
+		Header() Header
+	}*/
+	// ResponseReader is used to read the http protocol response message information.
+	//
+	// ResponseReader用于读取http协议响应报文信息。
+	ResponseReader interface {
+		Proto() string
+		Statue() int
+		Code() string
+		Header() Header
+		Read([]byte) (int, error)
+		TLS() *tls.ConnectionState
+		Close() error
 	}
 	PushOptions struct {
 		// Method specifies the HTTP method for the promised request.
@@ -79,3 +99,6 @@ func (fn HandlerFunc) EudoreHTTP(ctx context.Context, w ResponseWriter, r Reques
 	fn(ctx, w, r)
 }
 
+var (
+	HeaderTransferEncoding			=	"Transfer-Encoding"
+)

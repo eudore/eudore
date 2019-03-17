@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os/exec"
 	"strconv"
+	"strings"
 	"syscall"
 	"io/ioutil"
 )
@@ -24,18 +25,19 @@ type Command struct {
 	pidfile	string
 	cmd		string
 	file	*os.File
-	StartHandler	func() error
 }
 
 // Returns a command to parse the object, the current command and the process pid file path,
 // if the behavior is start will execute the handler.
 //
 // 返回一个命令解析对象，需要当前命令和进程pid文件路径，如果行为是start会执行handler。
-func NewCommand(cmd , pidfile string, handler func() error) *Command {
+func NewCommand(cmd , pidfile string) *Command {
+	if len(pidfile) == 0 {
+		pidfile = "/var/run/eudore.pid"
+	}
 	return &Command{	
 		cmd: 	cmd,
 		pidfile:		pidfile,
-		StartHandler:	handler,
 	}
 }
 
@@ -44,7 +46,8 @@ func NewCommand(cmd , pidfile string, handler func() error) *Command {
 // 解析命令并执行。
 func (c *Command) Run() (err error) {
 	switch c.cmd {
-	case "start":
+	case "start", "":
+		c.cmd = "start"
 		err = c.Start()
 	case "daemon":
 		err = c.Daemon()
@@ -57,12 +60,16 @@ func (c *Command) Run() (err error) {
 	default:
 		err = errors.New("undefined command " + c.cmd)
 		fmt.Println("undefined command ", c.cmd)
-		return
 	}
+	// 输出提升信息
 	if err != nil {
 		fmt.Printf("%s is false, %v.\n", c.cmd, err)
 	}else {
 		fmt.Printf("%s is true.\n", c.cmd)
+	}
+	// 非启动命令结束程序
+	if c.cmd != "start" {
+		os.Exit(0)
 	}
 	return
 }
@@ -71,12 +78,13 @@ func (c *Command) Run() (err error) {
 //
 // 执行启动函数，并将pid写入文件。
 func (c *Command) Start() error{
-	err := c.writepid()
+	// 测试文件是否被锁定
+	_, err := c.readpid()
 	if err != nil {
-		return err
+		return nil
 	}
-	defer c.release()
-	return c.StartHandler()
+	// 写入pid
+	return c.writepid()
 }
 
 // Start the process in the background. If it is not started in the background, create a background process.
@@ -88,8 +96,10 @@ func (c *Command) Daemon() error {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", DAEMON_ENVIRON_KEY, 1))
 		return cmd.Start()
 	}else{
+		c.cmd = "start"
 		return c.Start()
 	}
+	return nil
 }
 
 func (c *Command) Status() error {
@@ -135,7 +145,7 @@ func (c *Command) readpid() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return strconv.Atoi(string(id))
+	return strconv.Atoi(strings.TrimSpace(string(id)))
 }
 
 // Open and lock the pid file and write the value of pid.
@@ -164,7 +174,7 @@ func (c *Command) writepid() (err error) {
 //
 // 关闭删除pid文件，并解除独占锁
 func (c *Command) release() error {
-	defer os.Remove(c.pidfile)
+	// defer os.Remove(c.pidfile)
 	defer c.file.Close()
 	return syscall.Flock(int(c.file.Fd()), syscall.LOCK_UN)
 }

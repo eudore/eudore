@@ -1,5 +1,6 @@
 // curl -XGET http://localhost:8088/api/v1/
 // curl -XGET http://localhost:8088/api/v1/get/eudore
+// curl -XGET http://localhost:8088/api/v1/set/eudore
 package main
 
 import (
@@ -19,8 +20,8 @@ func main() {
 		Format:	"json",
 	})
 	// 全局级请求处理中间件
-	app.AddHandler(
-		logger.NewLogger(eudore.GetRandomString),
+	app.AddMiddleware(
+		logger.NewLogger(eudore.GetRandomString).Handle,
 		// gzip.NewGzip(5),
 	)
 
@@ -28,14 +29,11 @@ func main() {
 	// apiv1 := eudore.NewRouterClone(app.Router)
 	apiv1 := app.Group("/api/v1")
 	// 路由级请求处理中间件
-	apiv1.AddHandler(eudore.HandlerFunc(recover.RecoverFunc))
+	apiv1.AddMiddleware(recover.RecoverFunc)
 	{
 		apiv1.GetFunc("/get/:name", handleget)
 		// Api级请求处理中间件
-		apiv1.Any("/*", eudore.NewMiddlewareLink(
-			eudore.HandlerFunc(handlepre1),
-			eudore.HandlerFunc(handleparam),
-		))
+		apiv1.AnyFunc("/*", handlepre1, handleparam)
 	}
 	// app注册api子路由
 	// app.SubRoute("/api/v1 version:v1", apiv1)

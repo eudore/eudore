@@ -46,6 +46,7 @@ const (
 	ParamAction				=	"Action"
 	ParamRam				=	"Ram"
 	ParamTemplate			=	"Template"
+	ParamRoute				=	"Route"
 	ParamRoutes				=	"Routes"
 	ParamRoutePath			=	"Route-Path"
 	ParamRouteMethod		=	"Route-Method"

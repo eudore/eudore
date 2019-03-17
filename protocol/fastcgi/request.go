@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"crypto/tls"
+	"github.com/eudore/eudore/protocol"
+	"github.com/eudore/eudore/protocol/header"
 )
 
 type requestReader struct {
@@ -17,8 +19,8 @@ type requestReader struct {
 	remoteAddr	string
 	length		int64
 	tls			*tls.ConnectionState
-	header		Header
-	trailer		Header
+	header		protocol.Header
+	trailer		protocol.Header
 	body		io.ReadCloser
 }
 
@@ -34,8 +36,8 @@ func newRequestReader(params map[string]string) (*requestReader, error) {
 	}
 
 	// r.Close = true
-	r.trailer = Header{}
-	r.header = Header{}
+	r.trailer = make(header.HeaderMap)
+	r.header = make(header.HeaderMap)
 
 
 	if lenstr := params["CONTENT_LENGTH"]; lenstr != "" {
@@ -89,7 +91,7 @@ func (r *requestReader) RequestURI() string {
 	return r.uri
 }
 
-func (r *requestReader) Header() Header {
+func (r *requestReader) Header() protocol.Header {
 	return r.header
 }
 

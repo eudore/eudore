@@ -10,8 +10,6 @@ import (
 
 func ParseInitData(c Config) error {
 	c.Set("config", "file:///data/web/golang/src/wejass/config/config-eudore.json")
-	c.Set("command", "start")
-	c.Set("pidfile", "/var/run/eudore.pid")
 	return nil
 }
 

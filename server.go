@@ -14,7 +14,7 @@ import (
 	"strings"
 	"crypto/tls"
 	"crypto/x509"
-	"golang.org/x/net/http2"
+	// "golang.org/x/net/http2"
 )
 
 const (
@@ -23,12 +23,10 @@ const (
 	ServerStateClose
 	ServerStateUnknown
 	// 按顺序记录fork多端口fd对应的地址。
-	GRACEFUL_ENVIRON_ADDRS	= "EUDORE_GRACEFUL_ADDRS"
+	EUDORE_GRACEFUL_ADDRS	= "EUDORE_GRACEFUL_ADDRS"
 )
 
 var (
-	graceServerAddrs	[]string
-	graceOutput = fmt.Println
 	ErrArgsNotArray		=	errors.New("args is noy array.")
 	ErrArgsNotServerConfig	=	errors.New("args is noy server config.")
 )
@@ -40,45 +38,46 @@ type (
 		Restart() error
 		Close() error
 		Shutdown(ctx context.Context) error
-		GetState() ServerState
-		SetErrorFunc(ErrorFunc)
-		SetHandler(interface{}) error
+	}
+
+	ServerListenConfig struct {
+		Addr		string		`description:"Listen addr."`
+		Https		bool		`description:"Is https, default use http2."`
+		// Http2		bool		`description:"Is http2.`
+		Mutual		bool		`description:"Is mutual tls.`
+		Certfile	string		`description:"Http server cert file."`
+		Keyfile		string		`description:"Http server key file."`
+		TrustFile	string		`description:"Http client ca file."`
 	}
 
 	// 通用Server配置信息。
 	//
 	// 记录一个sever的组件名称、监听地址、是否https、是否http2、https证书、双向https信任证书、超时时间、请求处理对象。
-	ServerConfigGeneral struct {
-		Name		string
-		Addr		string		`description:"Listen addr."`
-		Https		bool		`description:"Is https, default use http2."`
-		Http2		bool		`description:"Is http2.`
-		Mutual		bool		`description:"Is mutual tls.`
-		Certfile	string		`description:"Http server cert file."`
-		Keyfile		string		`description:"Http server key file."`
-		TrustFile	string		`description:"Http client ca file."`
+	ServerGeneralConfig struct {
+		Name			string
 		ReadTimeout		time.Duration	`description:"Http server read timeout."`
 		WriteTimeout	time.Duration	`description:"Http server write timeout."`
-		// ServerType	string		`description:"server instance method."`
-		// Handler		http.Handler`json:"-" description:"-"`	
-		Handler		interface{}	`json:"-" description:"-"`
+		Handler			interface{}		`json:"-" description:"-"`
+		Listeners		[]*ServerListenConfig
 	}
 	ServerStd struct {
-		Servers 	[]*stdServerPort
-		port		*stdServerPort
+		// Servers 	[]*stdServerPort
+		*ServerGeneralConfig
+		*http.Server
+		Listener	net.Listener
+		mu			sync.Mutex
+		wg			sync.WaitGroup
 		errfunc		ErrorFunc
 		state		ServerState
 	}
-	stdServerPort struct {
-		http.Server
-		*ServerConfigGeneral
-		Addr		string
-		Listener	net.Listener
-		State		ServerState
-	}
+	// stdServerPort struct {
+	// 	Addr		string
+	// 	State		ServerState
+	// }
 	// multi
 	// ServerMulti配置，记录多server信息。
 	ServerMultiConfig struct {
+		Name			string
 		Configs		[]interface{}
 	}
 	// 用于启动多个server组合。
@@ -90,13 +89,6 @@ type (
 	}
 )
 
-func init() {
-	addrs := os.Getenv(GRACEFUL_ENVIRON_ADDRS)
-	if addrs != "" {
-		graceServerAddrs = strings.Split(addrs,",")
-		fmt.Println("Addrs", addrs)
-	}
-}
 
 func NewServer(name string, arg interface{}) (Server, error) {
 	name = AddComponetPre(name, "server")
@@ -111,128 +103,123 @@ func NewServer(name string, arg interface{}) (Server, error) {
 	return nil, fmt.Errorf("Component %s cannot be converted to Server type", name)
 }
 
-func (sc *ServerConfigGeneral) GetName() string {
+/*func (sc *ServerConfigGeneral) GetName() string {
 	return sc.Name
 }
-
+*/
 
 func NewServerStd(arg interface{}) (Server, error) {
-	c, ok := arg.(*ServerConfigGeneral)
+	scg, ok := arg.(*ServerGeneralConfig)
 	if !ok {
-		c = &ServerConfigGeneral{}
-		err := MapToStruct(arg, c)
+		scg = &ServerGeneralConfig{}
+		err := MapToStruct(arg, scg)
 		if err != nil {
 			return nil, fmt.Errorf("----: %v", err)
 		}
 	}
-	port, err := newStdServer(c)
-	if err != nil {
-		return nil, err
-	}
+	// conv listen
+	//
 	return &ServerStd{
-		port:		port,
+		ServerGeneralConfig:	scg,
 		errfunc:	ErrorDefaultHandleFunc,
 		state:		ServerStateInit,
 	}, nil
 }
 
-func (s *ServerStd) Start() error {
-	s.port.Server.ErrorLog = NewHttpError(s.errfunc).Logger()
-	s.state = ServerStateRun
-	return s.port.Run()
-
-
-	/*if len(s.args) == 0 {
-		return fmt.Errorf("No corresponding server information is registered.")
+func (srv *ServerStd) Start() error {
+	// update server state
+	srv.mu.Lock()
+	if srv.state != ServerStateInit {
+		return fmt.Errorf("server state exception")
 	}
+	srv.state = ServerStateRun
+	srv.mu.Unlock()
+	// set handler
+	h, ok := srv.ServerGeneralConfig.Handler.(http.Handler)
+	if !ok {
+		return fmt.Errorf("server not set handle")
+	}	
+	// create server
+	srv.Server =  &http.Server{
+		Handler:	h,
+		ErrorLog:	NewHttpError(srv.errfunc).Logger(),
+	}
+	// start server
 	errs := NewErrors()
-	// add group wait goroutine num
-	s.wg.Add(len(s.args))
-	for _, c := range s.args {
-		// create a server instace
-		var conf = c
-		server, err := newStdServer(conf)
+	for _, listener := range srv.ServerGeneralConfig.Listeners {
+		// get listen
+		ln, err := listener.Listen()
 		if err != nil {
-			errs.HandleError(err, s.Shutdown(context.Background()))
-			break
+			errs.HandleError(err)
+			continue
 		}
-		go func() {
-			// set state
-			l := NewHttpError(s.errfunc)
-			server.State = ServerStateRun
-			server.Server.ErrorLog = l.Logger()
-			err := server.Run()
-			server.State = ServerStateClose
+		srv.wg.Add(1)
+		go func(ln net.Listener){
+			err := srv.Server.Serve(ln)
 			if err != http.ErrServerClosed && err != nil {
-				errs.HandleError(err, s.Shutdown(context.Background()))
+				errs.HandleError(err)
 			}
-			s.wg.Done()			
-		}()
-		s.Servers = append(s.Servers, server)
+			srv.wg.Done()
+		}(ln)
 	}
-	s.wg.Wait()
-	return errs.GetError()*/
+	// wait over
+	srv.wg.Wait()
+	return errs.GetError()
 }
 
-func (s *ServerStd) Restart() error {
-	pid, err := s.startNewProcess();
-	if  err != nil {
-		graceOutput("start new process failed: ", err,", continue serving.", err)
-	} else {
-		graceOutput("start new process successed, the new pid is ", pid)
-		s.Shutdown(context.Background())
+func (srv *ServerStd) Restart() error {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	err := StartNewProcess()
+	if err == nil {
+		srv.Shutdown(context.Background())
+	}
+	return err
+}
+
+func (srv *ServerStd) Close() (err error) {	
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	if srv.state == ServerStateRun {
+		srv.state = ServerStateClose
+		return srv.Server.Close()
 	}
 	return nil
 }
 
-func (s *ServerStd) Close() (err error) {	
-/*	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, s := range s.Servers {
-		if s.State == ServerStateRun {
-			s.State = ServerStateClose
-			err = s.Close()	
-			if err != nil {
-				return
-			}
-		}
-	}*/
-	if s.state == ServerStateRun {
-		s.state = ServerStateClose
-		return s.port.Close()
-	}
-	return nil
-}
-
-func (s *ServerStd) Shutdown(ctx context.Context) error {
-	// s.mu.Lock()
-	// defer s.mu.Unlock()
+func (srv *ServerStd) Shutdown(ctx context.Context) error {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 5 * time.Second)
 	defer cancel()
-	// for _, server := range s.Servers {
-	// 	if server.State == ServerStateRun {
-	// 		server.State = ServerStateClose
-	// 		server.Shutdown(ctx)
-	// 	}
-	// }
-	s.state = ServerStateClose
-	return  s.port.Shutdown(ctx)
+	srv.state = ServerStateClose
+	return  srv.Server.Shutdown(ctx)
+}
+
+func (srv *ServerStd) Set(key string, val interface{}) error {
+	switch v := val.(type) {
+	case ErrorFunc:
+		srv.errfunc = v
+	case func(http.ResponseWriter, *http.Request):
+		srv.ServerGeneralConfig.Handler = http.HandlerFunc(v)
+	case http.Handler:
+		srv.ServerGeneralConfig.Handler = val
+	case *ServerGeneralConfig:
+		srv.ServerGeneralConfig = v
+	case *ServerListenConfig:
+		srv.ServerGeneralConfig.Listeners = append(srv.ServerGeneralConfig.Listeners, v)
+	}
+	return nil
+}
+
+func (srv *ServerStd) SetErrorFunc(fn ErrorFunc) {
+	srv.errfunc = fn
 }
 
 
-
-
-func (s *ServerStd) GetState() ServerState {
-	return s.state
-}
-func (s *ServerStd) SetErrorFunc(fn ErrorFunc) {
-	s.errfunc = fn
-}
-
-
-func (s *ServerStd) SetHandler(i interface{}) error {
-	if h, ok := i.(http.Handler);ok {
-		s.port.Server.Handler = h
+func (srv *ServerStd) SetHandler(i interface{}) error {
+	if _, ok := i.(http.Handler);ok {
+		srv.ServerGeneralConfig.Handler = i
 		return nil
 	}
 	return fmt.Errorf("Server config Handler object, not convert net.http.Handler type.")
@@ -246,196 +233,6 @@ func (s *ServerStd) Version() string {
 	return ComponentServerStdVersion
 }
 
-
-
-// start new process to handle HTTP Connection
-func (s *ServerStd) startNewProcess() (uintptr, error) {
-	// get addrs and socket listen fds
-	var addrs = make([]string, 0, len(s.Servers))
-	var files = make([]*os.File, 0, len(s.Servers))
-	for _, s := range s.Servers {
-		fd, err := s.Listener.(*net.TCPListener).File()
-		if err != nil {
-			return 0, fmt.Errorf("failed to get socket file descriptor: %v", err)
-		}
-		addrs = append(addrs, s.Addr)
-		files = append(files, fd)
-	}
-
-	// set graceful restart env flag
-	envs := []string{}
-	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, GRACEFUL_ENVIRON_ADDRS) {
-			envs = append(envs, value)
-		}
-	}
-	envs = append(envs, fmt.Sprintf("%s=%s", GRACEFUL_ENVIRON_ADDRS, strings.Join(addrs, ",")) ) 
-
-	// fork new process
-	cmd := exec.Command(os.Args[0], os.Args[1:]...)
-	cmd.Env = envs
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.ExtraFiles = files
-	err := cmd.Start()
-	if err != nil {
-		return 0, fmt.Errorf("failed to forkexec: %v", err)
-	}
-	return uintptr(cmd.Process.Pid), nil
-}
-
-
-
-func newStdServer(arg interface{}) (*stdServerPort, error) {
-	s := &stdServerPort{
-		Server: http.Server{},
-	}
-	if arg != nil {
-		c, ok := arg.(*ServerConfigGeneral)
-		if !ok {
-			return nil, ErrArgsNotServerConfig
-		}
-		s.ServerConfigGeneral = c
-	}
-	if h, ok := s.ServerConfigGeneral.Handler.(http.Handler);ok {
-		s.Server.Handler = h
-	}else {
-		// return nil, fmt.Errorf("Server config Handler object, not convert net.http.Handler type.")
-	}
-	l, err :=  GetNetListener(s.Addr)
-	if err != nil {
-		s.Listener = l
-	}
-	s.Addr = s.ServerConfigGeneral.Addr
-	s.Server.Addr = s.ServerConfigGeneral.Addr
-	s.Server.ReadTimeout = s.ServerConfigGeneral.ReadTimeout
-	s.Server.WriteTimeout = s.ServerConfigGeneral.WriteTimeout
-	return s, nil
-}
-
-func GetNetListener(addr string) (ln net.Listener, err error) {
-	// find addr fd
-	var fd uint 
-	for i, v := range graceServerAddrs {
-		if addr == v {
-			fd = uint(i + 3)
-			break
-		}
-	}
-	if fd == 0 {
-		return nil, fmt.Errorf("The service address %s did not find the corresponding fd", addr)
-	}
-	// use old net socket
-	file := os.NewFile(uintptr(fd), "")
-	ln, err = net.FileListener(file)
-	if err != nil {
-		err = fmt.Errorf("net.FileListener error: %v", err)
-	}
-	return	
-}
-
-func (s *stdServerPort) Run() error {
-	conf := s.ServerConfigGeneral
-	if !conf.Https {
-		return s.ListenAndServe()
-	} else if conf.Mutual {
-		return s.ListenAndServeMutualTLS(conf.Certfile, conf.Keyfile, conf.TrustFile)
-	} else {
-		return s.ListenAndServeTLS(conf.Certfile, conf.Keyfile)
-	}
-	return nil
-}
-
-func (s *stdServerPort) ListenAndServe() error {
-	if s.Listener == nil {
-		if s.Addr == "" {
-			s.Addr = ":http"
-		}
-		ln, err := net.Listen("tcp", s.Addr)
-		if err != nil {
-			return err
-		}
-		s.Listener = ln
-	}
-	return s.Server.Serve(s.Listener)
-}
-
-func (s *stdServerPort) ListenAndServeTLS(certFile, keyFile string) error {
-	// 初始化连接
-	if s.Listener == nil {
-		if s.Addr == "" {
-			s.Addr = ":https"
-		}
-		ln, err := net.Listen("tcp", s.Addr)
-		if err != nil {
-			return err
-		}
-		s.Listener = ln
-	}
-	// 配置http2，可选
-	if s.Http2 || strings.Contains(os.Getenv("GODEBUG"), "http2server=0") {
-		http2.ConfigureServer(&s.Server, &http2.Server{})
-	}
-	 // 配置https
-	config := &tls.Config{}
-	if s.TLSConfig != nil {
-		*config = *s.TLSConfig
-	}
-	if config.NextProtos == nil {
-		config.NextProtos = []string{"http/1.1"}
-	}
-	
-	var err error
-	config.Certificates = make([]tls.Certificate, 1)
-	config.Certificates[0], err = tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return err
-	}
-	// 启动tls连接
-	return s.Server.Serve(tls.NewListener(s.Listener, config))
-}
-
-func (s *stdServerPort) ListenAndServeMutualTLS(certFile, keyFile, trustFile string) error {// 初始化连接
-	if s.Listener == nil {
-		if s.Addr == "" {
-			s.Addr = ":https"
-		}
-		ln, err := net.Listen("tcp", s.Addr)
-		if err != nil {
-			return err
-		}
-		s.Listener = ln
-	}
-	// 配置http2，可选
-	if s.Http2 || strings.Contains(os.Getenv("GODEBUG"), "http2server=0") {
-		http2.ConfigureServer(&s.Server, &http2.Server{})
-	}
-	 // 配置https
-	config := &tls.Config{}
-	if s.TLSConfig != nil {
-		*config = *s.TLSConfig
-	}
-	if config.NextProtos == nil {
-		config.NextProtos = []string{"http/1.1"}
-	}
-	var err error
-	config.Certificates = make([]tls.Certificate, 1)
-	config.Certificates[0], err = tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return err
-	}
-	// 配置双向https
-	s.TLSConfig.ClientAuth = tls.RequireAndVerifyClientCert
-	pool := x509.NewCertPool()
-	data, err := ioutil.ReadFile(trustFile)
-	if err != nil {
-		return err
-	}
-	pool.AppendCertsFromPEM(data)
-	s.TLSConfig.ClientCAs = pool
-	// 启动tls连接
-	return s.Server.Serve(tls.NewListener(s.Listener, config))
-}
 
 func NewServerMulti(i interface{}) (Server, error) {
 	// check args
@@ -480,32 +277,26 @@ func (s *ServerMulti) Start() (err error) {
 	s.wg.Wait()
 	return errs.GetError()
 }
-func (s *ServerMulti) Restart() error {
-	return nil
-}
-func (s *ServerMulti) Close() error {
-	return nil
-}
-func (s *ServerMulti) Shutdown(ctx context.Context) error {
-	return nil
-}
-
-func (s *ServerMulti) GetState() ServerState {
-	return ServerStateUnknown
-}
-
-func (s *ServerMulti) SetErrorFunc(fn ErrorFunc) {
-	for _, server := range s.Servers {
-		server.SetErrorFunc(fn)
+func (srv *ServerMulti) Restart() error {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	err := StartNewProcess()
+	if err == nil {
+		srv.Shutdown(context.Background())
 	}
+	return err
 }
-
-func (s *ServerMulti) SetHandler(i interface{}) error {
-	errs := NewErrors()
-	for _, server := range s.Servers {
-		errs.HandleError(server.SetHandler(i))
+func (srv *ServerMulti) Close() error {
+	for _, server := range srv.Servers {
+		server.Close()
 	}
-	return errs.GetError()
+	return nil
+}
+func (srv *ServerMulti) Shutdown(ctx context.Context) error {
+	for _, server := range srv.Servers {
+		server.Shutdown(ctx)
+	}
+	return nil
 }
 
 func (s *ServerMultiConfig) GetName() string {
@@ -514,4 +305,80 @@ func (s *ServerMultiConfig) GetName() string {
 
 func (s *ServerMultiConfig) Version() string {
 	return ComponentServerMultiVersion
+}
+
+
+
+func (sgc *ServerGeneralConfig) GetName() string {
+	return sgc.Name
+}
+
+
+
+func (slc *ServerListenConfig) Listen() (net.Listener, error) {
+	// set default port
+	if len(slc.Addr) == 0 {
+		if slc.Https {
+			slc.Addr = ":80"
+		}else {
+			slc.Addr = ":443"
+		}
+	}
+	// get listen
+	ln, err := GlobalListener.Listen(slc.Addr)
+	if err != nil {
+		return nil, err
+	}
+	if !slc.Https {
+		return ln, nil
+	}
+	// set tls
+	config := &tls.Config{
+		NextProtos:		[]string{"http/1.1"},
+		Certificates:	make([]tls.Certificate, 1),
+	}
+	config.Certificates[0], err = tls.LoadX509KeyPair(slc.Certfile, slc.Keyfile)
+	if err != nil {
+		return nil, err
+	}
+	// set mutual tls
+	if slc.Mutual {
+		config.ClientAuth = tls.RequireAndVerifyClientCert	
+		pool := x509.NewCertPool()
+		data, err := ioutil.ReadFile(slc.TrustFile)
+		if err != nil {
+			return nil, err
+		}
+		pool.AppendCertsFromPEM(data)
+		config.ClientCAs = pool
+	}
+	return tls.NewListener(ln, config), nil
+}
+
+
+// start new process to handle HTTP Connection
+func StartNewProcess() error {
+	// get addrs and socket listen fds
+	addrs, files := GlobalListener.AllListener()
+
+	// set graceful restart env flag
+	envs := []string{}
+	for _, value := range os.Environ() {
+		if !strings.HasPrefix(value, EUDORE_GRACEFUL_ADDRS) {
+			envs = append(envs, value)
+		}
+	}
+	envs = append(envs, fmt.Sprintf("%s=%s", EUDORE_GRACEFUL_ADDRS, strings.Join(addrs, ",")) ) 
+
+	// fork new process
+	cmd := exec.Command(os.Args[0], os.Args[1:]...)
+	cmd.Env = envs
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.ExtraFiles = files
+	err := cmd.Start()
+	if err != nil {
+		return fmt.Errorf("failed to forkexec: %v", err)
+	}
+	return nil
 }

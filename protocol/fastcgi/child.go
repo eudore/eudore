@@ -14,18 +14,19 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"github.com/eudore/eudore/protocol"
 )
 
 type child struct {
 	baseCtx	context.Context
 	conn    *conn
-	handler Handler
+	handler protocol.Handler
 
 	mu       sync.Mutex          // protects requests:
 	requests map[uint16]*request // keyed by request ID
 }
 
-func newChild(ctx context.Context, rwc io.ReadWriteCloser, handler Handler) *child {
+func newChild(ctx context.Context, rwc io.ReadWriteCloser, handler protocol.Handler) *child {
 	return &child{
 		baseCtx:	ctx,
 		conn:		newConn(rwc),

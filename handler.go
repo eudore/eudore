@@ -1,5 +1,10 @@
 package eudore
 
+import (
+	"net/http"
+	"net/http/httptest"
+)
+
 type (
 	// Context handle func
 	HandlerFunc func(Context)
@@ -90,4 +95,31 @@ func GetMiddlewareEnd(m Middleware) Middleware {
 
 func HandleEmpty(Context) {
 	// Do nothing because empty handler does not process entries.
+}
+
+
+func CombineHandlers(hs1, hs2 HandlerFuncs) HandlerFuncs {
+	// if nil
+	if len(hs1) == 0 {
+		return hs2
+	}
+	if len(hs2) == 0 {
+		return hs1
+	}
+	// combine
+	const abortIndex int8 = 63
+	finalSize := len(hs1) + len(hs2)
+	if finalSize >= int(abortIndex) {
+		panic("too many handlers")
+	}
+	hs := make(HandlerFuncs, finalSize)
+	copy(hs, hs1)
+	copy(hs[len(hs1):], hs2)
+	return hs
+}
+
+func TestHttpHandler(h http.Handler, method, path string) {
+	r := httptest.NewRequest(method, path, nil)	
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
 }

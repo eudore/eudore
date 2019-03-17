@@ -15,7 +15,7 @@ type conn struct {
 
 	// to avoid allocations
 	buf bytes.Buffer
-	h   header
+	h   cgiHeader
 }
 
 func newConn(rwc io.ReadWriteCloser) *conn {

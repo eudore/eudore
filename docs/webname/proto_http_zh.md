@@ -2,6 +2,28 @@
 
 详细信息请查看[rfc2616][rfc2616][中文pdf][rfc2616cn]。
 
+1999年定义了HTTP/1.1协议RFC2616，总计176页， 经过2007-2014年多年的努力，RFC2616和RFC2617已经废弃，被总计10份新的RFCs代替：
+
+RFC 7230: Message Syntax and Routing
+
+RFC 7231: Semantics and Content
+
+RFC 7232: Conditional Requests
+
+RFC 7233: Range Request
+
+RFC 7234: Caching
+
+RFC 7235: Authentication
+
+RFC 7236: Authentication Scheme Registrations
+
+RFC 7237: Method Registrations
+
+RFC 7238: the 308 status code
+
+RFC 7239: Forwarded HTTP extension
+
 ## Request
 
 http请求报文体分为三部分，请求请求行、请求头、请求正文。
@@ -99,5 +121,5 @@ curl使用参数-v可以查看请求和响应的内容。
 
 
 [rfc2616]: https://tools.ietf.org/html/rfc2616
-[rfc2616cn]: ../resource/rfc-2616-hypertext-transfer-protocol-chinese.pdf
+[rfc2616cn]: ../resource/pdf/rfc-2616-hypertext-transfer-protocol-chinese.pdf
 [server-simple]: ../../component/server/simple

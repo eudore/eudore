@@ -29,6 +29,8 @@ import (
 	"sync"
 
 	"golang.org/x/net/http/httpguts"
+
+	"github.com/eudore/eudore/protocol"
 )
 
 var (
@@ -346,11 +348,14 @@ func (s *sorter) Less(i, j int) bool { return s.v[i] < s.v[j] }
 //
 // The returned slice is only valid until s used again or returned to
 // its pool.
-func (s *sorter) Keys(h Header) []string {
+func (s *sorter) Keys(h protocol.Header) []string {
 	keys := s.v[:0]
-	for k := range h {
+	h.Range(func(k, v string){
 		keys = append(keys, k)
-	}
+	})
+/*	for k := range h {
+		keys = append(keys, k)
+	}*/
 	s.v = keys
 	sort.Sort(s)
 	return keys

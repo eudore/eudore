@@ -29,11 +29,11 @@ func NewVerifyHS256(secret []byte) VerifyFunc {
 	}
 }
 
-func NewJwt(fn VerifyFunc) eudore.Handler {
+func NewJwt(fn VerifyFunc) eudore.HandlerFunc {
 	if fn == nil {
 		fn = NewVerifyHS256([]byte("secret"))
 	}
-	return eudore.HandlerFunc(func(ctx eudore.Context) {
+	return func(ctx eudore.Context) {
 		jwtstr := ctx.GetHeader(eudore.HeaderAuthorization)
 		if strings.HasPrefix(jwtstr, BearerStar) {
 			jwt, err := fn.ParseToken(jwtstr[7:])
@@ -49,7 +49,7 @@ func NewJwt(fn VerifyFunc) eudore.Handler {
 		}else {
 			ctx.WithField("error", "bearer invalid").Warning("")	
 		}
-	})
+	}
 }
 
 func (fn VerifyFunc) SignedToken(claims map[string]interface{}) string {

@@ -47,11 +47,85 @@ application一般都是框架的主体，通常XXX框架的主体叫做XXX，当
 
 第三步释放Context等对象。
 
+简单实现：
+
+[Router简单实现](#Router)
+
+```golang
+// 定义Application
+type Application struct {
+	mux		*Router
+	pool	sync.Pool
+}
+
+func NewApplication() *Application{
+	return &Application{
+		mux:	new(Router),
+		pool:	sync.Pool{
+			New:	func() interface{} {
+				return &Context{}
+			},
+		}
+	}
+}
+
+// 注册一个GET请求方法，其他类型
+func (app *Application) Get(path string, handle HandleFunc) {
+	app.RegisterFunc("GET", path, handle)
+}
+
+// 调用路由注册一个请求
+func (app *Application) RegisterFunc(method string, path string, handle HandleFunc)  {
+	app.router.RegisterFunc(method, path, handle)
+}
+
+// 启动Application
+func (app *Application) Start(addr string) error {
+	// 创建一个http.Server并启动
+	return http.Server{
+		Addr:		addr,
+		Handler:	app,
+	}.ListenAndServe()
+}
+
+// 实现http.Handler接口，并出去net/http请求。
+func (app *Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// 创建一个ctx对象
+	ctx := app.pool.Get().(*Context)
+	// 初始化ctx
+	ctx.Reset(w, r)	
+	// 路由器匹配请求并处理ctx
+	app.router.Match(r.Method, r.URL.Path)(ctx)
+	// 回收ctx
+	app.pool.Put(ctx)
+}
+```
+
 # Context
 
 Context包含Request和Response两部分，Request部分是请求，Response是响应。Context的各种方法基本都是围绕Request和Response来实现来，通常就是各种请求信息的获取和写入的封装。
 
-# Request & Response
+简单实现:
+
+```golang
+// Context简单实现使用结构体，不使用接口，如有其他需要可继续增加方法。
+type Context struct {
+	http.ResponseWriter
+	req *http.Request
+}
+
+// 初始化ctx
+func (ctx *Context) Reset(w http.ResponseWriter, r *http.Request) {
+	ctx.ResponseWriter, ctx.req = w, r
+}
+
+// Context实现获取方法
+func (ctx *Context) Method() string {
+	return ctx.req.Method
+}
+
+```
+# RequestReader & ResponseWriter
 
 http协议解析[文档][my_proto_http_zh]。
 
@@ -84,17 +158,19 @@ ResponseWriter用于返回http写法响应的状态行(Statue Line)、响应头(
 
 在实际过程还会加入net.Conn对象的tcp连接信息。
 
+通常net/http库下的RequestReader和ResponseWriter定义为http.Request和http.ResponseWriter，请求是一个结构体，拥有请求信息，不同情况下可能会有不同封装，或者直接使用net/http定义的读写对象。
+
 # Router
 
 Router是请求匹配的路由，并不复杂，但是每个框架都是必备的。
 
-通常实现两个方法 AddRouter和Match，给路由器注册新路由，匹配一个请求的路由，然后处理请求。
+通常实现两个方法Match和RegisterFunc，给路由器注册新路由，匹配一个请求的路由，然后处理请求。
 
 ```golang
 type (
-	HandleFunc func(Context)
+	HandleFunc func(*Context)
 	Router interface{
-		Match(Context) HandleFunc
+		Match(string, string) HandleFunc
 		RegisterFunc(string, string, HandleFunc)
 	}
 )
@@ -108,14 +184,14 @@ type Router struct {
 }
 
 // 匹配一个Context的请求
-func (r *Router) Match(ctx Context) HandleFunc {
+func (r *Router) Match(path ,method string) HandleFunc {
 	// 查找方法定义的路由
-	rs, ok := r.Routes[ctx.Method()]
+	rs, ok := r.Routes[method]
 	if !ok {
 		return Handle405
 	}
 	// 查找路由
-	h, ok := rs[ctx.Path()]
+	h, ok := rs[path]
 	if !ok {
 		return Handle404
 	}

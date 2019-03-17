@@ -13,6 +13,8 @@ import (
 
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2/hpack"
+
+	"github.com/eudore/eudore/protocol"
 )
 
 // writeFramer is implemented by any type that is used to write frames.
@@ -179,7 +181,7 @@ func splitHeaderBlock(ctx writeContext, headerBlock []byte, fn func(ctx writeCon
 type writeResHeaders struct {
 	streamID    uint32
 	httpResCode int         // 0 means no ":status" line
-	h           Header // may be nil
+	h           protocol.Header // may be nil
 	trailers    []string    // if non-nil, which keys of h to write. nil means all.
 	endStream   bool
 
@@ -252,7 +254,7 @@ type writePushPromise struct {
 	streamID uint32   // pusher stream
 	method   string   // for :method
 	url      *url.URL // for :scheme, :authority, :path
-	h        Header
+	h        protocol.Header
 
 	// Creates an ID for a pushed stream. This runs on serveG just before
 	// the frame is written. The returned ID is copied to promisedID.

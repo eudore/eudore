@@ -28,7 +28,7 @@ type (
 		SetHandler(HandlerFuncs)
 		Next()
 		End()
-		NewRequest(string, string, io.Reader) (ResponseReader, error)
+		NewRequest(string, string, io.Reader) (protocol.ResponseReader, error)
 		// context
 		Deadline() (time.Time, bool)
 		Done() <-chan struct{}
@@ -172,18 +172,13 @@ func (ctx *ContextHttp) Next() {
 		ctx.handler[ctx.index](ctx)
 		ctx.index++
 	}
-/*	for ctx.Middleware != nil && ctx.isrun {
-		ctx.handler = ctx.Middleware
-		ctx.Middleware = ctx.Middleware.GetNext()
-		ctx.handler.Handle(ctx)
-	}*/
 }
 
 func (ctx *ContextHttp) End() {
 	ctx.isrun = false
 }
 
-func (ctx *ContextHttp) NewRequest(method, url string, body io.Reader) (ResponseReader, error) {
+func (ctx *ContextHttp) NewRequest(method, url string, body io.Reader) (protocol.ResponseReader, error) {
 	tr := &http2.Transport{
 		AllowHTTP: true, //充许非加密的链接
 		TLSClientConfig: &tls.Config{

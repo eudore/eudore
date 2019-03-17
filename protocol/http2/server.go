@@ -49,6 +49,9 @@ import (
 
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2/hpack"
+
+	"github.com/eudore/eudore/protocol"
+	"github.com/eudore/eudore/protocol/header"
 )
 
 const (
@@ -230,7 +233,7 @@ func NewServer() *Server {
 // implemented in terms of providing a suitably-behaving net.Conn.
 //
 // The opts parameter is optional. If nil, default values are used.
-func (s *Server) EudoreConn(ctx context.Context, c net.Conn, h Handler) {
+func (s *Server) EudoreConn(ctx context.Context, c net.Conn, h protocol.Handler) {
 	sc := &serverConn{
 		srv:                         s,
 		conn:                        c,
@@ -362,7 +365,7 @@ type serverConn struct {
 	srv              *Server
 	conn             net.Conn
 	bw               *bufferedWriter // writing to conn
-	handler          Handler
+	handler          protocol.Handler
 	baseCtx          context.Context
 	framer           *Framer
 	doneServing      chan struct{}          // closed when serverConn.serve ends
@@ -460,8 +463,8 @@ type stream struct {
 	wroteHeaders     bool        // whether we wrote headers (not status 100)
 	writeDeadline    *time.Timer // nil if unused
 
-	trailer    Header // accumulated trailers
-	reqTrailer Header // handler's Request.Trailer
+	trailer    protocol.Header // accumulated trailers
+	reqTrailer protocol.Header // handler's Request.Trailer
 }
 
 func (sc *serverConn) Framer() *Framer  { return sc.framer }
@@ -1840,7 +1843,7 @@ func (sc *serverConn) newWriterAndRequest(st *stream, f *MetaHeadersFrame) (*res
 		return nil, nil, streamError(f.StreamID, ErrCodeProtocol)
 	}
 
-	rp.header = make(Header)
+	rp.header = make(header.HeaderMap)
 	for _, hf := range f.RegularFields() {
 		rp.header.Add(sc.canonicalHeader(hf.Name), hf.Value)
 	}
@@ -1868,7 +1871,7 @@ func (sc *serverConn) newWriterAndRequest(st *stream, f *MetaHeadersFrame) (*res
 type requestParam struct {
 	method                  string
 	scheme, authority, path string
-	header                  Header
+	header                  protocol.Header
 }
 
 func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*responseWriter, *requestReader, error) {
@@ -1954,7 +1957,7 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 
 
 // Run on its own goroutine.
-func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, h Handler) {
+func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, h protocol.Handler) {
 	didPanic := true
 	defer func() {
 		rw.rws.stream.cancelCtx()
@@ -1979,7 +1982,7 @@ func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, h Handl
 }
 var handleHeaderListTooLong = HandlerFunc(handleHeaderListTooLongFunc)
 
-func handleHeaderListTooLongFunc(ctx context.Context, w ResponseWriter, r RequestReader) {
+func handleHeaderListTooLongFunc(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
 	// 10.5.1 Limits on Header Block Size:
 	// .. "A server that receives a larger header block than it is
 	// willing to handle can send an HTTP 431 (Request Header Fields Too
@@ -2172,8 +2175,8 @@ type responseWriterState struct {
 	bw *bufio.Writer // writing to a chunkWriter{this *responseWriterState}
 
 	// mutated by http.Handler goroutine:
-	handlerHeader Header // nil until called
-	snapHeader    Header // snapshot of handlerHeader at WriteHeader time
+	handlerHeader header.HeaderMap // nil until called
+	snapHeader    header.HeaderMap // snapshot of handlerHeader at WriteHeader time
 	trailers      []string    // set in writeChunk
 	status        int         // status code passed to WriteHeader
 	wroteHeader   bool        // WriteHeader called (explicitly or implicitly). Not necessarily sent to user yet.
@@ -2407,13 +2410,13 @@ func (w *responseWriter) CloseNotify() <-chan bool {
 	return ch
 }
 
-func (w *responseWriter) Header() Header {
+func (w *responseWriter) Header() protocol.Header {
 	rws := w.rws
 	if rws == nil {
 		panic("Header called after Handler finished")
 	}
 	if rws.handlerHeader == nil {
-		rws.handlerHeader = make(Header)
+		rws.handlerHeader = make(header.HeaderMap)
 	}
 	return rws.handlerHeader
 }
@@ -2455,13 +2458,16 @@ func (rws *responseWriterState) writeHeader(code int) {
 	}
 }
 
-func cloneHeader(h Header) Header {
-	h2 := make(Header, len(h))
-	for k, vv := range h {
+func cloneHeader(h protocol.Header) protocol.Header {
+	h2 := make(header.HeaderMap, len(h))
+	/*for k, vv := range h {
 		vv2 := make([]string, len(vv))
 		copy(vv2, vv)
 		h2[k] = vv2
-	}
+	}*/
+	h.Range(func(k ,v string){
+		h2[k] = v
+	})
 	return h2
 }
 
@@ -2543,7 +2549,7 @@ var (
 
 // var _ Pusher = (*responseWriter)(nil)
 
-func (w *responseWriter) Push(target string, opts *PushOptions) error {
+func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
 	st := w.rws.stream
 	sc := st.sc
 	sc.serveG.checkNotOn()
@@ -2644,7 +2650,7 @@ type startPushRequest struct {
 	parent *stream
 	method string
 	url    *url.URL
-	header Header
+	header protocol.Header
 	done   chan error
 }
 
@@ -2758,14 +2764,16 @@ var connHeaders = []string{
 // checkValidHTTP2RequestHeaders checks whether h is a valid HTTP/2 request,
 // per RFC 7540 Section 8.1.2.2.
 // The returned error is reported to users.
-func checkValidHTTP2RequestHeaders(h Header) error {
+func checkValidHTTP2RequestHeaders(h protocol.Header) error {
 	for _, k := range connHeaders {
-		if _, ok := h[k]; ok {
+		if len(h[k]) > 0 {
 			return fmt.Errorf("request header %q is not valid in HTTP/2", k)
 		}
 	}
-	te := h["Te"]
-	if len(te) > 0 && (len(te) > 1 || (te[0] != "trailers" && te[0] != "")) {
+	// te := h["Te"]
+	te := h.Get("Te")
+	// if len(te) > 0 && (len(te) > 1 || (te[0] != "trailers" && te[0] != "")) {
+	if len(te) > 0 && te != "trailers"  {
 		return errors.New(`request header "TE" may only be "trailers" in HTTP/2`)
 	}
 	return nil

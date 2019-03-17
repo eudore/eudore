@@ -3,10 +3,11 @@ package eudore
 import (
 	"os"
 	"fmt"
+	"time"
 	"sync"
 	"sort"
 	"context"
-	"strings"
+	// "strings"
 	"net/http"
 	"github.com/eudore/eudore/protocol"
 )
@@ -18,15 +19,16 @@ type (
 		httprequest		sync.Pool
 		httpresponse	sync.Pool
 		httpcontext		sync.Pool
-		reloads			map[string]ReloadInfo
+		inits			map[string]InitInfo
+		stop 			chan error
 	}
 	// eudore reload funcs.
-	ReloadFunc func(*Eudore) error
+	InitFunc func(*Eudore) error
 	// Save reloadhook name, index fn.
-	ReloadInfo struct {
+	InitInfo struct {
 		name	string
 		index	int
-		fn		ReloadFunc
+		fn		InitFunc
 	}
 )
 
@@ -36,7 +38,7 @@ var defaultEudore *Eudore
 func NewEudore() *Eudore {
 	e := &Eudore{
 		App:			NewApp(),
-		reloads:		make(map[string]ReloadInfo),
+		inits:		make(map[string]InitInfo),
 		httprequest: sync.Pool {
 			New: func() interface{} {
 				return &RequestReaderHttp{}
@@ -47,6 +49,7 @@ func NewEudore() *Eudore {
 				return &ResponseWriterHttp{}
 			},
 		},
+		stop: 			make(chan error),
 	}
 	// set eudore pool
 	e.httpcontext = sync.Pool {
@@ -62,15 +65,17 @@ func NewEudore() *Eudore {
 		[]interface{}{nil, nil, nil, nil, nil},
 	))
 	// Register eudore default reload func
-	// e.RegisterReload("eudore-keys", 0x008, ReloadKeys)
-	e.RegisterReload("eudore-config", 0x009, ReloadConfig)
-	e.RegisterReload("eudore-logger", 0x015 , ReloadLogger)
-	e.RegisterReload("eudore-server", 0x016 , ReloadServer)
-	e.RegisterReload("eudore-signal", 0x018 , ReloadSignal)
-	e.RegisterReload("eudore-defaule-logger", 0xa15 , ReloadDefaultLogger)
-	e.RegisterReload("eudore-defaule-server", 0xa16 , ReloadDefaultServer)
-	e.RegisterReload("eudore-component-info", 0xc01 , ReloadListComponent)
-	e.RegisterReload("eudore-test-stop", 0xfff, ReloadStop)
+	// e.RegisterInit("eudore-keys", 0x008, ReloadKeys)
+	e.RegisterInit("eudore-config", 0x009, InitConfig)
+	e.RegisterInit("eudore-command", 0x00a, InitCommand)
+	e.RegisterInit("eudore-logger", 0x015 , InitLogger)
+	e.RegisterInit("eudore-server", 0x016 , InitServer)
+	e.RegisterInit("eudore-server-start", 0x017 , InitServerStart)
+	e.RegisterInit("eudore-signal", 0x018 , InitSignal)
+	e.RegisterInit("eudore-defaule-logger", 0xa15 , ReloadDefaultLogger)
+	e.RegisterInit("eudore-defaule-server", 0xa16 , ReloadDefaultServer)
+	e.RegisterInit("eudore-component-info", 0xc01 , ReloadListComponent)
+	e.RegisterInit("eudore-test-stop", 0xfff, ReloadStop)
 	return e
 }
 
@@ -87,56 +92,28 @@ func DefaultEudore() *Eudore {
 // Parse the current command, if the command is 'start', start eudore.
 //
 // 解析当前命令，如果命令是启动，则启动eudore。
-func (e *Eudore) Run() (err error) {
-	var cmd, pid string
-	defer func(){
-		// if err != nil {
-		// 	ReloadLogger(e)
-		// }
-		if _, ok := e.Logger.(LoggerInitHandler); ok && cmd == "start" {
-			e.RegisterComponent("logger", nil)
-		}
-		// if err := recover();err != nil{
-		// 	e.Fatal(err)
-		// }
-	}()
-
-	// Parse config
-	e.Debug("eudore start parse config")
-	if err = e.Config.Parse(); err != nil {
-		e.Error("eudore parse config error: ", err)
-		return
-	}
-
-	// cmd := e.globalConfig.GetString("#command", DEFAULT_CONFIG_COMMAND)
-	// pid := e.globalConfig.GetString("#pidfile", DEFAULT_CONFIG_PIDFILE)
-	// Json(e.config, cmd, pid)
-	cmd = e.Config.Get("#command").(string)
-	pid = e.Config.Get("#pidfile").(string)
-	fmt.Println(cmd, pid)
-	err = NewCommand(cmd , pid, e.Start).Run()
-	return
+func (app *Eudore) Run() (err error) {
+	return app.Start()
 }
 
 // Load all configurations and then start listening for all services.
 //
 // 加载全部配置，然后启动监听全部服务。
-func (e *Eudore) Start() error {
-	// Reload
-	e.Info("eudore start reload all func")
-	if err := e.Reload(); err != nil {
-		e.Error(err)
-		return err
-	}
+func (app *Eudore) Start() error {
+	defer func(){
+		if _, ok := app.Logger.(LoggerInitHandler); ok  {
+			app.RegisterComponent("logger", nil)
+		}
+	time.Sleep(100 * time.Millisecond)
+	}()
 
-	// Start server
-	if e.Server == nil {
-		err := fmt.Errorf("Eudore can't start the service, the server is empty.")
-		e.Error(err)
+	// Reload
+	app.Info("eudore start reload all func")
+	if err := app.Init(); err != nil {
+		app.Error(err)
 		return err
 	}
-	e.Info("eudore start all server.")
-	return e.Server.Start()
+	return <- app.stop
 }
 
 // Execute the eudore reload function.
@@ -144,9 +121,9 @@ func (e *Eudore) Start() error {
 //
 // 执行eudore重新加载函数。
 // names是需要执行的函数名称列表；如果列表为空，执行全部重新加载函数。
-func (e *Eudore) Reload(names ...string) (err error) {
+func (e *Eudore) Init(names ...string) (err error) {
 	// get names
-	names = e.getReloadNames(names)
+	names = e.getInitNames(names)
 	// exec
 	var i int
 	var name string
@@ -156,40 +133,65 @@ func (e *Eudore) Reload(names ...string) (err error) {
 			if err2, ok := err1.(error);ok {
 				err = err2
 			}else {
-				err = fmt.Errorf("eudore reload %s %d/%d recover error: %v", name, i + 1, num, err1)
+				err = fmt.Errorf("eudore init %s %d/%d recover error: %v", name, i + 1, num, err1)
 			}
 		}
 	}()
 	for i, name = range names {
-		if err = e.reloads[name].fn(e);err != nil {
-			return fmt.Errorf("eudore reload %d/%d %s error: %v",i + 1, num, name, err)
+		if err = e.inits[name].fn(e);err != nil {
+			return fmt.Errorf("eudore init %d/%d %s error: %v",i + 1, num, name, err)
 		}
-		e.Infof("eudore reload %d/%d %s success.", i + 1, num, name)
+		e.Infof("eudore init %d/%d %s success.", i + 1, num, name)
 	}
-	e.Info("eudore reload all success.")
+	e.Info("eudore init all success.")
 	return nil
 }
 
 // 处理名称并对reloads排序。
-func (e *Eudore) getReloadNames(names []string) []string {
-	// get all exec names
+func (e *Eudore) getInitNames(names []string) []string {
+	// get not names
+	notnames := eachstring(names, func(name string) string {
+		if len(name) > 0 && name[0] == '!' {
+			return name[1:]
+		}
+		return ""
+	})
+
+	// get names
+	names = eachstring(names, func(name string) string {
+		if len(name) == 0 || name[0] == '!' {
+			return ""
+		}
+		return name
+	})
+
+	// set default name
 	if len(names) == 0 {
-		names = make([]string, 0, len(e.reloads))
-		for k := range e.reloads {
+		names = make([]string, 0, len(e.inits))
+		for k := range e.inits {
 			names = append(names, k)
 		}
-	}else {
-		for i, name := range names {
-			if _, ok := e.reloads[name]; !ok {
-				names[i] = ""
-				e.Warning("Invalid overloaded function name: ", name)
+	}
+
+	// filter
+	names = eachstring(names, func(name string) string {
+		// filter not name
+		for _, i := range notnames {
+			if i == name {
+				return ""
 			}
 		}
-		names = arrayclean(names)
-	}
-	// index
+		// filter invalid name
+		if _, ok := e.inits[name]; !ok {
+			e.Warning("Invalid overloaded function name: ", name)
+			return ""
+		}
+		return name
+	})
+
+	// sort index
 	sort.Slice(names, func(i, j int) bool {
-		return e.reloads[names[i]].index < e.reloads[names[j]].index
+		return e.inits[names[i]].index < e.inits[names[j]].index
 	})
 	return names
 }
@@ -197,40 +199,44 @@ func (e *Eudore) getReloadNames(names []string) []string {
 
 // Restart Eudore
 // Invoke ServerManager Restart
-func (e *Eudore) Restart() error {
-	return e.Server.Restart()
+func (app *Eudore) Restart() error {
+	return app.Server.Restart()
 }
 
 // Eudore Stop immediately
-func (e *Eudore) Stop() error {
-	return e.Server.Close()
+func (app *Eudore) Stop() error {
+	return app.Server.Close()
 }
 
 // Eudore Wait quit.
-func (e *Eudore) Shutdown() error {
-	return e.Server.Shutdown(context.Background())
+func (app *Eudore) Shutdown() error {
+	return app.Server.Shutdown(context.Background())
 }
 
 
 // Register a Reload function, index determines the function loading order, and name is used for a specific load function.
 //
 // 注册一个Reload函数，index决定函数加载顺序，name用于特定加载函数。
-func (e *Eudore) RegisterReload(name string, index int, fn ReloadFunc) {
-	if name != "" && fn != nil {
-		e.reloads[name] = ReloadInfo{name, index, fn}
+func (app *Eudore) RegisterInit(name string, index int, fn InitFunc) {
+	if name != "" {
+		if fn == nil {
+			delete(app.inits, name)
+		}else {
+			app.inits[name] = InitInfo{name, index, fn}
+		}
 	}
 }
 
 // Send a specific message to eudore to execute the corresponding signal should function.
 //
 // 给eudore发送一个特定信息，用于执行对应信号应该函数。
-func (e *Eudore) HandleSignal(sig os.Signal) error {
+func (*Eudore) HandleSignal(sig os.Signal) error {
 	return SignalHandle(sig)
 }
 
 // Register Signal exec func.
 // bf alise befor,if bf is ture add func to funcs first.
-func (e *Eudore) RegisterSignal(sig os.Signal, bf bool, fn SignalFunc) {
+func (*Eudore) RegisterSignal(sig os.Signal, bf bool, fn SignalFunc) {
 	SignalRegister(sig, bf, fn)
 }
 
@@ -255,17 +261,11 @@ func (e *Eudore) RegisterComponents(names []string, args []interface{}) error {
 	return errs.GetError()
 }
 
-func (e *Eudore) RegisterComponent(name string,  arg interface{}) (err error) {
-	err = e.App.RegisterComponent(name, arg)
-	if err == nil {
-		if strings.HasPrefix(name, ComponentServerName) {
-			e.Server.SetErrorFunc(e.HandleError)
-			e.Server.SetHandler(e)	
-		}
-	}
+/*func (app *Eudore) RegisterComponent(name string,  arg interface{}) (err error) {
+	err = app.App.RegisterComponent(name, arg)
 	return 
 }
-
+*/
 
 // http method
 

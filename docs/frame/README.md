@@ -242,10 +242,6 @@ type (
 
 Handler接口定义了处理Context的方法。
 
-而Middleware组合Handler接口并新增SetNext和GetNext方法，用于读写下一个Middleware。
-
-Middleware处理Context是链式的，先使用Handler处理Context，然后获得Next Middleware，然后循环。
-
 ```golang
 type (
 	// Context handle func
@@ -254,110 +250,54 @@ type (
 	Handler interface {
 		Handle(Context)
 	}
-
-	// Middleware interface
-	Middleware interface {
-		Handler
-		GetNext() Middleware
-		SetNext(Middleware)
-	}
-
-	MiddlewareBase struct {
-		Handler
-		Next Middleware
-	}
+	HandlerFuncs	[]HandlerFunc
 )
 
-// Convert the HandlerFunc function to a Handler interface.
-//
-// 转换HandlerFunc函数成Handler接口。
-func (f HandlerFunc) Handle(ctx Context) {
-	f(ctx)
-}
-```
-
-在Context对象中，需要先设置一个Middleware为处理者，然后使用Next开始处理Context。
-
-Context部分定义：
-
-```golang
-type Context interface {
-	...
-	SetHandler(Middleware)
-	Next()
-	End()
-	...
-}
-```
-
-ContextHttp对这三个方法的实现。
-
-SetHandler方法设置Context的处理Handler。
-
-Next方法先获取当前Handler，然后设置当前Handler为Next，再使用Handler处理Context；若Handler对象中再次调用了Context.Next方法，就会调用后续Handler然后依次结束。
-
-End方法设置Context的isrun标志为否。
-
-在整个处理过程中Middleware为无状态的，而Context仅保存链式Middleware处理的一个结点，然后依次向后执行。
-
-ctx.Middleware是当前处理者，ctx.handler为一个临时变量。
-
-```golang
-func (ctx *ContextHttp) SetHandler(m Middleware) {
-	ctx.Middleware = m
-}
-
-func (ctx *ContextHttp) Next() {
-	for ctx.Middleware != nil && ctx.isrun {
-		ctx.handler = ctx.Middleware
-		ctx.Middleware = ctx.Middleware.GetNext()
-		ctx.handler.Handle(ctx)
-	}
-}
-
-func (ctx *ContextHttp) End() {
-	ctx.isrun = false
-}
 ```
 
 # Router
 
 Router对象由RouterCore和RouterMethod组合，RouterMethod实现各种路由注册封装，RouterCore用于实现路由器的注册和匹配。
 
-**Router以下部分未更新**
+当前实现RouterEmpty、RouterRadix、RouterFull三种Router。
 
-在Router中有Handler、Middleware、Router三种处理对象，三者依次组合
+RouterEmpty是一个空路由，注册时提供一个HandlerFunc，然后匹配时返回这个HandlerFunc，未实现支持HandlerFuncs。
+
+RouterRadix基于基数树实现，实现路径参数、通配符参数、默认参数、参数校验三项基本功能。
+
+RouterFull基于基数树实现，实现全部路由器相关特性,实现路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
+
+路由器接口定义：
 
 ```golang
 type (
 	// Router method
 	// 路由默认直接注册的方法，其他方法可以使用RouterRegister接口直接注册。
 	RouterMethod interface {
-		SubRoute(path string, router Router)
-		AddHandler(...Handler)
-		Any(string, Handler)
-		AnyFunc(string, HandlerFunc)
-		Delete(string, Handler)
-		DeleteFunc(string, HandlerFunc)
-		Get(string, Handler)
-		GetFunc(string, HandlerFunc)
-		Head(string, Handler)
-		HeadFunc(string, HandlerFunc)
-		Options(string, Handler)
-		OptionsFunc(string, HandlerFunc)
-		Patch(string, Handler)
-		PatchFunc(string, HandlerFunc)
-		Post(string, Handler)
-		PostFunc(string, HandlerFunc)
-		Put(string, Handler)
-		PutFunc(string, HandlerFunc)
+		Group(string) RouterMethod
+		AddMiddleware(...HandlerFunc) RouterMethod
+		Any(string, ...Handler)
+		AnyFunc(string, ...HandlerFunc)
+		Delete(string, ...Handler)
+		DeleteFunc(string, ...HandlerFunc)
+		Get(string, ...Handler)
+		GetFunc(string, ...HandlerFunc)
+		Head(string, ...Handler)
+		HeadFunc(string, ...HandlerFunc)
+		Options(string, ...Handler)
+		OptionsFunc(string, ...HandlerFunc)
+		Patch(string, ...Handler)
+		PatchFunc(string, ...HandlerFunc)
+		Post(string, ...Handler)
+		PostFunc(string, ...HandlerFunc)
+		Put(string, ...Handler)
+		PutFunc(string, ...HandlerFunc)
 	}
 	// Router Core
 	RouterCore interface {
-		Middleware
-		RegisterMiddleware(...Handler)
-		RegisterHandler(method string, path string, handler Handler)
-		Match(Params) Middleware
+		RegisterMiddleware(string, string, HandlerFuncs)
+		RegisterHandler(string, string, HandlerFuncs)
+		Match(string, string, Params) HandlerFuncs
 	}
 	// router
 	Router interface {
@@ -368,65 +308,29 @@ type (
 )
 ```
 
-RouterCore需要实现Middleware接口。
+## RouterMethod
 
-MiddlewareRouter是一个Router使用的Middleware，通过Handler调用Router.Match匹配出对应的Middleware，然后动态设置给Context，然后让Context继续处理。
+RouterMethod分三种方法，Group、AddMiddleware、Any。
 
-```golang
-type MiddlewareRouter struct {
-	RouterCore
-	Next Middleware
-}
+Group会创建一个组路由，之后注册的路由都会附加Group的参数的前缀和默认参数，路径结尾不可为'/*'和'/'，会知道删除。
 
-// Match a handler and directly use it with the Context object.
-//
-// Then set the tail handler appended by the SetNext method to be the follower.
-//
-// 匹配出一个处理者，并直接给Context对象并使用。
-//
-// 然后设置SetNext方法追加的尾处理者为后续处理者。
-func (m *MiddlewareRouter) Handle(ctx Context) {
-	ctx.SetHandler(m.Match(ctx.Params()))
-	ctx.Next()
-	ctx.SetHandler(m.Next)
-	ctx.Next()
-}
+AddMiddleware会给RouterCore注册中间件，注册Any方法，路径是组前缀的中间件，如果需要单独注册一种方法的中间件需要直接调用RegisterMiddleware。
 
-// The return processing middleware is nil.
-//
-// The router is stateless and cannot return directly to the next handler.
-//
-// When the router processes it, it will match the next handler and directly use it for the Context object.
-//
-// 返回处理中间件为空。
-//
-// 路由器是无状态的，无法直接返回下一个处理者。
-//
-// 在路由器处理时会匹配出下一个处理者，并直接给Context对象并使用。
-func (m *MiddlewareRouter) GetNext() Middleware {
-	return nil
-}
+Any等方法是注册restful请求。
 
-// Set the post-processing chain after the route is processed.
-//
-// 设置路由处理完后的后序处理链。
-func (m *MiddlewareRouter) SetNext(nm Middleware) {
-	// 请求尾处理
-	if nm == nil {
-		m.Next = nil
-		return
-	}
-	// 尾追加处理中间件
-	link := m.Next
-	n := link.GetNext();
-	for n != nil {
-		link = n
-		n = link.GetNext();
-	}
-	link.SetNext(nm)
-}
+## RouterCore
 
-```
+RouterCore拥有三个RegisterMiddleware、RegisterHandler、Match三个方法。
+
+RegisterMiddleware直接记录一个方法路径下的中间件的数据，在注册路由的时候使用。
+
+RegisterHandler注册一个路由请求，注册时会更具路径匹配使用的中间件附加到HandlerFuncs前方。
+
+Match会更具方法和路径匹配路由，并附加相关的参数。
+
+## Radix
+
+RouterRadix和RouterFull都是基于Radix tree算法实现。
 
 # Config
 

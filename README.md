@@ -14,23 +14,31 @@ Config setdata反射设置
 
 setting 基于配置初始化对象未实现
 
-signal 可重复注册
-
-热重启失效
-
-没有i18n
-
 缺少完整websocket实现，仅有upgrade部分
-
-Gzip异常
 
 Logger基于GC优化
 
-http实现细节优化
+修复protocol/http2
 
-新独立server实现
+header实现优化
 
-中间件机制优化设计
+## Component
+
+| 组件名称 | 介绍 | 定义库 |
+| ------------ | ------------ | ------------ |
+| router-empty | 将一个HandlerFunc转成Router对象 | 内置 |
+| router-init | 初始时使用的路由处理 | 未实现 |
+| router-radix | 使用基数树实现标准功能路由器 | 内置 |
+| router-full | 使用基数树实现完整功能路由器 | 内置 |
+| logger-init | 初始化日志处理，保存日志由设置的日志对象处理 | 内置 |
+| logger-std | 标准日志库实现 | 内置 |
+| logger-elastic | 将日志直接输出到es中 | github.com/eudore/eudore/component/eslogger |
+| server-std | 使用net/http封装标准Server | 内置 |
+| server-eudor  | 使用protocol库封装eudore Server | github.com/eudore/eudore/component/server/eudore |
+| cache-map | 使用Sync.Map实现的缓存 | 内置 |
+| cache-group | 使用前缀匹配的多缓存组合 | 内置 |
+| config-map | 使用map存储配置 | 内置 |
+| config-eudore |  | 未实现 |
 
 ## Example
 
@@ -143,8 +151,9 @@ func main() {
 
 router-std路由器支持默认参数、路径参数、通配符参数，目前不支持正则参数和参数效验，可重新实现一个Router来实现这些功能。
 
-`http://localhost:8088/api/v1/`
-`http://localhost:8088/api/v1/get/eudore`
+`curl -XGET http://localhost:8088/api/v1/`
+`curl -XGET http://localhost:8088/api/v1/get/eudore`
+`curl -XGET http://localhost:8088/api/v1/set/eudore`
 
 
 ```golang
@@ -153,39 +162,35 @@ package main
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/middleware/logger"
-	"github.com/eudore/eudore/middleware/gzip"
 	"github.com/eudore/eudore/middleware/recover"
 )
 
+// eudore core
 func main() {
 	// 创建App
 	app := eudore.NewCore()
-	// 修改日志配置
 	app.RegisterComponent("logger-std", &eudore.LoggerStdConfig{
 		Std:	true,
 		Level:	eudore.LogDebug,
 		Format:	"json",
 	})
 	// 全局级请求处理中间件
-	app.AddHandler(
-		logger.NewLogger(eudore.GetRandomString),
-		gzip.NewGzip(5),
+	app.AddMiddleware(
+		logger.NewLogger(eudore.GetRandomString).Handle,
 	)
 
 	// 创建子路由器
-	apiv1 := eudore.NewRouterClone(app.Router)
+	// apiv1 := eudore.NewRouterClone(app.Router)
+	apiv1 := app.Group("/api/v1")
 	// 路由级请求处理中间件
-	apiv1.AddHandler(eudore.HandlerFunc(recover.RecoverFunc))
+	apiv1.AddMiddleware(recover.RecoverFunc)
 	{
 		apiv1.GetFunc("/get/:name", handleget)
 		// Api级请求处理中间件
-		apiv1.Any("/*", eudore.NewMiddlewareLink(
-			eudore.HandlerFunc(handlepre1),
-			eudore.HandlerFunc(handleparam),
-		))
+		apiv1.AnyFunc("/*", handlepre1, handleparam)
 	}
 	// app注册api子路由
-	app.SubRoute("/api/v1 version:v1", apiv1)
+	// app.SubRoute("/api/v1 version:v1", apiv1)
 	// 默认路由
 	app.AnyFunc("/*path", func(ctx eudore.Context){
 		ctx.WriteString(ctx.Method() + " " + ctx.Path())
@@ -202,14 +207,14 @@ func handleget(ctx eudore.Context) {
 }
 func handlepre1(ctx eudore.Context) {
 	// 添加参数
-	ctx.AddParam("pre1", "1")
-	ctx.AddParam("pre1", "2")
+	ctx.WriteString("handlepre1\n")
 }
 func handleparam(ctx eudore.Context) {
+	ctx.WriteString(ctx.GetParam("*"))
 	// 将ctx的参数以Json格式返回
-	ctx.WriteJson(ctx.Params())
+	// ctx.WriteJson(ctx.Params())
 	// 将ctx的参数根据请求格式返回
-	ctx.WriteRender(ctx.Params())
+	// ctx.WriteRender(ctx.Params())
 }
 ```
 

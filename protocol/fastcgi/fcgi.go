@@ -63,18 +63,13 @@ const (
 
 type Fastcgi struct{}
 
-type (
-	Handler = protocol.Handler
-	Header = protocol.Header
-)
-
-func (f *Fastcgi) EudoreConn(ctx context.Context, rw net.Conn, h Handler) {
+func (f *Fastcgi) EudoreConn(ctx context.Context, rw net.Conn, h protocol.Handler) {
 	newChild(ctx, rw, h).serve()
 }
 
 
 
-type header struct {
+type cgiHeader struct {
 	Version       uint8
 	Type          recType
 	Id            uint16
@@ -102,7 +97,7 @@ func (br *beginRequest) read(content []byte) error {
 // not synchronized because we don't care what the contents are
 var pad [maxPad]byte
 
-func (h *header) init(recType recType, reqId uint16, contentLength int) {
+func (h *cgiHeader) init(recType recType, reqId uint16, contentLength int) {
 	h.Version = 1
 	h.Type = recType
 	h.Id = reqId
@@ -116,7 +111,7 @@ func (h *header) init(recType recType, reqId uint16, contentLength int) {
 // to reply to them.
 // If l is nil, Serve accepts connections from os.Stdin.
 // If handler is nil, http.DefaultServeMux is used.
-func Serve(l net.Listener, handler Handler) error {
+func Serve(l net.Listener, handler protocol.Handler) error {
 	if l == nil {
 		var err error
 		l, err = net.FileListener(os.Stdin)
