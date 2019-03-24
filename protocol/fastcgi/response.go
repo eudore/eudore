@@ -1,18 +1,19 @@
 package fastcgi
 
 import (
+	"io"
 	"fmt"
 	"time"
+	"bufio"
 	"net"
 	"net/http"
 	"github.com/eudore/eudore/protocol"
-	"github.com/eudore/eudore/protocol/header"
 )
 
 // response implements http.ResponseWriter.
 type response struct {
 	req         *request
-	header      protocol.Header
+	header      Header
 	w           *bufWriter
 	wroteHeader bool
 }
@@ -20,7 +21,7 @@ type response struct {
 func newResponse(c *child, req *request) *response {
 	return &response{
 		req:    req,
-		header: make(header.HeaderMap),
+		header: make(Header),
 		w:      newWriter(c.conn, typeStdout, req.reqId),
 	}
 }
@@ -56,13 +57,10 @@ func (r *response) WriteHeader(code int) {
 
 	fmt.Fprintf(r.w, "Status: %d %s\r\n", code, http.StatusText(code))
 	
-	/*for k, v := range r.header {
+	for k, v := range r.header {
 		fmt.Fprintf(r.w, "%s: %s\r\n", k, v[0])
-	}*/
-	r.header.Range(func(k, v string){
-		fmt.Fprintf(r.w, "%s: %s\r\n", k, v)
-	})
-
+	}
+	
 	r.w.WriteString("\r\n")
 }
 
@@ -93,4 +91,57 @@ func (r *response) Status() int {
 func (r *response) Close() error {
 	r.Flush()
 	return r.w.Close()
+}
+
+
+
+
+// bufWriter encapsulates bufio.Writer but also closes the underlying stream when
+// Closed.
+type bufWriter struct {
+	closer io.Closer
+	*bufio.Writer
+}
+
+func (w *bufWriter) Close() error {
+	if err := w.Writer.Flush(); err != nil {
+		w.closer.Close()
+		return err
+	}
+	return w.closer.Close()
+}
+
+func newWriter(c *conn, recType recType, reqId uint16) *bufWriter {
+	s := &streamWriter{c: c, recType: recType, reqId: reqId}
+	w := bufio.NewWriterSize(s, maxWrite)
+	return &bufWriter{s, w}
+}
+
+// streamWriter abstracts out the separation of a stream into discrete records.
+// It only writes maxWrite bytes at a time.
+type streamWriter struct {
+	c       *conn
+	recType recType
+	reqId   uint16
+}
+
+func (w *streamWriter) Write(p []byte) (int, error) {
+	nn := 0
+	for len(p) > 0 {
+		n := len(p)
+		if n > maxWrite {
+			n = maxWrite
+		}
+		if err := w.c.writeRecord(w.recType, w.reqId, p[:n]); err != nil {
+			return nn, err
+		}
+		nn += n
+		p = p[n:]
+	}
+	return nn, nil
+}
+
+func (w *streamWriter) Close() error {
+	// send empty record to close the stream
+	return w.c.writeRecord(w.recType, w.reqId, nil)
 }

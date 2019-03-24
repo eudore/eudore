@@ -8,6 +8,7 @@ import (
 )
 
 type (
+	// 根据请求接受的数据类型来序列化数据
 	Renderer interface {
 		Render(protocol.ResponseWriter, interface{}) error
 		ContentType() string

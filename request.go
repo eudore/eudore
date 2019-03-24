@@ -11,18 +11,6 @@ import (
 )
 
 type (
-/*	protocol.RequestReader interface {
-		// http protocol data
-		Method() string
-		Proto() string
-		RequestURI() string
-		Header() Header
-		Read([]byte) (int, error)
-		Host() string
-		// conn data
-		RemoteAddr() string
-		TLS() *tls.ConnectionState
-	}*/
 	RequestReadSeeker interface {
 		protocol.RequestReader
 		io.Seeker

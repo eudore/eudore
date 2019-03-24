@@ -1,5 +1,9 @@
 package eudore
 
+/*
+基于基数树算法实现一个标准路由器
+*/
+
 import (
 	"strings"
 )
@@ -14,6 +18,7 @@ const (
 
 type (
 	// Routing data check function
+	//
 	// 路由数据校验函数
 	RouterCheckFunc func(string) bool
 	// RouterFindFunc func() []string

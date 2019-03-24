@@ -4,30 +4,12 @@ import (
 	"io"
 	"fmt"
 	"net"
-	"bytes"
 	"net/http"
 	"crypto/tls"
 	"github.com/eudore/eudore/protocol"
 )
 
 type (
-/*	ResponseWriter interface {
-		// http.ResponseWriter
-		Header() Header
-		Write([]byte) (int, error)
-		WriteHeader(int)
-		// http.Flusher 
-		Flush()
-		// http.Hijacker
-		Hijack() (net.Conn, *bufio.ReadWriter, error)
-		// http.Pusher
-		Push(string, *PushOptions) error
-		Size() int
-		Status() int
-	}*/
-
-
-
 	// Encapsulate the net/http.Response response message and convert it to the ResponseReader interface.
 	//
 	// 封装net/http.Response响应报文，转换成ResponseReader接口
@@ -43,15 +25,9 @@ type (
 		code		int
 		size		int
 	}
-	// 带缓存的ResponseWriter，需要调用Flush然后写入数据。
-	ResponseWriterBuffer struct {
-		protocol.ResponseWriter
-		Buf 	*bytes.Buffer
-	}
 )
 
 var _ protocol.ResponseWriter	=	&ResponseWriterHttp{}
-var _ protocol.ResponseWriter	=	&ResponseWriterBuffer{}
 
 
 func NewResponseWriterHttp(w http.ResponseWriter) protocol.ResponseWriter {
@@ -114,25 +90,6 @@ func (w *ResponseWriterHttp) Size() int {
 
 func (w *ResponseWriterHttp) Status() int {
 	return w.code
-}
-
-
-
-func NewResponseWriterBuffer(w protocol.ResponseWriter) protocol.ResponseWriter {
-	return &ResponseWriterBuffer{
-		ResponseWriter:		w,
-		Buf:				new(bytes.Buffer),
-	}
-}
-
-
-func (w *ResponseWriterBuffer) Write(p []byte) (int, error) {
-	return w.Buf.Write(p)
-}
-
-func (w *ResponseWriterBuffer) Flush() {
-	io.Copy(w.ResponseWriter, w.Buf)
-	w.Buf.Reset()
 }
 
 

@@ -50,8 +50,8 @@ import (
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2/hpack"
 
+
 	"github.com/eudore/eudore/protocol"
-	"github.com/eudore/eudore/protocol/header"
 )
 
 const (
@@ -59,7 +59,6 @@ const (
 	firstSettingsTimeout  = 2 * time.Second // should be in-flight with preface anyway
 	handlerChunkWriteSize = 4 << 10
 	defaultMaxStreams     = 250 // TODO: make this 100 as the GFE seems to?
-	DefaultMaxHeaderBytes = 1 << 20 // 1 MB
 )
 
 var (
@@ -85,12 +84,18 @@ var (
 	testHookOnPanic       func(sc *serverConn, panicVal interface{}) (rePanic bool)
 )
 
+func NewServer() *Server {
+	srv := new(Server)
+	srv.state = &serverInternalState{activeConns: make(map[*serverConn]struct{})}
+	return srv
+}
+
 // Server is an HTTP/2 server.
 type Server struct {
-	// eudore update
-	// from http.Server
 	MaxHeaderBytes time.Duration
+	ReadTimeout time.Duration
 	WriteTimeout time.Duration
+
 	// MaxHandlers limits the number of http.Handler ServeHTTP goroutines
 	// which may run at a time over all connections.
 	// Negative or zero no limit.
@@ -205,20 +210,6 @@ func (s *serverInternalState) startGracefulShutdown() {
 	s.mu.Unlock()
 }
 
-// ConfigureServer adds HTTP/2 support to a net/http Server.
-//
-// The configuration conf may be nil.
-//
-// ConfigureServer must be called before s begins serving.
-
-func NewServer() *Server {
-	srv := new(Server)
-	srv.state = &serverInternalState{activeConns: make(map[*serverConn]struct{})}
-	return srv
-}
-
-
-
 // ServeConn serves HTTP/2 requests on the provided connection and
 // blocks until the connection is no longer readable.
 //
@@ -234,6 +225,8 @@ func NewServer() *Server {
 //
 // The opts parameter is optional. If nil, default values are used.
 func (s *Server) EudoreConn(ctx context.Context, c net.Conn, h protocol.Handler) {
+	ctx = context.WithValue(ctx, http.LocalAddrContextKey, c.LocalAddr())
+
 	sc := &serverConn{
 		srv:                         s,
 		conn:                        c,
@@ -265,7 +258,7 @@ func (s *Server) EudoreConn(ctx context.Context, c net.Conn, h protocol.Handler)
 	// passes the connection off to us with the deadline already set.
 	// Write deadlines are set per stream in serverConn.newStream.
 	// Disarm the net.Conn write deadline here.
-	if sc.srv.WriteTimeout != 0 {
+	if s.WriteTimeout != 0 {
 		sc.conn.SetWriteDeadline(time.Time{})
 	}
 
@@ -340,18 +333,6 @@ func (s *Server) EudoreConn(ctx context.Context, c net.Conn, h protocol.Handler)
 	sc.serve()
 }
 
-/*
-eudore delete
-func serverConnBaseContext(c net.Conn, opts *ServeConnOpts) (ctx context.Context, cancel func()) {
-	ctx, cancel = context.WithCancel(context.Background())
-	ctx = context.WithValue(ctx, http.LocalAddrContextKey, c.LocalAddr())
-	if hs := opts.baseConfig(); hs != nil {
-		ctx = context.WithValue(ctx, http.ServerContextKey, hs)
-	}
-	return
-}
-*/
-
 func (sc *serverConn) rejectConn(err ErrCode, debug string) {
 	sc.vlogf("http2: server rejecting conn: %v, %s", err, debug)
 	// ignoring errors. hanging up anyway.
@@ -419,7 +400,7 @@ type serverConn struct {
 func (sc *serverConn) maxHeaderListSize() uint32 {
 	n := sc.srv.MaxHeaderBytes
 	if n <= 0 {
-		n = DefaultMaxHeaderBytes
+		n = http.DefaultMaxHeaderBytes
 	}
 	// http2's count is in a slightly different unit and includes 32 bytes per pair.
 	// So, take the net/http.Server value and pad it up a bit, assuming 10 headers.
@@ -463,8 +444,8 @@ type stream struct {
 	wroteHeaders     bool        // whether we wrote headers (not status 100)
 	writeDeadline    *time.Timer // nil if unused
 
-	trailer    protocol.Header // accumulated trailers
-	reqTrailer protocol.Header // handler's Request.Trailer
+	trailer			Header // accumulated trailers
+	reqTrailer		Header // handler's Request.Trailer
 }
 
 func (sc *serverConn) Framer() *Framer  { return sc.framer }
@@ -497,7 +478,6 @@ func (sc *serverConn) state(streamID uint32) (streamState, *stream) {
 	}
 	return stateIdle, nil
 }
-
 
 func (sc *serverConn) vlogf(format string, args ...interface{}) {
 	if VerboseLogs {
@@ -579,7 +559,7 @@ func (sc *serverConn) canonicalHeader(v string) string {
 	if sc.canonHeader == nil {
 		sc.canonHeader = make(map[string]string)
 	}
-	cv = textproto.CanonicalMIMEHeaderKey(v)
+	cv = http.CanonicalHeaderKey(v)
 	sc.canonHeader[v] = cv
 	return cv
 }
@@ -672,7 +652,7 @@ func (sc *serverConn) serve() {
 	defer close(sc.doneServing) // unblocks handlers trying to send
 
 	if VerboseLogs {
-		sc.vlogf("http2: server connection from %v", sc.conn.RemoteAddr())
+		sc.vlogf("http2: server connection from %v on %p", sc.conn.RemoteAddr(), sc.srv)
 	}
 
 	sc.writeFrame(FrameWriteRequest{
@@ -1358,9 +1338,6 @@ func (sc *serverConn) closeStream(st *stream, err error) {
 		if sc.srv.IdleTimeout != 0 {
 			sc.idleTimer.Reset(sc.srv.IdleTimeout)
 		}
-//		if h1ServerKeepAlivesDisabled(sc.hs) {
-//			sc.startGracefulShutdownInternal()
-//		}
 	}
 	if p := st.body; p != nil {
 		// Return any buffered unread bytes worth of conn-level flow control.
@@ -1685,22 +1662,18 @@ func (sc *serverConn) processHeaders(f *MetaHeadersFrame) error {
 	if err != nil {
 		return err
 	}
-// eudore delete
-//	st.reqTrailer = req.Trailer
+	st.reqTrailer = req.trailer
 	if st.reqTrailer != nil {
 		st.trailer = make(Header)
 	}
-// eudore delete
-//	st.body = req.Body.(*requestBody).pipe // may be nil
-// eudore update
-//	st.declBodyBytes = req.ContentLength
-	st.declBodyBytes = -1
+	st.body = req.requestBody.pipe // may be nil
+	st.declBodyBytes = req.length
 
 	handler := sc.handler
 	if f.Truncated {
 		// Their header list was too long. Send a 431 error.
 		handler = handleHeaderListTooLong
-	} else if err := checkValidHTTP2RequestHeaders(req.Header()); err != nil {
+	} else if err := checkValidHTTP2RequestHeaders(req.header); err != nil {
 		handler = new400Handler(err)
 	}
 
@@ -1711,9 +1684,9 @@ func (sc *serverConn) processHeaders(f *MetaHeadersFrame) error {
 	// similar to how the http1 server works. Here it's
 	// technically more like the http1 Server's ReadHeaderTimeout
 	// (in Go 1.8), though. That's a more sane option anyway.
-//	if sc.hs.ReadTimeout != 0 {
-//		sc.conn.SetReadDeadline(time.Time{})
-//	}
+	if sc.srv.ReadTimeout != 0 {
+		sc.conn.SetReadDeadline(time.Time{})
+	}
 
 	go sc.runHandler(rw, req, handler)
 	return nil
@@ -1801,9 +1774,6 @@ func (sc *serverConn) newStream(id, pusherID uint32, state streamState) *stream 
 	} else {
 		sc.curClientStreams++
 	}
-/*	if sc.curOpenStreams() == 1 {
-		sc.setConnState(http.StateActive)
-	}*/
 
 	return st
 }
@@ -1843,7 +1813,7 @@ func (sc *serverConn) newWriterAndRequest(st *stream, f *MetaHeadersFrame) (*res
 		return nil, nil, streamError(f.StreamID, ErrCodeProtocol)
 	}
 
-	rp.header = make(header.HeaderMap)
+	rp.header = make(Header)
 	for _, hf := range f.RegularFields() {
 		rp.header.Add(sc.canonicalHeader(hf.Name), hf.Value)
 	}
@@ -1871,7 +1841,7 @@ func (sc *serverConn) newWriterAndRequest(st *stream, f *MetaHeadersFrame) (*res
 type requestParam struct {
 	method                  string
 	scheme, authority, path string
-	header                  protocol.Header
+	header                  Header
 }
 
 func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*responseWriter, *requestReader, error) {
@@ -1895,7 +1865,7 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 	var trailer Header
 	for _, v := range rp.header["Trailer"] {
 		for _, key := range strings.Split(v, ",") {
-			key = textproto.CanonicalMIMEHeaderKey(strings.TrimSpace(key))
+			key = http.CanonicalHeaderKey(strings.TrimSpace(key))
 			switch key {
 			case "Transfer-Encoding", "Trailer", "Content-Length":
 				// Bogus. (copy of http1 rules)
@@ -1910,19 +1880,26 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 	}
 	delete(rp.header, "Trailer")
 
-/*	var url_ *url.URL*/
 	var requestURI string
 	if rp.method == "CONNECT" {
-/*		url_ = &url.URL{Host: rp.authority}*/
 		requestURI = rp.authority // mimic HTTP/1 server behavior
 	} else {
-/*		var err error
+		requestURI = rp.path
+	}
+
+/*	var url_ *url.URL
+	var requestURI string
+	if rp.method == "CONNECT" {
+		url_ = &url.URL{Host: rp.authority}
+		requestURI = rp.authority // mimic HTTP/1 server behavior
+	} else {
+		var err error
 		url_, err = url.ParseRequestURI(rp.path)
 		if err != nil {
 			return nil, nil, streamError(st.id, ErrCodeProtocol)
-		}*/
+		}
 		requestURI = rp.path
-	}
+	}*/
 
 	req := &requestReader{
 		requestBody:	requestBody{
@@ -1939,6 +1916,27 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 		tls:			tlsState,
 		trailer:		trailer,
 	}
+/*	
+	body := &requestBody{
+		conn:          sc,
+		stream:        st,
+		needsContinue: needsContinue,
+	}
+	req := &http.Request{
+		Method:     rp.method,
+		URL:        url_,
+		RemoteAddr: sc.remoteAddrStr,
+		Header:     rp.header,
+		RequestURI: requestURI,
+		Proto:      "HTTP/2.0",
+		ProtoMajor: 2,
+		ProtoMinor: 0,
+		TLS:        tlsState,
+		Host:       rp.authority,
+		Body:       body,
+		Trailer:    trailer,
+	}
+	req = req.WithContext(st.ctx)*/
 
 	rws := responseWriterStatePool.Get().(*responseWriterState)
 	bwSave := rws.bw
@@ -1948,26 +1946,25 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 	rws.bw.Reset(chunkWriter{rws})
 	rws.stream = st
 	rws.req = req
-	// rws.body = body
+	// rws.body = req.requestBody
 
 	rw := &responseWriter{rws: rws}
 	return rw, req, nil
 }
 
-
-
 // Run on its own goroutine.
-func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, h protocol.Handler) {
+func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, handler protocol.Handler) {
 	didPanic := true
 	defer func() {
 		rw.rws.stream.cancelCtx()
 		if didPanic {
+			e := recover()
 			sc.writeFrameFromHandler(FrameWriteRequest{
 				write:  handlerPanicRST{rw.rws.stream.id},
 				stream: rw.rws.stream,
 			})
 			// Same as net/http:
-			if e := recover(); e != nil {
+			if e != nil && e != http.ErrAbortHandler {
 				const size = 64 << 10
 				buf := make([]byte, size)
 				buf = buf[:runtime.Stack(buf, false)]
@@ -1977,10 +1974,11 @@ func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, h proto
 		}
 		rw.handlerDone()
 	}()
-	h.EudoreHTTP(sc.baseCtx, rw, req)
+	handler.EudoreHTTP(sc.baseCtx, rw, req)
 	didPanic = false
 }
-var handleHeaderListTooLong = HandlerFunc(handleHeaderListTooLongFunc)
+
+var handleHeaderListTooLong = protocol.HandlerFunc(handleHeaderListTooLongFunc)
 
 func handleHeaderListTooLongFunc(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
 	// 10.5.1 Limits on Header Block Size:
@@ -2145,6 +2143,82 @@ func (b *requestBody) Read(p []byte) (n int, err error) {
 	return
 }
 
+type Header map[string][]string
+
+func (h Header) Get(key string) string {
+	return textproto.MIMEHeader(h).Get(key)
+}
+
+func (h Header) Set(key ,value string) {
+	textproto.MIMEHeader(h).Set(key, value)
+}
+
+func (h Header) Add(key ,value string) {
+	textproto.MIMEHeader(h).Add(key, value)
+}
+
+func (h Header) Del(key string) {
+	textproto.MIMEHeader(h).Del(key)
+}
+
+func (h Header) Range(fn func(string, string)) {
+	for k, v := range h {
+		for _, vv := range v {
+			fn(k, vv)
+		}
+	}
+}
+
+type (
+	requestReader struct {
+		requestBody
+		method		string
+		uri			string
+		remoteAddr	string
+		header		Header
+		proto		string
+		host		string
+		length		int64
+		trailer		Header
+		tls			*tls.ConnectionState
+	}
+)
+
+func (r *requestReader) Method() string {
+	return r.method
+}
+
+func (r *requestReader) Proto() string {
+	return r.proto
+}
+
+func (r *requestReader) RequestURI() string {
+	return r.uri
+}
+
+func (r *requestReader) Header() protocol.Header {
+	return r.header
+}
+
+func (r *requestReader) Read(b []byte) (int, error) {
+	return r.requestBody.Read(b)
+}
+
+func (r *requestReader) Host() string {
+	return r.host
+}
+
+// conn data
+func (r *requestReader) RemoteAddr() string {
+	return r.remoteAddr
+}
+
+func (r *requestReader) TLS() *tls.ConnectionState {
+	return r.tls
+}
+
+
+
 // responseWriter is the http.ResponseWriter implementation. It's
 // intentionally small (1 pointer wide) to minimize garbage. The
 // responseWriterState pointer inside is zeroed at the end of a
@@ -2156,18 +2230,16 @@ type responseWriter struct {
 }
 
 // Optional http.ResponseWriter interfaces implemented.
-/*var (
+var (
 	_ http.CloseNotifier = (*responseWriter)(nil)
 	_ http.Flusher       = (*responseWriter)(nil)
 	_ stringWriter       = (*responseWriter)(nil)
 )
-*/
+
 type responseWriterState struct {
 	// immutable within a request:
 	stream *stream
-	// eudore update
-	req 	*requestReader
-	// req    *http.Request
+	req    *requestReader
 	// body   *requestBody // to close at end of request, if DATA frames didn't
 	conn   *serverConn
 
@@ -2175,8 +2247,8 @@ type responseWriterState struct {
 	bw *bufio.Writer // writing to a chunkWriter{this *responseWriterState}
 
 	// mutated by http.Handler goroutine:
-	handlerHeader header.HeaderMap // nil until called
-	snapHeader    header.HeaderMap // snapshot of handlerHeader at WriteHeader time
+	handlerHeader Header // nil until called
+	snapHeader    Header // snapshot of handlerHeader at WriteHeader time
 	trailers      []string    // set in writeChunk
 	status        int         // status code passed to WriteHeader
 	wroteHeader   bool        // WriteHeader called (explicitly or implicitly). Not necessarily sent to user yet.
@@ -2201,7 +2273,7 @@ func (rws *responseWriterState) hasTrailers() bool { return len(rws.trailers) !=
 // response header is written. It notes that a header will need to be
 // written in the trailers at the end of the response.
 func (rws *responseWriterState) declareTrailer(k string) {
-	k = textproto.CanonicalMIMEHeaderKey(k)
+	k = http.CanonicalHeaderKey(k)
 	if !httpguts.ValidTrailerHeader(k) {
 		// Forbidden by RFC 7230, section 4.1.2.
 		rws.conn.logf("ignoring invalid trailer %q", k)
@@ -2223,7 +2295,7 @@ func (rws *responseWriterState) writeChunk(p []byte) (n int, err error) {
 		rws.writeHeader(200)
 	}
 
-	isHeadResp := rws.req.Method() == "HEAD"
+	isHeadResp := rws.req.method == "HEAD"
 	if !rws.sentHeader {
 		rws.sentHeader = true
 		var ctype, clen string
@@ -2361,7 +2433,7 @@ func (rws *responseWriterState) promoteUndeclaredTrailers() {
 		}
 		trailerKey := strings.TrimPrefix(k, TrailerPrefix)
 		rws.declareTrailer(trailerKey)
-		rws.handlerHeader[textproto.CanonicalMIMEHeaderKey(trailerKey)] = vv
+		rws.handlerHeader[http.CanonicalHeaderKey(trailerKey)] = vv
 	}
 
 	if len(rws.trailers) > 1 {
@@ -2416,7 +2488,7 @@ func (w *responseWriter) Header() protocol.Header {
 		panic("Header called after Handler finished")
 	}
 	if rws.handlerHeader == nil {
-		rws.handlerHeader = make(header.HeaderMap)
+		rws.handlerHeader = make(Header)
 	}
 	return rws.handlerHeader
 }
@@ -2458,15 +2530,23 @@ func (rws *responseWriterState) writeHeader(code int) {
 	}
 }
 
-func cloneHeader(h protocol.Header) protocol.Header {
-	h2 := make(header.HeaderMap, len(h))
-	/*for k, vv := range h {
+func cloneHeader(h Header) Header {
+	h2 := make(Header, len(h))
+	for k, vv := range h {
 		vv2 := make([]string, len(vv))
 		copy(vv2, vv)
 		h2[k] = vv2
-	}*/
-	h.Range(func(k ,v string){
-		h2[k] = v
+	}
+	return h2
+}
+
+
+func cloneProtocolHeader(h protocol.Header) Header {
+	// TODO: ???
+	// h2 := make(Header, len(h))
+	h2 := make(Header)
+	h.Range(func(k, v string){
+		h2.Add(k, v)
 	})
 	return h2
 }
@@ -2512,18 +2592,6 @@ func (w *responseWriter) write(lenData int, dataB []byte, dataS string) (n int, 
 	}
 }
 
-func (w *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return nil, nil, fmt.Errorf("http2 nosupported State Hijacked")
-}
-
-func (w *responseWriter) Size() int {
-	return 0
-}
-
-func (w *responseWriter) Status() int {
-	return 0
-}
-
 func (w *responseWriter) handlerDone() {
 	rws := w.rws
 	dirty := rws.dirty
@@ -2541,13 +2609,23 @@ func (w *responseWriter) handlerDone() {
 	}
 }
 
+func (w *responseWriter) Hijack() (net.Conn, error) {
+	return nil, fmt.Errorf("http2 nosupported State Hijacked")
+}
+
+func (w *responseWriter) Size() int {
+	return 0
+}
+
+func (w *responseWriter) Status() int {
+	return 0
+}
+
 // Push errors.
 var (
 	ErrRecursivePush    = errors.New("http2: recursive push not allowed")
 	ErrPushLimitReached = errors.New("http2: push would exceed peer's SETTINGS_MAX_CONCURRENT_STREAMS")
 )
-
-// var _ Pusher = (*responseWriter)(nil)
 
 func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
 	st := w.rws.stream
@@ -2561,7 +2639,7 @@ func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
 	}
 
 	if opts == nil {
-		opts = new(PushOptions)
+		opts = new(protocol.PushOptions)
 	}
 
 	// Default options.
@@ -2586,7 +2664,7 @@ func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
 			return fmt.Errorf("target must be an absolute URL or an absolute path: %q", target)
 		}
 		u.Scheme = wantScheme
-		u.Host = w.rws.req.Host()
+		u.Host = w.rws.req.host
 	} else {
 		if u.Scheme != wantScheme {
 			return fmt.Errorf("cannot push URL with scheme %q from request with scheme %q", u.Scheme, wantScheme)
@@ -2595,7 +2673,8 @@ func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
 			return errors.New("URL must have a host")
 		}
 	}
-	for k := range opts.Header {
+	// TODO: ???
+/*	for k := range opts.Header {
 		if strings.HasPrefix(k, ":") {
 			return fmt.Errorf("promised request headers cannot include pseudo header %q", k)
 		}
@@ -2607,8 +2686,8 @@ func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
 		case "content-length", "content-encoding", "trailer", "te", "expect", "host":
 			return fmt.Errorf("promised request headers cannot include %q", k)
 		}
-	}
-	if err := checkValidHTTP2RequestHeaders(opts.Header); err != nil {
+	}*/
+	if err := checkValidHTTP2RequestProtocolHeaders(opts.Header); err != nil {
 		return err
 	}
 
@@ -2623,7 +2702,7 @@ func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
 		parent: st,
 		method: opts.Method,
 		url:    u,
-		header: cloneHeader(opts.Header),
+		header: cloneProtocolHeader(opts.Header),
 		done:   errChanPool.Get().(chan error),
 	}
 
@@ -2650,7 +2729,7 @@ type startPushRequest struct {
 	parent *stream
 	method string
 	url    *url.URL
-	header protocol.Header
+	header Header
 	done   chan error
 }
 
@@ -2764,27 +2843,46 @@ var connHeaders = []string{
 // checkValidHTTP2RequestHeaders checks whether h is a valid HTTP/2 request,
 // per RFC 7540 Section 8.1.2.2.
 // The returned error is reported to users.
-func checkValidHTTP2RequestHeaders(h protocol.Header) error {
+func checkValidHTTP2RequestHeaders(h Header) error {
 	for _, k := range connHeaders {
-		if len(h[k]) > 0 {
+		if _, ok := h[k]; ok {
 			return fmt.Errorf("request header %q is not valid in HTTP/2", k)
 		}
 	}
-	// te := h["Te"]
+	te := h["Te"]
+	if len(te) > 0 && (len(te) > 1 || (te[0] != "trailers" && te[0] != "")) {
+		return errors.New(`request header "TE" may only be "trailers" in HTTP/2`)
+	}
+	return nil
+}
+
+func checkValidHTTP2RequestProtocolHeaders(h protocol.Header) error {
+	for _, k := range connHeaders {
+		if len(h.Get(k)) > 0 {
+			return fmt.Errorf("request header %q is not valid in HTTP/2", k)
+		}
+	}
 	te := h.Get("Te")
-	// if len(te) > 0 && (len(te) > 1 || (te[0] != "trailers" && te[0] != "")) {
 	if len(te) > 0 && te != "trailers"  {
 		return errors.New(`request header "TE" may only be "trailers" in HTTP/2`)
 	}
 	return nil
 }
 
-
-func new400Handler(err error) HandlerFunc {
-	return func(ctx context.Context, w ResponseWriter, r RequestReader) {
+func new400Handler(err error) protocol.HandlerFunc {
+	return func(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintln(w, err.Error())
 	}
+}
+
+func strSliceContains(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }

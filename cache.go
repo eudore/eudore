@@ -1,5 +1,9 @@
 package eudore
 
+/*
+定义一个数据缓存对象。
+*/
+
 import (
 	"fmt"
 	"time"

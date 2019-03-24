@@ -16,9 +16,8 @@ package fastcgi
 import (
 	"os"
 	"net"
-	"errors"
 	"context"
-	"encoding/binary"
+	"net/textproto"
 	"github.com/eudore/eudore/protocol"
 )
 
@@ -68,44 +67,6 @@ func (f *Fastcgi) EudoreConn(ctx context.Context, rw net.Conn, h protocol.Handle
 }
 
 
-
-type cgiHeader struct {
-	Version       uint8
-	Type          recType
-	Id            uint16
-	ContentLength uint16
-	PaddingLength uint8
-	Reserved      uint8
-}
-
-type beginRequest struct {
-	role     uint16
-	flags    uint8
-	reserved [5]uint8
-}
-
-func (br *beginRequest) read(content []byte) error {
-	if len(content) != 8 {
-		return errors.New("fcgi: invalid begin request record")
-	}
-	br.role = binary.BigEndian.Uint16(content)
-	br.flags = content[2]
-	return nil
-}
-
-// for padding so we don't have to allocate all the time
-// not synchronized because we don't care what the contents are
-var pad [maxPad]byte
-
-func (h *cgiHeader) init(recType recType, reqId uint16, contentLength int) {
-	h.Version = 1
-	h.Type = recType
-	h.Id = reqId
-	h.ContentLength = uint16(contentLength)
-	h.PaddingLength = uint8(-contentLength & 7)
-}
-
-
 // Serve accepts incoming FastCGI connections on the listener l, creating a new
 // goroutine for each. The goroutine reads requests and then calls handler
 // to reply to them.
@@ -127,5 +88,32 @@ func Serve(l net.Listener, handler protocol.Handler) error {
 		}
 		c := newChild(nil, rw, handler)
 		go c.serve()
+	}
+}
+
+
+type Header map[string][]string
+
+func (h Header) Get(key string) string {
+	return textproto.MIMEHeader(h).Get(key)
+}
+
+func (h Header) Set(key ,value string) {
+	textproto.MIMEHeader(h).Set(key, value)
+}
+
+func (h Header) Add(key ,value string) {
+	textproto.MIMEHeader(h).Add(key, value)
+}
+
+func (h Header) Del(key string) {
+	textproto.MIMEHeader(h).Del(key)
+}
+
+func (h Header) Range(fn func(string, string)) {
+	for k, v := range h {
+		for _, vv := range v {
+			fn(k, vv)
+		}
 	}
 }

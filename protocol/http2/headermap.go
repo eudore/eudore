@@ -5,9 +5,9 @@
 package http2
 
 import (
+	"net/http"
 	"strings"
 	"sync"
-	"net/textproto"
 )
 
 var (
@@ -73,7 +73,7 @@ func buildCommonHeaderMaps() {
 	commonLowerHeader = make(map[string]string, len(common))
 	commonCanonHeader = make(map[string]string, len(common))
 	for _, v := range common {
-		chk := textproto.CanonicalMIMEHeaderKey(v)
+		chk := http.CanonicalHeaderKey(v)
 		commonLowerHeader[chk] = v
 		commonCanonHeader[v] = chk
 	}

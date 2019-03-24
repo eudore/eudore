@@ -7,10 +7,9 @@
 - 核心全部接口化,支持重写Application、Context、Request、Response、Router、Middleware、Logger、Server、Config、Cache、Bind、Render、View。
 - 对象语义明确。
 - net/http库解耦,可实现或接入其他http协议解析库。
+- 框架源码简单易懂注释多,无注释部分变动可能较大。
 
 ## issue
-
-Config setdata反射设置
 
 setting 基于配置初始化对象未实现
 
@@ -18,9 +17,11 @@ setting 基于配置初始化对象未实现
 
 Logger基于GC优化
 
-修复protocol/http2
+config-eudore未测试，已实现通过路径设置获得属性。
 
-header实现优化
+map转结构体未完整实现，已实现结构体转map。
+
+组件Set方法等待config-eudore实现后复用功能
 
 ## Component
 
@@ -37,8 +38,8 @@ header实现优化
 | server-eudor  | 使用protocol库封装eudore Server | github.com/eudore/eudore/component/server/eudore |
 | cache-map | 使用Sync.Map实现的缓存 | 内置 |
 | cache-group | 使用前缀匹配的多缓存组合 | 内置 |
-| config-map | 使用map存储配置 | 内置 |
-| config-eudore |  | 未实现 |
+| config-map | 使用map[string]interface{}存储配置 | 内置 |
+| config-eudore | 使用反射来操作结构体和map自由嵌套的配置对象 | 内置、未测试 |
 
 ## Example
 
@@ -68,7 +69,7 @@ header实现优化
 
 ## Application
 
-Application默认有两种实现Core和Eudore，Core只有启动函数，Eudore多一些复制函数封装。
+Application默认有两种实现Core和Eudore，Core只有启动函数，Eudore多一些辅助函数封装。
 
 ```golang
 func main() {
@@ -85,7 +86,7 @@ func main() {
 
 ## Server
 
-Server是eudore顶级接口对象之一。
+Server是eudore用于启动http服务的顶级接口对象之一。
 
 ```golang
 func main() {
@@ -149,10 +150,16 @@ func main() {
 
 ## Router and Middleware
 
-router-std路由器支持默认参数、路径参数、通配符参数，目前不支持正则参数和参数效验，可重新实现一个Router来实现这些功能。
+router-std路由器支持组路由、组级中间件、路径参数、通配符参数、默认参数。
+
+router-full路由器支持组路由、组级中间件、路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
+
+可实现Router接口重写路由器。
 
 `curl -XGET http://localhost:8088/api/v1/`
+
 `curl -XGET http://localhost:8088/api/v1/get/eudore`
+
 `curl -XGET http://localhost:8088/api/v1/set/eudore`
 
 
@@ -181,7 +188,7 @@ func main() {
 
 	// 创建子路由器
 	// apiv1 := eudore.NewRouterClone(app.Router)
-	apiv1 := app.Group("/api/v1")
+	apiv1 := app.Group("/api/v1 version:v1")
 	// 路由级请求处理中间件
 	apiv1.AddMiddleware(recover.RecoverFunc)
 	{
@@ -189,8 +196,6 @@ func main() {
 		// Api级请求处理中间件
 		apiv1.AnyFunc("/*", handlepre1, handleparam)
 	}
-	// app注册api子路由
-	// app.SubRoute("/api/v1 version:v1", apiv1)
 	// 默认路由
 	app.AnyFunc("/*path", func(ctx eudore.Context){
 		ctx.WriteString(ctx.Method() + " " + ctx.Path())
@@ -206,15 +211,10 @@ func handleget(ctx eudore.Context) {
 	ctx.WriteString("Get: " + ctx.GetParam("name"))
 }
 func handlepre1(ctx eudore.Context) {
-	// 添加参数
-	ctx.WriteString("handlepre1\n")
+	ctx.WriteString("\nhandlepre1\n")
 }
 func handleparam(ctx eudore.Context) {
 	ctx.WriteString(ctx.GetParam("*"))
-	// 将ctx的参数以Json格式返回
-	// ctx.WriteJson(ctx.Params())
-	// 将ctx的参数根据请求格式返回
-	// ctx.WriteRender(ctx.Params())
 }
 ```
 

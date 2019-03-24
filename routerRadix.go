@@ -1,8 +1,11 @@
 package eudore
 
+/*
+基于基数树算法实现一个完整功能的路由器。
+未实现正则参数捕捉功能。
+*/
+
 import (
-	// "fmt"
-	// "github.com/kr/pretty"
 	"strings"
 )
 
@@ -18,7 +21,7 @@ type (
 	// There are three basic functions: path parameter, wildcard parameter, default parameter, and parameter verification.
 	// 基于基数树实现的基本功能路由器。
 	//
-	// 具有路径参数、通配符参数、默认参数、参数校验三项基本功能。
+	// 具有路径参数、通配符参数、默认参数三项基本功能。
 	RouterRadix struct {
 		RouterMethod
 		// save middleware

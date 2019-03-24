@@ -1,5 +1,10 @@
 package eudore
 
+/*
+定义请求反序列化然后一个对象的数据。
+默认根据http请求的Content-Type header指定的请求数据格式来解析数据。
+支持设置map和结构体，目前未加入使用uri参数。
+*/
 
 import (
 	"io"
@@ -8,7 +13,7 @@ import (
 	"errors"
 	"reflect"
 	"strings"
-	"strconv"
+	// "strconv"
 	"net/url"
 	"io/ioutil"
 	"encoding/json"
@@ -104,9 +109,11 @@ func mapFormByTag(ptr interface{}, form map[string][]string, tag string) error {
 		}
 
 		structFieldKind := structField.Kind()
+		// 从tag获取属性名称
 		inputFieldName := typeField.Tag.Get(tag)
 		inputFieldNameList := strings.Split(inputFieldName, ",")
 		inputFieldName = inputFieldNameList[0]
+		// 从tag获取默认值
 		var defaultValue string
 		if len(inputFieldNameList) > 1 {
 			defaultList := strings.SplitN(inputFieldNameList[1], "=", 2)
@@ -115,6 +122,7 @@ func mapFormByTag(ptr interface{}, form map[string][]string, tag string) error {
 			}
 		}
 		if inputFieldName == "" {
+			// 设置名称为结构体属性名
 			inputFieldName = typeField.Name
 
 			// if "form" tag is nil, we inspect if the field is a struct or struct pointer.
@@ -127,6 +135,7 @@ func mapFormByTag(ptr interface{}, form map[string][]string, tag string) error {
 				structField = structField.Elem()
 				structFieldKind = structField.Kind()
 			}
+			// 如果对象属性是结构体，则设置该对象属性
 			if structFieldKind == reflect.Struct {
 				err := mapFormByTag(structField.Addr().Interface(), form, tag)
 				if err != nil {
@@ -135,8 +144,10 @@ func mapFormByTag(ptr interface{}, form map[string][]string, tag string) error {
 				continue
 			}
 		}
+		// 从输入数据读取值
 		inputValue, exists := form[inputFieldName]
 
+		// 如果值不存在，有默认值则初始化对象并使用默认值
 		if !exists {
 			if defaultValue == "" {
 				continue
@@ -146,30 +157,33 @@ func mapFormByTag(ptr interface{}, form map[string][]string, tag string) error {
 		}
 
 		numElems := len(inputValue)
+		// 处理数组
 		if structFieldKind == reflect.Slice && numElems > 0 {
 			sliceOf := structField.Type().Elem().Kind()
 			slice := reflect.MakeSlice(structField.Type(), numElems, numElems)
 			for i := 0; i < numElems; i++ {
-				if err := setWithProperType(sliceOf, inputValue[i], slice.Index(i)); err != nil {
+				if err := setWithString(sliceOf, slice.Index(i), inputValue[i]); err != nil {
 					return err
 				}
 			}
 			val.Field(i).Set(slice)
 			continue
 		}
+		// 处理时间类型
 		if _, isTime := structField.Interface().(time.Time); isTime {
 			if err := setTimeField(inputValue[0], typeField, structField); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := setWithProperType(typeField.Type.Kind(), inputValue[0], structField); err != nil {
+		// 处理其他类型
+		if err := setWithString(typeField.Type.Kind(), structField, inputValue[0]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
-
+/*
 func setWithProperType(valueKind reflect.Kind, val string, structField reflect.Value) error {
 	switch valueKind {
 	case reflect.Int:
@@ -289,3 +303,4 @@ func setTimeField(val string, structField reflect.StructField, value reflect.Val
 	return nil
 }
 
+*/

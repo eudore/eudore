@@ -1,5 +1,9 @@
 package eudore
 
+/*
+定义组件的基本信息
+*/
+
 import (
 	"fmt"
 	"sort"
@@ -13,6 +17,8 @@ const (
 	ComponentConfigName			=	"config"
 	ComponentConfigMapName		=	"config-map"
 	ComponentConfigMapVersion	=	"eudore config map v1.0, use map save all config info."
+	ComponentConfigEudoreName		=	"config-eudore"
+	ComponentConfigEudoreVersion	=	"eudore config eudore v1.0, use reflect set and get all config info."
 	ComponentLoggerName			=	"logger"
 	ComponentLoggerInitName		=	"logger-init"
 	ComponentLoggerInitVersion	=	"eudore logger init v1.0, save all entry."
@@ -62,9 +68,6 @@ type (
 	Component interface {
 		ComponentName
 		Version() string
-	}
-	Releaser interface {
-		Release()
 	}
 )
 

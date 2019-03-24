@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"github.com/eudore/eudore/protocol"
-	"github.com/eudore/eudore/protocol/header"
 )
 
 type Request struct {
@@ -15,15 +14,16 @@ type Request struct {
 	method		string
 	requestURI	string
 	proto		string
-	header		protocol.Header
+	header		Header
 	ok			bool
+	expect		bool
 }
 
 
 func(r *Request) Reset(conn net.Conn) error {
 	r.conn = conn
 	r.reader.Reset(conn)
-	r.header = make(header.HeaderMap)
+	r.header.Reset()
 	// Read the http request line.
 	// 读取http请求行。
 	line, err := r.readLine()
@@ -43,12 +43,20 @@ func(r *Request) Reset(conn net.Conn) error {
 		if err != nil || len(line) == 0 {
 			break
 		}
-		// fmt.Println("read header:", line)
 		// Split into headers and store them in the request.
 		// 分割成header存储到请求中。
 		r.header.Add(splitHeader(line))
 	}
+	r.expect = r.header.Get("Expect") == "100-continue"
 	return nil
+}
+
+func(r *Request) Read(p []byte) (int, error) {
+	if r.expect {
+		r.expect = false
+		r.conn.Write(constinueMsg)
+	}
+	return r.reader.Read(p)
 }
 
 func(r *Request) Method() string {
@@ -64,11 +72,7 @@ func (r *Request) RequestURI() string {
 }
 
 func (r *Request) Header() protocol.Header {
-	return r.header
-}
-
-func (r *Request) Read(b []byte) (int, error) {
-	return r.reader.Read(b)
+	return &r.header
 }
 
 func (r *Request) Host() string {

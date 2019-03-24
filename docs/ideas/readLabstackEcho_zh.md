@@ -41,15 +41,15 @@ func hello(c echo.Context) error {
 
 先[godoc][2]打开echo的源码,地址就是域名`godoc.org`加`/`再加报名`github.com/labstack/echo`。
 
-![image](../resource/pdf/echo01.png)
+![image](https://raw.githubusercontent.com/eudore/eudore/master/docs/resource/img/echo01.png)
 
 然后选择`Index`，就会跳过前面的介绍，直接到文档的函数和类型，在选择`type Echo`下的`func New() (e *Echo)`函数跳转到函数介绍。
 
-![image](../resource/pdf/echo02.png)
+![image](https://raw.githubusercontent.com/eudore/eudore/master/docs/resource/img/echo02.png)
 
 选择蓝色的New函数，就会跳转到函数定义。
 
-![image](../resource/pdf/echo03.png)
+![image](https://raw.githubusercontent.com/eudore/eudore/master/docs/resource/img/echo03.png)
 
 会看见的github定义的函数New内容如下：
 
@@ -322,6 +322,7 @@ func (e *Echo) Use(middleware ...MiddlewareFunc) {
 
 echo中间件使用HandlerFunc进行一层层装饰，最后返回一个HandlerFunc处理Context。
 
+基于echo性能测试用例，发现增加echo中间件会有相对明显性能下降。
 
 
 [1]: https://github.com/labstack/echo

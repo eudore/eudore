@@ -1,5 +1,9 @@
 package eudore
 
+/*
+保存各种全局函数，用于根据名称获得对应的函数。
+*/
+
 import (
 	"regexp"
 	"strconv"
@@ -12,6 +16,8 @@ var (
 	globalLoggerHandleFuncs		map[string]LoggerHandleFunc
 	globalRouterCheckFunc		map[string]RouterCheckFunc
 	globalRouterNewCheckFunc		map[string]RouterNewCheckFunc
+	globalConfigReadFunc			map[string]ConfigReadFunc
+	globalPoolGetFunc				map[string]PoolGetFunc
 )
 
 func init() {
@@ -31,6 +37,12 @@ func init() {
 	// RouterNewCheckFunc
 	globalRouterNewCheckFunc["min"] = RouterNewCheckFuncMin
 	globalRouterNewCheckFunc["regexp"] = RouterNewCheckFuncRegexp
+	globalConfigReadFunc = make(map[string]ConfigReadFunc)
+	globalConfigReadFunc["default"] = ReadFile
+	globalConfigReadFunc["file"] = ReadFile
+	globalConfigReadFunc["https"] = ReadHttp
+	globalConfigReadFunc["http"] = ReadHttp
+	globalPoolGetFunc = make(map[string]PoolGetFunc)
 }
 
 // Handler
@@ -117,4 +129,23 @@ func RouterNewCheckFuncRegexp(str string) RouterCheckFunc {
 	return func(arg string) bool {
 		return re.MatchString(arg)
 	}
+}
+
+
+// ConfigReadFunc
+func ConfigSaveConfigReadFunc(name string, fn ConfigReadFunc) {
+	globalConfigReadFunc[name] = fn
+}
+
+func ConfigLoadConfigReadFunc(name string) ConfigReadFunc {
+	return globalConfigReadFunc[name]
+}
+
+// ConfigReadFunc
+func ConfigSavePoolGetFunc(name string, fn PoolGetFunc) {
+	globalPoolGetFunc[name] = fn
+}
+
+func ConfigLoadPoolGetFunc(name string) PoolGetFunc {
+	return globalPoolGetFunc[name]
 }

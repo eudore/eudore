@@ -13,9 +13,25 @@ import (
 	"context"
 	"io"
 	"io/ioutil"
+	"encoding/binary"
 	"net/http"
 	"github.com/eudore/eudore/protocol"
 )
+
+var errCloseConn = errors.New("fcgi: connection should be closed")
+
+var emptyBody = ioutil.NopCloser(strings.NewReader(""))
+
+// ErrRequestAborted is returned by Read when a handler attempts to read the
+// body of a request that has been aborted by the web server.
+var ErrRequestAborted = errors.New("fcgi: request aborted by web server")
+
+// ErrConnClosed is returned by Read when a handler attempts to read the body of
+// a request after the connection to the web server has been closed.
+var ErrConnClosed = errors.New("fcgi: connection to web server closed")
+
+
+type envVarsContextKey struct{}
 
 type child struct {
 	baseCtx	context.Context
@@ -35,15 +51,16 @@ func newChild(ctx context.Context, rwc io.ReadWriteCloser, handler protocol.Hand
 	}
 }
 
-
 func (c *child) serve() {
 	defer c.conn.Close()
 	defer c.cleanUp()
 	var rec record
 	for {
+		// 读取一条记录
 		if err := rec.read(c.conn.rwc); err != nil {
 			return
 		}
+		// 处理
 		if err := c.handleRecord(&rec); err != nil {
 			return
 		}
@@ -190,22 +207,6 @@ func (c *child) cleanUp() {
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // request holds the state for an in-progress request. As soon as it's complete,
 // it's converted to an http.Request.
 type request struct {
@@ -219,7 +220,6 @@ type request struct {
 
 // envVarsContextKey uniquely identifies a mapping of CGI
 // environment variables to their values in a request context
-type envVarsContextKey struct{}
 
 func newRequest(reqId uint16, flags uint8) *request {
 	r := &request{
@@ -256,19 +256,28 @@ func (r *request) parseParams() {
 		r.params[key] = val
 	}
 }
+func readSize(s []byte) (uint32, int) {
+	if len(s) == 0 {
+		return 0, 0
+	}
+	size, n := uint32(s[0]), 1
+	if size&(1<<7) != 0 {
+		if len(s) < 4 {
+			return 0, 0
+		}
+		n = 4
+		size = binary.BigEndian.Uint32(s)
+		size &^= 1 << 31
+	}
+	return size, n
+}
 
-
-var errCloseConn = errors.New("fcgi: connection should be closed")
-
-var emptyBody = ioutil.NopCloser(strings.NewReader(""))
-
-// ErrRequestAborted is returned by Read when a handler attempts to read the
-// body of a request that has been aborted by the web server.
-var ErrRequestAborted = errors.New("fcgi: request aborted by web server")
-
-// ErrConnClosed is returned by Read when a handler attempts to read the body of
-// a request after the connection to the web server has been closed.
-var ErrConnClosed = errors.New("fcgi: connection to web server closed")
+func readString(s []byte, size uint32) string {
+	if size > uint32(len(s)) {
+		return ""
+	}
+	return string(s[:size])
+}
 
 
 // filterOutUsedEnvVars returns a new map of env vars without the
@@ -319,4 +328,21 @@ func addFastCGIEnvToContext(s string) bool {
 	}
 	// Unknown, so include it to be safe.
 	return true
+}
+
+
+
+type beginRequest struct {
+	role     uint16
+	flags    uint8
+	reserved [5]uint8
+}
+
+func (br *beginRequest) read(content []byte) error {
+	if len(content) != 8 {
+		return errors.New("fcgi: invalid begin request record")
+	}
+	br.role = binary.BigEndian.Uint16(content)
+	br.flags = content[2]
+	return nil
 }

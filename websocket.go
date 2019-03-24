@@ -1,5 +1,5 @@
-// source: github.com/gobwas/ws
 package eudore
+// source: github.com/gobwas/ws
 
 import (
 	"io"

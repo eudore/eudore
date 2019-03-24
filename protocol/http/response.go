@@ -7,7 +7,6 @@ import (
 	"time"
 	"bufio"
 	"github.com/eudore/eudore/protocol"
-	"github.com/eudore/eudore/protocol/header"
 )
 
 const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
@@ -20,7 +19,7 @@ type Response struct {
 	request		*Request
 	conn		net.Conn
 	writer		*bufio.Writer
-	header		protocol.Header
+	header		Header
 	status		int
 	iswrite		bool
 	chunked		bool
@@ -34,7 +33,7 @@ type Response struct {
 func (w *Response) Reset(conn net.Conn) {
 	w.conn = conn
 	w.writer.Reset(conn)
-	w.header = make(header.HeaderMap)
+	w.header.Reset()
 	w.status = 200
 	w.iswrite = false
 	w.chunked = false
@@ -43,7 +42,7 @@ func (w *Response) Reset(conn net.Conn) {
 }
 
 func (w *Response) Header() protocol.Header {
-	return w.header
+	return &w.header
 }
 
 func (w *Response) WriteHeader(codeCode int) {
@@ -92,9 +91,10 @@ func (w *Response) writerResponseLine() {
 		fmt.Fprintf(w.writer, "%s %d %s\r\n", w.request.Proto(), w.status, Status[w.status])
 		// Write headers
 		// 写入headers
-		w.header.Range(func(k, v string){
-			fmt.Fprintf(w.writer, "%s: %s\r\n", k, v)
-		})
+		h := w.header
+		for i, k := range h.keys {
+			fmt.Fprintf(w.writer, "%s: %s\r\n", k, h.vals[i])
+		}
 		fmt.Fprintf(w.writer, "Date: %s\r\nServer: eudore\r\n", time.Now().Format(TimeFormat))
 		if w.chunked {
 			fmt.Fprintf(w.writer, "Transfer-Encoding: chunked\r\n")

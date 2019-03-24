@@ -14,6 +14,14 @@
 //
 // See https://http2.golang.org/ for a test server running this code.
 //
+// library version:
+//
+// commit 9f648a60d9775ef5c977e7669d1673a7a67bef33
+//
+// Author: Mikio Hara <mikioh.public.networking@gmail.com>
+//
+// Date:   Wed Mar 13 15:50:29 2019 +0900
+
 package http2
 
 import (
@@ -29,8 +37,6 @@ import (
 	"sync"
 
 	"golang.org/x/net/http/httpguts"
-
-	"github.com/eudore/eudore/protocol"
 )
 
 var (
@@ -348,14 +354,11 @@ func (s *sorter) Less(i, j int) bool { return s.v[i] < s.v[j] }
 //
 // The returned slice is only valid until s used again or returned to
 // its pool.
-func (s *sorter) Keys(h protocol.Header) []string {
+func (s *sorter) Keys(h Header) []string {
 	keys := s.v[:0]
-	h.Range(func(k, v string){
+	for k := range h {
 		keys = append(keys, k)
-	})
-/*	for k := range h {
-		keys = append(keys, k)
-	}*/
+	}
 	s.v = keys
 	sort.Sort(s)
 	return keys

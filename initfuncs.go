@@ -44,8 +44,8 @@ func InitConfig(app *Eudore) error {
 }
 
 func InitCommand(app *Eudore) error {
-	cmd := app.Config.Get("#command").(string)
-	pid := app.Config.Get("#pidfile").(string)
+	cmd := GetString(app.Config.Get("#command"))
+	pid := GetString(app.Config.Get("#pidfile"))
 	return NewCommand(cmd , pid).Run()
 }
 

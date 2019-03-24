@@ -1,5 +1,9 @@
 package eudore
 
+/*
+管理全局监听的端口，用于热重启fork传递端口信息。
+*/
+
 import (
 	"os"
 	"net"

@@ -1,5 +1,9 @@
 package eudore
 
+/*
+用于根据配置信息来初始化程序。
+*/
+
 import (
 	"encoding/xml"
 	"fmt"

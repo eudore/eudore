@@ -1,5 +1,9 @@
 package eudore
 
+/*
+实现配置的管理和解析。
+*/
+
 import (
 	"io"
 	"os"
@@ -32,6 +36,11 @@ type (
 		Keys	map[string]interface{}
 		funcs	[]ConfigParseFunc
 		mu		sync.RWMutex
+	}
+	ConfigEudore struct {
+		key 	interface{}
+		mu 		sync.RWMutex
+		funcs	[]ConfigParseFunc
 	}
 )
 
@@ -245,3 +254,45 @@ func (c *ConfigMap) Version() string {
 }
 
 
+func (c *ConfigEudore) Get(key string) (i interface{}) {
+	if len(key) == 0 {
+		return c.key
+	}
+	c.mu.Lock()
+	i = Get(c.key, key)
+	c.mu.Unlock()
+	return 
+}
+
+func (c *ConfigEudore) Set(key string, val interface{}) (err error) {
+	c.mu.RLock()
+	if len(key) == 0 {
+		c.key = val
+	}else {
+		_, err = Set(c.key, key, val)		
+	}	
+	c.mu.RUnlock()
+	return 
+}
+
+func (c *ConfigEudore) ParseFuncs(fn ConfigParseOption) {
+	c.funcs = fn(c.funcs)
+}
+
+func (c *ConfigEudore) Parse() (err error) {
+	for _, fn := range c.funcs {
+		err = fn(c)
+		if err != nil {
+			return
+		}
+	}
+	return nil
+}
+
+func (c *ConfigEudore) GetName() string {
+	return ComponentConfigEudoreName
+}
+
+func (c *ConfigEudore) Version() string {
+	return ComponentConfigEudoreVersion
+}

@@ -1,5 +1,8 @@
 package eudore
 
+/*
+定义基本的Application对象，实现需要组合实现Application的实例，例如Core、Eudore。
+*/
 
 import (
 	"fmt"

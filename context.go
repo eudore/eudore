@@ -55,9 +55,9 @@ type (
 		AddParam(string, string)
 		GetHeader(name string) string
 		SetHeader(string, string)
-		Cookies() []*CookieRead
+		Cookies() []*Cookie
 		GetCookie(name string) string
-		SetCookie(cookie *CookieWrite)
+		SetCookie(cookie *SetCookie)
 		SetCookieValue(string, string, int)
 
 
@@ -98,7 +98,7 @@ type (
 		rawQuery	string
 		pkeys		[]string
 		pvals		[]string
-		cookies 	[]*CookieRead
+		cookies 	[]*Cookie
 		isReadBody	bool
 		postBody	[]byte
 		isrun		bool
@@ -333,7 +333,7 @@ func (ctx *ContextHttp) SetHeader(name string, val string) {
 	ctx.ResponseWriter.Header().Set(name, val)
 }
 
-func (ctx *ContextHttp) Cookies() []*CookieRead {
+func (ctx *ContextHttp) Cookies() []*Cookie {
 	return ctx.cookies
 }
 
@@ -346,8 +346,7 @@ func (ctx *ContextHttp) GetCookie(name string) string {
 	return ""
 }
 
-func (ctx *ContextHttp) SetCookie(cookie *CookieWrite) {
-	// ctx.protocol.RequestReader.AddCookie(cookie)	
+func (ctx *ContextHttp) SetCookie(cookie *SetCookie) {
 	if v := cookie.String(); v != "" {
 		ctx.ResponseWriter.Header().Add("Set-Cookie", v)
 	}

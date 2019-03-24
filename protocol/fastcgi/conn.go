@@ -7,6 +7,10 @@ import (
 	"encoding/binary"
 )
 
+// for padding so we don't have to allocate all the time
+// not synchronized because we don't care what the contents are
+var pad [maxPad]byte
+
 
 // conn sends records over rwc
 type conn struct {
@@ -27,7 +31,6 @@ func (c *conn) Close() error {
 	defer c.mutex.Unlock()
 	return c.rwc.Close()
 }
-
 
 // writeRecord writes and sends a single record.
 func (c *conn) writeRecord(recType recType, reqId uint16, b []byte) error {
@@ -73,4 +76,14 @@ func (c *conn) writePairs(recType recType, reqId uint16, pairs map[string]string
 	}
 	w.Close()
 	return nil
+}
+
+func encodeSize(b []byte, size uint32) int {
+	if size > 127 {
+		size |= 1 << 31
+		binary.BigEndian.PutUint32(b, size)
+		return 4
+	}
+	b[0] = byte(size)
+	return 1
 }

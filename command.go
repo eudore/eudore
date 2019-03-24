@@ -1,5 +1,10 @@
 package eudore
 
+/*
+利用系统信号进制，执行start、daemon、stop、status、restart命令来操作进程。
+进程pid存储在pid文件中。
+*/
+
 import (
 	"os"
 	"fmt"

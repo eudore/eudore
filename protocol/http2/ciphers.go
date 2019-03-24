@@ -639,9 +639,3 @@ func isBadCipher(cipher uint16) bool {
 		return false
 	}
 }
-
-
-
-func IsBadCipher(cipher uint16) bool {
-	return isBadCipher(cipher)
-}

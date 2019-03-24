@@ -128,7 +128,7 @@ func (e *Eudore) Init(names ...string) (err error) {
 	var i int
 	var name string
 	num := len(names)
-	defer func() {
+/*	defer func() {
 		if err1 := recover(); err1 != nil {
 			if err2, ok := err1.(error);ok {
 				err = err2
@@ -136,7 +136,7 @@ func (e *Eudore) Init(names ...string) (err error) {
 				err = fmt.Errorf("eudore init %s %d/%d recover error: %v", name, i + 1, num, err1)
 			}
 		}
-	}()
+	}()*/
 	for i, name = range names {
 		if err = e.inits[name].fn(e);err != nil {
 			return fmt.Errorf("eudore init %d/%d %s error: %v",i + 1, num, name, err)

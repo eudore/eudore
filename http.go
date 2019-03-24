@@ -7,25 +7,18 @@ import (
 )
 
 type (
-	// Header = textproto.MIMEHeader
-/*	Header interface {
-		Get(string) string
-		Set(string, string)
-		Add(string, string)
-		Range(func(string, string))
-	}*/
+
 	Params interface {
 		GetParam(string) string
 		AddParam(string, string)
 		SetParam(string, string)
 	}
 	HeaderHttp map[string][]string
-/*	Params3 struct {
-		Data	[]Param2
-	}*/
-	// From net/http.Cookie
-	CookieWrite = http.Cookie
-	CookieRead struct {
+
+	// 用于响应返回的set-cookie header的数据生成
+	SetCookie = http.Cookie
+	// 用于请求读取的cookie header的键值对数据存储
+	Cookie struct {
 		Name  string
 		Value string
 	}

@@ -11,8 +11,9 @@ import (
 
 
 var (
-	crlf       = []byte("\r\n")
-	colonSpace = []byte(": ")
+	crlf		= []byte("\r\n")
+	colonSpace	= []byte(": ")
+	constinueMsg	=	[]byte("HTTP/1.1 100 Continue\r\n\r\n")
 	requestPool		sync.Pool
 	responsePool	sync.Pool
 	ErrLineInvalid	=	errors.New("request line is invalid")

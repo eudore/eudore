@@ -20,7 +20,8 @@ const (
 )
 
 type (
-	// Router method
+	// The route is directly registered by default. Other methods can be directly registered using the RouterRegister interface.
+	//
 	// 路由默认直接注册的方法，其他方法可以使用RouterRegister接口直接注册。
 	RouterMethod interface {
 		Group(string) RouterMethod
@@ -42,13 +43,17 @@ type (
 		Put(string, ...Handler)
 		PutFunc(string, ...HandlerFunc)
 	}
-	// Router Core
+	// The router core interface, performs routing, middleware registration, and matches a request and returns to the handler.
+	//
+	// 路由器核心接口，执行路由、中间件的注册和匹配一个请求并返回处理者。
 	RouterCore interface {
 		RegisterMiddleware(string, string, HandlerFuncs)
 		RegisterHandler(string, string, HandlerFuncs)
 		Match(string, string, Params) HandlerFuncs
 	}
-	// router
+	// Router interface, you need to set the component, router method, router core three interfaces.
+	//
+	// 路由器接口，需要设置组件、路由器方法、路由器核心三个接口。
 	Router interface {
 		Component
 		RouterCore
@@ -56,21 +61,30 @@ type (
 	}
 
 
-	// std router
+	// 未使用，未来可能移除
 	RouterStd struct {
 		RouterCore
 		RouterMethod
 	}
+	// 默认路由器方法注册实现
 	RouterMethodStd struct {
 		RouterCore
 		prefix		string
 		tags		string
 	}
+	// 将处理函数转换成路由器。
 	RouterEmpty struct {
 		// Middleware
 		RouterMethod
 		hs		HandlerFuncs
 	}
+	// 未实现，设计目标是处理初始化时的请求，所有注册代理给目标路由器，初始化完成后被目标路由器替换。
+	RouterInit struct {
+
+	}
+	// 存储中间件信息的基数树。
+	//
+	// 用于内存存储路由器中间件注册信息，并根据注册路由返回对应的中间件。
 	middTree struct {
 		root		middNode
 	}
@@ -80,8 +94,9 @@ type (
 		key			string
 		val			HandlerFuncs
 	}
-	// router config
-	// 存储路由配置，用于构造路由。
+	// Storage router configuration for constructing routers.
+	//
+	// 存储路由器配置，用于构造路由器。
 	RouterConfig struct {
 		// Type		string
 		Path		string

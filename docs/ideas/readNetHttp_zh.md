@@ -13,21 +13,38 @@ golang net/http Server主要流程源码分析。
 - 调用接口处理这个连接的请求并写入数据udao响应
 
 主要堆栈:
+
 http.ListenAndServe(addr string, handler Handler) error
+
 	http.*Server.ListenAndServe() error
+
 		net.Listen(network, address string) (net.Listener, error)
+
 		http.*Server.Serve(l net.Listener) error
+
 			http.*Server.setupHTTP2_Serve()
+
 			net.Listener.Accept() (net.Conn, error)
+
 			http.*Server.newConn(rwc net.Conn) *http.conn
+
 			http.*conn.setState(nc net.Conn, state ConnState)
+
 			http.*conn.serve(ctx context.Context)
+
 				defer http.*conn.serve.func()
+
 				http.*conn.rwc.(*tls.Conn)
+
 					tls.*Conn.Handshake()
+
 					tls.ConnectionState.NegotiatedProtocol
+
 				http.*conn.readRequest(ctx context.Context) (w *http.response, err error)
+
 				http.serverHandler{http.*conn.server}.ServeHTTP(w, w.req)
+
+
 
 ## Start
 
@@ -136,7 +153,7 @@ for循环处理Accept到的连接。
 	}
 ```
 
-如果Accept返回err，会srv.getDoneChan()方法检测Server是否接受，后序忽略。
+如果Accept返回err，会srv.getDoneChan()方法检测Server是否结束，后序忽略。
 
 ```golang
 		if e != nil {
@@ -162,9 +179,9 @@ for循环处理Accept到的连接。
 		}
 ```
 
-Accept获得了一个net.Conn连接对象，使用srv.newConn方法创建一个net.conn连接。
+Accept获得了一个net.Conn连接对象，使用srv.newConn方法创建一个http.conn连接。
 
-net.conn连接就是http连接，设置连接状态用于连接复用，然后c.serve处理这个http连接。
+http.conn连接就是http连接，设置连接状态用于连接复用，然后c.serve处理这个http连接。
 
 ```golang
 		c := srv.newConn(rw)
@@ -307,7 +324,7 @@ tlsConn.Handshake()是检测tls握手是否正常，不正常就返回http 400�
 		}
 ```
 
-`注意：tlsConn.Handshake()一定要执行，然后才会有NegotiatedProtocol等tls连接信息。`
+`注意：tlsConn.Handshake()一定要执行，是验证tls握手，然后才会有NegotiatedProtocol等tls连接信息。`
 
 `注意：NegotiatedProtocol是tls的ALPN扩展的关键，h2协议握手下的值就是h2`
 
@@ -708,7 +725,7 @@ func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
 ```golang
 http.HandlerFunc(func(ResponseWriter, *Request){})
 
-func (h http.HandlerFunc) http.Handler {
+func Convert(h http.HandlerFunc) http.Handler {
 	return h
 }
 ```
