@@ -27,7 +27,7 @@ type (
 )
 
 func NewView(name string, arg interface{}) (View, error) {
-	name = AddComponetPre(name, "view")
+	name = ComponentPrefix(name, "view")
 	c, err := NewComponent(name, arg)
 	if err != nil {
 		return nil, err

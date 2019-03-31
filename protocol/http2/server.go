@@ -84,14 +84,16 @@ var (
 	testHookOnPanic       func(sc *serverConn, panicVal interface{}) (rePanic bool)
 )
 
-func NewServer() *Server {
+func NewServer(h protocol.Handler) *Server {
 	srv := new(Server)
+	srv.handler = h
 	srv.state = &serverInternalState{activeConns: make(map[*serverConn]struct{})}
 	return srv
 }
 
 // Server is an HTTP/2 server.
 type Server struct {
+	handler	protocol.Handler
 	MaxHeaderBytes time.Duration
 	ReadTimeout time.Duration
 	WriteTimeout time.Duration
@@ -224,7 +226,7 @@ func (s *serverInternalState) startGracefulShutdown() {
 // implemented in terms of providing a suitably-behaving net.Conn.
 //
 // The opts parameter is optional. If nil, default values are used.
-func (s *Server) EudoreConn(ctx context.Context, c net.Conn, h protocol.Handler) {
+func (s *Server) EudoreConn(ctx context.Context, c net.Conn) {
 	ctx = context.WithValue(ctx, http.LocalAddrContextKey, c.LocalAddr())
 
 	sc := &serverConn{
@@ -233,7 +235,7 @@ func (s *Server) EudoreConn(ctx context.Context, c net.Conn, h protocol.Handler)
 		baseCtx:                     ctx,
 		remoteAddrStr:               c.RemoteAddr().String(),
 		bw:                          newBufferedWriter(c),
-		handler:                     h,
+		handler:                     s.handler,
 		streams:                     make(map[uint32]*stream),
 		readFrameCh:                 make(chan readFrameResult),
 		wantWriteFrameCh:            make(chan FrameWriteRequest, 8),

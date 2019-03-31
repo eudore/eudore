@@ -1,8 +1,12 @@
+/*
+Application
+
+定义基本的Application对象，实际使用可能需要组合Application对象生成新的实例对象，例如Core、Eudore。
+
+文件：app.go core.go eudore.go
+*/
 package eudore
 
-/*
-定义基本的Application对象，实现需要组合实现Application的实例，例如Core、Eudore。
-*/
 
 import (
 	"fmt"
@@ -77,8 +81,10 @@ func (app *App) RegisterComponent(name string,  arg interface{}) error {
 		app.Cache = c.(Cache)
 	case Config:
 		app.Config = c.(Config)
+	case View:
+		app.View = c.(View)
 	default:
-		err := fmt.Errorf("undefined component: %s", name)
+		err := fmt.Errorf("app undefined component: %s", name)
 		app.Error(err)
 		return err
 	}

@@ -88,8 +88,8 @@ type (
 
 func NewRouterFull(interface{}) (Router, error) {
 	r := &RouterFull{
-		node404:	HandlerFuncs{RouterDefault404Func},
-		node405:	newFullNode405("405", RouterDefault405Func),
+		node404:	HandlerFuncs{DefaultRouter404Func},
+		node405:	newFullNode405("405", DefaultRouter405Func),
 		midds:		&middNode{},
 	}
 	r.RouterMethod = &RouterMethodStd{RouterCore:	r}
@@ -155,7 +155,7 @@ func (t *RouterFull) InsertRoute(method, key string, val HandlerFuncs) {
 	for _, path := range getSpiltPath(args[0]) {
 		// Create a new radixNode and set the Node type
 		// 创建一个新的radixNode，并设置Node类型
-		newNode = NewFullNode(path)
+		newNode = newFullNode(path)
 		// If it is a constant node, recursively add by radix tree rule
 		// 如果是常量节点，按基数树规则递归添加
 		if newNode.kind == fullNodeKindConst {
@@ -234,7 +234,7 @@ func newFullNode405(args string, h HandlerFunc) *fullNode {
 	return newNode
 }
 
-func NewFullNode(path string) *fullNode {
+func newFullNode(path string) *fullNode {
 		newNode := &fullNode{path: path}
 	// Create a different Node with a more path prefix type
 		// 更具路径前缀类型，创建不同的Node
@@ -510,10 +510,10 @@ func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) Han
 		// The current Node path must be the prefix of the searchKey.
 		// 寻找相同前缀node进一步匹配
 		// 当前Node的路径必须为searchKey的前缀。
-		if subStr, find := getSubsetPrefix(searchKey, edgeObj.path); find && subStr == edgeObj.path{
+		if contrainPrefix(searchKey, edgeObj.path) {
 			// Remove the prefix path to get an unmatched path.
 			// 除去前缀路径，获得未匹配路径。
-			nextSearchKey := searchKey[len(subStr):]
+			nextSearchKey := searchKey[len(edgeObj.path):]
 			// Then the current Node recursively judges
 			// 然后当前Node递归判断
 			if n := edgeObj.recursiveLoopup(nextSearchKey, params);n != nil {

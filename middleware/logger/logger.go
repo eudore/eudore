@@ -25,7 +25,6 @@ func (l *Logger) Handle(ctx eudore.Context) {
 		ctx.Request().Header().Add(eudore.HeaderXRequestID, requestId)
 	}
 	f := eudore.Fields{
-		"x-request-id":	ctx.RequestID(),
 		"method":		ctx.Method(),
 		"path":				ctx.Path(),
 		"remote":			ctx.RemoteAddr(),
@@ -43,6 +42,9 @@ func (l *Logger) Handle(ctx eudore.Context) {
 	}
 	if ram := ctx.GetParam(eudore.ParamRam); len(ram) > 0 {
 		f["ram"] = ram
+	}
+	if ram := ctx.GetParam(eudore.ParamRoute); len(ram) > 0 {
+		f["route"] = ram
 	}
 	// if routes := ctx.Params()[eudore.ParamRoutes]; len(routes) > 0 {
 	// 	f["routes"] = strings.Join(routes, " ")

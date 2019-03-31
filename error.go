@@ -13,6 +13,9 @@ const (
 
 var (
 	ErrRouterSetNoSupportType		=	errors.New("router set type is nosupport")
+	ErrComponentNoSupportField		=	errors.New("component no support field")
+	ErrServerNotSetRuntimeInfo		=	errors.New("server not set runtime info")
+	ErrApplicationStop				=	errors.New("stop application")
 )
 
 type (
@@ -96,6 +99,6 @@ func (e *Errors) GetError() error {
 // The default error handler, outputting an error to std.out.
 //
 // 默认错误处理函数，输出错误到std.out。
-func ErrorDefaultHandleFunc(e error){
+func DefaultErrorHandleFunc(e error){
 	fmt.Println(e)
 }

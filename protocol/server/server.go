@@ -116,11 +116,11 @@ func (srv *Server) newConnServe(c net.Conn) {
 		}
 
 		if proto := tlsConn.ConnectionState().NegotiatedProtocol; validNPN(proto) && proto == srv.proto {
-			srv.nextHandle.EudoreConn(ctx, c, srv.Handler)
+			srv.nextHandle.EudoreConn(ctx, c)
 			return
 		}
 	}
-	srv.defaultHandle.EudoreConn(ctx, c , srv.Handler)
+	srv.defaultHandle.EudoreConn(ctx, c)
 }
 
 func (srv *Server) Close() (err error) {

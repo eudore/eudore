@@ -60,10 +60,16 @@ const (
 	statusUnknownRole
 )
 
-type Fastcgi struct{}
+type Fastcgi struct{
+	h		protocol.Handler
+}
 
-func (f *Fastcgi) EudoreConn(ctx context.Context, rw net.Conn, h protocol.Handler) {
-	newChild(ctx, rw, h).serve()
+func NewServer(h protocol.Handler) *Fastcgi{
+	return &Fastcgi{h}
+}
+
+func (f *Fastcgi) EudoreConn(ctx context.Context, rw net.Conn) {
+	newChild(ctx, rw, f.h).serve()
 }
 
 

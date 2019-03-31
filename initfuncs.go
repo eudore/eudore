@@ -44,41 +44,29 @@ func InitConfig(app *Eudore) error {
 }
 
 func InitCommand(app *Eudore) error {
-	cmd := GetString(app.Config.Get("#command"))
-	pid := GetString(app.Config.Get("#pidfile"))
+	cmd := GetString(app.Config.Get("command"))
+	pid := GetString(app.Config.Get("pidfile"))
 	return NewCommand(cmd , pid).Run()
 }
 
 
 func InitLogger(e *Eudore) error {
-	c := e.Config.Get("#logger")
+	c := e.Config.Get("component.logger")
 	if c != nil {
-		name := GetComponetName(c)
-		// load logger
-		if len(name) > 0 {
-			err := e.RegisterComponent(name, c)
-			if err != nil {
-				return err
-			}
-		}else {
-			return fmt.Errorf("logger name is nil.")
+		err := e.RegisterComponent("", c)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 func InitServer(app *Eudore) error {
-	// Json(e.Config)
-	c := app.Config.Get("#server")
+	c := app.Config.Get("component.server")
 	if c != nil {
-		name := GetComponetName(c)
-		if len(name) > 0 {
-			err := app.RegisterComponent(name, c)
-			if err != nil {
-				return err
-			}
-		}else {
-			return fmt.Errorf("server name is nil.")
+		err := app.RegisterComponent("", c)
+		if err != nil {
+			return err
 		}
 	}
 	return nil 
@@ -91,8 +79,8 @@ func InitServerStart(app *Eudore) error {
 		return err
 	}
 
-	SetComponent(app.Server, "errorhandle", app.HandleError)
-	SetComponent(app.Server, "handler", app)
+	ComponentSet(app.Server, "errfunc", app.HandleError)
+	ComponentSet(app.Server, "handler", app)
 	go func() {
 		app.stop <- app.Server.Start()
 	}()
@@ -100,7 +88,7 @@ func InitServerStart(app *Eudore) error {
 }
 
 
-func ReloadDefaultLogger(e *Eudore) error {
+func InitDefaultLogger(e *Eudore) error {
 	if _, ok := e.Logger.(*LoggerInit); ok {
 		e.Warning("eudore use default logger.")
 		return e.RegisterComponent(ComponentLoggerStdName, &LoggerStdConfig{
@@ -111,7 +99,7 @@ func ReloadDefaultLogger(e *Eudore) error {
 	}
 	return nil
 }
-func ReloadDefaultServer(e *Eudore) error {
+func InitDefaultServer(e *Eudore) error {
 	if e.Server == nil {
 		e.Warning("eudore use default server.")
 		// return e.RegisterComponent(ComponentServerStdName, &ServerConfigGeneral{
@@ -124,17 +112,17 @@ func ReloadDefaultServer(e *Eudore) error {
 }
 
 
-func ReloadListComponent(e *Eudore) error {
-	e.Info("list all register component:", ListComponent())
+func InitListComponent(e *Eudore) error {
+	e.Info("list all register component:", ComponentList())
 	var cs []Component = []Component{
 		e.Config,
 		e.Server,
 		e.Logger,
 		e.Router,
+		e.Cache,
+		e.View,
 		// e.Binder,
 		// e.Renderer,
-		e.View,
-		e.Cache,
 	}
 	for _, c := range cs {
 		if c != nil {
@@ -145,9 +133,10 @@ func ReloadListComponent(e *Eudore) error {
 }
 
 
-func ReloadStop(*Eudore) error {
+func InitStop(app *Eudore) error {
 	if len(os.Getenv("stop")) > 0 {
-		return fmt.Errorf("stop")
+		app.HandleError(ErrApplicationStop)
+		// return ErrApplicationStop
 	}
 	return nil
 }

@@ -59,8 +59,8 @@ type (
 
 func NewRouterRadix(interface{}) (Router, error) {
 	r := &RouterRadix{
-		node404:	HandlerFuncs{RouterDefault404Func},
-		node405:	newRadixNode405("405", RouterDefault405Func),
+		node404:	HandlerFuncs{DefaultRouter404Func},
+		node405:	newRadixNode405("405", DefaultRouter405Func),
 		midds:		&middNode{},
 	}
 	r.RouterMethod = &RouterMethodStd{RouterCore:	r}
@@ -126,7 +126,7 @@ func (t *RouterRadix) InsertRoute(method, key string, val HandlerFuncs) {
 	for _, path := range getSpiltPath(args[0]) {
 		// Create a new radixNode and set the Node type
 		// 创建一个新的radixNode，并设置Node类型
-		newNode = NewRadixNode(path)
+		newNode = newRadixNode(path)
 		// If it is a constant node, recursively add by radix tree rule
 		// 如果是常量节点，按基数树规则递归添加
 		if newNode.kind == radixNodeKindConst {
@@ -212,7 +212,7 @@ func newRadixNode405(args string, h HandlerFunc) *radixNode {
 // 创建一个Radix树Node，会根据当前路由设置不同的节点类型。
 //
 // '*'前缀为通配符节点，':'前缀为参数节点，其他未常量节点。
-func NewRadixNode(path string) *radixNode {
+func newRadixNode(path string) *radixNode {
 	newNode := &radixNode{path: path}
 	// Create a different Node with a more path prefix type
 	// 更具路径前缀类型，创建不同的Node
@@ -415,7 +415,7 @@ func (searchNode *radixNode) recursiveLoopup(searchKey string, params Params) Ha
 		// The current Node path must be the prefix of the searchKey.
 		// 寻找相同前缀node进一步匹配
 		// 当前Node的路径必须为searchKey的前缀。
-		if IsPrefix(searchKey, edgeObj.path) {
+		if contrainPrefix(searchKey, edgeObj.path) {
 			// Remove the prefix path to get an unmatched path.
 			// 除去前缀路径，获得未匹配路径。
 			nextSearchKey := searchKey[len(edgeObj.path):]
@@ -579,7 +579,7 @@ func getSubsetPrefix(str1, str2 string) (string, bool) {
 // Check if the string str2 is the prefix of str1.
 //
 // 检测字符串str2是否为str1的前缀。
-func IsPrefix(str1, str2 string) bool {
+func contrainPrefix(str1, str2 string) bool {
 	if len(str1) < len(str2) {
 		return false
 	}

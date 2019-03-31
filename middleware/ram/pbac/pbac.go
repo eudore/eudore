@@ -133,33 +133,11 @@ func (c *Condition) Match(ctx eudore.Context) bool {
 
 func MatchStarAny(obj string, patten []string) bool {
 	for _, i := range patten {
-		if MatchStar(obj, i) {
+		if eudore.MatchStar(obj, i) {
 			return true
 		}
 	}
 	return false
-}
-
-// 模式匹配对象，运行试验带'*'的模式
-func MatchStar(obj, patten string) bool {
-	ps := strings.Split(patten,"*")
-	if len(ps) == 0 {
-		return patten == obj
-	}
-	if !strings.HasPrefix(obj, ps[0]) {
-		return false
-	}
-	for _,i := range ps {
-		if i == "" {
-			continue
-		}
-		pos := strings.Index(obj, i)
-		if pos == -1 {
-			return false
-		}
-		obj = obj[pos + len(i):]
-	}
-	return true
 }
 
 func MatchAddrAny(addr string, patten []string) bool {

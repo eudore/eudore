@@ -11,7 +11,7 @@ import (
 
 type (
 	HandlerConn interface {
-		EudoreConn(context.Context, net.Conn, Handler)
+		EudoreConn(context.Context, net.Conn)
 	}
 	Handler interface {
 		EudoreHTTP(context.Context, ResponseWriter, RequestReader)

@@ -8,23 +8,23 @@ import (
 	"github.com/eudore/eudore/protocol"
 	"github.com/eudore/eudore/protocol/server"
 	"github.com/eudore/eudore/protocol/http"
-	// "github.com/eudore/eudore/protocol/http2"
+	"github.com/eudore/eudore/protocol/http2"
 	"github.com/eudore/eudore/protocol/fastcgi"
 )
 
 type (
 	HttpConfig = eudore.ServerListenConfig
 	FastcgiConfig struct {
-		Addr	string
+		Addr	string		`set:"addr"`
 	}
 	ServerConfig struct {
-		Http2		bool   `description:"Is http2.`
-		Http		[]*HttpConfig
-		Fastcgi		[]*FastcgiConfig
-		Handler		interface{}
+		Http2		bool   `set:"http2" description:"Is http2.`
+		Http		[]*HttpConfig `set:"http"`
+		Fastcgi		[]*FastcgiConfig `set:"fastcgi"`
+		Handler		interface{}			`set:"handler" json:"-"`
 	}
 	Server struct {
-		*ServerConfig
+		Config			*ServerConfig 	`set:"config"`
 		mu				sync.Mutex
 		wg				sync.WaitGroup
 		handler			protocol.Handler
@@ -37,15 +37,14 @@ type (
 
 func init() {
 	eudore.RegisterComponent(eudore.ComponentServerEudoreName, func(arg interface{}) (eudore.Component, error) {
-		srv := NewServer()
-		srv.Set("", arg)
-		return srv, nil
+		srv := NewServer()		
+		return srv, srv.Set("", arg)
 	})
 }
 
 func NewServer() (*Server) {
 	return &Server{
-		ServerConfig:	&ServerConfig{},
+		Config:	&ServerConfig{},
 		handler:	protocol.HandlerFunc(func(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
 			w.Write([]byte("start eudore server, this default page."))
 		}),
@@ -55,12 +54,15 @@ func NewServer() (*Server) {
 func (srv *Server) Start() error {
 	srv.mu.Lock()
 	// 设置handler
-	if h, ok := srv.ServerConfig.Handler.(protocol.Handler); ok {
+	if h, ok := srv.Config.Handler.(protocol.Handler); ok {
 		srv.handler = h
+	}
+	if len(srv.Config.Fastcgi) + len(srv.Config.Http) == 0 {
+		return eudore.ErrServerNotSetRuntimeInfo
 	}
 	errs := eudore.NewErrors()
 	// 启动fastcgi
-	for _, fastcgi := range srv.ServerConfig.Fastcgi {
+	for _, fastcgi := range srv.Config.Fastcgi {
 		ln, err := eudore.GlobalListener.Listen(fastcgi.Addr)
 		if err != nil {
 			errs.HandleError(err)
@@ -74,7 +76,7 @@ func (srv *Server) Start() error {
 		}(ln)
 	}
 	// 启动http
-	for _, http := range srv.ServerConfig.Http {
+	for _, http := range srv.Config.Http {
 		ln, err := http.Listen()		
 		if err != nil {
 			errs.HandleError(err)
@@ -141,15 +143,16 @@ func (srv *Server) Set(key string, val interface{}) error {
 	defer srv.mu.Unlock()
 	switch v := val.(type) {
 	case *ServerConfig:
-		srv.ServerConfig = v
+		srv.Config = v
 	case protocol.Handler:
 		srv.handler = v
 	case *HttpConfig:
-		srv.ServerConfig.Http = append(srv.ServerConfig.Http, v)
+		srv.Config.Http = append(srv.Config.Http, v)
 	case *FastcgiConfig:
-		srv.ServerConfig.Fastcgi = append(srv.ServerConfig.Fastcgi, v)
+		srv.Config.Fastcgi = append(srv.Config.Fastcgi, v)
 	case map[string]interface{}:
-		eudore.MapToStruct(v ,srv.ServerConfig)
+		_, err := eudore.ConvertStruct(srv.Config, val)
+		return err
 	}
 	return nil
 }
@@ -169,9 +172,9 @@ func (srv *Server) EnableHttp() {
 			Handler:	srv.handler,
 		}
 		// 设服务连接处理为http
-		srv.http.SetHandler(http.NewHttpHandler())
-		if srv.ServerConfig.Http2 {
-			// srv.http.SetNextHandler("h2", http2.NewServer())
+		srv.http.SetHandler(http.NewHttpHandler(srv.handler))
+		if srv.Config.Http2 {
+			srv.http.SetNextHandler("h2", http2.NewServer(srv.handler))
 		}
 	})
 }
@@ -184,7 +187,7 @@ func (srv *Server) EnableFastcgi() {
 			Handler:	srv.handler,
 		}
 		// 设服务连接处理为fastcgi
-		srv.fastcgi.SetHandler(&fastcgi.Fastcgi{})
+		srv.fastcgi.SetHandler(fastcgi.NewServer(srv.handler))
 	})
 }
 

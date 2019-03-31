@@ -1,10 +1,17 @@
 package test
 
 import (
+	"io"
+	"os"
 	"fmt"
 	"sync"
 	"time"
+	"bufio"
+	"runtime"
+	"strings"
 	"testing"
+	"encoding/json"
+	"text/template"
 )
 const (
 	LogDebug	LoggerLevel = iota
@@ -15,21 +22,25 @@ const (
 	numSeverity = 5
 )
 
+func TestLogger(*testing.T) {
+	log, _ := NewLoggerStd()
+	log.WithField("bench", true).WithField("test", "jgu").WithField("test", true).WithField("test", true).WithField("test", true).Info("this message")
+	log.Info("logger entryStd 2.")
+	log.(*LoggerStd).writer.Flush()
+}
+
 
 func BenchmarkLogger(b *testing.B) {
 	b.ReportAllocs()
-	log := NewLoggerStd()
+	log, _ := NewLoggerStd()
 	for i := 0; i < b.N; i++ {
 		// log.Info("Info")
-		log.WithField("bench", true).WithField("test", true).WithField("test", true).WithField("test", true).WithField("test", true).Info("Info")
+		log.WithField("bench", true).WithField("test", "jgu").WithField("test", true).WithField("test", true).WithField("test", true).Info("Info")
 	}
 }
 
 type (
 	LoggerLevel int
-	LogHandler interface {
-		HandleEntry(*Entry)
-	}
 	LogOut interface {
 		// Debug(...interface{})
 		Info(...interface{})
@@ -41,92 +52,112 @@ type (
 	}	
 	Logger interface {
 		LogOut
-		LogHandler
+		io.Writer
+		HandlerEntry(interface{})
 	}
 	Fields interface {
 		Add(string, interface{}) Fields
 		Range(func(string, interface{}))
-		Clean() Fields
+		Init() Fields
 	}
-	Entry struct {
-		LogHandler		`json:"-" xml:"-" yaml:"-"`
+	LoggerStd struct {
+		pool	sync.Pool
+		writer	*bufio.Writer
+		json 		*json.Encoder
+		tmpl 		*template.Template
+	}
+	entryStd struct {
+		logger 		*LoggerStd		`json:"-" xml:"-" yaml:"-"`
 		Level		LoggerLevel		`json:"level"`
 		Fields		Fields		`json:"fields,omitempty"`
-		Timestamp	time.Time	`json:"timestamp"`
+		Time		string		`json:"timestamp"`
 		Message		string		`json:"message,omitempty"`
 	}
 	FieldsMap map[string]interface{}
-	fa struct {
-		key string
-		val interface{}
-	}
-	FieldsArray []fa
-	LoggerStd struct {
-		pool	sync.Pool
-	}
 )
 
-func NewLoggerStd() Logger {
-	l := &LoggerStd{}
-	l.pool.New = func() interface{} {
-		return &Entry{
-			Fields: make(FieldsMap, 5),
-			LogHandler: l,
-		}
-	}
-	return l
+func (level LoggerLevel) String() string {
+	return "Info"
 }
 
-func (l *LoggerStd) NewEntry() *Entry {
-	return l.pool.Get().(*Entry)
+
+
+
+func NewLoggerStd() (Logger, error){
+	// file, _ := os.OpenFile("/tmp/01.log", os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0666)
+	tmpl := template.New("test").Delims("{", "}").Option("missingkey=zero")
+	tmpl.Parse("[{.Time} {.Fields.file}:{.Fields.line}] {.Level}: {.Message}\n")
+	l := &LoggerStd{
+		pool:   sync.Pool{},
+		// writer:	bufio.NewWriter(file),
+		writer:	bufio.NewWriter(os.Stdout),
+	}
+	l.json = json.NewEncoder(l.writer)
+	l.tmpl = tmpl
+	l.pool.New = func() interface{} {
+		return &entryStd{
+			logger:		l,
+			Fields:		make(FieldsMap,5),
+		}
+	}
+	return l, nil
+}
+
+
+
+func (l *LoggerStd) newEntry() *entryStd {
+	entry := l.pool.Get().(*entryStd)
+	file, line := LogFormatFileLine(0)
+	entry.Fields.Add("file", file)
+	entry.Fields.Add("line", line)
+	return entry
 }
 
 func (l *LoggerStd) Info(args ...interface{}) {
-	e := l.NewEntry()
-	e.Message = fmt.Sprint(args...)
-	l.HandleEntry(e)
+	l.newEntry().Info(args...)
 }
 
 func (l *LoggerStd) WithField(key string, val interface{}) LogOut {
-	return l.NewEntry().WithField(key, val)
+	return l.newEntry().WithField(key, val)
 }
 
 func (l *LoggerStd) WithFields(f Fields) LogOut {
-	return l.NewEntry().WithFields(f)
+	return l.newEntry().WithFields(f)
 }
 
-func (l *LoggerStd) HandleEntry(e *Entry) {
-	// fmt.Println(e)
-	e.Fields = e.Fields.Clean()
-	l.pool.Put(e)
+func (l *LoggerStd) Write(p []byte) (int, error) {
+	return l.writer.Write(p)
+}
+
+func (l *LoggerStd) HandlerEntry(i interface{}) {
+	// l.json.Encode(i)
+	l.tmpl.Execute(l.writer, i)
 }
 
 
 
 
 
-
-
-
-func (e *Entry) Info(args ...interface{}) {
+func (e *entryStd) Info(args ...interface{}) {
 	e.Level = LogInfo
+	e.Time = time.Now().Format("2006-01-02 15:04:05")
 	e.Message = fmt.Sprint(args...)
-	e.LogHandler.HandleEntry(e)
+	// fmt.Fprint(e.logger, e)
+	// e.json.Encode(e)
+	// fmt.Println(e)
+	e.logger.HandlerEntry(e)
+	e.Fields = e.Fields.Init()
+	e.logger.pool.Put(e)
 }
 
-func (e *Entry) WithField(key string, val interface{}) LogOut {
+func (e *entryStd) WithField(key string, val interface{}) LogOut {
 	e.Fields = e.Fields.Add(key, val)
 	return e
 }
 
-func (e *Entry) WithFields(f Fields) LogOut {
+func (e *entryStd) WithFields(f Fields) LogOut {
 	e.Fields = f
 	return e
-}
-
-
-func (e *Entry) write() {
-	e.LogHandler.HandleEntry(e)
 }
 
 
@@ -148,7 +179,7 @@ func (f FieldsMap) Range(fn func(key string, val interface{})) {
 	}
 }
 
-func (f FieldsMap) Clean() Fields {
+func (f FieldsMap) Init() Fields {
 	if len(f) > 0 {
 		return make(FieldsMap)	
 	}
@@ -157,17 +188,17 @@ func (f FieldsMap) Clean() Fields {
 
 
 
-func (f FieldsArray) Add(key string, val interface{}) Fields{
-	return append(f, fa{key, val})
-}
 
-func (f FieldsArray) Range(fn func(key string, val interface{})) {
-	for _, i := range f {
-		fn(i.key, i.val)
+func LogFormatFileLine(depth int) (string, int) {
+	_, file, line, ok := runtime.Caller(3 + depth)
+	if !ok {
+		file = "???"
+		line = 1
+	} else {
+		slash := strings.LastIndex(file, "/")
+		if slash >= 0 {
+			file = file[slash+1:]
+		}
 	}
+	return file, line
 }
-
-func (f FieldsArray) Clean() Fields {
-	return f[0:0]
-}
-

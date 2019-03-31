@@ -9,8 +9,8 @@ import (
 	"context"
 	"net/http"
 	"io/ioutil"
-	"crypto/tls"
-	"golang.org/x/net/http2"
+	// "crypto/tls"
+	// "golang.org/x/net/http2"
 	"github.com/eudore/eudore/protocol"
 )
 
@@ -107,12 +107,15 @@ type (
 		// component
 		app			*App
 		log			Logger
+		fields		Fields
 	}
 
 )
 
-// check interface
-var _ Context			=	&ContextHttp{}
+// Convert nil to type *ContextHttp, detect ContextHttp object to implement Context interface
+//
+// 将nil强制类型转换成*ContextHttp，检测ContextHttp对象实现Context接口
+var _ Context			=	(*ContextHttp)(nil)
 
 // context
 func (ctx *ContextHttp) Reset(pctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
@@ -179,13 +182,13 @@ func (ctx *ContextHttp) End() {
 }
 
 func (ctx *ContextHttp) NewRequest(method, url string, body io.Reader) (protocol.ResponseReader, error) {
-	tr := &http2.Transport{
-		AllowHTTP: true, //充许非加密的链接
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
-	}
-	httpClient := http.Client{Transport: tr}
+	// tr := &http2.Transport{
+	// 	AllowHTTP: true, //充许非加密的链接
+	// 	TLSClientConfig: &tls.Config{
+	// 		InsecureSkipVerify: true,
+	// 	},
+	// }
+	// httpClient := http.Client{Transport: tr}
 
 	cctx, cancel := context.WithCancel(ctx)
 	time.AfterFunc(5*time.Second, func() {
@@ -198,7 +201,7 @@ func (ctx *ContextHttp) NewRequest(method, url string, body io.Reader) (protocol
 	}
 	req.Header.Add(HeaderXRequestID, ctx.RequestID())
 	req = req.WithContext(cctx)
-	resp, err := httpClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +381,7 @@ func (ctx *ContextHttp) SetCookieValue(name, value string, maxAge int) {
 //
 // 有主机信息为外部重定向，请求返回重定向信息。
 func (ctx *ContextHttp) Redirect(code int, url string) {
-	Redirect(ctx, url, code)
+	HandlerRedirect(ctx, url, code)
 }
 
 func (ctx *ContextHttp) Push(target string, opts *protocol.PushOptions) error {
@@ -419,7 +422,7 @@ func (ctx *ContextHttp) WriteXml(i interface{}) error {
 }
 
 func (ctx *ContextHttp) WriteFile(path string) (int, error) {
-	n, err := ServeFile(ctx, path)
+	n, err := HandlerFile(ctx, path)
 	if err != nil {
 		ctx.Fatal(err)
 	}
@@ -489,37 +492,56 @@ func (ctx *ContextHttp) WriteRenderWith(i interface{}, r Renderer) error {
 // logger
 func (ctx *ContextHttp) Debug(args ...interface{}) {
 	ctx.logReset().Debug(fmt.Sprint(args...))
+	ctx.fields = make(Fields, 3)
 }
 func (ctx *ContextHttp) Info(args ...interface{}) {
 	ctx.logReset().Info(fmt.Sprint(args...))
+	ctx.fields = make(Fields, 3)
 }
 func (ctx *ContextHttp) Warning(args ...interface{}) {
 	ctx.logReset().Warning(fmt.Sprint(args...))
+	ctx.fields = make(Fields, 3)
 }
 func (ctx *ContextHttp) Error(args ...interface{}) {
+	// 空错误不处理
+	if len(args) == 1 && args[0] == nil {
+		return
+	}
 	ctx.logReset().Error(fmt.Sprint(args...))
+	ctx.fields = make(Fields, 3)
 }
 
 func (ctx *ContextHttp) Fatal(args ...interface{}) {
-	NewEntryContext(ctx, ctx.app.Logger).Fatal(fmt.Sprint(args...))
+	ctx.logReset().Error(fmt.Sprint(args...))
+	ctx.fields = make(Fields, 3)	
+	// 结束Context
+	ctx.WriteHeader(500)
+	ctx.WriteRender(map[string]string{
+		"status":	"500",
+		"x-request-id":	ctx.RequestID(),
+	})
+	ctx.End()
 }
 
 func (ctx *ContextHttp) logReset() LogOut {
 	file, line := LogFormatFileLine(0)
-	f := Fields{
-		HeaderXRequestID:	ctx.GetHeader(HeaderXRequestID),
-		"file":				file,
-		"line":				line,
-	}
-	return ctx.log.WithFields(f)
+	ctx.fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
+	ctx.fields["file"] = file
+	ctx.fields["line"] = line
+	return ctx.app.Logger.WithFields(ctx.fields)
 }
 
 func (ctx *ContextHttp) WithField(key string, value interface{}) LogOut {
-	return NewEntryContext(ctx, ctx.app.Logger).WithField(key, value)
+	if ctx.fields == nil {
+		ctx.fields = make(Fields)
+	}
+	ctx.fields[key] = value
+	return ctx
 }
 
 func (ctx *ContextHttp) WithFields(fields Fields) LogOut {
-	return NewEntryContext(ctx, ctx.app.Logger).WithFields(fields)
+	ctx.fields = fields
+	return ctx
 }
 
 

@@ -14,36 +14,36 @@ var (
 	crlf		= []byte("\r\n")
 	colonSpace	= []byte(": ")
 	constinueMsg	=	[]byte("HTTP/1.1 100 Continue\r\n\r\n")
-	requestPool		sync.Pool
-	responsePool	sync.Pool
+	requestPool		=	sync.Pool {
+		New:	func() interface{} {
+			return &Request{
+				reader:	bufio.NewReaderSize(nil, 2048),
+			}
+		},
+	}
+	responsePool	=	sync.Pool {
+		New:	func() interface{} {
+			return &Response{
+				writer:	bufio.NewWriterSize(nil, 2048),
+				buf:	make([]byte, 2048),
+			}
+		},
+	}
 	ErrLineInvalid	=	errors.New("request line is invalid")
 )
 
-func init() {
-	requestPool.New = func() interface{} {
-		return &Request{
-			reader:	bufio.NewReaderSize(nil, 2048),
-		}
-	}
-	responsePool.New = func() interface{} {
-		return &Response{
-			writer:	bufio.NewWriterSize(nil, 2048),
-			buf:	make([]byte, 2048),
-		}
-	}
-}
-
 type HttpHandler struct {
+	Handler		protocol.Handler
 }
 
-func NewHttpHandler() *HttpHandler {
-	return &HttpHandler{}
+func NewHttpHandler(h protocol.Handler) *HttpHandler {
+	return &HttpHandler{h}
 }
 
 // Handling http connections
 //
 // 处理http连接
-func (hh *HttpHandler) EudoreConn(ctx context.Context, c net.Conn, h protocol.Handler) {
+func (hh *HttpHandler) EudoreConn(ctx context.Context, c net.Conn) {
 	// fmt.Println("conn serve:", c.RemoteAddr().String())
 	// Initialize the request object.
 	// 初始化请求对象。
@@ -58,7 +58,7 @@ func (hh *HttpHandler) EudoreConn(ctx context.Context, c net.Conn, h protocol.Ha
 		}
 		resp.Reset(c)
 		// 处理请求
-		h.EudoreHTTP(ctx, resp, req)
+		hh.Handler.EudoreHTTP(ctx, resp, req)
 		resp.flushend()
 		if req.header.Get("Connection") != "keep-alive" {
 			c.Close()

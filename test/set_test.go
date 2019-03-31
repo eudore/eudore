@@ -58,6 +58,11 @@ type (
 		B3 	string
 		B4 interface{}
 		B5 	[]int
+		BB	BB
+	}
+	BB struct {
+		BB1	int
+		BB2	string
 	}
 )
 
@@ -178,6 +183,10 @@ func TestConvertStruct(*testing.T) {
 		"B3":	2,
 		"B4":	4,
 		"B5":	[]int{0,1,5},
+		"BB":	map[interface{}]interface{}{
+			"BB1":	"1",
+			"BB2":	"2",
+		},
 	}
 	var b = &B1{}
 	eudore.ConvertStruct(b, c)

@@ -17,7 +17,7 @@ func TestServerHttp(t *testing.T) {
 			w.Write([]byte("hello http server. your remote addr is " + r.RemoteAddr()))
 		}),
 	}
-	server.SetHandler(http.NewHttpHandler())
+	server.SetHandler(http.NewHttpHandler(server.Handler))
 	t.Log(server.ListenAndServe(":8085", nil))
 }
 
@@ -29,8 +29,8 @@ func TestServerTls(t *testing.T) {
 			w.Write([]byte("hello http server. your remote addr is " + r.RemoteAddr()))
 		}),
 	}
-	server.SetHandler(http.NewHttpHandler())
-	server.SetNextHandler("h2", http2.NewServer())
+	server.SetHandler(http.NewHttpHandler(server.Handler))
+	server.SetNextHandler("h2", http2.NewServer(server.Handler))
 	t.Log(server.ListenAndServeTls(":8085", "/etc/nginx/openssl/wejass.com/wejass.com.cer", "/etc/nginx/openssl/wejass.com/wejass.com.key", nil))
 }
 
@@ -42,6 +42,6 @@ func TestServerFastcgi(t *testing.T) {
 			w.Write([]byte("hello http server. your remote addr is " + r.RemoteAddr()))
 		}),
 	}
-	server.SetHandler(&fastcgi.Fastcgi{})
+	server.SetHandler(fastcgi.NewServer(server.Handler))
 	t.Log(server.ListenAndServe(":8085", nil))
 }

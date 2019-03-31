@@ -1,8 +1,10 @@
-package eudore
-
 /*
+Cache
+
 定义一个数据缓存对象。
 */
+package eudore
+
 
 import (
 	"fmt"
@@ -65,7 +67,7 @@ type (
 )
 
 func NewCache(name string, arg interface{}) (Cache, error) {
-	name = AddComponetPre(name, "cache")
+	name = ComponentPrefix(name, "cache")
 	c, err := NewComponent(name, arg)
 	if err != nil {
 		return nil, err
@@ -94,7 +96,7 @@ func NewCacheGroup(arg interface{}) (Cache, error) {
 	}
 	var err error
 	for i, v := range cf.Vals {
-		c.Caches[i], err = NewCache(GetComponetName(v), v)
+		c.Caches[i], err = NewCache(ComponentGetName(v), v)
 		if err != nil {
 			return nil, err
 		}

@@ -1,4 +1,10 @@
+/*
+Server
+
+用于启动http服务
+*/
 package eudore
+
 
 import (
 	"os"
@@ -14,7 +20,6 @@ import (
 	"strings"
 	"crypto/tls"
 	"crypto/x509"
-	// "golang.org/x/net/http2"
 )
 
 const (
@@ -41,34 +46,33 @@ type (
 	}
 
 	ServerListenConfig struct {
-		Addr		string		`description:"Listen addr."`
-		Https		bool		`description:"Is https, default use http2."`
-		// Http2		bool		`description:"Is http2.`
-		Mutual		bool		`description:"Is mutual tls.`
-		Certfile	string		`description:"Http server cert file."`
-		Keyfile		string		`description:"Http server key file."`
-		TrustFile	string		`description:"Http client ca file."`
+		Addr		string		`set:"addr" description:"Listen addr."`
+		Https		bool		`set:"https" description:"Is https, default use http2."`
+		Mutual		bool		`set:"mutual" description:"Is mutual tls.`
+		Certfile	string		`set:"certfile" description:"Http server cert file."`
+		Keyfile		string		`set:"keyfile" description:"Http server key file."`
+		TrustFile	string		`set:"trustfile" description:"Http client ca file."`
 	}
 
 	// 通用Server配置信息。
 	//
 	// 记录一个sever的组件名称、监听地址、是否https、是否http2、https证书、双向https信任证书、超时时间、请求处理对象。
 	ServerGeneralConfig struct {
-		Name			string
-		ReadTimeout		time.Duration	`description:"Http server read timeout."`
-		WriteTimeout	time.Duration	`description:"Http server write timeout."`
-		Handler			interface{}		`json:"-" description:"-"`
-		Listeners		[]*ServerListenConfig
+		Name			string			`set:"name"`
+		ReadTimeout		time.Duration	`set:"readtimeout" description:"Http server read timeout."`
+		WriteTimeout	time.Duration	`set:"writetimeout" description:"Http server write timeout."`
+		Handler			interface{}		`set:"-" json:"-" description:"-"`
+		Listeners		[]*ServerListenConfig `set:"listeners"`
 	}
 	ServerStd struct {
 		// Servers 	[]*stdServerPort
-		*ServerGeneralConfig
 		*http.Server
-		Listener	net.Listener
-		mu			sync.Mutex
-		wg			sync.WaitGroup
-		errfunc		ErrorFunc
-		state		ServerState
+		Config		*ServerGeneralConfig	`set:"config"`
+		Listener	net.Listener			`set:"listener"`
+		Errfunc		ErrorFunc				`set:"errfunc"`
+		mu			sync.Mutex				`set:"-"`
+		wg			sync.WaitGroup			`set:"-"`
+		state		ServerState				`set:"-"`
 	}
 	// stdServerPort struct {
 	// 	Addr		string
@@ -91,7 +95,7 @@ type (
 
 
 func NewServer(name string, arg interface{}) (Server, error) {
-	name = AddComponetPre(name, "server")
+	name = ComponentPrefix(name, "server")
 	c, err := NewComponent(name, arg)
 	if err != nil {
 		return nil, err
@@ -112,7 +116,7 @@ func NewServerStd(arg interface{}) (Server, error) {
 	scg, ok := arg.(*ServerGeneralConfig)
 	if !ok {
 		scg = &ServerGeneralConfig{}
-		err := MapToStruct(arg, scg)
+		_, err := ConvertStruct(scg, arg)
 		if err != nil {
 			return nil, fmt.Errorf("----: %v", err)
 		}
@@ -120,8 +124,8 @@ func NewServerStd(arg interface{}) (Server, error) {
 	// conv listen
 	//
 	return &ServerStd{
-		ServerGeneralConfig:	scg,
-		errfunc:	ErrorDefaultHandleFunc,
+		Config:		scg,
+		Errfunc:	DefaultErrorHandleFunc,
 		state:		ServerStateInit,
 	}, nil
 }
@@ -135,18 +139,18 @@ func (srv *ServerStd) Start() error {
 	srv.state = ServerStateRun
 	srv.mu.Unlock()
 	// set handler
-	h, ok := srv.ServerGeneralConfig.Handler.(http.Handler)
+	h, ok := srv.Config.Handler.(http.Handler)
 	if !ok {
 		return fmt.Errorf("server not set handle")
 	}	
 	// create server
 	srv.Server =  &http.Server{
 		Handler:	h,
-		ErrorLog:	NewHttpError(srv.errfunc).Logger(),
+		ErrorLog:	NewHttpError(srv.Errfunc).Logger(),
 	}
 	// start server
 	errs := NewErrors()
-	for _, listener := range srv.ServerGeneralConfig.Listeners {
+	for _, listener := range srv.Config.Listeners {
 		// get listen
 		ln, err := listener.Listen()
 		if err != nil {
@@ -199,27 +203,27 @@ func (srv *ServerStd) Shutdown(ctx context.Context) error {
 func (srv *ServerStd) Set(key string, val interface{}) error {
 	switch v := val.(type) {
 	case ErrorFunc:
-		srv.errfunc = v
+		srv.Errfunc = v
 	case func(http.ResponseWriter, *http.Request):
-		srv.ServerGeneralConfig.Handler = http.HandlerFunc(v)
+		srv.Config.Handler = http.HandlerFunc(v)
 	case http.Handler:
-		srv.ServerGeneralConfig.Handler = val
+		srv.Config.Handler = val
 	case *ServerGeneralConfig:
-		srv.ServerGeneralConfig = v
+		srv.Config = v
 	case *ServerListenConfig:
-		srv.ServerGeneralConfig.Listeners = append(srv.ServerGeneralConfig.Listeners, v)
+		srv.Config.Listeners = append(srv.Config.Listeners, v)
 	}
 	return nil
 }
 
 func (srv *ServerStd) SetErrorFunc(fn ErrorFunc) {
-	srv.errfunc = fn
+	srv.Errfunc = fn
 }
 
 
 func (srv *ServerStd) SetHandler(i interface{}) error {
 	if _, ok := i.(http.Handler);ok {
-		srv.ServerGeneralConfig.Handler = i
+		srv.Config.Handler = i
 		return nil
 	}
 	return fmt.Errorf("Server config Handler object, not convert net.http.Handler type.")
@@ -239,7 +243,7 @@ func NewServerMulti(i interface{}) (Server, error) {
 	sc, ok := i.(*ServerMultiConfig)
 	if !ok {
 		sc = &ServerMultiConfig{}
-		err := MapToStruct(i, sc)
+		_, err := ConvertStruct(sc, i)
 		if err != nil {
 			return nil, fmt.Errorf("------- error: %v", err)
 		}
@@ -249,7 +253,7 @@ func NewServerMulti(i interface{}) (Server, error) {
 	var err error
 	// creation servers
 	for i, c := range sc.Configs {
-		name := GetComponetName(c)
+		name := ComponentGetName(c)
 		if len(name) == 0 {
 			return nil, fmt.Errorf("ServerMulti %dth creation parameter could not get the corresponding component name", i)
 		}

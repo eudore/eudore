@@ -63,6 +63,28 @@ func GetRandomString() string {
 	return string(result)
 }
 
+// 模式匹配对象，运行试验带'*'的模式
+func MatchStar(obj, patten string) bool {
+	ps := strings.Split(patten,"*")
+	if len(ps) == 0 {
+		return patten == obj
+	}
+	if !strings.HasPrefix(obj, ps[0]) {
+		return false
+	}
+	for _,i := range ps {
+		if i == "" {
+			continue
+		}
+		pos := strings.Index(obj, i)
+		if pos == -1 {
+			return false
+		}
+		obj = obj[pos + len(i):]
+	}
+	return true
+}
+
 // test function, json formatted output args.
 //
 // 测试函数，json格式化输出args。

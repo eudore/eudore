@@ -1,3 +1,10 @@
+/*
+Router
+
+Router对象用于定义请求的路由
+
+文件：router.go routerRadix.go routerFull.go
+*/
 package eudore
 
 import (
@@ -60,27 +67,11 @@ type (
 		RouterMethod
 	}
 
-
-	// 未使用，未来可能移除
-	RouterStd struct {
-		RouterCore
-		RouterMethod
-	}
 	// 默认路由器方法注册实现
 	RouterMethodStd struct {
 		RouterCore
 		prefix		string
 		tags		string
-	}
-	// 将处理函数转换成路由器。
-	RouterEmpty struct {
-		// Middleware
-		RouterMethod
-		hs		HandlerFuncs
-	}
-	// 未实现，设计目标是处理初始化时的请求，所有注册代理给目标路由器，初始化完成后被目标路由器替换。
-	RouterInit struct {
-
 	}
 	// 存储中间件信息的基数树。
 	//
@@ -110,7 +101,6 @@ type (
 
 // check RouterStd has Router interface
 var (
-	_ Router		=	&RouterStd{}
 	_ Router		=	&RouterRadix{}
 	_ Router		=	&RouterFull{}
 	_ RouterMethod	=	&RouterMethodStd{}
@@ -120,7 +110,7 @@ var (
 
 // new router
 func NewRouter(name string, arg interface{}) (Router, error) {
-	name = AddComponetPre(name, "router")
+	name = ComponentPrefix(name, "router")
 	c, err := NewComponent(name, arg)
 	if err != nil {
 		return nil, err
@@ -167,61 +157,19 @@ func SetRouterConfig(r RouterMethod, c *RouterConfig) {
 	}
 }
 
-func RouterDefault405Func(ctx Context) {
+func DefaultRouter405Func(ctx Context) {
 	const page405 string = "405 method not allowed"
 	ctx.Response().Header().Add("Allow", "HEAD, GET, POST, PUT, DELETE, PATCH")
 	ctx.WriteHeader(405)
 	ctx.WriteString(page405)
 }
 
-func RouterDefault404Func(ctx Context) {
+func DefaultRouter404Func(ctx Context) {
 	const page404 string = "404 page not found"
 	ctx.WriteHeader(404)
 	ctx.WriteString(page404)
 }
 
-func (*RouterStd) GetName() string {
-	return ComponentRouterStdName
-}
-
-func (*RouterStd) Version() string {
-	return ComponentRouterStdVersion
-}
-
-
-
-func NewRouterEmpty(arg interface{}) (Router, error) {
-	h, ok := arg.(HandlerFunc)
-	if !ok {
-		h, ok = arg.(func(Context))
-	}
-	if !ok {
-		return nil, ErrRouterSetNoSupportType
-	}
-	r := &RouterEmpty{hs: HandlerFuncs{h}}
-	r.RouterMethod = &RouterMethodStd{RouterCore: r}
-	return r, nil
-}
-
-func (*RouterEmpty) RegisterMiddleware(method string, path string, handler HandlerFuncs) {
-	// Do nothing because empty router does not process entries.
-}
-
-func (*RouterEmpty) RegisterHandler(method string, path string, handler HandlerFuncs) {
-	// Do nothing because empty router does not process entries.
-}
-func (r *RouterEmpty) Match(string, string, Params) (HandlerFuncs) {
-	// Do nothing because empty router does not process entries.
-	return r.hs
-}
-
-func (*RouterEmpty) GetName() string {
-	return ComponentRouterEmptyName
-}
-
-func (*RouterEmpty) Version() string {
-	return ComponentRouterEmptyVersion
-}
 
 
 
@@ -456,13 +404,4 @@ func (searchNode *middNode) recursiveLoopup(searchKey string) (HandlerFuncs) {
 
 	// fmt.Println(4)
 	return nil
-}
-
-
-// 判断字符串str1的前缀是否是str2
-func contrainPrefix(str1, str2 string) bool {
-	if sub, find := getSubsetPrefix(str1, str2); find {
-		return sub == str2
-	}
-	return false
 }

@@ -49,7 +49,7 @@ func NewEudore() *Eudore {
 				return &ResponseWriterHttp{}
 			},
 		},
-		stop: 			make(chan error),
+		stop: 			make(chan error, 10),
 	}
 	// set eudore pool
 	e.httpcontext = sync.Pool {
@@ -72,10 +72,10 @@ func NewEudore() *Eudore {
 	e.RegisterInit("eudore-server", 0x016 , InitServer)
 	e.RegisterInit("eudore-server-start", 0x017 , InitServerStart)
 	e.RegisterInit("eudore-signal", 0x018 , InitSignal)
-	e.RegisterInit("eudore-defaule-logger", 0xa15 , ReloadDefaultLogger)
-	e.RegisterInit("eudore-defaule-server", 0xa16 , ReloadDefaultServer)
-	e.RegisterInit("eudore-component-info", 0xc01 , ReloadListComponent)
-	e.RegisterInit("eudore-test-stop", 0xfff, ReloadStop)
+	e.RegisterInit("eudore-defaule-logger", 0xa15 , InitDefaultLogger)
+	e.RegisterInit("eudore-defaule-server", 0xa16 , InitDefaultServer)
+	e.RegisterInit("eudore-component-info", 0xc01 , InitListComponent)
+	e.RegisterInit("eudore-test-stop", 0xfff, InitStop)
 	return e
 }
 
@@ -104,16 +104,23 @@ func (app *Eudore) Start() error {
 		if _, ok := app.Logger.(LoggerInitHandler); ok  {
 			app.RegisterComponent("logger", nil)
 		}
-	time.Sleep(100 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}()
 
 	// Reload
-	app.Info("eudore start reload all func")
-	if err := app.Init(); err != nil {
-		app.Error(err)
-		return err
+	go func(){
+		app.Info("eudore start reload all func")
+		app.HandleError(app.Init())
+	}()
+	
+	time.Sleep(100 * time.Millisecond)
+	err := <- app.stop
+	if err == nil {
+		app.Info("eudore stop success.")
+	}else {
+		app.Error("eudore stop error: ", err)
 	}
-	return <- app.stop
+	return err
 }
 
 // Execute the eudore reload function.
@@ -121,9 +128,9 @@ func (app *Eudore) Start() error {
 //
 // 执行eudore重新加载函数。
 // names是需要执行的函数名称列表；如果列表为空，执行全部重新加载函数。
-func (e *Eudore) Init(names ...string) (err error) {
+func (app *Eudore) Init(names ...string) (err error) {
 	// get names
-	names = e.getInitNames(names)
+	names = app.getInitNames(names)
 	// exec
 	var i int
 	var name string
@@ -138,17 +145,17 @@ func (e *Eudore) Init(names ...string) (err error) {
 		}
 	}()*/
 	for i, name = range names {
-		if err = e.inits[name].fn(e);err != nil {
+		if err = app.inits[name].fn(app);err != nil {
 			return fmt.Errorf("eudore init %d/%d %s error: %v",i + 1, num, name, err)
 		}
-		e.Infof("eudore init %d/%d %s success.", i + 1, num, name)
+		app.Infof("eudore init %d/%d %s success.", i + 1, num, name)
 	}
-	e.Info("eudore init all success.")
+	app.Info("eudore init all success.")
 	return nil
 }
 
 // 处理名称并对reloads排序。
-func (e *Eudore) getInitNames(names []string) []string {
+func (app *Eudore) getInitNames(names []string) []string {
 	// get not names
 	notnames := eachstring(names, func(name string) string {
 		if len(name) > 0 && name[0] == '!' {
@@ -167,8 +174,8 @@ func (e *Eudore) getInitNames(names []string) []string {
 
 	// set default name
 	if len(names) == 0 {
-		names = make([]string, 0, len(e.inits))
-		for k := range e.inits {
+		names = make([]string, 0, len(app.inits))
+		for k := range app.inits {
 			names = append(names, k)
 		}
 	}
@@ -182,8 +189,8 @@ func (e *Eudore) getInitNames(names []string) []string {
 			}
 		}
 		// filter invalid name
-		if _, ok := e.inits[name]; !ok {
-			e.Warning("Invalid overloaded function name: ", name)
+		if _, ok := app.inits[name]; !ok {
+			app.Warning("Invalid overloaded function name: ", name)
 			return ""
 		}
 		return name
@@ -191,7 +198,7 @@ func (e *Eudore) getInitNames(names []string) []string {
 
 	// sort index
 	sort.Slice(names, func(i, j int) bool {
-		return e.inits[names[i]].index < e.inits[names[j]].index
+		return app.inits[names[i]].index < app.inits[names[j]].index
 	})
 	return names
 }
@@ -242,21 +249,21 @@ func (*Eudore) RegisterSignal(sig os.Signal, bf bool, fn SignalFunc) {
 
 // Set Pool new func.
 // Type is context, request and response.
-func (e *Eudore) RegisterPool(name string, fn func() interface{}) {
+func (app *Eudore) RegisterPool(name string, fn func() interface{}) {
 	switch name{
 	case "httpcontext":
-		e.httpcontext.New = fn
+		app.httpcontext.New = fn
 	case "httprequest":
-		e.httprequest.New = fn
+		app.httprequest.New = fn
 	case "httpresponse":
-		e.httpresponse.New = fn
+		app.httpresponse.New = fn
 	}
 }
 
-func (e *Eudore) RegisterComponents(names []string, args []interface{}) error {
+func (app *Eudore) RegisterComponents(names []string, args []interface{}) error {
 	errs := NewErrors()
 	for i, name := range names {
-		errs.HandleError(e.RegisterComponent(name, args[i]))
+		errs.HandleError(app.RegisterComponent(name, args[i]))
 	}
 	return errs.GetError()
 }
@@ -272,9 +279,8 @@ func (e *Eudore) RegisterComponents(names []string, args []interface{}) error {
 // Register a static file Handle.
 func (e *Eudore) RegisterStatic(path , dir string) {
 	e.Router.GetFunc(path, func(ctx Context){
-			ctx.WriteFile(dir + ctx.Path())
-			// ctx.End()
-		})
+		ctx.WriteFile(dir + ctx.Path())
+	})
 }
 
 // log out
@@ -324,7 +330,12 @@ func (e *Eudore) logReset() LogOut {
 
 func (e *Eudore) HandleError(err error) {
 	if err != nil {
-		e.Error(err)
+		if err != ErrApplicationStop {
+			e.Error(err)
+			e.stop <- err
+			return
+		}
+		e.stop <- nil
 	}
 }
 

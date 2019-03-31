@@ -21,7 +21,7 @@ import (
 // Redirect a Context.
 //
 // 重定向一个Context。
-func Redirect(ctx Context, redirectUrl string, code int) {
+func HandlerRedirect(ctx Context, redirectUrl string, code int) {
 	u, err := url.Parse(redirectUrl); 
 	if err != nil {
 		ctx.WithField("error", "redirect").Error(err)
@@ -56,15 +56,15 @@ func Redirect(ctx Context, redirectUrl string, code int) {
 
 	// 判断是否内部重定向
 	if u.Scheme == "" && u.Host == "" {
-		RedirectInternal(ctx, redirectUrl, code)
+		HandlerRedirectInternal(ctx, redirectUrl, code)
 	}
-	RedirectInternal(ctx, redirectUrl, code)
+	HandlerRedirectInternal(ctx, redirectUrl, code)
 }
 
 // Request internal redirects.
 //
 // 请求内部重定向。
-func RedirectInternal(ctx Context, redirectUrl string, code int) {
+func HandlerRedirectInternal(ctx Context, redirectUrl string, code int) {
 	var method string
 	switch code {
 	case 301:
@@ -86,7 +86,7 @@ func RedirectInternal(ctx Context, redirectUrl string, code int) {
 // Request external redirects.
 //
 // 请求外部重定向。
-func RedirectExternal(ctx Context, redirectUrl string, code int) {
+func HandlerRedirectExternal(ctx Context, redirectUrl string, code int) {
 	method := ctx.Request().Method()
 	h := ctx.Response().Header()
 
@@ -148,8 +148,9 @@ func htmlEscape(s string) string {
 	return htmlReplacer.Replace(s)
 }
 
+// func HandlerPush(ctx Context, path string) {}
 
-func ServeFile(ctx Context, path string) (int, error) {
+func HandlerFile(ctx Context, path string) (int, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return 0, err

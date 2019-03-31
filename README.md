@@ -1,13 +1,78 @@
-#  Eudore
+# Eudore
 
 本框架为个人学习研究的重框架，每周最多同步更新一次，未稳定前不欢迎issue、pr、using，可查看http及go web框架[相关文档][docs]，交流q群373278915。
 
 ## Features
 
 - 核心全部接口化,支持重写Application、Context、Request、Response、Router、Middleware、Logger、Server、Config、Cache、Bind、Render、View。
-- 对象语义明确。
-- net/http库解耦,可实现或接入其他http协议解析库。
-- 框架源码简单易懂注释多,无注释部分变动可能较大。
+- 对象语义明确，框架源码简单易懂注释多，无注释部分变动可能较大。
+
+## Lsit
+
+功能列表，在未文档前不会编写演示
+
+- Application
+- [x] 程序启动流程自定义实现，内置两种
+- [x] server异步启动
+- [ ] 完全配置化启动程序
+- Context
+- [x] Context与server完全解耦
+- [x] 根据Content-type自动序列化数据
+- [x] 根据Accept反序列化数据
+- [ ] 内部重定向支持
+- Config
+- [x] 配置库集成
+- [x] 支持基于路径读写对象
+- [x] map和结构体相互转换
+- [ ] 结构体基于tag初始化
+- [ ] 数据类型转换工具
+- [ ] 数据设置时验证
+- Server
+- [x] 支持net/http启动server
+- [ ] 支持fasthttp启动server
+- [x] 重新实现http协议server
+- [x] http2协议两种server支持
+- [x] fastcgi协议两种server支持
+- [x] websocket协议支持
+- [ ] 重新实现websocket协议
+- [x] 支持TLS和双向TLS
+- [x] server热重启支持
+- [x] server后台启动
+- Router
+- [x] 零内存复制快速路由器实现
+- [x] 严格路由匹配顺序
+- [x] RESTful风格基于方法的路由注册匹配
+- [x] 基于Host进行路由注册匹配
+- [x] 路由器注册初始化时请求处理
+- [x] 组路由注册支持
+- [x] 全局中间件注册
+- [x] 组级中间件注册
+- [x] api级中间件注册
+- [x] 路由默认参数
+- [x] 路由匹配参数捕获
+- [x] 路由匹配参数校验
+- [ ] 路由匹配参数正则捕捉
+- [x] 路由匹配通配符捕捉
+- [x] 路由匹配通配符校验
+- [ ] 路由匹配通配符正则捕捉
+- Logger
+- [x] 初始化期间日志处理
+- [x] 日志条目属性支持
+- [x] 自定义模板格式化
+- [ ] 日志写入到es
+- View
+- [ ] 多模板库接入
+- Tools
+- [x] 程序启动命令解析
+- [x] 信号响应支持
+- [ ] SRI值自动设置
+- [ ] 自动http2 push
+- [ ] http代理实现
+- Middleware
+- [x] gzip压缩
+- [x] 限流
+- [x] 黑名单
+- [ ] Session实现
 
 ## issue
 
@@ -15,11 +80,7 @@ setting 基于配置初始化对象未实现
 
 缺少完整websocket实现，仅有upgrade部分
 
-Logger基于GC优化
-
 config-eudore未测试，已实现通过路径设置获得属性。
-
-map转结构体未完整实现，已实现结构体转map。
 
 组件Set方法等待config-eudore实现后复用功能
 
@@ -27,19 +88,21 @@ map转结构体未完整实现，已实现结构体转map。
 
 | 组件名称 | 介绍 | 定义库 |
 | ------------ | ------------ | ------------ |
-| router-empty | 将一个HandlerFunc转成Router对象 | 内置 |
-| router-init | 初始时使用的路由处理 | 未实现 |
 | router-radix | 使用基数树实现标准功能路由器 | 内置 |
 | router-full | 使用基数树实现完整功能路由器 | 内置 |
+| router-init | 初始时使用的路由处理 | github.com/eudore/eudore/component/router/init |
+| router-host | 匹配host路由到不同路由器处理 | github.com/eudore/eudore/component/router/host |
 | logger-init | 初始化日志处理，保存日志由设置的日志对象处理 | 内置 |
-| logger-std | 标准日志库实现 | 内置 |
-| logger-elastic | 将日志直接输出到es中 | github.com/eudore/eudore/component/eslogger |
-| server-std | 使用net/http封装标准Server | 内置 |
-| server-eudor  | 使用protocol库封装eudore Server | github.com/eudore/eudore/component/server/eudore |
+| logger-std | 基础日志库实现 | 内置 |
+| logger-elastic | 将日志直接输出到es中 | 未更新、github.com/eudore/eudore/component/eslogger |
+| server-std | 使用net/http封装标准库Server | 内置 |
+| server-fasthttp | 使用fasthttp启动服务 | 未完成、header github.com/eudore/eudore/component/server/fasthttp |
+| server-eudore  | 使用protocol库封装Server | github.com/eudore/eudore/component/server/eudore |
 | cache-map | 使用Sync.Map实现的缓存 | 内置 |
 | cache-group | 使用前缀匹配的多缓存组合 | 内置 |
 | config-map | 使用map[string]interface{}存储配置 | 内置 |
-| config-eudore | 使用反射来操作结构体和map自由嵌套的配置对象 | 内置、未测试 |
+| config-eudore | 使用反射来操作结构体和map自由嵌套的配置对象 | 内置 |
+| view-std | 使用标准库html/template渲染模板 | 内置、未测试 |
 
 ## Example
 

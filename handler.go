@@ -93,7 +93,7 @@ func GetMiddlewareEnd(m Middleware) Middleware {
 	return link
 }*/
 
-func HandleEmpty(Context) {
+func HandlerEmpty(Context) {
 	// Do nothing because empty handler does not process entries.
 }
 

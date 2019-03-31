@@ -13,7 +13,7 @@ var (
 	globalHandler				map[string]Handler
 	globalHandleFuncs				map[string]HandlerFunc
 	// globalMiddlewares				map[string]Middleware
-	globalLoggerHandleFuncs		map[string]LoggerHandleFunc
+	// globalLoggerHandleFuncs		map[string]LoggerHandleFunc
 	globalRouterCheckFunc		map[string]RouterCheckFunc
 	globalRouterNewCheckFunc		map[string]RouterNewCheckFunc
 	globalConfigReadFunc			map[string]ConfigReadFunc
@@ -24,24 +24,24 @@ func init() {
 	globalHandler = make(map[string]Handler)
 	globalHandleFuncs = make(map[string]HandlerFunc)
 	// globalMiddlewares = make(map[string]Middleware)
-	globalLoggerHandleFuncs = make(map[string]LoggerHandleFunc)
+	// globalLoggerHandleFuncs = make(map[string]LoggerHandleFunc)
 	globalRouterCheckFunc = make(map[string]RouterCheckFunc)
 	globalRouterNewCheckFunc = make(map[string]RouterNewCheckFunc)
 	// LoggerHandle
-	globalLoggerHandleFuncs["default"] = LoggerHandleDefault
-	globalLoggerHandleFuncs["json"] = LoggerHandleJson
-	globalLoggerHandleFuncs["jsonindent"] = LoggerHandleJsonIndent
-	globalLoggerHandleFuncs["xml"] = LoggerHandleXml
+	// globalLoggerHandleFuncs["default"] = LoggerHandleDefault
+	// globalLoggerHandleFuncs["json"] = LoggerHandleJson
+	// globalLoggerHandleFuncs["jsonindent"] = LoggerHandleJsonIndent
+	// globalLoggerHandleFuncs["xml"] = LoggerHandleXml
 	// RouterCheckFunc
 	globalRouterCheckFunc["isnum"] = RouterCheckFuncIsnm
 	// RouterNewCheckFunc
 	globalRouterNewCheckFunc["min"] = RouterNewCheckFuncMin
 	globalRouterNewCheckFunc["regexp"] = RouterNewCheckFuncRegexp
 	globalConfigReadFunc = make(map[string]ConfigReadFunc)
-	globalConfigReadFunc["default"] = ReadFile
-	globalConfigReadFunc["file"] = ReadFile
-	globalConfigReadFunc["https"] = ReadHttp
-	globalConfigReadFunc["http"] = ReadHttp
+	globalConfigReadFunc["default"] = ConfigReadFile
+	globalConfigReadFunc["file"] = ConfigReadFile
+	globalConfigReadFunc["https"] = ConfigReadHttp
+	globalConfigReadFunc["http"] = ConfigReadHttp
 	globalPoolGetFunc = make(map[string]PoolGetFunc)
 }
 
@@ -74,13 +74,13 @@ func ConfigLoadMiddleware(name string) Middleware {
 */
 
 // LoggerHandleFunc
-func ConfigSaveLoggerHandleFunc(name string, fn LoggerHandleFunc) {
+/*func ConfigSaveLoggerHandleFunc(name string, fn LoggerHandleFunc) {
     globalLoggerHandleFuncs[name] = fn
 }
 
 func ConfigLoadLoggerHandleFunc(name string) LoggerHandleFunc {
     return globalLoggerHandleFuncs[name]
-}
+}*/
 
 // RouterCheckFunc
 func ConfigSaveRouterCheckFunc(name string, fn RouterCheckFunc) {

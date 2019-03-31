@@ -12,13 +12,14 @@ import (
 )
 
 
-func ParseInitData(c Config) error {
-	c.Set("config", "file:///data/web/golang/src/wejass/config/config-eudore.json")
-	return nil
+func ConfigParseInit(c Config) error {
+	Json(c.Get("keys"))
+	return c.Set("keys.config", "file:///data/web/golang/src/wejass/config/config-eudore.json")
+	// return nil
 }
 
-func ParseRead(c Config) error {
-	path := c.Get("#config").(string)
+func ConfigParseRead(c Config) error {
+	path := c.Get("keys.config").(string)
 	if path == "" {
 		return fmt.Errorf("config data is null")
 	}
@@ -32,17 +33,17 @@ func ParseRead(c Config) error {
 		fn = ConfigLoadConfigReadFunc("default")
 	}
 	data, err := fn(path)
-	c.Set("configdata", data)
+	c.Set("keys.configdata", data)
 	return err
 }
 
-func ParseConfig(c Config) error {
-	err := json.Unmarshal([]byte(c.Get("configdata").(string)), c.Get(""))
+func ConfigParseConfig(c Config) error {
+	err := json.Unmarshal(c.Get("keys.configdata").([]byte), c.Get(""))
 	//Json(string(c.Config.Data), c)
 	return err	
 }
 
-func ParseArgs(c Config) (err error) {
+func ConfigParseArgs(c Config) (err error) {
 	for _, str := range os.Args[1:] {
 		if !strings.HasPrefix(str, "--") {
 			// fmt.Println("invalid args", str)
@@ -53,8 +54,7 @@ func ParseArgs(c Config) (err error) {
 	return
 }
 
-
-func ParseEnvs(c Config) error {
+func ConfigParseEnvs(c Config) error {
 	for _, value := range os.Environ() {
 		if strings.HasPrefix(value, "ENV_") {
 			k, v := split2byte(value, '=')
@@ -68,7 +68,7 @@ func ParseEnvs(c Config) error {
 
 
 // Read config file
-func ReadFile(path string) (string, error) {
+func ConfigReadFile(path string) ([]byte, error) {
 	if strings.HasPrefix(path, "file://") {
 		path = path[7:]
 	}
@@ -76,23 +76,23 @@ func ReadFile(path string) (string, error) {
 	
 	last := strings.LastIndex(path, ".") + 1
 	if last == 0 {
-		return "", fmt.Errorf("read file config, type is null")
+		return nil, fmt.Errorf("read file config, type is null")
 	}
-	return string(data), err
+	return data, err
 }
 // Send http request get config info
-func ReadHttp(path string) (string, error) {
+func ConfigReadHttp(path string) ([]byte, error) {
 	resp, err := http.Get(path)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
-	return string(data), err
+	return data, err
 }
 //
 // example: etcd://127.0.0.1:2379/config
-/*func ReadEtcd(path string) (string, error) {
+/*func ConfigReadEtcd(path string) (string, error) {
 	server, key := split2byte(path[7:], '/')
 	cfg := etcd.Config{
 		Endpoints:               []string{"http://" + server},

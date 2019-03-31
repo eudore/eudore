@@ -83,7 +83,7 @@ func (app *Core) Run() (err error) {
 		// 多端口启动
 		err = app.RegisterComponent(ComponentServerMultiName, app.ports)
 	}*/
-	SetComponent(app.Server, "handler", app)
+	ComponentSet(app.Server, "handler", app)
 	if err != nil {
 		return
 	}
@@ -92,7 +92,7 @@ func (app *Core) Run() (err error) {
 
 
 func (app *Core) Listen(addr string) *Core {
-	SetComponent(app.Server, "add-listen", 	&ServerListenConfig{
+	ComponentSet(app.Server, "config.listeners.+", 	&ServerListenConfig{
 		Addr:		addr,
 	})
 
@@ -112,7 +112,7 @@ func (app *Core) ListenTLS(addr, key, cert string) *Core {
 		Certfile:	cert,
 		Handler:	app,
 	})*/	
-	SetComponent(app.Server, "add-listen", 	&ServerListenConfig{
+	ComponentSet(app.Server, "config.listeners.+", 	&ServerListenConfig{
 		Addr:		addr,
 		Keyfile:	key,
 		Certfile:	cert,

@@ -24,8 +24,8 @@ const (
 	ComponentLoggerInitVersion	=	"eudore logger init v1.0, save all entry."
 	ComponentLoggerStdName		=	"logger-std"
 	ComponentLoggerStdVersion	=	"eudore logger std v1.0, output log to /dev/null."
-	ComponentLoggerMultiName	=	"logger-multi"
-	ComponentLoggerMultiVersion	=	"eudore logger multi v1.0, output log to multiple logger."
+	// ComponentLoggerMultiName	=	"logger-multi"
+	// ComponentLoggerMultiVersion	=	"eudore logger multi v1.0, output log to multiple logger."
 	ComponentServerName			=	"server"
 	ComponentServerStdName		=	"server-std"
 	ComponentServerStdVersion	=	"eudore server std v1.0."
@@ -35,14 +35,14 @@ const (
 	ComponentServerMultiName	=	"server-multi"
 	ComponentServerMultiVersion	=	"eudore server multi v1.0, server multi manage Multiple server."
 	ComponentRouterName			=	"router"
-	ComponentRouterStdName		=	"router-std"
-	ComponentRouterStdVersion	=	"eudore router std v1.0."
 	ComponentRouterRadixName	=	"router-radix"
 	ComponentRouterRadixVersion	=	"eudore router radix,use radix tree std router."
 	ComponentRouterFullName		=	"router-full"
 	ComponentRouterFullVersion	=	"eudore router full,use radix tree full router."
-	ComponentRouterEmptyName	=	"router-empty"
-	ComponentRouterEmptyVersion	=	"eudore router empty."
+	ComponentRouterHostName		=	"router-host"
+	ComponentRouterHostVersion	=	"eudore router host."
+	ComponentRouterInitName	=	"router-init"
+	ComponentRouterInitVersion	=	"eudore router init."
 	ComponentCacheName			=	"cache"
 	ComponentCacheMapName		=	"cache-map"
 	ComponentCacheMapVersion	=	"eudore cache map v1.0, from sync.Map."
@@ -83,7 +83,7 @@ func init() {
 		ComponentConfigName:	ComponentConfigMapName,
 		ComponentLoggerName:	ComponentLoggerStdName,
 		ComponentServerName:	ComponentServerStdName,
-		ComponentRouterName:	ComponentRouterStdName,
+		ComponentRouterName:	ComponentRouterRadixName,
 		ComponentCacheName:		ComponentCacheMapName,
 		ComponentViewName:		ComponentViewStdName,
 	}
@@ -91,35 +91,30 @@ func init() {
 	RegisterComponent(ComponentConfigMapName, func(arg interface{}) (Component, error) {
 		return NewConfigMap(arg)
 	})
+	RegisterComponent(ComponentConfigEudoreName, func(arg interface{}) (Component, error) {
+		return NewConfigEudore(arg)
+	})
 	RegisterComponent(ComponentLoggerInitName, func(arg interface{}) (Component, error) {
 		return NewLoggerInit(arg)
 	})
 	RegisterComponent(ComponentLoggerStdName, func(arg interface{}) (Component, error) {
 		return NewLoggerStd(arg)
 	})
-	RegisterComponent(ComponentLoggerMultiName, func(arg interface{}) (Component, error) {
-		return NewLoggerMulti(arg)
-	})
+	// RegisterComponent(ComponentLoggerMultiName, func(arg interface{}) (Component, error) {
+	// 	return NewLoggerMulti(arg)
+	// })
 	RegisterComponent(ComponentServerStdName, func(arg interface{}) (Component, error) {
 		return NewServerStd(arg)
 	})
 	RegisterComponent(ComponentServerMultiName, func(arg interface{}) (Component, error) {
 		return NewServerMulti(arg)
 	})
-	// RegisterComponent(ComponentRouterStdName, func(arg interface{}) (Component, error) {
-	// 	return NewRouterStd(arg)
-	// })
-	RegisterComponent(ComponentRouterStdName, func(arg interface{}) (Component, error) {
-		return NewRouterRadix(arg)
-	})
+	// router
 	RegisterComponent(ComponentRouterRadixName, func(arg interface{}) (Component, error) {
 		return NewRouterRadix(arg)
 	})
 	RegisterComponent(ComponentRouterFullName, func(arg interface{}) (Component, error) {
 		return NewRouterFull(arg)
-	})
-	RegisterComponent(ComponentRouterEmptyName, func(arg interface{}) (Component, error) {
-		return NewRouterEmpty(arg)
 	})
 	RegisterComponent(ComponentCacheMapName, func(interface{}) (Component, error) {
 		return NewCacheMap()
@@ -135,7 +130,10 @@ func init() {
 // Create a new Component.
 // If name has default name,use default.
 func NewComponent(name string, arg interface{}) (Component, error) {
-	if len(name) ==0 {
+	if len(name) == 0 {
+		name = ComponentGetName(arg)
+	}
+	if len(name) == 0 {
 		return nil, fmt.Errorf(ErrComponentNameNil)
 	}
 	// load defalut name
@@ -161,7 +159,7 @@ func RegisterComponent(name string, fn ComponentFunc) {
 // List all registered component names.
 //
 // 列出所有已注册的组件名称。
-func ListComponent() []string {
+func ComponentList() []string {
 	names := make([]string, 0, len(components))
 	for name := range components {
 		names = append(names, name)
@@ -179,7 +177,7 @@ func ListComponent() []string {
 // 处理组件名称前缀，
 // 名称为nil则返回pre，
 // 名称前缀不是pre，则增加前缀和“ - ”。
-func AddComponetPre(name ,pre string) string {
+func ComponentPrefix(name ,pre string) string {
 	if len(name) == 0 || name == pre {
 		return pre
 	}
@@ -189,7 +187,7 @@ func AddComponetPre(name ,pre string) string {
 	return name
 }
 
-func GetComponetName(i interface{}) string {
+func ComponentGetName(i interface{}) string {
 	if c, ok := i.(ComponentName); ok {
 		return c.GetName()
 	}
@@ -203,10 +201,14 @@ func GetComponetName(i interface{}) string {
 }
 
 
-func SetComponent(c Component, key string, val interface{}) error {
+func ComponentSet(c Component, key string, val interface{}) (err error) {
 	s, ok := c.(Seter)
 	if ok {
-		return s.Set(key, val)
+		err = s.Set(key, val)
+		if err != ErrComponentNoSupportField {
+			return
+		}
 	}
-	return fmt.Errorf("%s not support seter.", c.GetName())
+	_, err = Set(c, key, val)
+	return
 }
