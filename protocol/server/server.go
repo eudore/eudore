@@ -114,7 +114,7 @@ func (srv *Server) newConnServe(c net.Conn) {
 			fmt.Printf("http: TLS handshake error from %s: %v\n", c.RemoteAddr(), err)
 			return
 		}
-
+		
 		if proto := tlsConn.ConnectionState().NegotiatedProtocol; validNPN(proto) && proto == srv.proto {
 			srv.nextHandle.EudoreConn(ctx, c)
 			return

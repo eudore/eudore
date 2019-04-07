@@ -114,7 +114,10 @@ func GetString(i interface{}) string {
 	return GetDefaultString(i, "")
 }
 
-func GetDefaultString(i interface{},str string) string {
+func GetDefaultString(i interface{}, str string) string {
+	if i == nil {
+		return str
+	}
 	if v, ok := i.(string); ok {
 		return v
 	}

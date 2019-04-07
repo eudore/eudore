@@ -35,6 +35,9 @@ func NewJwt(fn VerifyFunc) eudore.HandlerFunc {
 	}
 	return func(ctx eudore.Context) {
 		jwtstr := ctx.GetHeader(eudore.HeaderAuthorization)
+		if len(jwtstr) == 0 {
+			return
+		}
 		if strings.HasPrefix(jwtstr, BearerStar) {
 			jwt, err := fn.ParseToken(jwtstr[7:])
 			if err != nil {

@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 	"bufio"
+	"strings"
 	"github.com/eudore/eudore/protocol"
 )
 
@@ -21,6 +22,7 @@ type Response struct {
 	writer		*bufio.Writer
 	header		Header
 	status		int
+	size		int
 	iswrite		bool
 	chunked		bool
 	// buffer 
@@ -35,6 +37,7 @@ func (w *Response) Reset(conn net.Conn) {
 	w.writer.Reset(conn)
 	w.header.Reset()
 	w.status = 200
+	w.size = 0
 	w.iswrite = false
 	w.chunked = false
 	w.err = nil
@@ -49,114 +52,133 @@ func (w *Response) WriteHeader(codeCode int) {
 	w.status = codeCode
 }
 
-func (w *Response) Write(p []byte) (nn int, err error) {
+// 写入数据，如果写入数据长度小于缓冲，不会立刻返回，也不会写入状态行。
+func (w *Response) Write(p []byte) (int, error) {
 	// 数据大于缓冲，发送数据
-	for len(p) > len(w.buf) - w.n && w.err == nil {
-		// 数据大于缓冲，使用分块传输
-		w.chunked = true
+	if w.n + len(p) > len(w.buf) {
 		// 写入数据
-		var n int
-		if w.n == 0 {
-			// Large write, empty buffer.
-			// Write directly from p to avoid copy.
-			w.writerResponseLine()	
-			fmt.Fprintf(w.writer, "%x\r\n", len(p))	
-			n, w.err = w.writer.Write(p)
-			w.writer.Write([]byte{13, 10})
-		} else {
-			n = copy(w.buf[w.n:], p)
-			w.n += n
-			w.flush()
-		}
-		nn += n
-		p = p[n:]
-	}
-	if w.err != nil {
-		return nn, w.err
+		n, _ := w.writeDate(p, len(p))
+		// 更新数据长度
+		w.size += n
+		return n, w.err
 	}
 	// 数据小于缓存，保存
 	n := copy(w.buf[w.n:], p)
 	w.n += n
-	nn += n
-	return nn, nil
+	// 更新数据长度
+	w.size += n
+	return n, nil
 }
 
-
-func (w *Response) writerResponseLine() {
-	if !w.iswrite {
-		// 设置写入标志为true。
-		w.iswrite = true
-		// Write response line
-		// 写入响应行
-		fmt.Fprintf(w.writer, "%s %d %s\r\n", w.request.Proto(), w.status, Status[w.status])
-		// Write headers
-		// 写入headers
-		h := w.header
-		for i, k := range h.keys {
-			fmt.Fprintf(w.writer, "%s: %s\r\n", k, h.vals[i])
-		}
-		fmt.Fprintf(w.writer, "Date: %s\r\nServer: eudore\r\n", time.Now().Format(TimeFormat))
-		if w.chunked {
-			fmt.Fprintf(w.writer, "Transfer-Encoding: chunked\r\n")
-		}else{
-			fmt.Fprintf(w.writer, "Content-Length: %d\r\n", w.n)
-		}
-		// Write header separator
-		// 写入header后分割符
-		w.writer.Write([]byte("\r\n"))
+// 写入数据并返回。
+//
+// 会先写入缓冲数据，然后将当前数据写入
+//
+// 提升分块效率，会将大小两块合并发送。
+func (w *Response) writeDate(p []byte, length int) (n int, err error) {
+	// 如果有写入错误，或者数据长度为0则返回。
+	if w.err != nil || (length + w.n) == 0 {
+		return 0, w.err
 	}
+	// 写入状态行
+	w.writerResponseLine()
+	// 数据写入
+	if w.chunked {
+		// 分块写入
+		fmt.Fprintf(w.writer, "%x\r\n", length + w.n)
+		// 写入缓冲数据和当前数据
+		w.writer.Write(w.buf[0:w.n])
+		n, err = w.writer.Write(p)
+		// 分块结束
+		w.writer.Write([]byte{13, 10})	
+	}else {
+		w.writer.Write(w.buf[0:w.n])
+		n, err = w.writer.Write(p)
+	}
+	w.n = 0
+	// 检测写入的长度
+	if n < length {
+		err = io.ErrShortWrite
+	}
+	w.err = err
+	return
 }
 
+// 写入状态行
+func (w *Response) writerResponseLine() {
+	// 已经写入则返回
+	if w.iswrite {
+		return
+	}
+	// 设置写入标志为true。
+	w.iswrite = true
+	// Write response line
+	// 写入响应行
+	fmt.Fprintf(w.writer, "%s %d %s\r\n", w.request.Proto(), w.status, Status[w.status])
+	// Write headers
+	// 写入headers
+	h := w.header
+	for i, k := range h.keys {
+		fmt.Fprintf(w.writer, "%s: %s\r\n", k, h.vals[i])
+	}
+	// 写入时间和Server
+	fmt.Fprintf(w.writer, "Date: %s\r\nServer: eudore\r\n", time.Now().Format(TimeFormat))
+	// 检测是否有写入长度，没有则进行分块传输。
+	// 未检测Content-Length值是否合法
+	w.chunked = len(w.header.Get("Content-Length")) == 0
+	if w.chunked {
+		fmt.Fprintf(w.writer, "Transfer-Encoding: chunked\r\n")
+	}
+	// Write header separator
+	// 写入header后分割符
+	w.writer.Write([]byte("\r\n"))
+}
+
+// 数据写入
 func (w *Response) Flush() {
-	w.chunked = true	
-	w.flush()
+	// 将缓冲数据写入
+	w.writeDate(nil, 0)
+	w.n = 0
+	// 发送writer的全部数据
 	w.writer.Flush()
 }
 
-func (w *Response) flushend() error {
-	w.flush()
-	if w.chunked {
-		w.writer.Write([]byte{0x30, 13, 10, 13, 10})
+// 请求结束时flush写入数据。
+func (w *Response) finalFlush() error {
+	// 如果没有写入状态行，并且没有指定内容长度。
+	// 设置内容长度为当前缓冲数据。
+	if !w.iswrite && len(w.header.Get("Content-Length")) == 0 {
+		w.header.Set("Content-Length", fmt.Sprint(w.n))
 	}
+	// 将缓冲数据写入
+	w.writeDate(nil, 0)
+	// 处理分段传输
+	if w.chunked {
+		// 处理Trailer header
+		tr := w.header.Get("Trailer")
+		if len(tr) == 0 {
+			// 没有Trailer,直接写入结束
+			w.writer.Write([]byte{0x30, 0x0d, 0x0a, 0x0d, 0x0a})	
+		}else {
+			// 写入结尾
+			w.writer.Write([]byte{0x30, 0x0d, 0x0a})
+			// 写入Trailer的值
+			for _, k := range strings.Split(tr, ",") {
+				fmt.Fprintf(w.writer, "%s: %s\r\n", k, w.header.Get(k))
+			}
+			w.writer.Write([]byte{0x0d, 0x0a})
+		}
+	}
+	// 发送数据
 	return w.writer.Flush()
 }
 
-func (w *Response) flush() error {
-	w.writerResponseLine()	
-	if w.err != nil {
-		return w.err
-	}
-	if w.n == 0 {
-		return nil
-	}
-	// 写入数据，如果分块加入块长度和分割符
-	if w.chunked {
-		fmt.Fprintf(w.writer, "%x\r\n", w.n)	
-	}
-	n, err := w.writer.Write(w.buf[0:w.n])
-	if w.chunked {
-		w.writer.Write([]byte{13, 10})	
-	}
-	
-	if n < w.n && err == nil {
-		err = io.ErrShortWrite
-	}
-	if err != nil {
-		if n > 0 && n < w.n {
-			copy(w.buf[0:w.n-n], w.buf[n:w.n])
-		}
-		w.n -= n
-		w.err = err
-		return err
-	}
-	w.n = 0
-	return nil
-}
 
 func (w *Response) Hijack() (net.Conn, error) {
 	return w.request.conn, nil
 }
 
+// http协议不支持push方法。
 func (*Response) Push(string, *protocol.PushOptions) error {
 	return nil
 }
@@ -166,5 +188,5 @@ func (w *Response) Status() int {
 }
 
 func (w *Response) Size() int {
-	return 0
+	return w.size
 }

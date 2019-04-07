@@ -148,9 +148,8 @@ func htmlEscape(s string) string {
 	return htmlReplacer.Replace(s)
 }
 
-// func HandlerPush(ctx Context, path string) {}
 
-func HandlerFile(ctx Context, path string) (int, error) {
+func HandlerFile2(ctx Context, path string) (int, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return 0, err

@@ -139,12 +139,15 @@ func NewLogger(name string, arg interface{}) (Logger, error) {
 func NewLoggerStd(arg interface{}) (Logger, error) {
 	// 解析配置
 	config, ok := arg.(*LoggerStdConfig)
+	// TODO: 等待SetDefault优化
 	if !ok {
-		_, err := ConvertStructOnce(config, arg)
-		if err != nil {
-			return nil, err
-		}
 		config = &LoggerStdConfig{}
+		if arg != nil {
+			_, err := ConvertStructOnce(config, arg)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	SetDefault(config)
 	// 创建并初始化日志处理器

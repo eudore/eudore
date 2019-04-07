@@ -60,6 +60,7 @@ func (g *Gzip) Handle(ctx eudore.Context) {
 	w.writer.Close()
 	// 回收GzipResponse
 	g.pool.Put(w)
+
 }
 
 func (g *Gzip) NewGzipResponse(w protocol.ResponseWriter) (*GzipResponse, error) {
@@ -78,14 +79,10 @@ func (w *GzipResponse) Write(data []byte) (int, error) {
 	return w.writer.Write(data)
 }
 
-
-
 func (w *GzipResponse) Flush() {
 	w.writer.Flush()
 	w.ResponseWriter.Flush()
 }
-
-
 
 
 func shouldCompress(ctx eudore.Context) bool {

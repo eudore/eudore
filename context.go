@@ -70,7 +70,7 @@ type (
 		WriteString(string) error
 		WriteView(string, interface{}) error
 		WriteJson(interface{}) error
-		WriteFile(string) (int, error)
+		WriteFile(string) error
 		// binder and renderer
 		ReadBind(interface{}) error
 		WriteRender(interface{}) error
@@ -387,9 +387,9 @@ func (ctx *ContextHttp) Redirect(code int, url string) {
 func (ctx *ContextHttp) Push(target string, opts *protocol.PushOptions) error {
 	if opts == nil {
 		opts = &protocol.PushOptions{
-			// Header: Header{
-				// HeaderAcceptEncoding: ctx.RequestReader.Header()[HeaderAcceptEncoding],
-			// },
+			Header: HeaderHttp{
+				HeaderAcceptEncoding: []string{ctx.RequestReader.Header().Get(HeaderAcceptEncoding)},
+			},
 		}
 	}
 	// TODO: add opts
@@ -421,12 +421,12 @@ func (ctx *ContextHttp) WriteXml(i interface{}) error {
 	return ctx.WriteRenderWith(i, RendererXml)
 }
 
-func (ctx *ContextHttp) WriteFile(path string) (int, error) {
-	n, err := HandlerFile(ctx, path)
+func (ctx *ContextHttp) WriteFile(path string) (err error) {
+	err = HandlerFile(ctx, path)
 	if err != nil {
 		ctx.Fatal(err)
 	}
-	return n, err
+	return
 }
 
 

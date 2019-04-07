@@ -56,6 +56,7 @@ func NewEudore() *Eudore {
 		New: func() interface{} {
 			return &ContextHttp{
 				app:	e.App,
+				fields:	make(Fields, 5),
 			}
 		},
 	}

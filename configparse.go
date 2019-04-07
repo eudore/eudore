@@ -13,9 +13,7 @@ import (
 
 
 func ConfigParseInit(c Config) error {
-	Json(c.Get("keys"))
 	return c.Set("keys.config", "file:///data/web/golang/src/wejass/config/config-eudore.json")
-	// return nil
 }
 
 func ConfigParseRead(c Config) error {

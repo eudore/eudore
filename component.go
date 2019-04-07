@@ -32,6 +32,8 @@ const (
 	ComponentServerFastcgiName	=	"server-fastcgi"
 	ComponentServerEudoreName	=	"server-eudore"
 	ComponentServerEudoreVersion	=	"eudore server eudore v0.1."
+	ComponentServerFasthttpName		=	"server-fasthttp"
+	ComponentServerFasthttpVersion	=	"eudore server fasthttp."
 	ComponentServerMultiName	=	"server-multi"
 	ComponentServerMultiVersion	=	"eudore server multi v1.0, server multi manage Multiple server."
 	ComponentRouterName			=	"router"

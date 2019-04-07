@@ -47,7 +47,8 @@ type (
 
 	ServerListenConfig struct {
 		Addr		string		`set:"addr" description:"Listen addr."`
-		Https		bool		`set:"https" description:"Is https, default use http2."`
+		Https		bool		`set:"https" description:"Is https."`
+		Http2		bool		`set:"http2" description:"Is http2.`
 		Mutual		bool		`set:"mutual" description:"Is mutual tls.`
 		Certfile	string		`set:"certfile" description:"Http server cert file."`
 		Keyfile		string		`set:"keyfile" description:"Http server key file."`
@@ -114,11 +115,14 @@ func NewServer(name string, arg interface{}) (Server, error) {
 
 func NewServerStd(arg interface{}) (Server, error) {
 	scg, ok := arg.(*ServerGeneralConfig)
+	// TODO: 等待SetDefault优化
 	if !ok {
 		scg = &ServerGeneralConfig{}
-		_, err := ConvertStruct(scg, arg)
-		if err != nil {
-			return nil, fmt.Errorf("----: %v", err)
+		if arg != nil {
+			_, err := ConvertStruct(scg, arg)
+			if err != nil {
+				return nil, fmt.Errorf("Convert args to server config error: %v", err)
+			}
 		}
 	}
 	// conv listen
@@ -146,6 +150,7 @@ func (srv *ServerStd) Start() error {
 	// create server
 	srv.Server =  &http.Server{
 		Handler:	h,
+		TLSNextProto:	nil,
 		ErrorLog:	NewHttpError(srv.Errfunc).Logger(),
 	}
 	// start server
@@ -229,11 +234,11 @@ func (srv *ServerStd) SetHandler(i interface{}) error {
 	return fmt.Errorf("Server config Handler object, not convert net.http.Handler type.")
 }
 
-func (s *ServerStd) GetName() string {
+func (*ServerStd) GetName() string {
 	return ComponentServerStdName
 }
 
-func (s *ServerStd) Version() string {
+func (*ServerStd) Version() string {
 	return ComponentServerStdVersion
 }
 
@@ -340,6 +345,9 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 	config := &tls.Config{
 		NextProtos:		[]string{"http/1.1"},
 		Certificates:	make([]tls.Certificate, 1),
+	}
+	if slc.Http2 {
+		config.NextProtos = []string{"h2"}
 	}
 	config.Certificates[0], err = tls.LoadX509KeyPair(slc.Certfile, slc.Keyfile)
 	if err != nil {

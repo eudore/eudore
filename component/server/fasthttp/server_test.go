@@ -10,10 +10,23 @@ import (
 )
 
 func TestStart(t *testing.T) {
-	srv, _ := fasthttp.NewServer()
+	srv, _ := fasthttp.NewServer(nil)
 	eudore.Set(srv, "config.http.+.addr", ":8084")
 	srv.Set("config.handler", protocol.HandlerFunc(func(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
-		w.Write([]byte("start eudore server, this default page."))
+		w.Write([]byte("start fasthttp server, this default page."))
 	}))
+	t.Log(srv.Start())
+}
+
+
+func TestEudore(t *testing.T) {
+	app := eudore.NewCore()
+	app.AnyFunc("/*", func(ctx eudore.Context) {
+		ctx.WriteString("start fasthttp server, this default page.")
+	})
+	srv, _ := fasthttp.NewServer(nil)
+	eudore.Set(srv, "config.http.+.addr", ":8084")
+	// eudore.Set(srv, "config.http.+.addr", ":8085")
+	srv.Set("config.handler", app)
 	t.Log(srv.Start())
 }

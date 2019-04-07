@@ -9,7 +9,7 @@
 
 ## Lsit
 
-功能列表，在未文档前不会编写演示
+功能列表，在未稳定前不会编写演示
 
 - Application
 - [x] 程序启动流程自定义实现，内置两种
@@ -20,6 +20,7 @@
 - [x] 根据Content-type自动序列化数据
 - [x] 根据Accept反序列化数据
 - [ ] 内部重定向支持
+- [x] http2 push
 - Config
 - [x] 配置库集成
 - [x] 支持基于路径读写对象
@@ -27,15 +28,18 @@
 - [ ] 结构体基于tag初始化
 - [ ] 数据类型转换工具
 - [ ] 数据设置时验证
+- [ ] 生成对象帮助信息
 - Server
 - [x] 支持net/http启动server
-- [ ] 支持fasthttp启动server
+- [x] 支持fasthttp启动server
 - [x] 重新实现http协议server
 - [x] http2协议两种server支持
 - [x] fastcgi协议两种server支持
 - [x] websocket协议支持
 - [ ] 重新实现websocket协议
 - [x] 支持TLS和双向TLS
+- [ ] quic协议支持
+- [ ] http3协议学不动了
 - [x] server热重启支持
 - [x] server后台启动
 - Router
@@ -66,8 +70,11 @@
 - [x] 程序启动命令解析
 - [x] 信号响应支持
 - [ ] SRI值自动设置
-- [ ] 自动http2 push
+- [x] 自动http2 push
 - [ ] http代理实现
+- [ ] pprof支持
+- [ ] expvar支持
+- [ ] 运行时对象数据显示
 - Middleware
 - [x] gzip压缩
 - [x] 限流
@@ -84,6 +91,10 @@ config-eudore未测试，已实现通过路径设置获得属性。
 
 组件Set方法等待config-eudore实现后复用功能
 
+fasthttp不支持多端口和hijack
+
+handlefile处理304缓存
+
 ## Component
 
 | 组件名称 | 介绍 | 定义库 |
@@ -96,8 +107,8 @@ config-eudore未测试，已实现通过路径设置获得属性。
 | logger-std | 基础日志库实现 | 内置 |
 | logger-elastic | 将日志直接输出到es中 | 未更新、github.com/eudore/eudore/component/eslogger |
 | server-std | 使用net/http封装标准库Server | 内置 |
-| server-fasthttp | 使用fasthttp启动服务 | 未完成、header github.com/eudore/eudore/component/server/fasthttp |
 | server-eudore  | 使用protocol库封装Server | github.com/eudore/eudore/component/server/eudore |
+| server-fasthttp | 使用fasthttp启动服务 | github.com/eudore/eudore/component/server/fasthttp |
 | cache-map | 使用Sync.Map实现的缓存 | 内置 |
 | cache-group | 使用前缀匹配的多缓存组合 | 内置 |
 | config-map | 使用map[string]interface{}存储配置 | 内置 |

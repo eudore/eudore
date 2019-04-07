@@ -2,6 +2,7 @@ package http
 
 import (
 	"net"
+	"fmt"
 	"sync"
 	"bufio"
 	"errors"
@@ -34,17 +35,21 @@ var (
 
 type HttpHandler struct {
 	Handler		protocol.Handler
+	ErrFunc		func(error)			`set:"errfunc`
 }
 
 func NewHttpHandler(h protocol.Handler) *HttpHandler {
-	return &HttpHandler{h}
+	return &HttpHandler{h, printErr}
+}
+
+func printErr(err error) {
+	fmt.Println(err)
 }
 
 // Handling http connections
 //
 // 处理http连接
 func (hh *HttpHandler) EudoreConn(ctx context.Context, c net.Conn) {
-	// fmt.Println("conn serve:", c.RemoteAddr().String())
 	// Initialize the request object.
 	// 初始化请求对象。
 	req := requestPool.Get().(*Request)
@@ -53,13 +58,14 @@ func (hh *HttpHandler) EudoreConn(ctx context.Context, c net.Conn) {
 	for {
 		if err := req.Reset(c); err != nil {
 			// handler error
-			// fmt.Println(err)
+			hh.ErrFunc(err)
+			c.Close()
 			return
 		}
 		resp.Reset(c)
 		// 处理请求
 		hh.Handler.EudoreHTTP(ctx, resp, req)
-		resp.flushend()
+		resp.finalFlush()
 		if req.header.Get("Connection") != "keep-alive" {
 			c.Close()
 			break

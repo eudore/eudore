@@ -9,6 +9,13 @@ func Set(i interface{}, key string, val interface{}) (interface{}, error)
 func ConvertMap(i interface{}) map[interface{}]interface{}
 func ConvertMapString(i interface{}) map[string]interface{}
 func ConvertStruct(i interface{}, m interface{}) error
+
+计划中：
+func SetDefault(i interface{}) error
+func ConvertTo(source interface{}, target interface{}) error
+
+
+setflag: validator string default
 */
 
 import (

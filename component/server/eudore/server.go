@@ -3,6 +3,7 @@ package eudore
 import (
 	"net"
 	"sync"
+	"time"
 	"context"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/protocol"
@@ -18,7 +19,8 @@ type (
 		Addr	string		`set:"addr"`
 	}
 	ServerConfig struct {
-		Http2		bool   `set:"http2" description:"Is http2.`
+		ReadTimeout		time.Duration	`set:"readtimeout" description:"Http server read timeout."`
+		WriteTimeout	time.Duration	`set:"writetimeout" description:"Http server write timeout."`
 		Http		[]*HttpConfig `set:"http"`
 		Fastcgi		[]*FastcgiConfig `set:"fastcgi"`
 		Handler		interface{}			`set:"handler" json:"-"`
@@ -173,9 +175,7 @@ func (srv *Server) EnableHttp() {
 		}
 		// 设服务连接处理为http
 		srv.http.SetHandler(http.NewHttpHandler(srv.handler))
-		if srv.Config.Http2 {
-			srv.http.SetNextHandler("h2", http2.NewServer(srv.handler))
-		}
+		srv.http.SetNextHandler("h2", http2.NewServer(srv.handler))
 	})
 }
 

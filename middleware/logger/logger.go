@@ -34,6 +34,7 @@ func (l *Logger) Handle(ctx eudore.Context) {
 	ctx.Next()
 	f["status"] = ctx.Response().Status()
 	f["time"] = time.Now().Sub(now).String()
+	f["size"] = ctx.Response().Size()
 	if parentId := ctx.GetHeader(eudore.HeaderXParentID);len(parentId) > 0 {
 		f["x-parent-id"] = parentId
 	}
@@ -49,5 +50,10 @@ func (l *Logger) Handle(ctx eudore.Context) {
 	// if routes := ctx.Params()[eudore.ParamRoutes]; len(routes) > 0 {
 	// 	f["routes"] = strings.Join(routes, " ")
 	// }
-	ctx.WithFields(f).Info()
+	if ctx.Response().Status() < 400 {
+		ctx.WithFields(f).Info()	
+	}else {
+		ctx.WithFields(f).Error()
+	}
+	
 }

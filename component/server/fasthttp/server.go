@@ -2,10 +2,10 @@ package fasthttp
 
 import (
 	"net"
+	"fmt"
 	"sync"
 	"bytes"
-	"errors"
-	"crypto/tls"
+	"context"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/protocol"
 	"github.com/valyala/fasthttp"
@@ -24,16 +24,6 @@ type (
 		Http		[]*eudore.ServerListenConfig `set:"http"`
 
 	}
-	Request struct {
-		ctx			*fasthttp.RequestCtx
-		Request		*fasthttp.Request
-		body		[]byte
-		read		*bytes.Reader
-	}
-	Response struct {
-		ctx			*fasthttp.RequestCtx
-		Response	*fasthttp.Response
-	}
 )
 
 var (
@@ -41,20 +31,33 @@ var (
 		New: func() interface{} {
 			return &Request{
 				read:	bytes.NewReader(nil),
+				header:	&Header{},
 			}
 		},
 	}
 	poolresp			= sync.Pool{
 		New: func() interface{} {
-			return &Response{}
+			return &Response{
+				header:	&Header{},
+			}
 		},
 	}
 )
 
-func NewServer() (*Server, error) {
+func init() {
+	eudore.RegisterComponent(eudore.ComponentServerFasthttpName, func(arg interface{}) (eudore.Component, error) {
+		return NewServer(arg)
+	})
+}
+
+func NewServer(arg interface{}) (*Server, error) {
+	config, ok := arg.(*ServerConfig)
+	if !ok {
+		config = &ServerConfig{}
+	}
 	return &Server{
-		Config:		&ServerConfig{},
-		Fasthttp:		&fasthttp.Server{},
+		Config:		config,
+		Fasthttp:	&fasthttp.Server{},
 	}, nil
 }
 
@@ -83,11 +86,29 @@ func (srv *Server) Start() error {
 	return errs.GetError()
 }
 
+
+func (srv *Server) Restart() error {
+	err := eudore.StartNewProcess()
+	if err == nil {
+		srv.Fasthttp.Shutdown()
+	}
+	return err
+}
+
+func (srv *Server) Close() error {
+	return srv.Fasthttp.Shutdown()
+}
+
+func (srv *Server) Shutdown(context.Context) error {
+	return srv.Fasthttp.Shutdown()
+}
+
 func (srv *Server) HandlerFasthttp(ctx *fasthttp.RequestCtx) {
 	req := poolreq.Get().(*Request)
 	resp := poolresp.Get().(*Response)
 	req.Reset(ctx)
 	resp.Reset(ctx)
+	fmt.Println("---")
 	srv.handler.EudoreHTTP(ctx, resp, req)
 	poolreq.Put(req)
 	poolresp.Put(resp)
@@ -100,80 +121,14 @@ func (srv *Server) Set(key string, val interface{}) (err error) {
 
 
 
-func (req *Request) Reset(ctx *fasthttp.RequestCtx) {
-	req.ctx = ctx
-	req.Request = &ctx.Request
-	req.body = req.Body()
-	req.read.Reset(req.body)
-}
-
-func (req *Request) Method() string {
-	return string(req.ctx.Method())
-}
-
-func (req *Request) Proto() string {
-	return "http"
-}
-
-func (req *Request) RequestURI() string {
-	return string(req.Request.RequestURI())
-}
-
-func (req *Request) Header() protocol.Header {
-	return nil
-}
-
-func (req *Request) Read(b []byte) (int, error) {
-	return req.read.Read(b)
-}
-
-func (req *Request) Host() string {
-	return string(req.Request.Host())
-}
-
-func (req *Request) RemoteAddr() string {
-	return req.ctx.RemoteAddr().String()
-}
-
-func (req *Request) TLS() *tls.ConnectionState {
-	return req.ctx.TLSConnectionState()
-}
-
-func (req *Request) Body() []byte {
-	return req.body
-}
 
 
-
-func (req *Response) Reset(ctx *fasthttp.RequestCtx) {
-	req.ctx = ctx
-	req.Response = &ctx.Response
+func (*ServerConfig)  GetName() string {
+	return eudore.ComponentServerFasthttpName
 }
-
-func (resp *Response) Write(b []byte) (int, error) {
-	return resp.ctx.Write(b)
+func (*Server)  GetName() string {
+	return eudore.ComponentServerFasthttpName
 }
-
-func (resp *Response) Header() protocol.Header {
-	return nil
-}
-func (resp *Response) WriteHeader(code int) {
-	resp.ctx.SetStatusCode(code)
-}
-func (resp *Response) Flush() {
-	
-}
-func (resp *Response) Hijack() (net.Conn, error) {
-	return nil, nil
-}
-func (resp *Response) Push(string, *protocol.PushOptions) error {
-	return errors.New("not supperd push")
-}
-
-func (resp *Response) Size() int {
-	return resp.Response.Header.ContentLength()
-}
-
-func (resp *Response) Status() int {
-	return resp.Response.Header.StatusCode()
+func (*Server)  Version() string {
+	return eudore.ComponentServerFasthttpVersion
 }

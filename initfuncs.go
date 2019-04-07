@@ -50,10 +50,11 @@ func InitCommand(app *Eudore) error {
 }
 
 
-func InitLogger(e *Eudore) error {
-	c := e.Config.Get("component.logger")
+func InitLogger(app *Eudore) error {
+	key := GetDefaultString(app.Config.Get("keys.logger"), "component.logger")
+	c := app.Config.Get(key)
 	if c != nil {
-		err := e.RegisterComponent("", c)
+		err := app.RegisterComponent("", c)
 		if err != nil {
 			return err
 		}
@@ -62,7 +63,8 @@ func InitLogger(e *Eudore) error {
 }
 
 func InitServer(app *Eudore) error {
-	c := app.Config.Get("component.server")
+	key := GetDefaultString(app.Config.Get("keys.server"), "component.server")
+	c := app.Config.Get(key)
 	if c != nil {
 		err := app.RegisterComponent("", c)
 		if err != nil {
@@ -79,8 +81,8 @@ func InitServerStart(app *Eudore) error {
 		return err
 	}
 
+	ComponentSet(app.Server, "config.handler", app)
 	ComponentSet(app.Server, "errfunc", app.HandleError)
-	ComponentSet(app.Server, "handler", app)
 	go func() {
 		app.stop <- app.Server.Start()
 	}()

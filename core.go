@@ -5,6 +5,8 @@ import (
 	// "fmt"
 	"sync"
 	"net/http"
+	"context"
+	"github.com/eudore/eudore/protocol"
 )
 
 type (
@@ -134,5 +136,17 @@ func (app *Core) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// clean
 	app.poolreq.Put(request)
 	app.poolresp.Put(response)
+	app.poolctx.Put(ctx)
+}
+
+
+func (app *Core) EudoreHTTP(pctx context.Context,w protocol.ResponseWriter, req protocol.RequestReader) {
+	// init
+	ctx := app.poolctx.Get().(Context)
+	// handle
+	ctx.Reset(pctx, w, req)
+	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx))
+	ctx.Next()
+	// release
 	app.poolctx.Put(ctx)
 }
