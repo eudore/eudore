@@ -95,16 +95,99 @@ func Json(args ...interface{}) {
 
 
 
-
-func GetInt(i interface{}) int {
-	return GetDefultInt(i, 0)
+func GetBool(i interface{}) bool {
+	return GetDefaultBool(i, false)
 }
 
-func GetDefultInt(i interface{},n int) int {
+func GetDefaultBool(i interface{}, b bool) bool {
+	if v, ok := i.(bool); ok {
+		return v
+	}
+	if v, err := strconv.ParseBool(GetDefaultString(i, "")); err == nil {
+		return v
+	}
+	return b
+}
+
+func GetInt(i interface{}) int {
+	return GetDefaultInt(i, 0)
+}
+
+func GetDefaultInt(i interface{},n int) int {
 	if v, ok := i.(int); ok {
 		return v
 	}	
 	if v, err := strconv.Atoi(GetDefaultString(i, "")); err == nil {
+		return v
+	}
+	return n
+}
+
+func GetInt64(i interface{}) int64 {
+	return GetDefaultInt64(i, 0)
+}
+
+func GetDefaultInt64(i interface{},n int64) int64 {
+	if v, ok := i.(int64); ok {
+		return v
+	}	
+	if v, err := strconv.ParseInt(GetDefaultString(i, ""), 10, 64); err == nil {
+		return v
+	}
+	return n
+}
+
+func GetUint(i interface{}) uint {
+	return GetDefaultUint(i, 0)
+}
+
+func GetDefaultUint(i interface{},n uint) uint {
+	if v, ok := i.(uint); ok {
+		return v
+	}	
+	if v, err := strconv.ParseUint(GetDefaultString(i, ""), 10, 64); err == nil {
+		return uint(v)
+	}
+	return n
+}
+
+func GetUint64(i interface{}) uint64 {
+	return GetDefaultUint64(i, 0)
+}
+
+func GetDefaultUint64(i interface{},n uint64) uint64 {
+	if v, ok := i.(uint64); ok {
+		return v
+	}	
+	if v, err := strconv.ParseUint(GetDefaultString(i, ""), 10, 64); err == nil {
+		return v
+	}
+	return n
+}
+
+func GetFloat32(i interface{}) float32 {
+	return GetDefaultFloat32(i, 0)
+}
+
+func GetDefaultFloat32(i interface{},n float32) float32 {
+	if v, ok := i.(float32); ok {
+		return v
+	}	
+	if v, err := strconv.ParseFloat(GetDefaultString(i, ""), 32); err == nil {
+		return float32(v)
+	}
+	return n
+}
+
+func GetFloat64(i interface{}) float64 {
+	return GetDefaultFloat64(i, 0)
+}
+
+func GetDefaultFloat64(i interface{},n float64) float64 {
+	if v, ok := i.(float64); ok {
+		return v
+	}	
+	if v, err := strconv.ParseFloat(GetDefaultString(i, ""), 64); err == nil {
 		return v
 	}
 	return n
@@ -125,4 +208,90 @@ func GetDefaultString(i interface{}, str string) string {
 		return v.String()
 	}
 	return str
+}
+
+
+
+func GetStringBool(str string) bool {
+	return GetStringDefaultBool(str, false)
+}
+
+func GetStringDefaultBool(str string, b bool) bool {
+	if v, err := strconv.ParseBool(str); err == nil {
+		return v
+	}
+	return b
+}
+
+func GetStringInt(str string) int {
+	return GetStringDefaultInt(str, 0)
+}
+
+func GetStringDefaultInt(str string,n int) int {
+	if v, err := strconv.Atoi(str); err == nil {
+		return v
+	}
+	return n
+}
+
+func GetStringInt64(str string) int64 {
+	return GetStringDefaultInt64(str, 0)
+}
+
+func GetStringDefaultInt64(str string,n int64) int64 {
+	if v, err := strconv.ParseInt(str, 10, 64); err == nil {
+		return v
+	}
+	return n
+}
+
+func GetStringUint(str string) uint {
+	return GetStringDefaultUint(str, 0)
+}
+
+func GetStringDefaultUint(str string, n uint) uint {
+	if v, err := strconv.ParseUint(str, 10, 64); err == nil {
+		return uint(v)
+	}
+	return n
+}
+
+func GetStringUint64(str string) uint64 {
+	return GetStringDefaultUint64(str, 0)
+}
+
+func GetStringDefaultUint64(str string, n uint64) uint64 {
+	if v, err := strconv.ParseUint(str, 10, 64); err == nil {
+		return v
+	}
+	return n
+}
+
+func GetStringFloat32(str string) float32 {
+	return GetStringDefaultFloat32(str, 0)
+}
+
+func GetStringDefaultFloat32(str string,n float32) float32 {
+	if v, err := strconv.ParseFloat(str, 32); err == nil {
+		return float32(v)
+	}
+	return n
+}
+
+func GetStringFloat64(str string) float64 {
+	return GetStringDefaultFloat64(str, 0)
+}
+
+func GetStringDefaultFloat64(str string,n float64) float64 {
+	if v, err := strconv.ParseFloat(str, 64); err == nil {
+		return v
+	}
+	return n
+}
+
+func GetStringDefault(s1 , s2 string) string {
+	if len(s1) == 0 {
+		return s2
+	}
+	return s1
 }

@@ -1,5 +1,8 @@
 package eudore
 
+/*
+Core是组合App对象后的一种实例化，用于启动主程序。
+*/
 
 import (
 	// "fmt"
@@ -15,7 +18,6 @@ type (
 		poolctx sync.Pool
 		poolreq	sync.Pool
 		poolresp sync.Pool
-		// ports []*ServerConfigGeneral
 	}
 )
 
@@ -38,31 +40,25 @@ func NewCore() *Core {
 	app.poolctx.New = func() interface{} {
 		return &ContextHttp{
 			app:	app.App,
+			fields:	make(Fields, 5),
 		}
 	}
 
+	// 初始化组件
 	app.RegisterComponents(
-		[]string{"logger", "config", "router", "server", "cache"}, 
-		[]interface{}{nil, nil, nil, nil, nil},
+		[]string{"logger", "config", "router", "server", "cache", "view"}, 
+		[]interface{}{nil, nil, nil, nil, nil, nil},
 	)
 	return app
 }
 
+// 加载配置然后启动Core。
 func (app *Core) Run() (err error) {
 	// parse config
 	err = app.Config.Parse()
 	if err != nil {
 		return
 	}
-	// read and set server config
-/*	server := app.Config.Get("#component.server")
-	err = app.Server.Register(server)
-	for _, p := range app.ports {
-		app.Server.Register(p)
-	}
-	if err != nil {
-		return
-	}*/
 	// init sync.Pool
 	if fn, ok := app.Pools["context"];ok {
 		app.poolctx.New = fn
@@ -74,17 +70,6 @@ func (app *Core) Run() (err error) {
 		app.poolresp.New = fn
 	}
 	// start serverv
-/*	switch len(app.ports) {
-	case 0:
-		// 未注册Server信息
-		return fmt.Errorf("Undefined Server component, Please Listen or ListenTLS.")
-	case 1:
-		// 单端口启动
-		err = app.RegisterComponent("server-std", app.ports[0])
-	default:
-		// 多端口启动
-		err = app.RegisterComponent(ComponentServerMultiName, app.ports)
-	}*/
 	ComponentSet(app.Server, "handler", app)
 	if err != nil {
 		return
@@ -92,30 +77,21 @@ func (app *Core) Run() (err error) {
 	return app.Server.Start()
 }
 
-
+// 监听一个http端口
 func (app *Core) Listen(addr string) *Core {
 	ComponentSet(app.Server, "config.listeners.+", 	&ServerListenConfig{
 		Addr:		addr,
 	})
-
-/*	app.ports = append(app.ports, &ServerConfigGeneral{
-		Addr:		addr,
-		Http2:		false,
-		Handler:	app,
-	})*/
 	return app
 }
 
+
+// 监听一个https端口，如果支持默认开启h2
 func (app *Core) ListenTLS(addr, key, cert string) *Core {
-/*	app.ports = append(app.ports, &ServerConfigGeneral{
-		Addr:		addr,
-		Http2:		true,
-		Keyfile:	key,
-		Certfile:	cert,
-		Handler:	app,
-	})*/	
 	ComponentSet(app.Server, "config.listeners.+", 	&ServerListenConfig{
 		Addr:		addr,
+		Https:		true,
+		Http2:		true,
 		Keyfile:	key,
 		Certfile:	cert,
 	})

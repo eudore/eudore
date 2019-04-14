@@ -32,8 +32,6 @@ func ExampleNewCore() {
 		// Api级请求处理中间件
 		apiv1.AnyFunc("/*", handlepre1, handleparam)
 	}
-	// app注册api子路由
-	// app.SubRoute("/api/v1 version:v1", apiv1)
 	// 默认路由
 	app.AnyFunc("/*path", func(ctx eudore.Context){
 		ctx.WriteString(ctx.Method() + " " + ctx.Path())

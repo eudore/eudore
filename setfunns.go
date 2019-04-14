@@ -12,8 +12,6 @@ import (
 var (
 	globalHandler				map[string]Handler
 	globalHandleFuncs				map[string]HandlerFunc
-	// globalMiddlewares				map[string]Middleware
-	// globalLoggerHandleFuncs		map[string]LoggerHandleFunc
 	globalRouterCheckFunc		map[string]RouterCheckFunc
 	globalRouterNewCheckFunc		map[string]RouterNewCheckFunc
 	globalConfigReadFunc			map[string]ConfigReadFunc
@@ -23,15 +21,8 @@ var (
 func init() {
 	globalHandler = make(map[string]Handler)
 	globalHandleFuncs = make(map[string]HandlerFunc)
-	// globalMiddlewares = make(map[string]Middleware)
-	// globalLoggerHandleFuncs = make(map[string]LoggerHandleFunc)
 	globalRouterCheckFunc = make(map[string]RouterCheckFunc)
 	globalRouterNewCheckFunc = make(map[string]RouterNewCheckFunc)
-	// LoggerHandle
-	// globalLoggerHandleFuncs["default"] = LoggerHandleDefault
-	// globalLoggerHandleFuncs["json"] = LoggerHandleJson
-	// globalLoggerHandleFuncs["jsonindent"] = LoggerHandleJsonIndent
-	// globalLoggerHandleFuncs["xml"] = LoggerHandleXml
 	// RouterCheckFunc
 	globalRouterCheckFunc["isnum"] = RouterCheckFuncIsnm
 	// RouterNewCheckFunc
@@ -63,24 +54,6 @@ func ConfigLoadHandleFunc(name string) HandlerFunc {
 	return globalHandleFuncs[name]
 }
 
-// Middleware
-/*func ConfigSaveMiddleware(name string, fn Middleware) {
-	globalMiddlewares[name] = fn
-}
-
-func ConfigLoadMiddleware(name string) Middleware {
-	return globalMiddlewares[name]
-}
-*/
-
-// LoggerHandleFunc
-/*func ConfigSaveLoggerHandleFunc(name string, fn LoggerHandleFunc) {
-    globalLoggerHandleFuncs[name] = fn
-}
-
-func ConfigLoadLoggerHandleFunc(name string) LoggerHandleFunc {
-    return globalLoggerHandleFuncs[name]
-}*/
 
 // RouterCheckFunc
 func ConfigSaveRouterCheckFunc(name string, fn RouterCheckFunc) {

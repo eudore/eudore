@@ -197,5 +197,4 @@ func TestConvertStruct(*testing.T) {
 	ii, _ := eudore.Set(a, "+", 66)
 	ii, _ = eudore.Set(ii.([]int), "1", 1)
 	fmt.Printf("struct: %# v\n", pretty.Formatter(ii))
-
 }

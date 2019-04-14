@@ -108,27 +108,13 @@ func NewServer(name string, arg interface{}) (Server, error) {
 	return nil, fmt.Errorf("Component %s cannot be converted to Server type", name)
 }
 
-/*func (sc *ServerConfigGeneral) GetName() string {
-	return sc.Name
-}
-*/
 
 func NewServerStd(arg interface{}) (Server, error) {
-	scg, ok := arg.(*ServerGeneralConfig)
-	// TODO: 等待SetDefault优化
-	if !ok {
-		scg = &ServerGeneralConfig{}
-		if arg != nil {
-			_, err := ConvertStruct(scg, arg)
-			if err != nil {
-				return nil, fmt.Errorf("Convert args to server config error: %v", err)
-			}
-		}
-	}
-	// conv listen
-	//
+	config := &ServerGeneralConfig{}
+	ConvertTo(arg, config)
+
 	return &ServerStd{
-		Config:		scg,
+		Config:		config,
 		Errfunc:	DefaultErrorHandleFunc,
 		state:		ServerStateInit,
 	}, nil
@@ -142,17 +128,20 @@ func (srv *ServerStd) Start() error {
 	}
 	srv.state = ServerStateRun
 	srv.mu.Unlock()
+
 	// set handler
 	h, ok := srv.Config.Handler.(http.Handler)
 	if !ok {
 		return fmt.Errorf("server not set handle")
 	}	
+
 	// create server
 	srv.Server =  &http.Server{
 		Handler:	h,
 		TLSNextProto:	nil,
 		ErrorLog:	NewHttpError(srv.Errfunc).Logger(),
 	}
+
 	// start server
 	errs := NewErrors()
 	for _, listener := range srv.Config.Listeners {
@@ -171,6 +160,7 @@ func (srv *ServerStd) Start() error {
 			srv.wg.Done()
 		}(ln)
 	}
+	
 	// wait over
 	srv.wg.Wait()
 	return errs.GetError()
@@ -245,14 +235,9 @@ func (*ServerStd) Version() string {
 
 func NewServerMulti(i interface{}) (Server, error) {
 	// check args
-	sc, ok := i.(*ServerMultiConfig)
-	if !ok {
-		sc = &ServerMultiConfig{}
-		_, err := ConvertStruct(sc, i)
-		if err != nil {
-			return nil, fmt.Errorf("------- error: %v", err)
-		}
-	}
+	sc := &ServerMultiConfig{}
+	ConvertTo(i, sc)
+
 	s := &ServerMulti{ServerMultiConfig: sc,}
 	s.Servers = make([]Server, len(sc.Configs))
 	var err error

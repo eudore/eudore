@@ -7,7 +7,6 @@ import (
 )
 
 type (
-
 	Params interface {
 		GetParam(string) string
 		AddParam(string, string)
@@ -22,10 +21,6 @@ type (
 		Name  string
 		Value string
 	}
-	// source net/http
-	//
-	// 来源net/http
-	PushOptions = http.PushOptions
 )
 
 

@@ -1,5 +1,9 @@
 package eudore
 
+/*
+Eudore是组合App对象后的一种实例化，用于启动主程序。
+*/
+
 import (
 	"os"
 	"fmt"

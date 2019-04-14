@@ -1,3 +1,11 @@
+/*
+Handler
+
+Handler接口定义了Context对象请求处理函数。
+
+文件：handler.go
+*/
+
 package eudore
 
 import (
@@ -17,6 +25,7 @@ import (
 	"crypto/sha512"
 	"net/http"
 	"net/http/httptest"
+	"github.com/eudore/eudore/protocol"
 )
 
 type (
@@ -385,3 +394,76 @@ func getFileType(path string) string {
 	}
 	return ctype
 }
+
+
+
+// Hop-by-hop headers. These are removed when sent to the backend.
+// As of RFC 7230, hop-by-hop headers are required to appear in the
+// Connection header field. These are the headers defined by the
+// obsoleted RFC 2616 (section 13.5.1) and are used for backward
+// compatibility.
+var hopHeaders = []string{
+	"Connection",
+	"Proxy-Connection", // non-standard but still sent by libcurl and rejected by e.g. google
+	"Keep-Alive",
+	"Proxy-Authenticate",
+	"Proxy-Authorization",
+	"Te",      // canonicalized version of "TE"
+	"Trailer", // not Trailers per URL above; https://www.rfc-editor.org/errata_search.php?eid=4522
+	"Transfer-Encoding",
+	"Upgrade",
+}
+
+func isEndHeader(key string) bool {
+	for _, i := range hopHeaders {
+		if i == key {
+			return false
+		}
+	}
+	return true
+}
+
+func copyheader(source protocol.Header, target protocol.Header) {
+	source.Range(func(key, val string){{
+		if isEndHeader(key) {
+			target.Add(key, val)
+		}
+	}})
+}
+
+func HandlerProxy(addr string) HandlerFunc {
+	return func(ctx Context) {
+		req := NewClientHttp().NewRequest(ctx.Method(), addr + ctx.Request().RequestURI(), ctx)
+		copyheader(ctx.Request().Header(), req.Header())
+
+		req.Header().Set("X-Forwarded-For", ctx.RemoteAddr())
+		if ctx.GetHeader("Te") == "trailers" {
+			req.Header().Add("Te", "trailers")
+		}
+		// After stripping all the hop-by-hop connection headers above, add back any
+		// necessary for protocol upgrades, such as for websockets.
+		if upType := ctx.GetHeader("Upgrade"); len(upType) > 0 {
+			req.Header().Add("Connection", "Upgrade")
+			req.Header().Add("Upgrade", upType)
+		}
+
+
+		resp, err := req.Do()
+		if err != nil {
+			ctx.Error(err)
+			ctx.WriteHeader(502)
+			return
+		}
+		if resp.Statue() == StatusSwitchingProtocols  {
+			// handle Upgrade Response
+			return
+		}
+
+		// 
+		ctx.WriteHeader(resp.Statue())
+		copyheader(resp.Header(), ctx.Response().Header())
+		io.Copy(ctx, resp)
+	}
+}
+
+

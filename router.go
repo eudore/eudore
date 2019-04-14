@@ -32,7 +32,9 @@ type (
 	// 路由默认直接注册的方法，其他方法可以使用RouterRegister接口直接注册。
 	RouterMethod interface {
 		Group(string) RouterMethod
+		AddHandler(string, string, ...HandlerFunc) RouterMethod
 		AddMiddleware(...HandlerFunc) RouterMethod
+		AddController(...Controller) RouterMethod
 		Any(string, ...Handler)
 		AnyFunc(string, ...HandlerFunc)
 		Delete(string, ...Handler)
@@ -182,6 +184,7 @@ func (m *RouterMethodStd) Group(path string) RouterMethod {
 	args := strings.Split(path, " ")
 	prefix := args[0]
 	tags := path[len(prefix):]
+
 	// 如果路径是'/*'或'/'结尾，则移除后缀。
 	// '/*'为路由结尾，不可为路由前缀
 	// '/'不可为路由前缀，会导致出现'//'
@@ -191,6 +194,7 @@ func (m *RouterMethodStd) Group(path string) RouterMethod {
 	if len(prefix) > 0 && prefix[len(prefix) - 1] == '/' {
 		prefix = prefix[:len(prefix) - 1]
 	}
+
 	// 构建新的路由方法配置器
 	return &RouterMethodStd{
 		RouterCore:	m.RouterCore,
@@ -199,14 +203,25 @@ func (m *RouterMethodStd) Group(path string) RouterMethod {
 	}
 }
 
+func (m *RouterMethodStd) AddHandler(method ,path string, hs ...HandlerFunc) RouterMethod {
+	m.registerHandlers(method, path, hs)
+	return m
+}
 func (m *RouterMethodStd) AddMiddleware(hs ...HandlerFunc) RouterMethod {
 	m.RegisterMiddleware(MethodAny, m.prefix + "/", hs)
+	return m
+}
+
+func (m *RouterMethodStd) AddController(hs ...Controller) RouterMethod {
+	// TODO: 未合并
+	// m.RegisterMiddleware(MethodAny, m.prefix + "/", hs)
 	return m
 }
 
 func (m *RouterMethodStd) registerHandlers(method ,path string, hs HandlerFuncs) {
 	m.RouterCore.RegisterHandler(method, m.prefix + path + m.tags, hs)
 }
+
 
 // Router Register handler
 func (m *RouterMethodStd) Any(path string, h ...Handler) {
@@ -287,7 +302,6 @@ func (m *RouterMethodStd) OptionsFunc(path string, h ...HandlerFunc) {
 
 
 func (t *middNode) Insert(key string, val HandlerFuncs) {
-	// fmt.Println("Insert:", key)
 	t.recursiveInsertTree(key, key ,val)
 }
 
@@ -297,7 +311,6 @@ func (t *middNode) Lookup(searchKey string) HandlerFuncs {
 	if searchKey[len(searchKey) - 1] == '*' {
 		searchKey = searchKey[:len(searchKey) - 1]
 	}
-	// fmt.Println("Lookup:", searchKey)
 	return t.recursiveLoopup(searchKey)
 }
 
@@ -316,24 +329,15 @@ func (r *middNode) InsertNode(path, key string, value HandlerFuncs) {
 // 对指定路径为edgeKey的Node分叉，公共前缀路径为pathKey
 func (r *middNode) SplitNode(pathKey, edgeKey string) *middNode {
 	for i, _ := range r.children {
-		// 找到路径为edgeKey路径的Node，然后分叉
 		if r.children[i].path == edgeKey {
-			// 创建新的分叉Node，路径为公共前缀路径pathKey
 			newNode := &middNode{path: pathKey}
-			// 将原来edgeKey的数据移动到新的分叉Node之下
-			// 直接新增Node，原Node数据仅改变路径为截取后的后段路径
 			newNode.children = append(newNode.children, &middNode{
-				// 截取路径
 				path:	strings.TrimPrefix(edgeKey, pathKey),
-				// 复制数据
 				key:	r.children[i].key,
 				val:	r.children[i].val,
 				children:	r.children[i].children,
 			})
-			// 设置middNode的child[i]的Node为分叉Node
-			// 原理路径Node的数据移到到了分叉Node的child里面，原Node对象GC释放。
 			r.children[i] = newNode
-			// 返回分叉新创建的Node
 			return newNode
 		}
 	}
@@ -341,38 +345,25 @@ func (r *middNode) SplitNode(pathKey, edgeKey string) *middNode {
 }
 
 
-// 给currentNode递归添加，路径为containKey的Node
-//
-// targetKey和targetValue为新Node数据。
+// 给currentNode递归添加，路径为containKey的Node。
 func (currentNode *middNode) recursiveInsertTree(containKey string, targetKey string, targetValue HandlerFuncs) {
-	// fmt.Println("recursiveInsertTree", containKey, targetKey)
 	for i, _ := range currentNode.children {
-		// 检查当前遍历的Node和插入路径是否有公共路径
-		// subStr是两者的公共路径，find表示是否有
 		subStr, find := getSubsetPrefix(containKey, currentNode.children[i].path)
 		if find {
-			// 如果child路径等于公共最大路径，则该node添加child
-			// child的路径为插入路径先过滤公共路径的后面部分。
 			if subStr == currentNode.children[i].path {
 				nextTargetKey := strings.TrimPrefix(containKey, currentNode.children[i].path)
-				// 当前node新增子Node可能原本有多个child，所以需要递归添加
 				currentNode.children[i].recursiveInsertTree(nextTargetKey, targetKey, targetValue)
 			}else {
-				// 如果公共路径不等于当前node的路径
-				// 则将currentNode.children[i]路径分叉
-				// 分叉后的就拥有了公共路径，然后添加新Node
 				newNode := currentNode.SplitNode(subStr, currentNode.children[i].path)
 				if newNode == nil {
 					panic("Unexpect error on split node")
 				}
-				// 添加新的node
-				// 分叉后树一定只有一个没有相同路径的child，所以直接添加node
+				
 				newNode.InsertNode(strings.TrimPrefix(containKey, subStr), targetKey, targetValue)
 			}
 			return
 		}
 	}
-	// 没有相同前缀路径存在，直接添加为child
 	currentNode.InsertNode(containKey, targetKey, targetValue)
 }
 
@@ -380,28 +371,21 @@ func (currentNode *middNode) recursiveInsertTree(containKey string, targetKey st
 
 // 递归获得searchNode路径为searchKey的Node数据。
 func (searchNode *middNode) recursiveLoopup(searchKey string) (HandlerFuncs) {
-	// fmt.Println("recursiveLoopup:", searchKey)
-	// 匹配node，返回数据
-	// fmt.Println(1)
 	if len(searchKey) == 0  {
 		return searchNode.val
 	}
 
-	// fmt.Println(2)
 	for _, edgeObj := range searchNode.children {
 		// 寻找相同前缀node
 		if contrainPrefix(searchKey, edgeObj.path) {
-			// 截取为匹配的路径
 			nextSearchKey := strings.TrimPrefix(searchKey, edgeObj.path)
-			// 然后当前Node递归判断
 			return append(searchNode.val, edgeObj.recursiveLoopup(nextSearchKey)...)
 		}
 	}
-	// fmt.Println(3)
+
 	if len(searchNode.key) == 0 || searchNode.key[len(searchNode.key)-1] =='/'  {
 		return searchNode.val
 	}
 
-	// fmt.Println(4)
 	return nil
 }

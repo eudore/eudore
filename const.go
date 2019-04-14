@@ -1,5 +1,8 @@
 package eudore
 
+/*
+定义各种常量
+*/
 
 const ( 
 	// Response statue

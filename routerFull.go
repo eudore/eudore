@@ -54,23 +54,15 @@ type (
 		patch		fullNode
 	}
 	fullNode struct {
-		// 当前node的路径
 		path		string
-		// node类型
 		kind		uint8
-		// 
 		pnum		uint8
-		// 当前节点返回参数名称
 		name		string
-		// 常量Node
+		// 保存各类子节点
 		Cchildren	[]*fullNode
-		// 校验参数Node
 		Rchildren	[]*fullNode
-		// 参数Node
 		Pchildren	[]*fullNode
-		// 校验通配符Node
 		Vchildren	[]*fullNode
-		// 通配符Node
 		Wchildren	*fullNode
 		// 默认标签的名称和值
 		tags		[]string
@@ -144,20 +136,13 @@ func (r *RouterFull) RegisterHandler(method string, path string, handler Handler
 // 如果方法不支持则不会添加，请求改路径会响应405
 func (t *RouterFull) InsertRoute(method, key string, val HandlerFuncs) {
 	var currentNode, newNode *fullNode = t.getTree(method), nil
-	// Unsupported request method, return 405 processing tree directly
-	// 未支持的请求方法,直接返回405处理树
 	if currentNode == t.node405 {
 		return
 	}
+
 	args := strings.Split(key, " ")
-	// Cut the path by Node and append it down one by one.
-	// 将路径按Node切割，然后依次向下追加。
 	for _, path := range getSpiltPath(args[0]) {
-		// Create a new radixNode and set the Node type
-		// 创建一个新的radixNode，并设置Node类型
 		newNode = newFullNode(path)
-		// If it is a constant node, recursively add by radix tree rule
-		// 如果是常量节点，按基数树规则递归添加
 		if newNode.kind == fullNodeKindConst {
 			currentNode = currentNode.recursiveInsertTree(path, newNode)
 		}else {
@@ -165,8 +150,6 @@ func (t *RouterFull) InsertRoute(method, key string, val HandlerFuncs) {
 		}		
 	}
 
-	// Tree fork ends Node is set to the current routing data.
-	// 树分叉结尾Node设置为当前路由数据。
 	newNode.handlers = val
 	newNode.SetTags(args)
 }
@@ -236,10 +219,7 @@ func newFullNode405(args string, h HandlerFunc) *fullNode {
 
 func newFullNode(path string) *fullNode {
 		newNode := &fullNode{path: path}
-	// Create a different Node with a more path prefix type
-		// 更具路径前缀类型，创建不同的Node
 		switch path[0] {
-		// 通配符Node
 		case '*':
 			newNode.kind = fullNodeKindWildcard
 			if len(path) == 1 {
@@ -256,7 +236,6 @@ func newFullNode(path string) *fullNode {
 					newNode.kind, newNode.name, newNode.check = fullNodeKindValid, name, fn
 				}
 			}
-		// 参数Node
 		case ':':
 			newNode.kind = fullNodeKindParam
 			newNode.name = path[1:]
@@ -291,6 +270,7 @@ func loadCheckFunc(path string) (string, RouterCheckFunc) {
 	if len(name) == 0 {
 		return "", nil
 	}
+
 	// regular
 	// If it is the beginning of a regular expression, add the default regular check function name.
 	// 正则
@@ -298,6 +278,7 @@ func loadCheckFunc(path string) (string, RouterCheckFunc) {
 	if fname[0] == '^' {
 		fname = "regexp:" + fname
 	}
+
 	// Determine if there is ':'
 	// 判断是否有':'
 	f2name, arg := split2byte(fname, ':')
@@ -306,6 +287,7 @@ func loadCheckFunc(path string) (string, RouterCheckFunc) {
 	if len(arg) == 0 {
 		return name, ConfigLoadRouterCheckFunc(fname)
 	}
+
 	// There is a ':' variable function to create a checksum function
 	// 有':'为变量函数，创建校验函数
 	fn := ConfigLoadRouterNewCheckFunc(f2name)(arg)
@@ -400,8 +382,6 @@ func (r *fullNode) GetTags(p Params) {
 // 对指定路径为edgeKey的子节点分叉，分叉公共前缀路径为pathKey
 func (r *fullNode) SplitNode(pathKey, edgeKey string) *fullNode {
 	for i, _ := range r.Cchildren {
-		// Find the child node whose path is the edgeKey path, then fork
-		// 找到路径为edgeKey路径的子节点，然后分叉
 		if r.Cchildren[i].path == edgeKey {
 			newNode := &fullNode{path: pathKey}
 
@@ -409,8 +389,6 @@ func (r *fullNode) SplitNode(pathKey, edgeKey string) *fullNode {
 			newNode.Cchildren = append(newNode.Cchildren, r.Cchildren[i])
 
 			r.Cchildren[i] = newNode
-			// return the fork to the newly created Node
-			// 返回分叉新创建的Node
 			return newNode
 		}
 	}
@@ -454,68 +432,40 @@ func (t *RouterFull) getTree(method string) *fullNode {
 // targetKey和targetValue为新Node数据。
 func (currentNode *fullNode) recursiveInsertTree(containKey string, targetNode *fullNode) *fullNode {
 	for i, _ := range currentNode.Cchildren {
-		// Traverse to check if the path of the current child node and the insertion path of the new node have a common path
-		// subStr is the public path of the two, find indicates whether there is
-		// 遍历检查当前子节点的路径和新节点的插入路径是否有公共路径
-		// subStr是两者的公共路径，find表示是否有
 		subStr, find := getSubsetPrefix(containKey, currentNode.Cchildren[i].path)
 		if find {
-			// If the current child node's path is equal to the public maximum path, then the current child node adds a new node
-			// 如果当前子节点的路径等于公共最大路径，则该当前子节点添加新节点
 			if subStr == currentNode.Cchildren[i].path {
-				// The path to the new node is the insertion path that first filters the back part of the public path.
-				// 新节点的路径为插入路径先过滤公共路径的后面部分。
 				nextTargetKey := strings.TrimPrefix(containKey, currentNode.Cchildren[i].path)
-				// The current child node original has more than one child, so you need to add it recursively.
-				// 当前子节点原版存在原本有多个child，所以需要递归添加
 				return currentNode.Cchildren[i].recursiveInsertTree(nextTargetKey, targetNode)	
 			}else {
-				// If the public path is not equal to the path of the child node
-				// will fork the path of the current child node
-				// The child node and the new node after the fork have the public path, then add the new node
-				// 如果公共路径不等于子节点的路径
-				// 则将当前子节点的路径分叉
-				// 分叉后的子节点和新节点就拥有了公共路径，然后添加新节点
 				newNode := currentNode.SplitNode(subStr, currentNode.Cchildren[i].path)
 				if newNode == nil {
 					panic("Unexpect error on split node")
 				}
 
-				// Add a new node
-				// After the fork, the tree must have only one child node without the same path, so add a new node directly.
-				// 添加新的节点
-				// 分叉后树一定只有一个没有相同路径的子节点，所以直接添加新节点。
 				return newNode.InsertNode(strings.TrimPrefix(containKey, subStr), targetNode)
 			}
 		}
 	}
 
-	// All child nodes do not have the same prefix path, directly add a new node to a new child node
-	// 所有子节点都没有相同前缀路径存在，直接添加新节点为一个新的子节点
 	return currentNode.InsertNode(containKey, targetNode)
 }
 
 
 func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) HandlerFuncs {
+
 	// constant match, return data
 	// 常量匹配，返回数据
 	if len(searchKey) == 0 && searchNode.handlers != nil {
 		searchNode.GetTags(params)
 		return searchNode.handlers
 	}
+
 	// Traverse constant Node match
 	// 遍历常量Node匹配
 	for _, edgeObj := range searchNode.Cchildren {
-		// Find the same prefix node to further match
-		// The current Node path must be the prefix of the searchKey.
-		// 寻找相同前缀node进一步匹配
-		// 当前Node的路径必须为searchKey的前缀。
 		if contrainPrefix(searchKey, edgeObj.path) {
-			// Remove the prefix path to get an unmatched path.
-			// 除去前缀路径，获得未匹配路径。
 			nextSearchKey := searchKey[len(edgeObj.path):]
-			// Then the current Node recursively judges
-			// 然后当前Node递归判断
 			if n := edgeObj.recursiveLoopup(nextSearchKey, params);n != nil {
 				return n
 			}
@@ -527,49 +477,32 @@ func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) Han
 	// 参数匹配
 	// 检测是否存在参数匹配
 	if searchNode.pnum != 0 && len(searchKey) > 0 {
-		// Find the string cutting position
-		// strings.IndexByte is a C implementation, does not have a more efficient method, and is more readable.
-		// 寻找字符串切割位置
-		// strings.IndexByte为c语言实现，未拥有更有效方法，且可读性更强。
 		pos := strings.IndexByte(searchKey, '/')
 		if pos == -1 {
 			pos = len(searchKey) 
 		}
-		// currentKey is the current string to be processed
-		// nextSearchKey starts with the remaining string starting with the first '/'
-		// currentKey为当前需要处理的字符串
-		// nextSearchKey为剩余字符串为第一个'/'开头
 		currentKey, nextSearchKey := searchKey[:pos], searchKey[pos:]
 
 		// check parameter matching
 		// 校验参数匹配
 		for _, edgeObj := range searchNode.Rchildren {
-			// All parameter nodes are recursively judged
-			// 所有参数节点递归判断
 			if edgeObj.check(currentKey) {
 				if n := edgeObj.recursiveLoopup(nextSearchKey, params);n != nil {
-					// Add variable parameters
-					// 添加变量参数
 					params.AddParam(edgeObj.name, currentKey)
 					return n
 				}
 			}
 		}
+
 		// 参数匹配
 		// 变量Node依次匹配是否满足
 		for _, edgeObj := range searchNode.Pchildren {
-			// All parameter nodes are recursively judged
-			// 所有参数节点递归判断
 			if n := edgeObj.recursiveLoopup(nextSearchKey, params);n != nil {
-				// Add variable parameters
-				// 添加变量参数
 				params.AddParam(edgeObj.name, currentKey)
 				return n
 			}
 		}
 	}
-	// wildcard matching
-	// 通配符匹配
 	
 	// wildcard verification match
 	// If the current Node has a wildcard processing method that directly matches, the result is returned.

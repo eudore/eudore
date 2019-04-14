@@ -138,18 +138,12 @@ func NewLogger(name string, arg interface{}) (Logger, error) {
 
 func NewLoggerStd(arg interface{}) (Logger, error) {
 	// 解析配置
-	config, ok := arg.(*LoggerStdConfig)
-	// TODO: 等待SetDefault优化
-	if !ok {
-		config = &LoggerStdConfig{}
-		if arg != nil {
-			_, err := ConvertStructOnce(config, arg)
-			if err != nil {
-				return nil, err
-			}
-		}
+	config := &LoggerStdConfig{
+		Format:		"json",
+		TimeFormat:	"2006-01-02 15:04:05",
 	}
-	SetDefault(config)
+	ConvertTo(arg, config)
+
 	// 创建并初始化日志处理器
 	l := &LoggerStd {
 		Config:		config,

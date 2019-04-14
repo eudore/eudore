@@ -1,3 +1,10 @@
+/*
+Context
+
+Context定义一个请求上下文
+
+文件：context.go
+*/
 package eudore
 
 import (
@@ -8,6 +15,7 @@ import (
 	"strings"
 	"context"
 	"net/http"
+	"net/url"
 	"io/ioutil"
 	// "crypto/tls"
 	// "golang.org/x/net/http2"
@@ -53,6 +61,7 @@ type (
 		GetParam(string) string
 		SetParam(string, string)
 		AddParam(string, string)
+		GetQuery(string) string
 		GetHeader(name string) string
 		SetHeader(string, string)
 		Cookies() []*Cookie
@@ -91,13 +100,12 @@ type (
 		context.Context
 		protocol.RequestReader
 		protocol.ResponseWriter
-		// Middleware
+		ParamsArray
+		QueryUrl
 		// data
 		keys		map[interface{}]interface{}
 		path 		string
 		rawQuery	string
-		pkeys		[]string
-		pvals		[]string
 		cookies 	[]*Cookie
 		isReadBody	bool
 		postBody	[]byte
@@ -109,7 +117,14 @@ type (
 		log			Logger
 		fields		Fields
 	}
-
+	ParamsArray struct {
+		keys		[]string
+		vals		[]string
+	}
+	QueryUrl struct {
+		keys		[]string
+		vals		[]string
+	}
 )
 
 // Convert nil to type *ContextHttp, detect ContextHttp object to implement Context interface
@@ -135,17 +150,20 @@ func (ctx *ContextHttp) Reset(pctx context.Context, w protocol.ResponseWriter, r
 	}
 
 	ctx.isrun = true
-	ctx.pkeys = ctx.pkeys[0:0]
-	ctx.pvals = ctx.pvals[0:0]
-	// ctx.params = make(Params)
-	// ctx.AddParam(ParamRoutePath, ctx.path)
-	// ctx.AddParam(ParamRouteMethod, ctx.Method())
+	// params
+	p := ctx.ParamsArray
+	p.keys = p.keys[0:0]
+	p.vals = p.vals[0:0]
+	// query
+	ctx.QueryUrl.readQuery(ctx.rawQuery)
+	// cookies
 	ctx.cookies = ctx.cookies[0:0]
 	ctx.readCookies(r.Header().Get(HeaderCookie))
+	// body
 	ctx.isReadBody = false
 	ctx.postBody = ctx.postBody[0:0]
+	// logger
 	ctx.log = ctx.app.Logger
-	readQuery(ctx.rawQuery, ctx)
 }
 
 func (ctx *ContextHttp) Request() protocol.RequestReader {
@@ -283,50 +301,8 @@ func (ctx *ContextHttp) Body() []byte {
 
 
 func (ctx *ContextHttp) Params() Params {
-	return ctx
+	return &ctx.ParamsArray
 }
-
-func (ctx *ContextHttp) GetParam(key string) string {
-	for i, str := range ctx.pkeys {
-		if str == key {
-			return ctx.pvals[i]
-		}
-	}
-	return ""
-}
-
-func (ctx *ContextHttp) AddParam(key string, val string) {
-	ctx.pkeys = append(ctx.pkeys, key)
-	ctx.pvals = append(ctx.pvals, val)
-}
-
-func (ctx *ContextHttp) SetParam(key string, val string) {
-	for i, str := range ctx.pkeys {
-		if str == key {
-			ctx.pvals[i] = val
-			return
-		}
-	}
-	ctx.AddParam(key, val)
-}
-/*
-
-func (ctx *ContextHttp) Params() Params {
-	return ctx.params
-}
-
-func (ctx *ContextHttp) GetParam(key string) string {
-	return ctx.params.GetPa(key)
-}
-
-func (ctx *ContextHttp) SetParam(key string, val string) {
-	ctx.params.Set(key, val)
-}
-
-func (ctx *ContextHttp) AddParam(key string, val string) {
-	ctx.params.Add(key, val)
-}*/
-
 
 func (ctx *ContextHttp) GetHeader(name string) string {
 	return ctx.RequestReader.Header().Get(name)
@@ -571,16 +547,81 @@ func (ctx *ContextHttp) readCookies(line string) {
 		if !ok {
 			continue
 		}
-		// ctx.cookies = append(ctx.cookies, &CookieRead{Name: name, Value: val})
+		ctx.cookies = append(ctx.cookies, &Cookie{Name: name, Value: val})
 	}
 }
 
 
 
+func (p *ParamsArray) GetParam(key string) string {
+	for i, str := range p.keys {
+		if str == key {
+			return p.vals[i]
+		}
+	}
+	return ""
+}
 
+func (p *ParamsArray) AddParam(key string, val string) {
+	p.keys = append(p.keys, key)
+	p.vals = append(p.vals, val)
+}
 
+func (p *ParamsArray) SetParam(key string, val string) {
+	for i, str := range p.keys {
+		if str == key {
+			p.vals[i] = val
+			return
+		}
+	}
+	p.AddParam(key, val)
+}
 
+func (q *QueryUrl) GetQuery(key string) string {
+	for i, str := range q.keys {
+		if str == key {
+			return q.vals[i]
+		}
+	}
+	return ""
+}
 
+func (q *QueryUrl) readQuery(query string) (err error) {
+	q.keys = q.keys[0:0]
+	q.vals = q.vals[0:0]
+	for query != "" {
+		key := query
+		if i := strings.IndexAny(key, "&;"); i >= 0 {
+			key, query = key[:i], key[i+1:]
+		} else {
+			query = ""
+		}
+		if key == "" {
+			continue
+		}
+		value := ""
+		if i := strings.Index(key, "="); i >= 0 {
+			key, value = key[:i], key[i+1:]
+		}
+		key, err1 := url.QueryUnescape(key)
+		if err1 != nil {
+			if err == nil {
+				err = err1
+			}
+			continue
+		}
+		value, err1 = url.QueryUnescape(value)
+		if err1 != nil {
+			if err == nil {
+				err = err1
+			}
+			continue
+		}
+		q.keys = append(q.keys, key)
+		q.vals = append(q.vals, value)
+	}
+	return err
+}
 
 
 

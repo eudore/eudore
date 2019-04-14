@@ -14,9 +14,10 @@ eudore具有以下对象，除Application以为均为接口，每个对象都具
 | Server | http Server启动 |
 | Config | 配置数据管理 |
 | Cache | 全局缓存对象 |
+| View | 模板渲染 |
 | Bind | 请求数据反序列化 |
 | Render | 响应数据序列化 |
-| View | 模板渲染 |
+| Controller | 实现mvc |
 
 # Application
 

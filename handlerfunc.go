@@ -1,17 +1,13 @@
 package eudore
 
 import (
-	"os"
-	"io"
 	"fmt"
 	"path"
-	"mime"
 	"strings"
 	"strconv"
 	"net/url"
 	"net/http"
 	"unicode/utf8"
-	"path/filepath"
 )
 
 /*
@@ -146,88 +142,4 @@ var htmlReplacer = strings.NewReplacer(
 
 func htmlEscape(s string) string {
 	return htmlReplacer.Replace(s)
-}
-
-
-func HandlerFile2(ctx Context, path string) (int, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-
-	d, err := f.Stat()
-	if err != nil {
-		return 0, err
-	}
-	h := ctx.Response().Header()
-
-	ctypes := h.Get(HeaderContentType)
-	var ctype string
-	if len(ctypes) == 0 {
-		ctype = mime.TypeByExtension(filepath.Ext(path))
-		if ctype == "" {
-			// read a chunk to decide between utf-8 text and binary
-			var buf [sniffLen]byte
-			n, _ := io.ReadFull(f, buf[:])
-			ctype = http.DetectContentType(buf[:n])
-			_, err := f.Seek(0, io.SeekStart) // rewind to output whole file
-			if err != nil {
-				ctx.Error("seeker can't seek", http.StatusInternalServerError)
-				return 0, nil
-			}
-		}
-		h.Set("Content-Type", ctype)
-	} else {
-		ctype = ctypes
-	}
-
-
-	// h.Set("Content-Type", "multipart/byteranges; boundary=")
-	h.Set("Last-Modified", d.ModTime().UTC().Format(TimeFormat))
-	h.Set("Accept-Ranges", "bytes")
-	if h.Get("Content-Encoding") == "" {
-		// h.Set("Content-Length", strconv.FormatInt(sendSize, 10))
-	}
-	// h(HeaderContentType, htmlContentType)
-	// http.ServeFile(c.Response(), c.Request(), path)
-	n, err := io.Copy(ctx, f)
-	return int(n), err
-}
-
-
-
-
-func readQuery(query string, p Params) (err error) {
-	for query != "" {
-		key := query
-		if i := strings.IndexAny(key, "&;"); i >= 0 {
-			key, query = key[:i], key[i+1:]
-		} else {
-			query = ""
-		}
-		if key == "" {
-			continue
-		}
-		value := ""
-		if i := strings.Index(key, "="); i >= 0 {
-			key, value = key[:i], key[i+1:]
-		}
-		key, err1 := url.QueryUnescape(key)
-		if err1 != nil {
-			if err == nil {
-				err = err1
-			}
-			continue
-		}
-		value, err1 = url.QueryUnescape(value)
-		if err1 != nil {
-			if err == nil {
-				err = err1
-			}
-			continue
-		}
-		p.AddParam(key, value)
-	}
-	return err
 }
