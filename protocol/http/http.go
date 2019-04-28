@@ -43,7 +43,7 @@ func NewHttpHandler(h protocol.Handler) *HttpHandler {
 }
 
 func printErr(err error) {
-	fmt.Println(err)
+	fmt.Println("eudore http error:", err)
 }
 
 // Handling http connections
@@ -66,7 +66,10 @@ func (hh *HttpHandler) EudoreConn(ctx context.Context, c net.Conn) {
 		// 处理请求
 		hh.Handler.EudoreHTTP(ctx, resp, req)
 		resp.finalFlush()
-		if req.header.Get("Connection") != "keep-alive" {
+		if resp.ishjack {
+			break
+		}
+		if req.header.Get("Connection") != "keep-alive" || resp.ishjack {
 			c.Close()
 			break
 		}

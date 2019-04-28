@@ -27,7 +27,7 @@ type (
 	}
 )
 
-func ControllerRegister(router Router, controller Controller) {
+func controllerRegister(router RouterMethod, controller Controller) {
 	iType := reflect.TypeOf(controller)
 	pool := sync.Pool{
 		New: func() interface{} {

@@ -208,7 +208,7 @@ func (l *LoggerStd) initHandle() error {
 		}
 	}else {
 		tmpl, err := template.New("").Parse(l.Config.Format)
-		if err != err {
+		if err != nil {
 			return err
 		}
 		l.handle = func(i interface{}) {
@@ -237,6 +237,7 @@ func (l *LoggerStd) HandleEntry(e interface{}) {
 func (l *LoggerStd) newEntry() (entry *entryStd) {
 	entry =  l.pool.Get().(*entryStd)
 	entry.Time.Time = time.Now()
+	entry.Fields = nil
 	return
 }
 
@@ -326,7 +327,7 @@ func (e *entryStd) Fatal(args ...interface{}) {
 
 func (e *entryStd) WithField(key string, value interface{}) LogOut {
 	if e.Fields == nil {
-		e.Fields = make(Fields)
+		e.Fields = make(Fields, 3)
 	}
 	if key == "time" {
 		var ok bool
@@ -361,6 +362,7 @@ func (l *LoggerInit) newEntry() *entryInit {
 }
 
 func (l *LoggerInit) HandleEntry(e interface{}) {
+	// Do nothing because of LoggerInit not handler entry.
 }
 
 func (l *LoggerInit) NextHandler(logger Logger) {

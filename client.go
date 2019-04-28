@@ -18,6 +18,14 @@ type (
 		header	protocol.Header
 	}
 )
+var (
+	DefultClientHttp = NewClientHttp()
+)
+
+func NewRequest(method string, url string, body io.Reader) Client {
+	return DefultClientHttp.NewRequest(method, url, body)
+}
+
 func NewClientHttp() Client {
 	return &ClientHttp{
 		Client:	&http.Client{},

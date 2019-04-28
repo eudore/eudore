@@ -20,7 +20,7 @@ golang大部分框架都是基于标准库net/http包现实，[fasthttp][1]框�
 |  Binder  |    |  [bind.go][29]  |  [binding.go][33]  |  [bind.go][40]  |    |    |
 |  Render  |    |    |  [render.go][34]  |  [render.go][41]  |    |    |
 |  View  |  [view.go][23]  |    |    |    |  [engine.go][47]  |    |
-|  Session  |  [session.go][24]  |    |    |  [session.go][42]  |  [session.go][48]  |  [session.go][55]  |
+|  Session  |  [session.go][24]  |    |  [session.go][63]  |  [session.go][42]  |  [session.go][48]  |  [session.go][55]  |
 |  Cache  |    |    |    |  [cache.go][61]  |  [cache.go][49]  |  [cache.go][56]  |
 |  Websocket  |    |    |    |  [websocket.go][57]  |  [server.go][58]  |    |
 |  MVC  |    |    |    |    |  [controller.go][59]  |  [controller.go][60]  |
@@ -249,6 +249,8 @@ echo中间件使用装饰器模式。
 echo中间件使用HandlerFunc进行一层层装饰，最后返回一个HandlerFunc处理Context
 
 ## gin
+
+gin在路由注册的会中间件和route合并成一个handlers对象，然后httprouter返回匹配返回handlrs，在context reset时设置ctx的handlers为路由匹配出现的，handlers是一个HanderFunc数组，Next方法执行下一个索引的HandlerFunc，如果在一个HandlerFunc中使用ctx.Next()就先将后续的HandlerFunc执行，后续执行完才会继续那个HandlerFunc，调用ctx.End() 执行索引直接修改为最大值，应该是64以上，毕竟Handlers合并时的数据长度限制是64，执行索引成最大值了，那么后面就没有HandlerFunc，就完整了一次ctx的处理。
 
 ```golang
 type HandlerFunc func(*Context)
@@ -595,3 +597,4 @@ type Cache interface {
 [60]: https://github.com/astaxie/beego/blob/master/controller.go#L68
 [61]: https://github.com/devfeel/dotweb/blob/master/cache/cache.go#L8
 [62]: https://github.com/dinever/golf/blob/master/middleware.go#L15
+[63]: https://github.com/gin-gonic/contrib/blob/master/sessions/sessions.go#L37

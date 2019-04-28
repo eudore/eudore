@@ -34,13 +34,25 @@ func InitSignal(e *Eudore) error {
 	// signal 15
 	SignalRegister(syscall.SIGTERM, false, func() error {
 		e.WithField("signal", 15).Info("eudore received SIGTERM, eudore shutting down HTTP server.")
-		return e.Shutdown()
+		err := e.Shutdown()
+        if err != nil {
+            e.Error("eudore shutdown error: ", err)
+        }
+		return err
 	})
 	return nil
 }
 
 func InitConfig(app *Eudore) error {
 	return app.Config.Parse()
+}
+
+func InitWorkdir(app *Eudore) error {
+	dir := GetString(app.Config.Get("workdir"))
+	if dir != "" {
+		return os.Chdir(dir)
+	}
+	return nil
 }
 
 func InitCommand(app *Eudore) error {

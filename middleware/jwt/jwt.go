@@ -55,7 +55,7 @@ func NewJwt(fn VerifyFunc) eudore.HandlerFunc {
 	}
 }
 
-func (fn VerifyFunc) SignedToken(claims map[string]interface{}) string {
+func (fn VerifyFunc) SignedToken(claims interface{}) string {
 	payload, _ := json.Marshal(claims)
 	var unsigned string = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.` + base64.RawURLEncoding.EncodeToString(payload)
 	return fmt.Sprintf("%s.%s",  unsigned, fn([]byte(unsigned)))

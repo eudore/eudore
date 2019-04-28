@@ -46,7 +46,7 @@ func (*BaseController) ControllerRoute(name string) string {
 
 func TestMvc1(*testing.T) {
 	app := eudore.NewCore()
-	eudore.ControllerRegister(app.Router, &BaseController{})
+	app.AddController(&BaseController{})
 	app.Listen(":8085")
 	app.Run()
 }

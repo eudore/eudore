@@ -77,6 +77,7 @@ const (
 	HeaderAccept				=	"Accept"
 	HeaderAcceptEncoding		=	"Accept-Encoding"
 	HeaderContentType			=	"Content-Type"
+	HeaderContentRange			=	"Content-Range"
 	HeaderContentLength			=	"Content-Length"
 	HeaderContentEncoding		=	"Content-Encoding"
 	HeaderHost					=	"Host"
@@ -113,6 +114,7 @@ const (
 	MimeApplicationXml				=	"application/xml"
 	MimeApplicationxmlCharsetUtf8	=	MimeApplicationXml + "; " + MimeCharsetUtf8
 	MimeApplicationForm				=	"application/x-www-form-urlencoded"
+	MimeApplicationFormCharsetUtf8	=	MimeApplicationForm + "; " + MimeCharsetUtf8
 	MimeMultipartForm				=	"multipart/form-data"
 	
 	// Param

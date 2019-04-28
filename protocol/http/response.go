@@ -25,6 +25,7 @@ type Response struct {
 	size		int
 	iswrite		bool
 	chunked		bool
+	ishjack		bool
 	// buffer 
 	buf 		[]byte
 	n			int
@@ -40,6 +41,7 @@ func (w *Response) Reset(conn net.Conn) {
 	w.size = 0
 	w.iswrite = false
 	w.chunked = false
+	w.ishjack = false
 	w.err = nil
 	w.n = 0
 }
@@ -175,6 +177,7 @@ func (w *Response) finalFlush() error {
 
 
 func (w *Response) Hijack() (net.Conn, error) {
+	w.ishjack = true
 	return w.request.conn, nil
 }
 

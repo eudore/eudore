@@ -91,6 +91,11 @@ eudore http使用一个[]byte作为缓冲，会记录未发送的缓冲数据，
 
 ## http反向代理实现
 
+http反向代理的原理就是请求转发，处理者接收请求然后发送目标。
+
+转发时需要移除跳对跳Header，并写入正确的header
+
+
 ## http跨域请求
 
 ## http cookie实现原理

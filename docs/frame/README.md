@@ -2,22 +2,41 @@
 
 eudore具有以下对象，除Application以为均为接口，每个对象都具有明确语义，Application是最顶级对象可以通过组合方式实现重写，其他对象为接口定义直接重新实现，或组合接口实现部分重写。
 
-| 名称 | 作用 |
+| 名称 | 作用 | 定义 |
+| ------------ | ------------ | ------------ |
+| Application | 运行对象主体 | app.go core.go eudore.go |
+| Context | 请求处理上下文 | context.go |
+| Request | Http请求数据 | request.go |
+| Response | http响应写入 | response.go |
+| Router | 请求路由选择 | router.go routerRadix.go routerFull.go |
+| Middleware | 多Handler组合运行 | handler.go |
+| Logger | App和Ctx日志输出 | logger.go |
+| Server | http Server启动 | server.go |
+| Config | 配置数据管理 | config.go configparse.go |
+| Cache | 全局缓存对象 | cache.go |
+| View | 模板渲染 | view.go |
+| Client | http客户端 | client.go |
+| Session | 回话数据管理 | session.go |
+| Controller | 解析执行控制器 | controller.go |
+| Bind | 请求数据反序列化 | bind.go |
+| Render | 响应数据序列化 | render.go |
+| Websocket | websocket协议读写 | websocket.go |
+
+其他文件定义内容
+
+| 文件 | 作用 |
 | ------------ | ------------ |
-| Application | 运行对象主体 |
-| Context | 请求处理上下文 |
-| Request | Http请求数据 |
-| Response | http响应写入 |
-| Router | 请求路由选择 |
-| Middleware | 多Handler组合运行 |
-| Logger | App和Ctx日志输出 |
-| Server | http Server启动 |
-| Config | 配置数据管理 |
-| Cache | 全局缓存对象 |
-| View | 模板渲染 |
-| Bind | 请求数据反序列化 |
-| Render | 响应数据序列化 |
-| Controller | 实现mvc |
+| command.go | 启动命令解析 |
+| component.go | 组件定义 |
+| const.go | 定义常量 |
+| doc.go | godoc内容 |
+| error.go | 定义错误 |
+| listener.go | 全局监听管理 |
+| reflect.go | 各类反射辅助函数 |
+| setting.go | 配置化启动程序 |
+| signal.go | 全局信号管理 |
+| util.go | 辅助函数 |
+| version.go | 版本信息常量 |
 
 # Application
 

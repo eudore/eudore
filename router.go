@@ -160,14 +160,14 @@ func SetRouterConfig(r RouterMethod, c *RouterConfig) {
 }
 
 func DefaultRouter405Func(ctx Context) {
-	const page405 string = "405 method not allowed"
+	const page405 string = "405 method not allowed\n"
 	ctx.Response().Header().Add("Allow", "HEAD, GET, POST, PUT, DELETE, PATCH")
 	ctx.WriteHeader(405)
 	ctx.WriteString(page405)
 }
 
 func DefaultRouter404Func(ctx Context) {
-	const page404 string = "404 page not found"
+	const page404 string = "404 page not found\n"
 	ctx.WriteHeader(404)
 	ctx.WriteString(page404)
 }
@@ -212,9 +212,10 @@ func (m *RouterMethodStd) AddMiddleware(hs ...HandlerFunc) RouterMethod {
 	return m
 }
 
-func (m *RouterMethodStd) AddController(hs ...Controller) RouterMethod {
-	// TODO: 未合并
-	// m.RegisterMiddleware(MethodAny, m.prefix + "/", hs)
+func (m *RouterMethodStd) AddController(cs ...Controller) RouterMethod {
+	for _, c := range cs {
+		controllerRegister(m, c)
+	}
 	return m
 }
 

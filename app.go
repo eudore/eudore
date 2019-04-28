@@ -34,6 +34,7 @@ type (
 
 func NewApp() *App {
 	return &App{
+		Binder:	BinderDefault,
 		Pools:	make(map[string]PoolGetFunc),
 	}
 }

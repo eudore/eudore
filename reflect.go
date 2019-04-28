@@ -14,6 +14,7 @@ func ConvertTo(source interface{}, target interface{}) error
 */
 
 import (
+	"io"
 	"fmt"
 	"time"
 	"errors"
@@ -547,7 +548,7 @@ func ConvertMapString(i interface{}) map[string]interface{} {
 
 // 将一个map或结构体对象转换成map[string]interface{}返回。
 func getConvertMapString(iType reflect.Type, iValue reflect.Value) interface{} {
-	fmt.Println(iType.Kind(), iType)
+	// fmt.Println(iType.Kind(), iType)
 	switch iType.Kind() {
 	// 接口类型解除引用
 	case reflect.Interface:
@@ -721,7 +722,7 @@ func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tVa
 		kind = kind | 0x02
 	}
 
-	fmt.Println(kind, sType.Kind(), tType.Kind())
+	// fmt.Println(kind, sType.Kind(), tType.Kind())
 	// 更具数据类型执行转换
 	switch kind {
 	case 0x11:
@@ -828,6 +829,41 @@ func convertSetValue1(sType reflect.Type, sValue reflect.Value, tType reflect.Ty
 		return nil
 	}
 	return setWithString(tType.Kind(), tValue, getValueString(sType, sValue))
+}
+
+
+// Output a help message for the interface{} object, and each structure member uses the description tag as the description.
+//
+// 输出一个interface{}对象的帮助信息，每个结构体成员使用description tag为描述信息。
+//
+// Help(c, "  --", os.Stdio)
+func Help(p interface{}, prefix string, w io.Writer) error {
+	getDesc(p, prefix, w)
+	return nil
+}
+
+func getDesc(p interface{}, prefix string, w io.Writer) {
+	pt := reflect.TypeOf(p).Elem()
+	pv := reflect.ValueOf(p).Elem()
+	for i := 0; i < pt.NumField(); i++ {
+		sv := pv.Field(i)
+		if c :=  pt.Field(i).Tag.Get("description");c != "" {
+			fmt.Printf("%s%s\t%s\n",prefix, strings.ToLower(pt.Field(i).Name), c)
+		}
+		if c := pt.Field(i).Tag.Get("help");c == "-" {
+			continue
+		}
+		if sv.Type().Kind() == reflect.Ptr {
+			// is null
+			if sv.Elem().Kind() == reflect.Invalid {
+				sv.Set(reflect.New(sv.Type().Elem()))	
+			}
+			sv=sv.Elem()
+		}
+		if sv.Kind() == reflect.Struct {
+			getDesc(sv.Addr().Interface(),fmt.Sprintf("%s%s.",prefix,strings.ToLower(pt.Field(i).Name)), w)
+		}
+	}
 }
 
 

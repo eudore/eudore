@@ -16,6 +16,7 @@ var (
 	ErrComponentNoSupportField		=	errors.New("component no support field")
 	ErrServerNotSetRuntimeInfo		=	errors.New("server not set runtime info")
 	ErrApplicationStop				=	errors.New("stop application")
+	ErrHandlerInvalidRange			=	errors.New("invalid range")
 )
 
 type (
@@ -29,20 +30,20 @@ type (
 
 )
 
-type Error struct {
+type ErrorHttp struct {
 	code	int
-	msg		string
+	message		string
 }
 
-func NewError(c int,str string) *Error {
-	return &Error{code:	c, msg:	str}
+func NewError(c int,str string) *ErrorHttp {
+	return &ErrorHttp{code:	c, message:	str}
 }
 
-func (e *Error) Error() string {
-	return e.msg
+func (e *ErrorHttp) Error() string {
+	return e.message
 }
 
-func (e *Error) Code() int {
+func (e *ErrorHttp) Code() int {
 	return e.code
 }
 

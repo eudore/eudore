@@ -102,7 +102,7 @@ func HandlerPush(ctx Context, path string) {
 }
 
 func HandlerError(ctx Context, error string, code int) {
-	ctx.Response().Header().Set("Content-Type", "text/plain; charset=utf-8")
+	ctx.Response().Header().Set(HeaderContentType, "text/plain; charset=utf-8")
 	ctx.Response().Header().Set("X-Content-Type-Options", "nosniff")
 	ctx.WriteHeader(code)
 	ctx.WriteString(error)
@@ -137,7 +137,6 @@ func HandlerFile(ctx Context, path string) (error) {
 		return err
 	}
 
-	// TODO: not test
 	// index page
 	if desc.IsDir() {
 		ctx.Redirect(307, path + "index.html")
@@ -156,10 +155,10 @@ func handlerContext(ctx Context, path string, content *os.File) error {
 /*	ctype := h.Get(HeaderContentType)
 	if len(ctype) == 0 {
 		ctype = getFileType(path)
-		h.Set("Content-Type", ctype)
+		h.Set(HeaderContentType, ctype)
 	}*/
 	ctype := getFileType(path)
-	h.Set("Content-Type", ctype)
+	h.Set(HeaderContentType, ctype)
 
 
 	// handle Content-Range header.
@@ -169,7 +168,7 @@ func handlerContext(ctx Context, path string, content *os.File) error {
 		ranges, err := parseRange(ctx.GetHeader("Range"), sendSize)
 		if err != nil {
 			if err == errNoOverlap {
-				ctx.SetHeader("Content-Range", fmt.Sprintf("bytes */%d", sendSize))
+				ctx.SetHeader(HeaderContentRange, fmt.Sprintf("bytes */%d", sendSize))
 			}
 			HandlerError(ctx, err.Error(), StatusRequestedRangeNotSatisfiable)
 			return err
@@ -189,14 +188,14 @@ func handlerContext(ctx Context, path string, content *os.File) error {
 				HandlerError(ctx, err.Error(), StatusRequestedRangeNotSatisfiable)
 				return err
 			}
-			ctx.SetHeader("Content-Range", ra.contentRange(sendSize))
+			ctx.SetHeader(HeaderContentRange, ra.contentRange(sendSize))
 			ctx.WriteHeader(StatusPartialContent)
 			sendSize = ra.length
 		default:
 			ctx.WriteHeader(StatusPartialContent)
 			pr, pw := io.Pipe()
 			mw := multipart.NewWriter(pw)
-			ctx.SetHeader("Content-Type", "multipart/byteranges; boundary="+mw.Boundary())
+			ctx.SetHeader(HeaderContentType, "multipart/byteranges; boundary="+mw.Boundary())
 			sendContent = pr
 			defer pr.Close() 
 			go func() {
@@ -249,8 +248,8 @@ func (r httpRange) contentRange(size int64) string {
 
 func (r httpRange) mimeHeader(contentType string, size int64) textproto.MIMEHeader {
 	return textproto.MIMEHeader{
-		"Content-Range": {r.contentRange(size)},
-		"Content-Type":  {contentType},
+		HeaderContentRange: {r.contentRange(size)},
+		HeaderContentType:  {contentType},
 	}
 }
 
@@ -262,7 +261,7 @@ func parseRange(s string, size int64) ([]httpRange, error) {
 	}
 	const b = "bytes="
 	if !strings.HasPrefix(s, b) {
-		return nil, errors.New("invalid range")
+		return nil, ErrHandlerInvalidRange
 	}
 	var ranges []httpRange
 	noOverlap := false
@@ -273,7 +272,7 @@ func parseRange(s string, size int64) ([]httpRange, error) {
 		}
 		i := strings.Index(ra, "-")
 		if i < 0 {
-			return nil, errors.New("invalid range")
+			return nil, ErrHandlerInvalidRange
 		}
 		start, end := strings.TrimSpace(ra[:i]), strings.TrimSpace(ra[i+1:])
 		var r httpRange
@@ -282,7 +281,7 @@ func parseRange(s string, size int64) ([]httpRange, error) {
 			// range start relative to the end of the file.
 			i, err := strconv.ParseInt(end, 10, 64)
 			if err != nil {
-				return nil, errors.New("invalid range")
+				return nil, ErrHandlerInvalidRange
 			}
 			if i > size {
 				i = size
@@ -292,7 +291,7 @@ func parseRange(s string, size int64) ([]httpRange, error) {
 		} else {
 			i, err := strconv.ParseInt(start, 10, 64)
 			if err != nil || i < 0 {
-				return nil, errors.New("invalid range")
+				return nil, ErrHandlerInvalidRange
 			}
 			if i >= size {
 				// If the range begins after the size of the content,
@@ -307,7 +306,7 @@ func parseRange(s string, size int64) ([]httpRange, error) {
 			} else {
 				i, err := strconv.ParseInt(end, 10, 64)
 				if err != nil || r.start > i {
-					return nil, errors.New("invalid range")
+					return nil, ErrHandlerInvalidRange
 				}
 				if i >= size {
 					i = size - 1
@@ -403,7 +402,7 @@ func getFileType(path string) string {
 // obsoleted RFC 2616 (section 13.5.1) and are used for backward
 // compatibility.
 var hopHeaders = []string{
-	"Connection",
+	HeaderConnection,
 	"Proxy-Connection", // non-standard but still sent by libcurl and rejected by e.g. google
 	"Keep-Alive",
 	"Proxy-Authenticate",
@@ -411,7 +410,7 @@ var hopHeaders = []string{
 	"Te",      // canonicalized version of "TE"
 	"Trailer", // not Trailers per URL above; https://www.rfc-editor.org/errata_search.php?eid=4522
 	"Transfer-Encoding",
-	"Upgrade",
+	HeaderUpgrade,
 }
 
 func isEndHeader(key string) bool {
@@ -436,15 +435,15 @@ func HandlerProxy(addr string) HandlerFunc {
 		req := NewClientHttp().NewRequest(ctx.Method(), addr + ctx.Request().RequestURI(), ctx)
 		copyheader(ctx.Request().Header(), req.Header())
 
-		req.Header().Set("X-Forwarded-For", ctx.RemoteAddr())
+		req.Header().Set(HeaderXForwardedFor, ctx.RemoteAddr())
 		if ctx.GetHeader("Te") == "trailers" {
 			req.Header().Add("Te", "trailers")
 		}
 		// After stripping all the hop-by-hop connection headers above, add back any
 		// necessary for protocol upgrades, such as for websockets.
-		if upType := ctx.GetHeader("Upgrade"); len(upType) > 0 {
-			req.Header().Add("Connection", "Upgrade")
-			req.Header().Add("Upgrade", upType)
+		if upType := ctx.GetHeader(HeaderUpgrade); len(upType) > 0 {
+			req.Header().Add(HeaderConnection, HeaderUpgrade)
+			req.Header().Add(HeaderUpgrade, upType)
 		}
 
 

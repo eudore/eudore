@@ -102,6 +102,9 @@ type (
 		protocol.ResponseWriter
 		ParamsArray
 		QueryUrl
+		// run handler
+		index		int
+		handler		HandlerFuncs
 		// data
 		keys		map[interface{}]interface{}
 		path 		string
@@ -109,17 +112,14 @@ type (
 		cookies 	[]*Cookie
 		isReadBody	bool
 		postBody	[]byte
-		isrun		bool
-		index		int
-		handler		HandlerFuncs
 		// component
 		app			*App
 		log			Logger
 		fields		Fields
 	}
 	ParamsArray struct {
-		keys		[]string
-		vals		[]string
+		Keys		[]string
+		Vals		[]string
 	}
 	QueryUrl struct {
 		keys		[]string
@@ -138,6 +138,9 @@ func (ctx *ContextHttp) Reset(pctx context.Context, w protocol.ResponseWriter, r
 	ctx.RequestReader = r
 	ctx.ResponseWriter = w
 	ctx.keys = nil
+	// logger
+	ctx.log = ctx.app.Logger
+
 	// path and raw
 	uri := r.RequestURI()
 	pos := strings.IndexByte(uri, '?')
@@ -148,22 +151,28 @@ func (ctx *ContextHttp) Reset(pctx context.Context, w protocol.ResponseWriter, r
 		ctx.path = uri[:pos]
 		ctx.rawQuery = uri[pos + 1:]
 	}
-
-	ctx.isrun = true
-	// params
-	p := ctx.ParamsArray
-	p.keys = p.keys[0:0]
-	p.vals = p.vals[0:0]
+	
 	// query
-	ctx.QueryUrl.readQuery(ctx.rawQuery)
-	// cookies
-	ctx.cookies = ctx.cookies[0:0]
-	ctx.readCookies(r.Header().Get(HeaderCookie))
+	err := ctx.QueryUrl.readQuery(ctx.rawQuery)
+	if err != nil {
+		ctx.Error(err)
+	}
+	// url parsm
+	ctx.path, err = url.QueryUnescape(ctx.path)
+	if err != nil {
+		ctx.Error(err)
+	}
+	
 	// body
 	ctx.isReadBody = false
 	ctx.postBody = ctx.postBody[0:0]
-	// logger
-	ctx.log = ctx.app.Logger
+
+	// params
+	ctx.ParamsArray.Keys = ctx.ParamsArray.Keys[0:0]
+	ctx.ParamsArray.Vals = ctx.ParamsArray.Vals[0:0]
+	// cookies
+	ctx.cookies = ctx.cookies[0:0]
+	ctx.readCookies(r.Header().Get(HeaderCookie))
 }
 
 func (ctx *ContextHttp) Request() protocol.RequestReader {
@@ -196,7 +205,7 @@ func (ctx *ContextHttp) Next() {
 }
 
 func (ctx *ContextHttp) End() {
-	ctx.isrun = false
+	ctx.index = 0xff
 }
 
 func (ctx *ContextHttp) NewRequest(method, url string, body io.Reader) (protocol.ResponseReader, error) {
@@ -244,16 +253,6 @@ func (ctx *ContextHttp) SetValue(key interface{}, val interface{}) {
 	}
 	ctx.keys[key] = val
 }
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -330,6 +329,7 @@ func (ctx *ContextHttp) SetCookie(cookie *SetCookie) {
 		ctx.ResponseWriter.Header().Add("Set-Cookie", v)
 	}
 }
+
 func (ctx *ContextHttp) SetCookieValue(name, value string, maxAge int) {
 	ctx.ResponseWriter.Header().Add("Set-Cookie", fmt.Sprintf("%s=%s; Max-Age=%d", name, value ,maxAge))
 //	ctx.SetCookie(&http.Cookie{Name: name, Value: url.QueryEscape(value), Path: "/", MaxAge: maxAge})
@@ -337,27 +337,11 @@ func (ctx *ContextHttp) SetCookieValue(name, value string, maxAge int) {
 
 
 
-
-
-// response
+// Implement request redirection.
 //
-// func (ctx *ContextHttp) Write([]byte) (int, error) from protocol.ResponseWriter
-//
-// func (ctx *ContextHttp) WriteHeader(int) from protocol.ResponseWriter
-
-// Implement request redirection, divided into internal redirection and external redirection.
-//
-// No host information is internally redirected, rerouted and processed.
-//
-// There is host information for external redirects, and the request returns redirect information.
-//
-// 实现请求重定向，分内部重定向和外部重定向。
-//
-// 无主机信息为内部重定向，重新路由并处理。
-//
-// 有主机信息为外部重定向，请求返回重定向信息。
+// 实现请求重定向。
 func (ctx *ContextHttp) Redirect(code int, url string) {
-	HandlerRedirect(ctx, url, code)
+	HandlerRedirectExternal(ctx, url, code)
 }
 
 func (ctx *ContextHttp) Push(target string, opts *protocol.PushOptions) error {
@@ -468,15 +452,12 @@ func (ctx *ContextHttp) WriteRenderWith(i interface{}, r Renderer) error {
 // logger
 func (ctx *ContextHttp) Debug(args ...interface{}) {
 	ctx.logReset().Debug(fmt.Sprint(args...))
-	ctx.fields = make(Fields, 3)
 }
 func (ctx *ContextHttp) Info(args ...interface{}) {
 	ctx.logReset().Info(fmt.Sprint(args...))
-	ctx.fields = make(Fields, 3)
 }
 func (ctx *ContextHttp) Warning(args ...interface{}) {
 	ctx.logReset().Warning(fmt.Sprint(args...))
-	ctx.fields = make(Fields, 3)
 }
 func (ctx *ContextHttp) Error(args ...interface{}) {
 	// 空错误不处理
@@ -484,12 +465,10 @@ func (ctx *ContextHttp) Error(args ...interface{}) {
 		return
 	}
 	ctx.logReset().Error(fmt.Sprint(args...))
-	ctx.fields = make(Fields, 3)
 }
 
 func (ctx *ContextHttp) Fatal(args ...interface{}) {
 	ctx.logReset().Error(fmt.Sprint(args...))
-	ctx.fields = make(Fields, 3)	
 	// 结束Context
 	ctx.WriteHeader(500)
 	ctx.WriteRender(map[string]string{
@@ -554,23 +533,23 @@ func (ctx *ContextHttp) readCookies(line string) {
 
 
 func (p *ParamsArray) GetParam(key string) string {
-	for i, str := range p.keys {
+	for i, str := range p.Keys {
 		if str == key {
-			return p.vals[i]
+			return p.Vals[i]
 		}
 	}
 	return ""
 }
 
 func (p *ParamsArray) AddParam(key string, val string) {
-	p.keys = append(p.keys, key)
-	p.vals = append(p.vals, val)
+	p.Keys = append(p.Keys, key)
+	p.Vals = append(p.Vals, val)
 }
 
 func (p *ParamsArray) SetParam(key string, val string) {
-	for i, str := range p.keys {
+	for i, str := range p.Keys {
 		if str == key {
-			p.vals[i] = val
+			p.Vals[i] = val
 			return
 		}
 	}
@@ -625,10 +604,6 @@ func (q *QueryUrl) readQuery(query string) (err error) {
 
 
 
-func validCookieValueByte(b byte) bool {
-	return 0x20 <= b && b < 0x7f && b != '"' && b != ';' && b != '\\'
-}
-
 func parseCookieValue(raw string, allowDoubleQuote bool) (string, bool) {
 	// Strip the quotes, if present.
 	if allowDoubleQuote && len(raw) > 1 && raw[0] == '"' && raw[len(raw)-1] == '"' {
@@ -640,6 +615,10 @@ func parseCookieValue(raw string, allowDoubleQuote bool) (string, bool) {
 		}
 	}
 	return raw, true
+}
+
+func validCookieValueByte(b byte) bool {
+	return 0x20 <= b && b < 0x7f && b != '"' && b != ';' && b != '\\'
 }
 
 func isCookieNameValid(raw string) bool {

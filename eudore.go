@@ -71,7 +71,8 @@ func NewEudore() *Eudore {
 	))
 	// Register eudore default reload func
 	// e.RegisterInit("eudore-keys", 0x008, ReloadKeys)
-	e.RegisterInit("eudore-config", 0x009, InitConfig)
+	e.RegisterInit("eudore-config", 0x008, InitConfig)
+	e.RegisterInit("eudore-workdir", 0x009, InitWorkdir)
 	e.RegisterInit("eudore-command", 0x00a, InitCommand)
 	e.RegisterInit("eudore-logger", 0x015 , InitLogger)
 	e.RegisterInit("eudore-server", 0x016 , InitServer)

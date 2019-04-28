@@ -47,7 +47,7 @@ func init() {
 func NewServer() (*Server) {
 	return &Server{
 		Config:	&ServerConfig{},
-		handler:	protocol.HandlerFunc(func(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
+		handler:	protocol.HandlerFunc(func(_ context.Context, w protocol.ResponseWriter, _ protocol.RequestReader) {
 			w.Write([]byte("start eudore server, this default page."))
 		}),
 	}

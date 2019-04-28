@@ -464,6 +464,9 @@ func getSpiltPath(key string) []string {
 		strs[num] = strs[num] + str
 	
 	}
+	if key[len(key) - 1] == '/' {
+		lastappend(strs, '/')
+	}
 	return strs
 }
 

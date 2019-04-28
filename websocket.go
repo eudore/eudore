@@ -29,19 +29,61 @@ const (
 	acceptSize = 28 // base64.StdEncoding.EncodedLen(sha1.Size)
 )
 
+
+var (
+	ErrHandshakeBadProtocol = NewError(StatusHTTPVersionNotSupported, "handshake error: bad HTTP protocol version")
+	ErrHandshakeBadMethod = NewError(StatusMethodNotAllowed, "handshake error: bad HTTP request method")
+	ErrHandshakeBadHost = NewError(StatusBadRequest, "handshake error: bad Host heade")
+	ErrHandshakeBadUpgrade = NewError(StatusBadRequest, "handshake error: bad Upgrade header")
+	ErrHandshakeBadConnection = NewError(StatusBadRequest, "handshake error: bad Connection header")
+	ErrHandshakeBadSecAccept = NewError(StatusBadRequest, "handshake error: bad Sec-Websocket-Accept header")
+	ErrHandshakeBadSecKey = NewError(StatusBadRequest, "handshake error: bad Sec-Websocket-Key header")
+	ErrHandshakeBadSecVersion = NewError(StatusBadRequest, "handshake error: bad Sec-Websocket-Version header")
+	ErrHandshakeUpgradeRequired = NewError(StatusUpgradeRequired, "handshake error: bad Sec-Websocket-Version header")
+)
+
+
 func UpgradeHttp(ctx Context) (net.Conn, error) {
 	conn, err := ctx.Response().Hijack()
 	if err != nil {
 
 	}
+
 	rw := bufio.NewWriter(conn)
 	var nonce string
-	nonce = ctx.GetHeader("Sec-Websocket-Key")
+	if ctx.Method() != MethodGet {
+		err = ErrHandshakeBadMethod
+	} else if ctx.Request().Proto() != "HTTP/1.1" {
+		err = ErrHandshakeBadProtocol
+	} else if ctx.Host() == "" {
+		err = ErrHandshakeBadHost
+	} else if ctx.GetHeader("Upgrade") != "websocket" {
+		err = ErrHandshakeBadUpgrade
+	} else if ctx.GetHeader("Connection") != "Upgrade" {
+		err = ErrHandshakeBadConnection
+	} else if v := ctx.GetHeader("Sec-Websocket-Version"); v != "13" {
+		if v != "" {
+			err = ErrHandshakeUpgradeRequired
+		} else {
+			err = ErrHandshakeBadSecVersion
+		}
+	} else if nonce = ctx.GetHeader("Sec-Websocket-Key"); nonce == "" {
+		err = ErrHandshakeBadSecKey
+	}
+
 	if err == nil {
 		httpWriteResponseUpgrade(rw, []byte(nonce))
 		err = rw.Flush()
+	}else {
+		var code int = 500
+		if err2, ok := err.(*ErrorHttp); ok {
+			code = err2.Code()
+		}
+		ctx.WriteHeader(code)
+		ctx.WriteString(err.Error())
+		err = rw.Flush()
 	}
-	return conn, nil
+	return conn, err
 }
 
 func httpWriteResponseUpgrade(bw *bufio.Writer, nonce []byte) {
@@ -53,31 +95,18 @@ func httpWriteResponseUpgrade(bw *bufio.Writer, nonce []byte) {
 }
 
 
+func writeAccept(w io.Writer, nonce []byte) (int, error) {
+	var b [acceptSize]byte
+	bp := uintptr(unsafe.Pointer(&b))
+	bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: bp,
+		Len:  acceptSize,
+		Cap:  acceptSize,
+	}))
 
+	initAcceptFromNonce(bts, nonce)
 
-var webSocketMagic = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
-
-var sha1Pool sync.Pool
-
-// nonce helps to put nonce bytes on the stack and then retrieve stack-backed
-// slice with unsafe.
-type nonce [nonceSize]byte
-
-func (n *nonce) bytes() []byte {
-	h := uintptr(unsafe.Pointer(n))
-	b := &reflect.SliceHeader{Data: h, Len: nonceSize, Cap: nonceSize}
-	return *(*[]byte)(unsafe.Pointer(b))
-}
-func acquireSha1() hash.Hash {
-	if h := sha1Pool.Get(); h != nil {
-		return h.(hash.Hash)
-	}
-	return sha1.New()
-}
-
-func releaseSha1(h hash.Hash) {
-	h.Reset()
-	sha1Pool.Put(h)
+	return w.Write(bts)
 }
 
 // initAcceptFromNonce fills given slice with accept bytes generated from given
@@ -108,16 +137,30 @@ func initAcceptFromNonce(dst, nonce []byte) {
 	base64.StdEncoding.Encode(dst, sum)
 }
 
-func writeAccept(w io.Writer, nonce []byte) (int, error) {
-	var b [acceptSize]byte
-	bp := uintptr(unsafe.Pointer(&b))
-	bts := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: bp,
-		Len:  acceptSize,
-		Cap:  acceptSize,
-	}))
 
-	initAcceptFromNonce(bts, nonce)
 
-	return w.Write(bts)
+var webSocketMagic = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+
+var sha1Pool sync.Pool
+
+// nonce helps to put nonce bytes on the stack and then retrieve stack-backed
+// slice with unsafe.
+type nonce [nonceSize]byte
+
+func (n *nonce) bytes() []byte {
+	h := uintptr(unsafe.Pointer(n))
+	b := &reflect.SliceHeader{Data: h, Len: nonceSize, Cap: nonceSize}
+	return *(*[]byte)(unsafe.Pointer(b))
 }
+func acquireSha1() hash.Hash {
+	if h := sha1Pool.Get(); h != nil {
+		return h.(hash.Hash)
+	}
+	return sha1.New()
+}
+
+func releaseSha1(h hash.Hash) {
+	h.Reset()
+	sha1Pool.Put(h)
+}
+
