@@ -24,6 +24,8 @@ type (
 		Logger
 		Router
 		Cache
+		Session
+		Client
 		Binder
 		Renderer
 		View
@@ -68,20 +70,22 @@ func (app *App) RegisterComponent(name string,  arg interface{}) error {
 		return err
 	}
 	switch c.(type) {
-	case Router:
-		app.Router = c.(Router)
+	case Config:
+		app.Config = c.(Config)
 	case Logger:
 		li, ok := app.Logger.(LoggerInitHandler)
 		app.Logger = c.(Logger)
 		if ok {
 			li.NextHandler(app.Logger)
 		}
+	case Router:
+		app.Router = c.(Router)
 	case Server:
 		app.Server = c.(Server)
 	case Cache:
 		app.Cache = c.(Cache)
-	case Config:
-		app.Config = c.(Config)
+	case Session:
+		app.Session = c.(Session)
 	case View:
 		app.View = c.(View)
 	default:

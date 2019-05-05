@@ -120,10 +120,10 @@ func (r *RouterFull) RegisterMiddleware(method ,path string, hs HandlerFuncs) {
 func (r *RouterFull) RegisterHandler(method string, path string, handler HandlerFuncs) {
 	if method == MethodAny{
 		for _, method := range RouterAllMethod {
-			r.InsertRoute(method, path, CombineHandlers(r.midds.Lookup(method + path), handler))
+			r.InsertRoute(method, path, CombineHandlerFuncs(r.midds.Lookup(method + path), handler))
 		}
 	}else {
-		r.InsertRoute(method, path, CombineHandlers(r.midds.Lookup(method + path), handler))
+		r.InsertRoute(method, path, CombineHandlerFuncs(r.midds.Lookup(method + path), handler))
 	}
 }
 

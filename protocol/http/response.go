@@ -120,8 +120,8 @@ func (w *Response) writerResponseLine() {
 	// Write headers
 	// 写入headers
 	h := w.header
-	for i, k := range h.keys {
-		fmt.Fprintf(w.writer, "%s: %s\r\n", k, h.vals[i])
+	for i, k := range h.Keys {
+		fmt.Fprintf(w.writer, "%s: %s\r\n", k, h.Vals[i])
 	}
 	// 写入时间和Server
 	fmt.Fprintf(w.writer, "Date: %s\r\nServer: eudore\r\n", time.Now().Format(TimeFormat))

@@ -89,6 +89,11 @@ type (
 		Warning(...interface{})
 		Error(...interface{})
 		Fatal(...interface{})
+		Debugf(string, ...interface{})
+		Infof(string, ...interface{})
+		Warningf(string, ...interface{})
+		Errorf(string, ...interface{})
+		Fatalf(string, ...interface{})
 		WithField(key string, value interface{}) LogOut
 		WithFields(fields Fields) LogOut
 		// app
@@ -404,8 +409,8 @@ func (ctx *ContextHttp) ReadBind(i interface{}) error {
 
 func (ctx *ContextHttp) WriteRender(i interface{}) error {
 	var r Renderer
-	for _, accept := range strings.Split(ctx.GetHeader(HeaderAccept), ",") {
-		if accept[0] == ' ' {
+	for _, accept := range strings.Split( GetStringDefault(ctx.GetHeader(HeaderAccept), ctx.GetHeader("accept")) , ",") {
+		if accept != "" && accept[0] == ' ' {
 			accept = accept[1:]
 		}
 		switch accept {
@@ -469,6 +474,32 @@ func (ctx *ContextHttp) Error(args ...interface{}) {
 
 func (ctx *ContextHttp) Fatal(args ...interface{}) {
 	ctx.logReset().Error(fmt.Sprint(args...))
+	// 结束Context
+	ctx.WriteHeader(500)
+	ctx.WriteRender(map[string]string{
+		"status":	"500",
+		"x-request-id":	ctx.RequestID(),
+	})
+	ctx.End()
+}
+
+
+func (ctx *ContextHttp) Debugf(format string, args ...interface{}) {
+	ctx.logReset().Debug(fmt.Sprintf(format, args...))
+}
+func (ctx *ContextHttp) Infof(format string, args ...interface{}) {
+	ctx.logReset().Info(fmt.Sprintf(format, args...))
+}
+func (ctx *ContextHttp) Warningf(format string, args ...interface{}) {
+	ctx.logReset().Warning(fmt.Sprintf(format, args...))
+}
+
+func (ctx *ContextHttp) Errorf(format string, args ...interface{}) {
+	ctx.logReset().Error(fmt.Sprintf(format, args...))
+}
+
+func (ctx *ContextHttp) Fatalf(format string, args ...interface{}) {
+	ctx.logReset().Error(fmt.Sprintf(format, args...))
 	// 结束Context
 	ctx.WriteHeader(500)
 	ctx.WriteRender(map[string]string{

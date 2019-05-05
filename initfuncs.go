@@ -70,6 +70,8 @@ func InitLogger(app *Eudore) error {
 		if err != nil {
 			return err
 		}
+		Set(app.Router, "print", app.Logger.Debug)
+		Set(app.Server, "print", app.Logger.Debug)
 	}
 	return nil
 }
@@ -82,6 +84,7 @@ func InitServer(app *Eudore) error {
 		if err != nil {
 			return err
 		}
+		Set(app.Server, "print", app.Logger.Debug)
 	}
 	return nil 
 }
@@ -134,6 +137,7 @@ func InitListComponent(e *Eudore) error {
 		e.Logger,
 		e.Router,
 		e.Cache,
+		e.Session,
 		e.View,
 		// e.Binder,
 		// e.Renderer,

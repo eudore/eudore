@@ -46,8 +46,8 @@ func NewCore() *Core {
 
 	// 初始化组件
 	app.RegisterComponents(
-		[]string{"logger", "config", "router", "server", "cache", "view"}, 
-		[]interface{}{nil, nil, nil, nil, nil, nil},
+		[]string{"logger", "config", "router", "server", "cache", "session", "view"}, 
+		[]interface{}{nil, nil, nil, nil, nil, nil, nil},
 	)
 	return app
 }

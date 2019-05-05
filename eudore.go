@@ -66,8 +66,8 @@ func NewEudore() *Eudore {
 	}
 	// Register eudore default components
 	e.HandleError(e.RegisterComponents(
-		[]string{"config", "logger-init", "router", "cache", "view"}, 
-		[]interface{}{nil, nil, nil, nil, nil},
+		[]string{"config", "logger-init", "router", "cache", "session", "view"}, 
+		[]interface{}{nil, nil, nil, nil, nil, nil},
 	))
 	// Register eudore default reload func
 	// e.RegisterInit("eudore-keys", 0x008, ReloadKeys)
@@ -76,10 +76,10 @@ func NewEudore() *Eudore {
 	e.RegisterInit("eudore-command", 0x00a, InitCommand)
 	e.RegisterInit("eudore-logger", 0x015 , InitLogger)
 	e.RegisterInit("eudore-server", 0x016 , InitServer)
-	e.RegisterInit("eudore-server-start", 0x017 , InitServerStart)
 	e.RegisterInit("eudore-signal", 0x018 , InitSignal)
-	e.RegisterInit("eudore-defaule-logger", 0xa15 , InitDefaultLogger)
-	e.RegisterInit("eudore-defaule-server", 0xa16 , InitDefaultServer)
+	e.RegisterInit("eudore-defaule-logger", 0x0f5 , InitDefaultLogger)
+	e.RegisterInit("eudore-defaule-server", 0x0f6 , InitDefaultServer)
+	e.RegisterInit("eudore-server-start", 0xc00 , InitServerStart)
 	e.RegisterInit("eudore-component-info", 0xc01 , InitListComponent)
 	e.RegisterInit("eudore-test-stop", 0xfff, InitStop)
 	return e

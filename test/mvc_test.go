@@ -32,7 +32,7 @@ func (c *BaseController) GetInfoByIdName(id int, name string) {
 
 func (*BaseController) GetIndex() {}
 func (*BaseController) GetContent() {}
-func (*BaseController) ControllerRoute(name string) string {
+func (*BaseController) ControllerRoute() map[string]string {
 	m := map[string]string{
 		"Any": "/*name",
 		"Get": "/*",
@@ -41,12 +41,33 @@ func (*BaseController) ControllerRoute(name string) string {
 		"GetIndex": "/index",
 		"GetContent": "/content",
 	}
-	return m[name]
+	return m
+}
+
+func h1(ctx eudore.Context) {
+	ctx.WriteString("ControllerSession")
 }
 
 func TestMvc1(*testing.T) {
 	app := eudore.NewCore()
+	eudore.Set(app.Router, "debug", app.Logger.Debug)
 	app.AddController(&BaseController{})
+
+	config := &eudore.RouterConfig{
+		Routes:	[]*eudore.RouterConfig{
+			&eudore.RouterConfig{
+				Method:	"GET",
+				Path:	"/11",
+				Handler:	h1,
+			},
+			&eudore.RouterConfig{
+				Method:	"GET",
+				Path:	"/12",
+				Handler:	h1,
+			},
+		},
+	}
+	config.Inject(app.Router.Group(""))
 	app.Listen(":8085")
 	app.Run()
 }

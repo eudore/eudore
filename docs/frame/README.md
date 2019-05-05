@@ -94,13 +94,16 @@ type (
 )
 ```
 
+Core一个只有五个方法，Listen和ListenTLS添加Server监听端口，Run启动程序，EudoreHTTP和ServeHTTP实现Server Handler需要的接口，ServeHTTP未来可能移除。
+
 ```golang
 type Core
-	func NewCore() *Core
-	func (app *Core) Listen(addr string) *Core
-	func (app *Core) ListenTLS(addr, key, cert string) *Core
-	func (app *Core) Run() (err error)
-	func (app *Core) ServeHTTP(w http.ResponseWriter, req *http.Request)
+    func NewCore() *Core
+    func (app *Core) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader)
+    func (app *Core) Listen(addr string) *Core
+    func (app *Core) ListenTLS(addr, key, cert string) *Core
+    func (app *Core) Run() (err error)
+    func (app *Core) ServeHTTP(w http.ResponseWriter, req *http.Request)
 ```
 
 ## Eudore
@@ -113,6 +116,8 @@ type Eudore struct {
 }
 ```
 
+Eudore相对Core主要添加了RegisterInit方法添加启动函数，其他则是在各个组件基础上封装。
+
 ```golang
 type Eudore
     func DefaultEudore() *Eudore
@@ -121,98 +126,105 @@ type Eudore
     func (e *Eudore) Debugf(format string, args ...interface{})
     func (e *Eudore) Error(args ...interface{})
     func (e *Eudore) Errorf(format string, args ...interface{})
-    func (e *Eudore) EudoreHTTP(pctx context.Context, w ResponseWriter, req RequestReader)
+    func (e *Eudore) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader)
     func (e *Eudore) Handle(ctx Context)
     func (e *Eudore) HandleError(err error)
-    func (e *Eudore) HandleSignal(sig os.Signal) error
+    func (*Eudore) HandleSignal(sig os.Signal) error
     func (e *Eudore) Info(args ...interface{})
     func (e *Eudore) Infof(format string, args ...interface{})
-    func (e *Eudore) RegisterComponent(name string, arg interface{}) (err error)
-    func (e *Eudore) RegisterComponents(names []string, args []interface{}) error
-    func (e *Eudore) RegisterPool(name string, fn func() interface{})
-    func (e *Eudore) RegisterReload(name string, index int, fn ReloadFunc)
-    func (e *Eudore) RegisterSignal(sig os.Signal, bf bool, fn SignalFunc)
+    func (app *Eudore) Init(names ...string) (err error)
+    func (app *Eudore) RegisterComponents(names []string, args []interface{}) error
+    func (app *Eudore) RegisterInit(name string, index int, fn InitFunc)
+    func (app *Eudore) RegisterPool(name string, fn func() interface{})
+    func (*Eudore) RegisterSignal(sig os.Signal, bf bool, fn SignalFunc)
     func (e *Eudore) RegisterStatic(path, dir string)
-    func (e *Eudore) Reload(names ...string) (err error)
-    func (e *Eudore) Restart() error
-    func (e *Eudore) Run() (err error)
+    func (app *Eudore) Restart() error
+    func (app *Eudore) Run() (err error)
     func (e *Eudore) ServeHTTP(w http.ResponseWriter, req *http.Request)
-    func (e *Eudore) Shutdown() error
-    func (e *Eudore) Start() error
-    func (e *Eudore) Stop() error
+    func (app *Eudore) Shutdown() error
+    func (app *Eudore) Start() error
+    func (app *Eudore) Stop() error
     func (e *Eudore) Warning(args ...interface{})
     func (e *Eudore) Warningf(format string, args ...interface{})
 ```
 
 # Context
 
+Context是一次请求的上下文环境，接口大概分类为：context设置、请求数据读取，响应写入、日志输出这四类。
+
+context.Context接口实现未完善。
+
+Context的定义：
+
 ```golang
 type Context interface {
-	// context
-	Reset(context.Context, ResponseWriter, RequestReader)
-	Request() RequestReader
-	Response() ResponseWriter
-	SetRequest(RequestReader)
-	SetResponse(ResponseWriter)
-	SetHandler(Middleware)
-	Next()
-	End()
-	NewRequest(string, string, io.Reader) (ResponseReader, error)
-	// context
-	Deadline() (time.Time, bool)
-	Done() <-chan struct{}
-	Err() error
-	Value(key interface{}) interface{}
-	SetValue(interface{}, interface{})
+    // context
+    Reset(context.Context, protocol.ResponseWriter, protocol.RequestReader)
+    Request() protocol.RequestReader
+    Response() protocol.ResponseWriter
+    SetRequest(protocol.RequestReader)
+    SetResponse(protocol.ResponseWriter)
+    SetHandler(HandlerFuncs)
+    Next()
+    End()
+    NewRequest(string, string, io.Reader) (protocol.ResponseReader, error)
+    // context
+    Deadline() (time.Time, bool)
+    Done() <-chan struct{}
+    Err() error
+    Value(key interface{}) interface{}
+    SetValue(interface{}, interface{})
 
-	// request info
-	Read([]byte) (int, error)
-	Host() string
-	Method() string
-	Path() string
-	RemoteAddr() string
-	RequestID() string
-	Referer() string
-	ContentType() string
-	Istls() bool
-	Body() []byte
+    // request info
+    Read([]byte) (int, error)
+    Host() string
+    Method() string
+    Path() string
+    RemoteAddr() string
+    RequestID() string
+    Referer() string
+    ContentType() string
+    Istls() bool
+    Body() []byte
 
-	// param header cookie
-	Params() Params
-	GetParam(string) string
-	SetParam(string, string)
-	AddParam(string, string)
-	GetHeader(name string) string
-	SetHeader(string, string)
-	Cookies() []*CookieRead
-	GetCookie(name string) string
-	SetCookie(cookie *CookieWrite)
-	SetCookieValue(string, string, int)
+    // param header cookie
+    Params() Params
+    GetParam(string) string
+    SetParam(string, string)
+    AddParam(string, string)
+    GetQuery(string) string
+    GetHeader(name string) string
+    SetHeader(string, string)
+    Cookies() []*Cookie
+    GetCookie(name string) string
+    SetCookie(cookie *SetCookie)
+    SetCookieValue(string, string, int)
 
+    // response
+    Write([]byte) (int, error)
+    WriteHeader(int)
+    Redirect(int, string)
+    Push(string, *protocol.PushOptions) error
+    // render writer
+    WriteString(string) error
+    WriteView(string, interface{}) error
+    WriteJson(interface{}) error
+    WriteFile(string) error
 
-	// response
-	Write([]byte) (int, error)
-	WriteHeader(int)
-	Redirect(int, string)
-	Push(string, *PushOptions) error
-	// render writer 
-	WriteString(string) error
-	WriteView(string, interface{}) error
-	WriteJson(interface{}) error
-	WriteFile(string) (int, error)
-	// binder and renderer
-	ReadBind(interface{}) error
-	WriteRender(interface{}) error
-	// log LogOut interface
-	Debug(...interface{})
-	Info(...interface{})
-	Warning(...interface{})
-	Error(...interface{})
-	Fatal(...interface{})
-	WithField(key string, value interface{}) LogOut
-	WithFields(fields Fields) LogOut
-	// app
-	App() *App
+    // binder and renderer
+    ReadBind(interface{}) error
+    WriteRender(interface{}) error
+
+    // log LogOut interface
+    Debug(...interface{})
+    Info(...interface{})
+    Warning(...interface{})
+    Error(...interface{})
+    Fatal(...interface{})
+    WithField(key string, value interface{}) LogOut
+    WithFields(fields Fields) LogOut
+    // app
+    App() *App
 }
 ```
 # RequestReader & ResponseWriter
@@ -279,13 +291,15 @@ type (
 
 Router对象由RouterCore和RouterMethod组合，RouterMethod实现各种路由注册封装，RouterCore用于实现路由器的注册和匹配。
 
-当前实现RouterEmpty、RouterRadix、RouterFull三种Router。
-
-RouterEmpty是一个空路由，注册时提供一个HandlerFunc，然后匹配时返回这个HandlerFunc，未实现支持HandlerFuncs。
+当前实现RouterRadix、RouterFull、RouterInit、RouterHost三种Router。
 
 RouterRadix基于基数树实现，实现路径参数、通配符参数、默认参数、参数校验三项基本功能。
 
 RouterFull基于基数树实现，实现全部路由器相关特性,实现路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
+
+RouterInit用于初始化处理或者作为一个空路由。
+
+RouterHost使用基于Host匹配选择多个组合路由，Host匹配可自己实现。
 
 路由器接口定义：
 
@@ -295,7 +309,9 @@ type (
 	// 路由默认直接注册的方法，其他方法可以使用RouterRegister接口直接注册。
 	RouterMethod interface {
 		Group(string) RouterMethod
+		AddHandler(string, string, ...HandlerFunc) RouterMethod
 		AddMiddleware(...HandlerFunc) RouterMethod
+		AddController(...Controller) RouterMethod
 		Any(string, ...Handler)
 		AnyFunc(string, ...HandlerFunc)
 		Delete(string, ...Handler)

@@ -40,14 +40,10 @@ type (
 		protocol.RequestReader
 		reader *bytes.Reader
 	}
-	RequestReaderEudore struct {
-		method string
-		proto string
-		requestURI string
-		remoteAddr string
-		header http.Header
-		body []byte
-		tls *tls.ConnectionState
+	RequestWriterHttp struct {
+		http.Request
+		*http.Client
+		err error
 	}
 )
 
@@ -139,3 +135,50 @@ func (r *RequestReaderSeeker) Read(p []byte) (int, error) {
 func (r *RequestReaderSeeker) Seek(offset int64, whence int) (int64, error) {
 	return r.reader.Seek(offset, whence)
 }
+
+// func (r *RequestWriterHttp)
+
+/*
+// Body makes the request use obj as the body. Optional.
+// If obj is a string, try to read a file of that name.
+// If obj is a []byte, send it directly.
+// If obj is an io.Reader, use it directly.
+// If obj is a runtime.Object, marshal it correctly, and set Content-Type header.
+// If obj is a runtime.Object and nil, do nothing.
+// Otherwise, set an error.
+func (r *Request) Body(obj interface{}) *Request {
+	if r.err != nil {
+		return r
+	}
+	switch t := obj.(type) {
+	case string:
+		data, err := ioutil.ReadFile(t)
+		if err != nil {
+			r.err = err
+			return r
+		}
+		glogBody("Request Body", data)
+		r.body = bytes.NewReader(data)
+	case []byte:
+		glogBody("Request Body", t)
+		r.body = bytes.NewReader(t)
+	case io.Reader:
+		r.body = t
+	case runtime.Object:
+		// callers may pass typed interface pointers, therefore we must check nil with reflection
+		if reflect.ValueOf(t).IsNil() {
+			return r
+		}
+		data, err := runtime.Encode(r.serializers.Encoder, t)
+		if err != nil {
+			r.err = err
+			return r
+		}
+		glogBody("Request Body", data)
+		r.body = bytes.NewReader(data)
+		r.SetHeader("Content-Type", r.content.ContentType)
+	default:
+		r.err = fmt.Errorf("unknown type used for body: %+v", obj)
+	}
+	return r
+}*/

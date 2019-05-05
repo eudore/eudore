@@ -25,11 +25,14 @@ type (
 		RouterMethod
 		// save middleware
 		// 保存注册的中间件信息
-		midds		*middNode
+		Print		func(...interface{})	`set:"print"`
+		middtree	*middNode
 		// exception handling method
 		// 异常处理方法
-		node404		HandlerFuncs
-		node405		*radixNode
+		node404		radixNode
+		nodefunc404	HandlerFuncs
+		node405		radixNode
+		nodefunc405	HandlerFuncs
 		// various methods routing tree
 		// 各种方法路由树
 		root		radixNode
@@ -61,11 +64,27 @@ type (
 
 func NewRouterRadix(interface{}) (Router, error) {
 	r := &RouterRadix{
-		node404:	HandlerFuncs{DefaultRouter404Func},
-		node405:	newRadixNode405("405", DefaultRouter405Func),
-		midds:		&middNode{},
+		Print:		func(...interface{}) {},
+		nodefunc404:	HandlerFuncs{DefaultRouter404Func},
+		nodefunc405:	HandlerFuncs{DefaultRouter405Func},
+		node404:	radixNode{
+			tags:	[]string{ParamRoute},
+			vals:	[]string{"404"},
+			handlers:	HandlerFuncs{DefaultRouter404Func},
+		},
+		node405:	radixNode{
+			Wchildren:	&radixNode{
+				tags:	[]string{ParamRoute},
+				vals:	[]string{"405"},
+				handlers:	HandlerFuncs{DefaultRouter405Func},
+			},
+		},
+		middtree:		&middNode{},
 	}
-	r.RouterMethod = &RouterMethodStd{RouterCore:	r}
+	r.RouterMethod = &RouterMethodStd{
+		RouterCore:			r,
+		ControllerParseFunc:	ControllerBaseParseFunc,
+	}
 	return r, nil
 }
 
@@ -80,17 +99,20 @@ func (r *RouterRadix) RegisterMiddleware(method ,path string, hs HandlerFuncs) {
 	if len(method) != 0 && len(path) == 0 {
 		path = "/"
 	}
+	r.Print("RegisterMiddleware:", method, path, GetHandlerNames(hs))
 	if method == MethodAny {
 		if path == "/" {
-			r.midds.Insert("", hs)
+			r.middtree.Insert("", hs)
+			r.node404.handlers = append(r.middtree.val, r.nodefunc404...)
+			r.node405.Wchildren.handlers = append(r.middtree.val, r.nodefunc405...)
 			return
 		}
 		for _, method = range RouterAllMethod {
-			r.midds.Insert(method + path, hs)
+			r.middtree.Insert(method + path, hs)
 		}
 	}else {
-		r.midds.Insert(method + path, hs)
-	}	
+		r.middtree.Insert(method + path, hs)
+	}
 }
 
 // Register a new method request path to the router
@@ -101,12 +123,13 @@ func (r *RouterRadix) RegisterMiddleware(method ,path string, hs HandlerFuncs) {
 // 
 // 路由器会从中间件树中匹配当前路径可使用的处理者，并添加到处理者前方。
 func (r *RouterRadix) RegisterHandler(method string, path string, handler HandlerFuncs) {
+	r.Print("RegisterHandler:", method, path, GetHandlerNames(handler))
 	if method == MethodAny{
 		for _, method := range RouterAllMethod {
-			r.InsertRoute(method, path, CombineHandlers(r.midds.Lookup(method + path), handler))
+			r.InsertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method + path), handler))
 		}
 	}else {
-		r.InsertRoute(method, path, CombineHandlers(r.midds.Lookup(method + path), handler))
+		r.InsertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method + path), handler))
 	}
 }
 
@@ -127,7 +150,7 @@ func (r *RouterRadix) RegisterHandler(method string, path string, handler Handle
 // 路径切割见getSpiltPath函数，当前未完善，处理正则可能异常。
 func (t *RouterRadix) InsertRoute(method, key string, val HandlerFuncs) {
 	var currentNode *radixNode = t.getTree(method)
-	if currentNode == t.node405 {
+	if currentNode == &t.node405 {
 		return
 	}
 
@@ -152,30 +175,35 @@ func (t *RouterRadix) Match(method, path string, params Params) HandlerFuncs {
 	if n := t.getTree(method).recursiveLoopup(path, params); n != nil {
 		return n
 	}
-	// t.node404.GetTags(params)
-	return t.node404
+
+	// 处理404
+	t.node404.AddTagsToParams(params)
+	return t.node404.handlers
 }
 
 // The router Set method can set the handlers for 404 and 405.
 //
 // 路由器Set方法可以设置404和405的处理者。
 func (r *RouterRadix) Set(key string, i interface{}) error {
-	h, ok := i.(HandlerFunc)
-	if !ok {
-		h, ok = i.(func(Context))
-	}
-	if !ok {
+	hs := NewHandlerFuncs(i)
+	if hs == nil {
 		return ErrRouterSetNoSupportType
 	}
 	args := strings.Split(key, " ")
 	switch args[0] {
 	case "404":
-		r.node404 = HandlerFuncs{h}
+		// r.node404 = HandlerFuncs{h}
+		r.node404.SetTags(args)
+		r.node404.handlers = append(r.middtree.val, hs...)
+		r.nodefunc404 = hs
 	case "405":
-		r.node405 = newRadixNode405(key, h)
+		r.node405.Wchildren.SetTags(args)
+		r.node405.Wchildren.handlers = append(r.middtree.val, hs...)
+		r.nodefunc405 = hs
 	}
 	return nil
 }
+
 
 // Returns the component name of the current router.
 //
@@ -355,7 +383,7 @@ func (t *RouterRadix) getTree(method string) *radixNode {
 	case MethodPatch:
 		return &t.patch
 	default:
-		return t.node405
+		return &t.node405
 	}
 }
 

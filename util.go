@@ -295,3 +295,58 @@ func GetStringDefault(s1 , s2 string) string {
 	}
 	return s1
 }
+
+
+type (
+	StringMap  map[string]interface{}
+)
+
+func NewStringMap(i interface{}) StringMap {
+	v, ok := i.(map[string]interface{})
+	if ok {
+		return StringMap(v)
+	}
+	return nil
+}
+
+func (m StringMap) Get(key string) interface{} {
+	if len(key) == 0 {
+		return m
+	}
+	v, ok := m[key]
+	if ok {
+		return v
+	}
+	return nil
+}
+
+func (m StringMap) Set(key string, val interface{}) {
+	if len(key) == 0 {
+		v, ok := val.(map[string]interface{})
+		if ok {
+			m = v
+		}
+	}else {
+		m[key] = val
+	}
+}
+
+func (m StringMap) Del(key string) {
+	delete(m, key)
+}
+
+func (m StringMap) GetInt(key string) int {
+	return GetInt(m.Get(key))
+}
+
+func (m StringMap) GetDefultInt(key string,n int) int {
+	return GetDefaultInt(m.Get(key), n)
+}
+
+func (m StringMap) GetString(key string) string {
+	return GetString(m.Get(key))
+}
+
+func (m StringMap) GetDefaultString(key string,str string) string {
+	return GetDefaultString(m.Get(key), str)
+}

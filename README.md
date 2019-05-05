@@ -4,7 +4,7 @@
 
 ## Features
 
-- 核心全部接口化,支持重写Application、Context、Request、Response、Router、Middleware、Logger、Server、Config、Cache、View、Bind、Render、Controller。
+- 核心全部接口化,支持重写Application、Context、Request、Response、Router、Middleware、Logger、Server、Config、Cache、Session、View、Bind、Render、Controller。
 - 对象语义明确，框架源码简单易懂，无注释部分变动可能较大。
 
 ## Lsit
@@ -67,7 +67,6 @@
 - [ ] 多模板库接入
 - Mvc
 - [x] mvc支持
-- [x] before和after函数执行
 - [x] 控制器函数输入参数
 - Tools
 - [x] 程序启动命令解析
@@ -79,11 +78,13 @@
 - [ ] expvar支持
 - [ ] 运行时对象数据显示
 - Session
-- [ ] Session实现
+- [x] Session实现
 - Middleware
 - [x] gzip压缩
 - [x] 限流
 - [x] 黑名单
+- [x] 异常捕捉
+- [x] 访问日志
 
 ## issue
 
@@ -95,11 +96,11 @@ handlefile处理304缓存
 
 handlerproxy未支持101
 
-mvc未完善
+session未完善
+
+组件debug日志
 
 websocket未完善
-
-session未完善
 
 client未实现
 

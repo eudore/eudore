@@ -57,7 +57,7 @@ type (
 // 创建一个app
 func NewApp() *App {
 	return &App{
-		Addr:	"0.0.0.0:8088",
+		Addr:	":8088",
 		Logger:	&MyLogger{},
 		Router:	&MyRouter{},
 	}

@@ -18,6 +18,8 @@ import (
 	"regexp"
 	"strings"
 	"strconv"
+	"reflect"
+	"runtime"
 	"errors"
 	"mime/multipart"
 	"net/textproto"
@@ -52,8 +54,28 @@ var (
 	errNoOverlap = errors.New("invalid range: failed to overlap")
 )
 
+func NewHandlerFuncs(i interface{}) HandlerFuncs {
+	switch val := i.(type) {
+	case func(Context):
+		return HandlerFuncs{val}
+	case HandlerFunc:
+		return HandlerFuncs{val}
+	case HandlerFuncs:
+		return val
+	case string:
+	var hs HandlerFuncs
+		for _, i := range strings.Split(val, ",") {
+			h := ConfigLoadHandleFunc(i)
+			if h != nil {
+				hs = append(hs, h)
+			}
+		}
+		return hs
+	}
+	return nil
+}
 
-func CombineHandlers(hs1, hs2 HandlerFuncs) HandlerFuncs {
+func CombineHandlerFuncs(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	// if nil
 	if len(hs1) == 0 {
 		return hs2
@@ -71,6 +93,20 @@ func CombineHandlers(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	copy(hs, hs1)
 	copy(hs[len(hs1):], hs2)
 	return hs
+}
+
+func GetHandlerNames(hs HandlerFuncs) []string {
+	names := make([]string, len(hs))
+	for i, h := range hs {
+		names[i] = GetHandlerName(h)
+	}
+	return names
+}
+
+func GetHandlerName(h HandlerFunc) string {
+	pc := reflect.ValueOf(h).Pointer()
+	return runtime.FuncForPC(pc).Name()
+
 }
 
 func TestHttpHandler(h http.Handler, method, path string) {
@@ -447,7 +483,7 @@ func HandlerProxy(addr string) HandlerFunc {
 		}
 
 
-		resp, err := req.Do()
+		resp, err := req.Do(nil)
 		if err != nil {
 			ctx.Error(err)
 			ctx.WriteHeader(502)

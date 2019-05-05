@@ -27,6 +27,7 @@ type (
 	}
 	Server struct {
 		Config			*ServerConfig 	`set:"config"`
+		Print			func(...interface{})	`set:"print"`
 		mu				sync.Mutex
 		wg				sync.WaitGroup
 		handler			protocol.Handler
@@ -72,6 +73,7 @@ func (srv *Server) Start() error {
 		}
 		srv.EnableFastcgi()
 		srv.wg.Add(1)
+		srv.Print("Listen fastcgi:", fastcgi.Addr)
 		go func(ln net.Listener){
 			errs.HandleError(srv.fastcgi.Serve(ln))
 			srv.wg.Done()
@@ -86,6 +88,11 @@ func (srv *Server) Start() error {
 		}
 		srv.EnableHttp()
 		srv.wg.Add(1)
+		if http.Https {
+			srv.Print("Listen https:", http.Addr)
+		}else {
+			srv.Print("Listen http:", http.Addr)
+		}
 		go func(ln net.Listener){
 			errs.HandleError(srv.http.Serve(ln))
 			srv.wg.Done()

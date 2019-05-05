@@ -10,7 +10,7 @@ type (
 	Client interface {
 		NewRequest(string, string, io.Reader) Client
 		Header() protocol.Header
-		Do() (protocol.ResponseReader, error)
+		Do(protocol.RequestReader) (protocol.ResponseReader, error)
 	}
 	ClientHttp struct {
 		*http.Client
@@ -42,7 +42,7 @@ func (clt *ClientHttp) Header() protocol.Header {
 	return clt.header
 }
 
-func (clt *ClientHttp) Do() (protocol.ResponseReader, error) {
+func (clt *ClientHttp) Do(_ protocol.RequestReader) (protocol.ResponseReader, error) {
 	resp, err := clt.Client.Do(clt.req)
 	if err != nil {
 		return nil, err

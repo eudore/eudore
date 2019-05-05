@@ -72,6 +72,7 @@ type (
 	// 默认路由器方法注册实现
 	RouterMethodStd struct {
 		RouterCore
+		ControllerParseFunc
 		prefix		string
 		tags		string
 	}
@@ -94,8 +95,8 @@ type (
 		// Type		string
 		Path		string
 		Method		string
-		Handler		string
-		Middleware  []string
+		Handler		interface{}
+		Middleware  interface{}
 		Routes		[]*RouterConfig
 	}
 )
@@ -139,25 +140,21 @@ func NewRouterClone(r Router) Router {
 	return NewRouterMust(r.GetName(), nil)
 }
 
-// 未实现。
-func SetRouterConfig(r RouterMethod, c *RouterConfig) {
-	// add Middleware
-	if len(c.Method) == 0 {
-		c.Method = MethodAny
-	}
-	if len(c.Path) > 0 && len(c.Handler) > 0 {
+// 将路由配置注入到路由中。
+func (config *RouterConfig) Inject(r RouterMethod) {
+	// handler
+	r.AddHandler(config.Method, config.Path, NewHandlerFuncs(config.Handler)...)
 
-	}
-	if len(c.Path) > 0 {
-		r = r.Group(c.Path)
-	}
-	for _, i := range c.Middleware {
-		r.AddMiddleware(ConfigLoadHandleFunc(i))
-	}
-	for _, i := range c.Routes {
-		SetRouterConfig(r, i)
+	// middleware
+	r = r.Group(config.Path)
+	r.AddMiddleware(NewHandlerFuncs(config.Middleware)...)
+	
+	// routes
+	for _, i := range config.Routes {
+		i.Inject(r)
 	}
 }
+
 
 func DefaultRouter405Func(ctx Context) {
 	const page405 string = "405 method not allowed\n"
@@ -198,23 +195,34 @@ func (m *RouterMethodStd) Group(path string) RouterMethod {
 	// 构建新的路由方法配置器
 	return &RouterMethodStd{
 		RouterCore:	m.RouterCore,
+		ControllerParseFunc:	m.ControllerParseFunc,
 		prefix:		m.prefix + prefix,
 		tags:		tags + m.tags,
 	}
 }
 
 func (m *RouterMethodStd) AddHandler(method ,path string, hs ...HandlerFunc) RouterMethod {
-	m.registerHandlers(method, path, hs)
+	if len(hs) > 0 {
+		m.registerHandlers(method, path, hs)
+	}
 	return m
 }
 func (m *RouterMethodStd) AddMiddleware(hs ...HandlerFunc) RouterMethod {
-	m.RegisterMiddleware(MethodAny, m.prefix + "/", hs)
+	if len(hs) > 0 {
+		m.RegisterMiddleware(MethodAny, m.prefix + "/", hs)
+	}
 	return m
 }
 
 func (m *RouterMethodStd) AddController(cs ...Controller) RouterMethod {
 	for _, c := range cs {
-		controllerRegister(m, c)
+		// controllerRegister(m, c)
+		config, err := m.ControllerParseFunc(c)
+		if err == nil {
+			config.Inject(m)
+		}else {
+			fmt.Println(err)
+		}
 	}
 	return m
 }
@@ -320,7 +328,7 @@ func (r *middNode) InsertNode(path, key string, value HandlerFuncs) {
 	if len(path) == 0 {
 		// 路径空就设置当前node的值
 		r.key = key
-		r.val = CombineHandlers(r.val, value)
+		r.val = CombineHandlerFuncs(r.val, value)
 	}else {
 		// 否则新增node
 		r.children = append(r.children, &middNode{path: path, key: key, val: value})

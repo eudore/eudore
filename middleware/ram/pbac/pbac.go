@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 
 	"github.com/eudore/eudore"
-	"eudore/middleware/ram"
+	"github.com/eudore/eudore/middleware/ram"
 )
 
 type (

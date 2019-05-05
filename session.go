@@ -2,21 +2,24 @@ package eudore
 
 
 import (
+	"fmt"
 	"sync"
 )
 
 type (
-	SessionStore interface {
-		Load(Context) Session
-		Save(Session)
-	}
 	Session interface {
+		Component
+		SessionLoad(Context) SessionData
+		SessionSave(SessionData)
+		SessionRelease(string)
+	}
+	SessionData interface {
 		Set(key string, value interface{}) error //set session value
 		Get(key string) interface{}  //get session value
 		Del(key string) error     //delete session value
 		SessionID() string                //back current sessionID
 	}
-	SessionStoreMem struct {
+	SessionMap struct {
 		KeyFync	func(Context) string
 		mem		sync.Map
 	}
@@ -27,19 +30,25 @@ type (
 )
 
 var (
-	DefaultSessionStore SessionStore
+	DefaultSession Session
 )
 
-func NewSession(ctx Context) Session {
-	return DefaultSessionStore.Load(ctx)
+func NewSession(name string, arg interface{}) (Session, error) {
+	name = ComponentPrefix(name, "session")
+	c, err := NewComponent(name, arg)
+	if err != nil {
+		return nil, err
+	}
+	l, ok := c.(Session)
+	if ok {
+		return l, nil
+	}
+	return nil, fmt.Errorf("Component %s cannot be converted to Session type", name)
 }
 
-func SessionRelease(sess Session) {
-	DefaultSessionStore.Save(sess)
-}
 
-func NewSessionStoreMem(interface{}) (SessionStore, error) {
-	return &SessionStoreMem{
+func NewSessionMap(interface{}) (Session, error) {
+	return &SessionMap{
 		KeyFync:	func(ctx Context) string {
 			return ctx.GetCookie("sessionid")
 		},
@@ -47,18 +56,46 @@ func NewSessionStoreMem(interface{}) (SessionStore, error) {
 }
 
 
-func (store *SessionStoreMem) Load(ctx Context) Session {
+func SessionLoad(ctx Context) SessionData {
+	return DefaultSession.SessionLoad(ctx)
+}
+
+func SessionSave(sess SessionData) {
+	DefaultSession.SessionSave(sess)
+}
+
+func SessionRelease(id string) {
+	DefaultSession.SessionRelease(id)
+}
+
+
+
+func (store *SessionMap) SessionLoad(ctx Context) SessionData {
 	key := store.KeyFync(ctx)
 	sess, ok := store.mem.Load(key)
 	if ok {
-		return sess.(Session)
+		return sess.(SessionData)
 	}
 	return &SessionStd{Id: key}
 }
 
-func (store *SessionStoreMem) Save(sess Session) {
+func (store *SessionMap) SessionSave(sess SessionData) {
 	store.mem.Store(sess.SessionID(), sess)
 }
+
+func (store *SessionMap) SessionRelease(id string) {
+	store.mem.Delete(id)
+}
+
+func (*SessionMap) GetName() string {
+	return ComponentSessionMapName
+}
+
+func (*SessionMap) Version() string {
+	return ComponentSessionMapVersion
+}
+
+
 
 func (sess *SessionStd) Set(key string, val interface{}) error {
 	sess.Data[key] = val

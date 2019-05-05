@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"strconv"
 	"crypto/tls"
+	"net/textproto"
 	"github.com/eudore/eudore/protocol"
 )
 
@@ -165,7 +166,7 @@ func parseRequestLine(line []byte) (method, requestURI, proto string, ok bool) {
 func splitHeader(line []byte) (string, string) {
 	i := bytes.Index(line, colonSpace)
 	if i != -1 {
-		return string(line[:i]), string(line[i + 2:])
+		return textproto.CanonicalMIMEHeaderKey(string(line[:i])), string(line[i + 2:])
 	}
 	return "", ""
 }

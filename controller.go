@@ -9,14 +9,13 @@ import (
 )
 
 type (
+	ControllerParseFunc func(Controller) (*RouterConfig, error)
 	Controller interface{
 		Init(Context) error
+		Release() error
 	}
 	ControllerRoute interface {
-		ControllerRoute(string) string
-	}
-	ControllerIgnore interface {
-		ControllerIgnore() []string
+		ControllerRoute() map[string]string
 	}
 	ControllerBase struct{
 		Context
@@ -27,7 +26,7 @@ type (
 	}
 )
 
-func controllerRegister(router RouterMethod, controller Controller) {
+func ControllerBaseParseFunc(controller Controller) (*RouterConfig, error) {	
 	iType := reflect.TypeOf(controller)
 	pool := sync.Pool{
 		New: func() interface{} {
@@ -35,80 +34,65 @@ func controllerRegister(router RouterMethod, controller Controller) {
 		},
 	}
 
-	// 获取Before和After函数数据
-	var before, after []int
-	for i := 0; i < iType.NumMethod(); i++ {
-		name := iType.Method(i).Name
-		var method = getFirstUp(name)
-		if method == "After" {
-			after = append(after, i)
-		}
-		if method == "Before" {
-			before = append(before, i)
-		}
-	}
+	// 检查控制器是否实现ControllerRoute接口
 	controllerRoute, isRoute := controller.(ControllerRoute)
-	for i := 0; i < iType.NumMethod(); i++ {
-		name := iType.Method(i).Name
+	if !isRoute {
+		return nil, fmt.Errorf("%s not suppert ControllerBaseParseFunc, not ControllerRoute", iType.Name())
+	}
 
+	// 生成路由器配置信息。
+	var configs = make([]*RouterConfig, 0, len(controllerRoute.ControllerRoute()))
+	for name, path := range controllerRoute.ControllerRoute() {
 		var method = getFirstUp(name)
 		if !checkAllowMethod(method) {
 			continue
 		}
 
-		var path string
-		if isRoute {
-			path = controllerRoute.ControllerRoute(iType.Method(i).Name)
-		}
-		if len(path) == 0 || path == "-" {
+		m, ok := iType.MethodByName(name)
+		if !ok {
 			continue
 		}
 
-		tmp := append(append(before, i), after...)
-		fmt.Println(method, path, tmp)
-		fn := convertHandler(pool, controller, tmp)
-		router.AddHandler(strings.ToUpper(method), path, fn)
+		configs = append(configs, &RouterConfig{
+			Method:	strings.ToUpper(method),
+			Path:	path,
+			Handler:	convertHandler(pool, controller, m.Index),
+		})
 	}
+	return &RouterConfig{Routes:	configs}, nil
 }
 
-func convertHandler(pool sync.Pool, controller Controller, indexs []int) HandlerFunc {
+func convertHandler(pool sync.Pool, controller Controller, index int) HandlerFunc {
 	iType := reflect.TypeOf(controller)
+	fType := iType.Method(index)
 	// 获取函数参数信息
-	var numin []int = make([]int, len(indexs))
-	var args []string
-	var typeIn []reflect.Type
-	for i, index := range indexs {
-		fType := iType.Method(index)
-		numin[i] = fType.Type.NumIn() - 1
-		for j := 0 ; j < numin[i]; j++ {
-			typeIn = append(typeIn, fType.Type.In(i + 1)) 
-		}
-		args = append(args, getFuncArgs(fType.Name)...)
+	var num  int = fType.Type.NumIn() - 1
+	var args []string = getFuncArgs(fType.Name)
+	var typeIn []reflect.Type = make([]reflect.Type, num)
+	for i := 0; i < num; i++ {
+		typeIn[i] = fType.Type.In(i + 1)
 	}
 	return func(ctx Context) {
 		// 初始化
 		controller := pool.Get().(Controller)
 		controller.Init(ctx)
 
-		var pos int = 0
-		for i, index := range indexs {
-			// 构建一个函数参数并执行
-			params := make([]reflect.Value, numin[i])
-			for j, _ := range params {
-				params[j] = reflect.New(typeIn[pos])
-				setWithString(params[j].Kind(), params[j], ctx.GetParam(args[pos]))	
-				pos++
-				params[j] = params[j].Elem()
-			}
-			reflect.ValueOf(controller).Method(index).Call(params)
+		// 函数初始化参数并 调用
+		params := make([]reflect.Value, num)
+		for i := 0; i < num; i++ {
+			params[i] = reflect.New(typeIn[i])
+			setWithString(params[i].Kind(), params[i], ctx.GetParam(args[i]))
+			params[i] = params[i].Elem()
 		}
+		reflect.ValueOf(controller).Method(index).Call(params)
 		
+		controller.Release()
 		pool.Put(controller)
 	}
 }
 
 func checkAllowMethod(method string) bool {
-	for _, i := range []string{"Any", "Get", "post"} {
+	for _, i := range []string{"Any", "Get", "Post", "Put", "Delete", "Patch", "Options"} {
 		if i == method {
 			return true
 		}
@@ -134,7 +118,7 @@ func getFirstUp(name string) string {
 			return name[:i]
 		}
 	}
-	return ""
+	return name
 }
 
 func getFuncArgs(name string) (strs []string) {	
@@ -160,6 +144,10 @@ func getFuncArgs(name string) (strs []string) {
 
 func (c *ControllerBase) Init(ctx Context) error {
 	c.Context = ctx
+	return nil
+}
+
+func (c *ControllerBase) Release() error {
 	return nil
 }
 
@@ -261,6 +249,7 @@ func (c *ControllerSession) GetSessionString(key string) string {
 	return GetString(key)
 }
 
-func (c *ControllerSession) AfterReleaseSession() {
+func (c *ControllerSession) Release() error {
 	c.App().Cache.Set("ss", c.Session, time.Second * 3600)
+	return c.ControllerBase.Release()
 }

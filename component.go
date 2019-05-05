@@ -50,10 +50,18 @@ const (
 	ComponentCacheMapVersion	=	"eudore cache map v1.0, from sync.Map."
 	ComponentCacheGroupName		=	"cache-group"
 	ComponentCacheGroupVersion	=	"eudore cache group v1.0."
+	ComponentSessionName		=	"session"
+	ComponentSessionMapName		=	"session-map"
+	ComponentSessionMapVersion	=	"eudore session mep v1.0, from sync.Map."
 	ComponentViewName			=	"view"
 	ComponentViewStdName		=	"view-std"
 	ComponentViewStdVersion		=	"eudore view std v1.0, golang std library html/template."
 	ErrComponentNameNil			=	"Failed to create component, component name is empty."
+)
+const (
+	ComponentCreateEvent	ComponentEventType		=	iota
+	ComponentMountEvent
+	ComponentCloseEvent
 )
 
 type (
@@ -71,6 +79,11 @@ type (
 		ComponentName
 		Version() string
 	}
+	ComponentEventType int8
+	ComponentEvent interface {
+		GetEvent() ComponentEventType
+		GetName() string
+	}
 )
 
 var (
@@ -87,6 +100,7 @@ func init() {
 		ComponentServerName:	ComponentServerStdName,
 		ComponentRouterName:	ComponentRouterRadixName,
 		ComponentCacheName:		ComponentCacheMapName,
+		ComponentSessionName:	ComponentSessionMapName,
 		ComponentViewName:		ComponentViewStdName,
 	}
 	components = make(map[string]ComponentFunc)
@@ -123,6 +137,9 @@ func init() {
 	})
 	RegisterComponent(ComponentCacheGroupName, func(i interface{}) (Component, error) {
 		return NewCacheGroup(i)
+	})
+	RegisterComponent(ComponentSessionMapName, func(i interface{}) (Component, error) {
+		return NewSessionMap(i)
 	})
 	RegisterComponent(ComponentViewStdName, func(i interface{}) (Component, error) {
 		return NewViewStd(i)
