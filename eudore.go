@@ -11,7 +11,6 @@ import (
 	"sync"
 	"sort"
 	"context"
-	// "strings"
 	"net/http"
 	"github.com/eudore/eudore/protocol"
 )
@@ -20,16 +19,16 @@ type (
 	// eudore 
 	Eudore struct {
 		*App
-		httprequest		sync.Pool
-		httpresponse	sync.Pool
-		httpcontext		sync.Pool
-		inits			map[string]InitInfo
+		Httprequest		sync.Pool
+		Httpresponse	sync.Pool
+		Httpcontext		sync.Pool
+		inits			map[string]initInfo
 		stop 			chan error
 	}
 	// eudore reload funcs.
 	InitFunc func(*Eudore) error
 	// Save reloadhook name, index fn.
-	InitInfo struct {
+	initInfo struct {
 		name	string
 		index	int
 		fn		InitFunc
@@ -39,58 +38,54 @@ type (
 var defaultEudore *Eudore
 
 // Create a new Eudore.
-func NewEudore() *Eudore {
-	e := &Eudore{
+func NewEudore(components ...ComponentConfig) *Eudore {
+	app := &Eudore{
 		App:			NewApp(),
-		inits:		make(map[string]InitInfo),
-		httprequest: sync.Pool {
+		inits:			make(map[string]initInfo),
+		Httprequest: sync.Pool {
 			New: func() interface{} {
 				return &RequestReaderHttp{}
 			},
 		},
-		httpresponse: sync.Pool {
+		Httpresponse: sync.Pool {
 			New: func() interface{} {
 				return &ResponseWriterHttp{}
 			},
 		},
 		stop: 			make(chan error, 10),
 	}
-	// set eudore pool
-	e.httpcontext = sync.Pool {
+	// set eudore context pool
+	app.Httpcontext = sync.Pool {
 		New: func() interface{} {
-			return &ContextHttp{
-				app:	e.App,
-				fields:	make(Fields, 5),
-			}
+			return NewContextBase(app.App)
 		},
 	}
-	// Register eudore default components
-	e.HandleError(e.RegisterComponents(
-		[]string{"config", "logger-init", "router", "cache", "session", "view"}, 
-		[]interface{}{nil, nil, nil, nil, nil, nil},
-	))
+
+	// Register eudore components
+	for _, config := range components {
+		app.RegisterComponent(config.Name, config.Config)
+	}
+	app.HandleError(app.InitComponent())
+
 	// Register eudore default reload func
-	// e.RegisterInit("eudore-keys", 0x008, ReloadKeys)
-	e.RegisterInit("eudore-config", 0x008, InitConfig)
-	e.RegisterInit("eudore-workdir", 0x009, InitWorkdir)
-	e.RegisterInit("eudore-command", 0x00a, InitCommand)
-	e.RegisterInit("eudore-logger", 0x015 , InitLogger)
-	e.RegisterInit("eudore-server", 0x016 , InitServer)
-	e.RegisterInit("eudore-signal", 0x018 , InitSignal)
-	e.RegisterInit("eudore-defaule-logger", 0x0f5 , InitDefaultLogger)
-	e.RegisterInit("eudore-defaule-server", 0x0f6 , InitDefaultServer)
-	e.RegisterInit("eudore-server-start", 0xc00 , InitServerStart)
-	e.RegisterInit("eudore-component-info", 0xc01 , InitListComponent)
-	e.RegisterInit("eudore-test-stop", 0xfff, InitStop)
-	return e
+	app.RegisterInit("eudore-config", 0x008, InitConfig)
+	app.RegisterInit("eudore-workdir", 0x009, InitWorkdir)
+	app.RegisterInit("eudore-command", 0x00a, InitCommand)
+	app.RegisterInit("eudore-server", 0x015 , InitServer)
+	app.RegisterInit("eudore-logger", 0x01f , InitLogger)
+	app.RegisterInit("eudore-component-info", 0x54 , InitListComponent)
+	app.RegisterInit("eudore-signal", 0x57 , InitSignal)
+	app.RegisterInit("eudore-server-start", 0xff0 , InitServerStart)
+	app.RegisterInit("eudore-test-stop", 0xfff, InitStop)
+	return app
 }
 
 // Get the default eudore, if it is empty, create a new singleton.
 //
 // 获取默认的eudore，如果为空，创建一个新的单例。
-func DefaultEudore() *Eudore {
+func DefaultEudore(components ...ComponentConfig) *Eudore {
 	if defaultEudore == nil {
-		defaultEudore = NewEudore()
+		defaultEudore = NewEudore(components...)
 	}
 	return defaultEudore
 }
@@ -119,6 +114,7 @@ func (app *Eudore) Start() error {
 		app.HandleError(app.Init())
 	}()
 	
+	// 阻塞主线程
 	time.Sleep(100 * time.Millisecond)
 	err := <- app.stop
 	if err == nil {
@@ -235,7 +231,7 @@ func (app *Eudore) RegisterInit(name string, index int, fn InitFunc) {
 		if fn == nil {
 			delete(app.inits, name)
 		}else {
-			app.inits[name] = InitInfo{name, index, fn}
+			app.inits[name] = initInfo{name, index, fn}
 		}
 	}
 }
@@ -257,15 +253,16 @@ func (*Eudore) RegisterSignal(sig os.Signal, bf bool, fn SignalFunc) {
 // Type is context, request and response.
 func (app *Eudore) RegisterPool(name string, fn func() interface{}) {
 	switch name{
-	case "httpcontext":
-		app.httpcontext.New = fn
-	case "httprequest":
-		app.httprequest.New = fn
-	case "httpresponse":
-		app.httpresponse.New = fn
+	case "Httpcontext":
+		app.Httpcontext.New = fn
+	case "Httprequest":
+		app.Httprequest.New = fn
+	case "Httpresponse":
+		app.Httpresponse.New = fn
 	}
 }
 
+/*
 func (app *Eudore) RegisterComponents(names []string, args []interface{}) error {
 	errs := NewErrors()
 	for i, name := range names {
@@ -274,13 +271,13 @@ func (app *Eudore) RegisterComponents(names []string, args []interface{}) error 
 	return errs.GetError()
 }
 
-/*func (app *Eudore) RegisterComponent(name string,  arg interface{}) (err error) {
-	err = app.App.RegisterComponent(name, arg)
+
+*/
+func (app *Eudore) RegisterComponent(name string,  arg interface{}) (c Component,err error) {
+	c, err = app.App.RegisterComponent(name, arg)
+	app.HandleError(err)
 	return 
 }
-*/
-
-// http method
 
 // Register a static file Handle.
 func (e *Eudore) RegisterStatic(path , dir string) {
@@ -352,25 +349,25 @@ func (e *Eudore) Handle(ctx Context) {
 
 func (e *Eudore) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// get
-	request := e.httprequest.Get().(*RequestReaderHttp)
-	response := e.httpresponse.Get().(*ResponseWriterHttp)
+	request := e.Httprequest.Get().(*RequestReaderHttp)
+	response := e.Httpresponse.Get().(*ResponseWriterHttp)
 	// init
 	ResetRequestReaderHttp(request, req)
 	ResetResponseWriterHttp(response, w)
 	e.EudoreHTTP(req.Context(), response, request)
 	// clean
-	e.httprequest.Put(request)
-	e.httpresponse.Put(response)
+	e.Httprequest.Put(request)
+	e.Httpresponse.Put(response)
 }
 
 
 func (e *Eudore) EudoreHTTP(pctx context.Context,w protocol.ResponseWriter, req protocol.RequestReader) {
 	// init
-	ctx := e.httpcontext.Get().(Context)
+	ctx := e.Httpcontext.Get().(Context)
 	// handle
 	ctx.Reset(pctx, w, req)
 	ctx.SetHandler(e.Router.Match(ctx.Method(), ctx.Path(), ctx))
 	ctx.Next()
 	// release
-	e.httpcontext.Put(ctx)
+	e.Httpcontext.Put(ctx)
 }

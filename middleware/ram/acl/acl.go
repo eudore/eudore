@@ -6,7 +6,7 @@ import (
 )
 
 type Acl struct {
-	Data map[int]map[string]bool
+	Data map[int]map[string]bool	`json:"-" key:"-"`
 }
 
 var (

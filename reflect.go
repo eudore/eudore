@@ -678,6 +678,28 @@ func ConvertTo(source interface{}, target interface{}) error {
 func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) error {
 	var kind int = 0
 
+	// 检测目标类型并接触引用和初始化空对象
+	switch tType.Kind() {
+	case reflect.Ptr:
+		if tValue.IsNil() {
+			tValue.Set(reflect.New(tType.Elem()))
+		}
+		return convertTo(sType, sValue, tValue.Elem().Type(), tValue.Elem())
+	case reflect.Interface:
+		// 如果目标类型无法解引用，直接转换
+		if tValue.Elem().Kind() == reflect.Invalid {
+			return convertSetValue1(sType, sValue, tType, tValue)
+		}else {
+			return convertTo(sType, sValue, tValue.Elem().Type(), tValue.Elem())	
+		}
+	case reflect.Map:
+		if tValue.IsNil() {
+			tValue.Set(reflect.MakeMap(tType))
+		}
+		kind = kind | 0x01
+	case reflect.Struct:
+		kind = kind | 0x02
+	}
 	// 检测源类型并接触引用
 	switch sType.Kind() {
 	case reflect.Ptr:
@@ -699,29 +721,6 @@ func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tVa
 		kind = kind | 0x20
 	}
 
-	// 检测目标类型并接触引用和初始化空对象
-	switch tType.Kind() {
-	case reflect.Ptr:
-		if tValue.IsNil() {
-			tValue.Set(reflect.New(tType.Elem()))
-		}
-		return convertTo(sType, sValue, tValue.Elem().Type(), tValue.Elem())
-	case reflect.Interface:
-		// if tValue.Elem().Kind() != reflect.Invalid {
-		// 	return convertTo(sType, sValue, tValue.Elem().Type(), tValue.Elem())
-		// }
-		if isUseType(tValue) {
-			return convertTo(sType, sValue, tValue.Elem().Type(), tValue.Elem())	
-		}
-	case reflect.Map:
-		if tValue.IsNil() {
-			tValue.Set(reflect.MakeMap(tType))
-		}
-		kind = kind | 0x01
-	case reflect.Struct:
-		kind = kind | 0x02
-	}
-
 	// fmt.Println(kind, sType.Kind(), tType.Kind())
 	// 更具数据类型执行转换
 	switch kind {
@@ -737,13 +736,6 @@ func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tVa
 		convertSetValue1(sType, sValue, tType, tValue)
 	}
 	return nil
-}
-
-func isUseType(iValue reflect.Value) bool {
-	for iValue.Kind() == reflect.Interface || iValue.Kind() == reflect.Ptr {
-		iValue = iValue.Elem()
-	}
-	return iValue.Kind() == reflect.Struct || iValue.Kind() == reflect.Map
 }
 
 // 检测一个值是否为空

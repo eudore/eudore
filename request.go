@@ -3,9 +3,11 @@ package eudore
 
 import (
 	"io"
+	"fmt"
 	"bytes"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"crypto/tls"
 	"github.com/eudore/eudore/protocol"
 )
@@ -45,6 +47,13 @@ type (
 		*http.Client
 		err error
 	}
+	RequestReaderTest struct {
+		method		string
+		url			*url.URL
+		proto		string
+		header		HeaderMap
+		body		io.Reader
+	}
 )
 
 
@@ -53,13 +62,13 @@ var _ protocol.RequestReader		=	&RequestReaderHttp{}
 func NewRequestReaderHttp(r *http.Request) protocol.RequestReader {
 	return &RequestReaderHttp{
 		Request:	*r,
-		header:	HeaderHttp(r.Header),
+		header:	HeaderMap(r.Header),
 	}
 }
 
 func ResetRequestReaderHttp(r *RequestReaderHttp, req *http.Request) protocol.RequestReader {
 	r.Request = *req
-	r.header = HeaderHttp(req.Header)
+	r.header = HeaderMap(req.Header)
 	return r
 }
 
@@ -134,6 +143,77 @@ func (r *RequestReaderSeeker) Read(p []byte) (int, error) {
 
 func (r *RequestReaderSeeker) Seek(offset int64, whence int) (int64, error) {
 	return r.reader.Seek(offset, whence)
+}
+
+func NewRequestReaderTest(method, addr string, body interface{}) (protocol.RequestReader, error) {
+	r := &RequestReaderTest{
+		method: method,
+		header: make(HeaderMap),
+	}
+	u, err := url.Parse(addr)
+	if err != nil {
+		return nil, err
+	}
+	r.url = u
+	if body == nil {
+		r.body = nil
+		return r, nil
+	}
+	switch t := body.(type) {
+	case string:
+		data, err := ioutil.ReadFile(t)
+		if err != nil {
+			return nil, err
+		}
+		r.body = bytes.NewReader(data)
+	case []byte:
+		r.body = bytes.NewReader(t)
+	case io.Reader:
+		r.body = t
+	default:
+		return nil, fmt.Errorf("unknown type used for body: %+v", body)
+	}
+	return r, nil
+}
+
+func (r *RequestReaderTest) Method() string {
+	return r.method
+}
+
+func (r *RequestReaderTest) Proto() string {
+	return "HTTP/1.1"
+}
+
+func (r *RequestReaderTest) RequestURI() string {
+	return r.url.EscapedPath()
+}
+
+func (r *RequestReaderTest) Header() protocol.Header {
+	return r.header
+}
+
+func (r *RequestReaderTest) Read(p []byte) (int, error) {
+	return r.body.Read(p)
+}
+
+func (r *RequestReaderTest) Host() string {
+	return r.url.Host
+}
+
+// conn data
+func (r *RequestReaderTest) RemoteAddr() string {
+	return "192.0.2.1:1234"
+}
+
+func (r *RequestReaderTest) TLS() *tls.ConnectionState {
+	if r.url.Scheme == "http" {
+		return nil
+	}
+	return &tls.ConnectionState{
+			Version:           tls.VersionTLS12,
+			HandshakeComplete: true,
+			ServerName:        r.Host(),
+		}
 }
 
 // func (r *RequestWriterHttp)

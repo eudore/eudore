@@ -2,7 +2,6 @@ package eudore
 
 import (
 	"fmt"
-	"time"
 	"sync"
 	"reflect"
 	"strings"
@@ -20,8 +19,8 @@ type (
 	ControllerBase struct{
 		Context
 	}
-	ControllerSession struct{
-		ControllerBase
+	ControllerData struct{
+		ContextData
 		Session 	map[string]interface{}
 	}
 )
@@ -151,105 +150,11 @@ func (c *ControllerBase) Release() error {
 	return nil
 }
 
-func (c *ControllerBase) GetQueryBool(key string) bool {
-	return GetStringBool(c.GetQuery(key))
+func (c *ControllerData) Init(ctx Context) error {
+	c.ContextData.Context = ctx
+	return nil
 }
 
-func (c *ControllerBase) GetQueryInt(key string) int {
-	return GetStringInt(c.GetQuery(key))
-}
-
-func (c *ControllerBase) GetQueryUint64(key string) uint64 {
-	return GetStringUint64(c.GetQuery(key))
-}
-
-func (c *ControllerBase) GetQueryFloat32(key string) float32 {
-	return GetStringFloat32(c.GetQuery(key))
-}
-
-func (c *ControllerBase) GetQueryFloat64(key string) float64 {
-	return GetStringFloat64(c.GetQuery(key))
-}
-
-func (c *ControllerBase) GetQueryString(key string) string {
-	return c.GetQuery(key)
-}
-
-
-
-func (c *ControllerBase) GetQueryDefaultBool(key string, b bool) bool {
-	return GetStringDefaultBool(c.GetQuery(key), b)
-}
-
-func (c *ControllerBase) GetQueryDefaultInt(key string, n int) int {
-	return GetStringDefaultInt(c.GetQuery(key), n)
-}
-
-func (c *ControllerBase) GetQueryDefaultUint64(key string, n uint64) uint64 {
-	return GetStringDefaultUint64(c.GetQuery(key), n)
-}
-
-func (c *ControllerBase) GetQueryDefaultFloat32(key string, f float32) float32 {
-	return GetStringDefaultFloat32(c.GetQuery(key), f)
-}
-
-func (c *ControllerBase) GetQueryDefaultFloat64(key string, f float64) float64 {
-	return GetStringDefaultFloat64(c.GetQuery(key), f)
-}
-
-func (c *ControllerBase) GetQueryDefaultString(key , str string) string {
-	return GetStringDefault(c.GetQuery(key), str)
-}
-
-
-
-func (c *ControllerSession) Init(ctx Context) error {
-	var ok bool
-	c.Session, ok = ctx.App().Cache.Get("ss").(map[string]interface{})
-	if !ok {
-		c.Session = make(map[string]interface{})
-	}
-	return c.ControllerBase.Init(ctx)
-}
-
-
-func (c *ControllerSession) SetSession(key string, val interface{}) {
-	c.Session[key] = val
-}
-
-func (c *ControllerSession) DelSession(key string) {
-	delete(c.Session, key)
-}
-
-func (c *ControllerSession) GetSession(key string) interface{} {
-	return c.Session[key]
-}
-
-func (c *ControllerSession) GetSessionBool(key string) bool {
-	return GetBool(c.GetSession(key))
-}
-
-func (c *ControllerSession) GetSessionInt(key string) int {
-	return GetInt(c.GetSession(key))
-}
-
-func (c *ControllerSession) GetSessionUint64(key string) uint64 {
-	return GetUint64(c.GetSession(key))
-}
-
-func (c *ControllerSession) GetSessionFloat32(key string) float32 {
-	return GetFloat32(c.GetSession(key))
-}
-
-func (c *ControllerSession) GetSessionFloat64(key string) float64 {
-	return GetFloat64(c.GetSession(key))
-}
-
-func (c *ControllerSession) GetSessionString(key string) string {
-	return GetString(key)
-}
-
-func (c *ControllerSession) Release() error {
-	c.App().Cache.Set("ss", c.Session, time.Second * 3600)
-	return c.ControllerBase.Release()
+func (c *ControllerData) Release() error {
+	return nil
 }

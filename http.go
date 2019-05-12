@@ -12,7 +12,7 @@ type (
 		AddParam(string, string)
 		SetParam(string, string)
 	}
-	HeaderHttp map[string][]string
+	HeaderMap map[string][]string
 
 	// 用于响应返回的set-cookie header的数据生成
 	SetCookie = http.Cookie
@@ -25,24 +25,24 @@ type (
 
 
 
-func (h HeaderHttp) Get(key string) string {
+func (h HeaderMap) Get(key string) string {
 	return textproto.MIMEHeader(h).Get(key)
 }
 
-func (h HeaderHttp) Set(key , value string) {
+func (h HeaderMap) Set(key , value string) {
 	textproto.MIMEHeader(h).Set(key, value)
 }
 
-func (h HeaderHttp) Add(key , value string) {
+func (h HeaderMap) Add(key , value string) {
 	textproto.MIMEHeader(h).Add(key, value)
 }
 
-func (h HeaderHttp) Del(key string) {
+func (h HeaderMap) Del(key string) {
 	textproto.MIMEHeader(h).Del(key)
 }
 
 
-func (h HeaderHttp) Range(fn func(string, string)) {
+func (h HeaderMap) Range(fn func(string, string)) {
 	for k, v := range h {
 		for _, vv := range v {
 			fn(k, vv)

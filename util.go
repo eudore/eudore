@@ -201,11 +201,8 @@ func GetDefaultString(i interface{}, str string) string {
 	if i == nil {
 		return str
 	}
-	if v, ok := i.(string); ok {
+	if v, ok := i.(string); ok && v != "" {
 		return v
-	}
-	if v, ok := i.(fmt.Stringer); ok {
-		return v.String()
 	}
 	return str
 }

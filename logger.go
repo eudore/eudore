@@ -161,6 +161,7 @@ func NewLoggerStd(arg interface{}) (Logger, error) {
 	if err := l.initHandle(); err != nil {
 		return nil, err
 	}
+
 	// 定时写入日志
 	go func(){
 		l.ticker = time.NewTicker(time.Millisecond * 50)
@@ -223,6 +224,9 @@ func (l *LoggerStd) initHandle() error {
 	return nil
 }
 
+func (l *LoggerStd) Flush() error {
+	return l.out.Flush()
+}
 
 func (l *LoggerStd) Set(key string, val interface{}) error {
 	switch i := val.(type) {

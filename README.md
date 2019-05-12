@@ -96,13 +96,13 @@ handlefile处理304缓存
 
 handlerproxy未支持101
 
-session未完善
-
 组件debug日志
 
 websocket未完善
 
 client未实现
+
+反射接口处理
 
 ## Component
 

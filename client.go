@@ -34,7 +34,7 @@ func NewClientHttp() Client {
 
 func (clt *ClientHttp) NewRequest(method string, url string, body io.Reader) Client {
 	clt.req, _ = http.NewRequest(method ,url ,body)
-	clt.header = HeaderHttp(clt.req.Header)
+	clt.header = HeaderMap(clt.req.Header)
 	return clt
 }
 

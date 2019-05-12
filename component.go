@@ -52,16 +52,13 @@ const (
 	ComponentCacheGroupVersion	=	"eudore cache group v1.0."
 	ComponentSessionName		=	"session"
 	ComponentSessionMapName		=	"session-map"
-	ComponentSessionMapVersion	=	"eudore session mep v1.0, from sync.Map."
+	ComponentSessionMapVersion	=	"eudore session map v1.0, from sync.Map."
+	ComponentSessionCacheName		=	"session-cache"
+	ComponentSessionCacheVersion	=	"eudore session cache v1.0, save all data to eudore cache."
 	ComponentViewName			=	"view"
 	ComponentViewStdName		=	"view-std"
 	ComponentViewStdVersion		=	"eudore view std v1.0, golang std library html/template."
 	ErrComponentNameNil			=	"Failed to create component, component name is empty."
-)
-const (
-	ComponentCreateEvent	ComponentEventType		=	iota
-	ComponentMountEvent
-	ComponentCloseEvent
 )
 
 type (
@@ -79,10 +76,12 @@ type (
 		ComponentName
 		Version() string
 	}
-	ComponentEventType int8
-	ComponentEvent interface {
-		GetEvent() ComponentEventType
-		GetName() string
+	ComponentConfig struct {
+		Name	string		`set:"name"`
+		Config	interface{}	`set:"config"`
+	}
+	Printer interface {
+		Print(...interface{})
 	}
 )
 
@@ -140,6 +139,9 @@ func init() {
 	})
 	RegisterComponent(ComponentSessionMapName, func(i interface{}) (Component, error) {
 		return NewSessionMap(i)
+	})
+	RegisterComponent(ComponentSessionCacheName, func(i interface{}) (Component, error) {
+		return NewSessionCache(i)
 	})
 	RegisterComponent(ComponentViewStdName, func(i interface{}) (Component, error) {
 		return NewViewStd(i)
@@ -231,3 +233,4 @@ func ComponentSet(c Component, key string, val interface{}) (err error) {
 	_, err = Set(c, key, val)
 	return
 }
+

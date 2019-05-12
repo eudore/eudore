@@ -118,9 +118,9 @@ const (
 	MimeMultipartForm				=	"multipart/form-data"
 	
 	// Param
-	ParamAction				=	"Action"
-	ParamRam				=	"Ram"
-	ParamTemplate			=	"Template"
+	ParamAction				=	"action"
+	ParamRam				=	"ram"
+	ParamTemplate			=	"template"
 	ParamRoute				=	"route"
 	// Param value
 	ValueJwt				=	"jwt"

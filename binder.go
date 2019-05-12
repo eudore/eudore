@@ -56,7 +56,7 @@ func (fn BindFunc) Bind(r protocol.RequestReader, i interface{}) error {
 }
 
 func BinderDefaultFunc(r protocol.RequestReader, i interface{}) error {
-	switch strings.SplitN(r.Header().Get("Content-Type"), ";", 2)[0] {
+	switch strings.SplitN(r.Header().Get(HeaderContentType), ";", 2)[0] {
 	case MimeApplicationJson:
 		return BinderJSON.Bind(r, i)
 	case MimeTextXml, MimeApplicationXml:
@@ -66,13 +66,13 @@ func BinderDefaultFunc(r protocol.RequestReader, i interface{}) error {
 	case MimeApplicationForm:
 		return BinderUrl.Bind(r, i)
 	default: //case MIMEPOSTForm, MIMEMultipartPOSTForm:
-		fmt.Println("default bind", r.Header().Get("Content-Type"))
+		fmt.Println("default bind", r.Header().Get(HeaderContentType))
 		return BinderForm.Bind(r, i)
 	}
 }
 
 func BindFormFunc(r protocol.RequestReader, i interface{}) error {
-	d, params, err := mime.ParseMediaType(r.Header().Get("Content-Type"))
+	d, params, err := mime.ParseMediaType(r.Header().Get(HeaderContentType))
 	if err != nil {
 		return nil
 	}

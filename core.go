@@ -15,33 +15,30 @@ import (
 type (
 	Core struct {
 		*App
-		poolctx sync.Pool
-		poolreq	sync.Pool
-		poolresp sync.Pool
+		Poolctx sync.Pool
+		Poolreq	sync.Pool
+		Poolresp sync.Pool
 	}
 )
 
 func NewCore() *Core {
 	app := &Core{
 		App:		NewApp(),
-		poolctx:	sync.Pool{},
-		poolreq:	sync.Pool{
+		Poolctx:	sync.Pool{},
+		Poolreq:	sync.Pool{
 			New: 	func() interface{} {
 				return &RequestReaderHttp{}
 			},
 		},
-		poolresp:	sync.Pool{
+		Poolresp:	sync.Pool{
 			New:	func() interface{} {
 				return &ResponseWriterHttp{}
 			},
 		},
 	}
 	
-	app.poolctx.New = func() interface{} {
-		return &ContextHttp{
-			app:	app.App,
-			fields:	make(Fields, 5),
-		}
+	app.Poolctx.New = func() interface{} {
+		return NewContextBase(app.App)
 	}
 
 	// 初始化组件
@@ -59,16 +56,7 @@ func (app *Core) Run() (err error) {
 	if err != nil {
 		return
 	}
-	// init sync.Pool
-	if fn, ok := app.Pools["context"];ok {
-		app.poolctx.New = fn
-	}
-	if fn, ok := app.Pools["request"];ok {
-		app.poolreq.New = fn
-	}
-	if fn, ok := app.Pools["response"];ok {
-		app.poolresp.New = fn
-	}
+	
 	// start serverv
 	ComponentSet(app.Server, "handler", app)
 	if err != nil {
@@ -99,9 +87,9 @@ func (app *Core) ListenTLS(addr, key, cert string) *Core {
 }
 
 func (app *Core) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	ctx := app.poolctx.Get().(Context)
-	request := app.poolreq.Get().(*RequestReaderHttp)
-	response := app.poolresp.Get().(*ResponseWriterHttp)
+	ctx := app.Poolctx.Get().(Context)
+	request := app.Poolreq.Get().(*RequestReaderHttp)
+	response := app.Poolresp.Get().(*ResponseWriterHttp)
 	// init
 	ResetRequestReaderHttp(request, req)
 	ResetResponseWriterHttp(response, w)
@@ -110,19 +98,19 @@ func (app *Core) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx))
 	ctx.Next()
 	// clean
-	app.poolreq.Put(request)
-	app.poolresp.Put(response)
-	app.poolctx.Put(ctx)
+	app.Poolreq.Put(request)
+	app.Poolresp.Put(response)
+	app.Poolctx.Put(ctx)
 }
 
 
 func (app *Core) EudoreHTTP(pctx context.Context,w protocol.ResponseWriter, req protocol.RequestReader) {
 	// init
-	ctx := app.poolctx.Get().(Context)
+	ctx := app.Poolctx.Get().(Context)
 	// handle
 	ctx.Reset(pctx, w, req)
 	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx))
 	ctx.Next()
 	// release
-	app.poolctx.Put(ctx)
+	app.Poolctx.Put(ctx)
 }

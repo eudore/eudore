@@ -11,8 +11,8 @@ import (
 
 type (
 	Pbac struct {
-		Binds map[int][]int
-		Policys	map[int]Policy
+		Binds map[int][]int		`json:"-" key:"-"`
+		Policys	map[int]Policy	`json:"-" key:"-"`
 	}
 
 	Policy struct {
