@@ -158,7 +158,6 @@ func handlerErrorStatus(err error) (string, int) {
 func HandlerFile(ctx Context, path string) (error) {
 	f, err := os.Open(path)
 	if err != nil {
-		ctx.Error(err)
 		msg, code := handlerErrorStatus(err)
 		HandlerError(ctx, msg, code)
 		return err
@@ -167,7 +166,6 @@ func HandlerFile(ctx Context, path string) (error) {
 
 	desc, err := f.Stat()
 	if err != nil {
-		ctx.Error(err)
 		msg, code := handlerErrorStatus(err)
 		HandlerError(ctx, msg, code)
 		return err
@@ -467,8 +465,9 @@ func copyheader(source protocol.Header, target protocol.Header) {
 }
 
 func HandlerProxy(addr string) HandlerFunc {
+	client := NewClientHttp()
 	return func(ctx Context) {
-		req := NewClientHttp().NewRequest(ctx.Method(), addr + ctx.Request().RequestURI(), ctx)
+		req := client.NewRequest(ctx.Method(), addr + ctx.Request().RequestURI(), ctx)
 		copyheader(ctx.Request().Header(), req.Header())
 
 		req.Header().Set(HeaderXForwardedFor, ctx.RemoteAddr())
@@ -483,7 +482,7 @@ func HandlerProxy(addr string) HandlerFunc {
 		}
 
 
-		resp, err := req.Do(nil)
+		resp, err := req.Do()
 		if err != nil {
 			ctx.Error(err)
 			ctx.WriteHeader(502)

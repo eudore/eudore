@@ -1,7 +1,7 @@
 package eudore
 
 /*
-基于基数树算法实现一个标准路由器
+基于基数树算法实现一个完整路由器
 */
 
 import (
@@ -41,9 +41,12 @@ type (
 	// 具有路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
 	RouterFull struct {
 		RouterMethod
-		midds		*middNode
-		node404		HandlerFuncs
-		node405		*fullNode
+		Print		func(...interface{})	`set:"print"`
+		middtree		*middNode
+		node404		fullNode
+		nodefunc404	HandlerFuncs
+		node405		fullNode
+		nodefunc405	HandlerFuncs
 		root		fullNode
 		get			fullNode
 		post		fullNode
@@ -80,11 +83,28 @@ type (
 
 func NewRouterFull(interface{}) (Router, error) {
 	r := &RouterFull{
-		node404:	HandlerFuncs{DefaultRouter404Func},
-		node405:	newFullNode405("405", DefaultRouter405Func),
-		midds:		&middNode{},
+
+		Print:		func(...interface{}) {},
+		nodefunc404:	HandlerFuncs{DefaultRouter404Func},
+		nodefunc405:	HandlerFuncs{DefaultRouter405Func},
+		node404:	fullNode{
+			tags:	[]string{ParamRoute},
+			vals:	[]string{"404"},
+			handlers:	HandlerFuncs{DefaultRouter404Func},
+		},
+		node405:	fullNode{
+			Wchildren:	&fullNode{
+				tags:	[]string{ParamRoute},
+				vals:	[]string{"405"},
+				handlers:	HandlerFuncs{DefaultRouter405Func},
+			},
+		},
+		middtree:		&middNode{},
 	}
-	r.RouterMethod = &RouterMethodStd{RouterCore:	r}
+	r.RouterMethod = &RouterMethodStd{
+		RouterCore:			r,
+		ControllerParseFunc:	ControllerBaseParseFunc,
+	}
 	return r, nil
 }
 
@@ -97,16 +117,19 @@ func (r *RouterFull) RegisterMiddleware(method ,path string, hs HandlerFuncs) {
 	if len(method) != 0 && len(path) == 0 {
 		path = "/"
 	}
+	r.Print("RegisterMiddleware:", method, path, GetHandlerNames(hs))
 	if method == MethodAny {
 		if path == "/" {
-			r.midds.Insert("", hs)
+			r.middtree.Insert("", hs)
+			r.node404.handlers = append(r.middtree.val, r.nodefunc404...)
+			r.node405.Wchildren.handlers = append(r.middtree.val, r.nodefunc405...)
 			return
 		}
 		for _, method = range RouterAllMethod {
-			r.midds.recursiveInsertTree(method + path, method + path, hs)
+			r.middtree.Insert(method + path, hs)		
 		}
 	}else {
-		r.midds.recursiveInsertTree(method + path, method + path, hs)		
+		r.middtree.Insert(method + path, hs)
 	}
 }
 
@@ -118,12 +141,13 @@ func (r *RouterFull) RegisterMiddleware(method ,path string, hs HandlerFuncs) {
 // 
 // 路由器会从中间件树中匹配当前路径可使用的处理者，并添加到处理者前方。
 func (r *RouterFull) RegisterHandler(method string, path string, handler HandlerFuncs) {
+	r.Print("RegisterHandler:", method, path, GetHandlerNames(handler))
 	if method == MethodAny{
 		for _, method := range RouterAllMethod {
-			r.InsertRoute(method, path, CombineHandlerFuncs(r.midds.Lookup(method + path), handler))
+			r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method + path), handler))
 		}
 	}else {
-		r.InsertRoute(method, path, CombineHandlerFuncs(r.midds.Lookup(method + path), handler))
+		r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method + path), handler))
 	}
 }
 
@@ -134,24 +158,20 @@ func (r *RouterFull) RegisterHandler(method string, path string, handler Handler
 // 添加一个新的路由Node。
 //
 // 如果方法不支持则不会添加，请求改路径会响应405
-func (t *RouterFull) InsertRoute(method, key string, val HandlerFuncs) {
-	var currentNode, newNode *fullNode = t.getTree(method), nil
-	if currentNode == t.node405 {
+func (t *RouterFull) insertRoute(method, key string, val HandlerFuncs) {
+	var currentNode *fullNode = t.getTree(method)
+	if currentNode == &t.node405 {
 		return
 	}
 
+	// 创建节点
 	args := strings.Split(key, " ")
 	for _, path := range getSpiltPath(args[0]) {
-		newNode = newFullNode(path)
-		if newNode.kind == fullNodeKindConst {
-			currentNode = currentNode.recursiveInsertTree(path, newNode)
-		}else {
-			currentNode = currentNode.InsertNode(path, newNode)
-		}		
+		currentNode = currentNode.InsertNode(path, newFullNode(path))
 	}
 
-	newNode.handlers = val
-	newNode.SetTags(args)
+	currentNode.handlers = val
+	currentNode.SetTags(args)
 }
 
 // Match a request, if the method does not allow direct return to node405, no match returns node404.
@@ -165,26 +185,36 @@ func (t *RouterFull) Match(method, path string, params Params) HandlerFuncs {
 	if n := t.getTree(method).recursiveLoopup(path, params); n != nil {
 		return n
 	}
-	return t.node404
+
+	// 处理404
+	t.node404.AddTagsToParams(params)
+	return t.node404.handlers
 }
 
 // The router Set method can set the handlers for 404 and 405.
 //
 // 路由器Set方法可以设置404和405的处理者。
 func (r *RouterFull) Set(key string, i interface{}) error {
-	h, ok := i.(HandlerFunc)
-	if !ok {
-		h, ok = i.(func(Context))
-	}
-	if !ok {
-		return ErrRouterSetNoSupportType
-	}
 	args := strings.Split(key, " ")
 	switch args[0] {
 	case "404":
-		r.node404 = HandlerFuncs{h}
+		hs := NewHandlerFuncs(i)
+		if hs == nil {
+			return ErrRouterSetNoSupportType
+		}
+		r.node404.SetTags(args)
+		r.node404.handlers = append(r.middtree.val, hs...)
+		r.nodefunc404 = hs
 	case "405":
-		r.node405 = newFullNode405(key, h)
+		hs := NewHandlerFuncs(i)
+		if hs == nil {
+			return ErrRouterSetNoSupportType
+		}
+		r.node405.Wchildren.SetTags(args)
+		r.node405.Wchildren.handlers = append(r.middtree.val, hs...)
+		r.nodefunc405 = hs
+	default:
+		return ErrComponentNoSupportField
 	}
 	return nil
 }
@@ -217,6 +247,9 @@ func newFullNode405(args string, h HandlerFunc) *fullNode {
 	return newNode
 }
 
+// 创建一个Radix树Node，会根据当前路由设置不同的节点类型和名称。
+//
+// '*'前缀为通配符节点，':'前缀为参数节点，其他未常量节点,如果通配符和参数结点后带有符号'|'则为校验结点。
 func newFullNode(path string) *fullNode {
 		newNode := &fullNode{path: path}
 		switch path[0] {
@@ -300,12 +333,29 @@ func loadCheckFunc(path string) (string, RouterCheckFunc) {
 // Add a child node to the node.
 //
 // 给节点添加一个子节点。
-func (r *fullNode) InsertNode(path string, newNode *fullNode) *fullNode {
+func (r *fullNode) InsertNode(path string, nextNode *fullNode) *fullNode {
 	if len(path) == 0 {
 		return r
 	}
-	newNode.path = path
-	switch newNode.kind {
+	nextNode.path = path
+	switch nextNode.kind {
+	case radixNodeKindConst:
+		for i, _ := range r.Cchildren {
+			subStr, find := getSubsetPrefix(path, r.Cchildren[i].path)
+			if find {
+				if subStr == r.Cchildren[i].path {
+					nextTargetKey := strings.TrimPrefix(path, r.Cchildren[i].path)
+					return r.Cchildren[i].InsertNode(nextTargetKey, nextNode)	
+				}else {
+					newNode := r.SplitNode(subStr, r.Cchildren[i].path)
+					if newNode == nil {
+						panic("Unexpect error on split node")
+					}
+					return newNode.InsertNode(strings.TrimPrefix(path, subStr), nextNode)
+				}
+			}
+		}
+		r.Cchildren = append(r.Cchildren, nextNode)
 	case fullNodeKindParam:
 		// parameter node
 		// 参数节点
@@ -318,7 +368,7 @@ func (r *fullNode) InsertNode(path string, newNode *fullNode) *fullNode {
 			}
 		}
 		r.pnum++
-		r.Pchildren = append(r.Pchildren, newNode)
+		r.Pchildren = append(r.Pchildren, nextNode)
 	case fullNodeKindRegex:
 		// parameter check node
 		// 参数校验节点
@@ -328,7 +378,7 @@ func (r *fullNode) InsertNode(path string, newNode *fullNode) *fullNode {
 			}
 		}
 		r.pnum++
-		r.Rchildren = append(r.Rchildren, newNode)
+		r.Rchildren = append(r.Rchildren, nextNode)
 	case fullNodeKindValid:
 		// wildcard check Node
 		// 通配符校验Node
@@ -337,17 +387,32 @@ func (r *fullNode) InsertNode(path string, newNode *fullNode) *fullNode {
 				return i
 			}
 		}
-		r.Vchildren = append(r.Vchildren, newNode)
+		r.Vchildren = append(r.Vchildren, nextNode)
 	case fullNodeKindWildcard:
 		// Set the wildcard Node data.
 		// 设置通配符Node数据。
-		r.Wchildren = newNode
+		r.Wchildren = nextNode
 	default:
-		// Append the constant Node, the constant Node is inserted recursively, and the same prefix will not appear.
-		// 追加常量Node，常量Node由递归插入，不会出现相同前缀。
-		r.Cchildren = append(r.Cchildren, newNode)
+		panic("Undefined radix node type from router full.")
 	}
-	return newNode
+	return nextNode
+}
+
+// Bifurcate the child node whose path is edgeKey, and the fork common prefix path is pathKey
+//
+// 对指定路径为edgeKey的子节点分叉，分叉公共前缀路径为pathKey
+func (r *fullNode) SplitNode(pathKey, edgeKey string) *fullNode {
+	for i, _ := range r.Cchildren {
+		if r.Cchildren[i].path == edgeKey {
+			newNode := &fullNode{path: pathKey}
+			newNode.Cchildren = append(newNode.Cchildren, r.Cchildren[i])
+
+			r.Cchildren[i].path = strings.TrimPrefix(edgeKey, pathKey)
+			r.Cchildren[i] = newNode
+			return newNode
+		}
+	}
+	return nil
 }
 
 // Set the tags for the current Node
@@ -371,28 +436,10 @@ func (r *fullNode) SetTags(args []string) {
 // Give the current Node tag to Params
 //
 // 将当前Node的tags给予Params
-func (r *fullNode) GetTags(p Params) {
+func (r *fullNode) AddTagsToParams(p Params) {
 	for i, _ := range r.tags {
 		p.AddParam(r.tags[i], r.vals[i])
 	}
-}
-
-// Bifurcate the child node whose path is edgeKey, and the fork common prefix path is pathKey
-//
-// 对指定路径为edgeKey的子节点分叉，分叉公共前缀路径为pathKey
-func (r *fullNode) SplitNode(pathKey, edgeKey string) *fullNode {
-	for i, _ := range r.Cchildren {
-		if r.Cchildren[i].path == edgeKey {
-			newNode := &fullNode{path: pathKey}
-
-			r.Cchildren[i].path = strings.TrimPrefix(edgeKey, pathKey)
-			newNode.Cchildren = append(newNode.Cchildren, r.Cchildren[i])
-
-			r.Cchildren[i] = newNode
-			return newNode
-		}
-	}
-	return nil
 }
 
 // Get the tree of the corresponding method.
@@ -419,7 +466,7 @@ func (t *RouterFull) getTree(method string) *fullNode {
 	case MethodPatch:
 		return &t.patch
 	default:
-		return t.node405
+		return &t.node405
 	}
 }
 
@@ -457,7 +504,7 @@ func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) Han
 	// constant match, return data
 	// 常量匹配，返回数据
 	if len(searchKey) == 0 && searchNode.handlers != nil {
-		searchNode.GetTags(params)
+		searchNode.AddTagsToParams(params)
 		return searchNode.handlers
 	}
 
@@ -469,6 +516,7 @@ func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) Han
 			if n := edgeObj.recursiveLoopup(nextSearchKey, params);n != nil {
 				return n
 			}
+			break
 		}
 	}
 
@@ -510,7 +558,7 @@ func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) Han
 	// 若当前Node有通配符处理方法直接匹配，返回结果。
 	for _, edgeObj := range searchNode.Vchildren {
 		if edgeObj.check(searchKey) {
-			edgeObj.GetTags(params)
+			edgeObj.AddTagsToParams(params)
 			params.AddParam(edgeObj.name, searchKey)
 			return edgeObj.handlers
 		}
@@ -519,7 +567,7 @@ func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) Han
 	// If the current Node has a wildcard processing method that directly matches, the result is returned.
 	// 若当前Node有通配符处理方法直接匹配，返回结果。
 	if searchNode.Wchildren != nil {
-		searchNode.Wchildren.GetTags(params)
+		searchNode.Wchildren.AddTagsToParams(params)
 		params.AddParam(searchNode.Wchildren.name, searchKey)
 		return searchNode.Wchildren.handlers
 	}

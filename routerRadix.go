@@ -126,10 +126,10 @@ func (r *RouterRadix) RegisterHandler(method string, path string, handler Handle
 	r.Print("RegisterHandler:", method, path, GetHandlerNames(handler))
 	if method == MethodAny{
 		for _, method := range RouterAllMethod {
-			r.InsertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method + path), handler))
+			r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method + path), handler))
 		}
 	}else {
-		r.InsertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method + path), handler))
+		r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method + path), handler))
 	}
 }
 
@@ -148,7 +148,7 @@ func (r *RouterRadix) RegisterHandler(method string, path string, handler Handle
 // 将路径按节点类型切割，每段路径即为一种类型的节点，然后依次向树追加，然后给最后的节点设置数据。
 //
 // 路径切割见getSpiltPath函数，当前未完善，处理正则可能异常。
-func (t *RouterRadix) InsertRoute(method, key string, val HandlerFuncs) {
+func (t *RouterRadix) insertRoute(method, key string, val HandlerFuncs) {
 	var currentNode *radixNode = t.getTree(method)
 	if currentNode == &t.node405 {
 		return
@@ -185,21 +185,28 @@ func (t *RouterRadix) Match(method, path string, params Params) HandlerFuncs {
 //
 // 路由器Set方法可以设置404和405的处理者。
 func (r *RouterRadix) Set(key string, i interface{}) error {
-	hs := NewHandlerFuncs(i)
-	if hs == nil {
-		return ErrRouterSetNoSupportType
-	}
 	args := strings.Split(key, " ")
 	switch args[0] {
 	case "404":
-		// r.node404 = HandlerFuncs{h}
+		hs := NewHandlerFuncs(i)
+		if hs == nil {
+			return ErrRouterSetNoSupportType
+		}
+		
 		r.node404.SetTags(args)
 		r.node404.handlers = append(r.middtree.val, hs...)
 		r.nodefunc404 = hs
 	case "405":
+		hs := NewHandlerFuncs(i)
+		if hs == nil {
+			return ErrRouterSetNoSupportType
+		}
+
 		r.node405.Wchildren.SetTags(args)
 		r.node405.Wchildren.handlers = append(r.middtree.val, hs...)
 		r.nodefunc405 = hs
+	default:
+		return ErrComponentNoSupportField
 	}
 	return nil
 }

@@ -92,11 +92,11 @@ func (r *RamAny) RamHandle(id int, action string, ctx eudore.Context) (bool, boo
 	for _, h := range r.Rams {
 		isgrant, ok := h.RamHandle(id, action, ctx)
 		if ok {
-			ctx.SetParam(eudore.ParamRam, "arm-" + ctx.GetParam(eudore.ParamRam))
+			ctx.SetParam(eudore.ParamRam, "ram-" + ctx.GetParam(eudore.ParamRam))
 			return isgrant, true
 		}
 	}
-	ctx.SetParam(eudore.ParamRam, "arm-default")
+	ctx.SetParam(eudore.ParamRam, "ram-default")
 	return false, false
 }
 

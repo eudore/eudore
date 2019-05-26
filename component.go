@@ -41,6 +41,8 @@ const (
 	ComponentRouterRadixVersion	=	"eudore router radix,use radix tree std router."
 	ComponentRouterFullName		=	"router-full"
 	ComponentRouterFullVersion	=	"eudore router full,use radix tree full router."
+	ComponentRouterDebugName	=	"router-debug"
+	ComponentRouterDebugVersion	=	"eudore router debug, use router full."
 	ComponentRouterHostName		=	"router-host"
 	ComponentRouterHostVersion	=	"eudore router host."
 	ComponentRouterInitName	=	"router-init"

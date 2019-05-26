@@ -72,7 +72,7 @@ func InitLogger(app *Eudore) error {
 		if err != nil {
 			return err
 		}
-		Set(app.Router, "print", app.Logger.Debug)
+		ComponentSet(app.Router, "print", app.Logger.Debug)
 		Set(app.Server, "print", app.Logger.Debug)
 	}
 	return nil

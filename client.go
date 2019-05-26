@@ -8,21 +8,17 @@ import (
 
 type (
 	Client interface {
-		NewRequest(string, string, io.Reader) Client
-		Header() protocol.Header
-		Do(protocol.RequestReader) (protocol.ResponseReader, error)
+		NewRequest(string, string, io.Reader) protocol.RequestWriter
 	}
 	ClientHttp struct {
 		*http.Client
-		req		*http.Request
-		header	protocol.Header
 	}
 )
 var (
 	DefultClientHttp = NewClientHttp()
 )
 
-func NewRequest(method string, url string, body io.Reader) Client {
+func NewRequest(method string, url string, body io.Reader) protocol.RequestWriter {
 	return DefultClientHttp.NewRequest(method, url, body)
 }
 
@@ -32,20 +28,11 @@ func NewClientHttp() Client {
 	}
 }
 
-func (clt *ClientHttp) NewRequest(method string, url string, body io.Reader) Client {
-	clt.req, _ = http.NewRequest(method ,url ,body)
-	clt.header = HeaderMap(clt.req.Header)
-	return clt
-}
-
-func (clt *ClientHttp) Header() protocol.Header {
-	return clt.header
-}
-
-func (clt *ClientHttp) Do(_ protocol.RequestReader) (protocol.ResponseReader, error) {
-	resp, err := clt.Client.Do(clt.req)
-	if err != nil {
-		return nil, err
+func (clt *ClientHttp) NewRequest(method string, url string, body io.Reader) protocol.RequestWriter {
+	req, err := http.NewRequest(method ,url ,body)
+	return &RequestWriterHttp{
+		Client:		clt.Client,
+		Request:	req,
+		err:		err,
 	}
-	return NewResponseReaderHttp(resp), nil
 }

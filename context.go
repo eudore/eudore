@@ -56,7 +56,7 @@ type (
 		Istls() bool
 		Body() []byte
 
-		// param header cookie
+		// param header cookie session
 		Params() Params
 		GetParam(string) string
 		SetParam(string, string)
@@ -85,6 +85,7 @@ type (
 		// binder and renderer
 		ReadBind(interface{}) error
 		WriteRender(interface{}) error
+
 		// log LogOut interface
 		Debug(...interface{})
 		Info(...interface{})
@@ -492,11 +493,13 @@ func (ctx *ContextBase) Error(args ...interface{}) {
 func (ctx *ContextBase) Fatal(args ...interface{}) {
 	ctx.logReset().Error(fmt.Sprint(args...))
 	// 结束Context
-	ctx.WriteHeader(500)
-	ctx.WriteRender(map[string]string{
-		"status":	"500",
-		"x-request-id":	ctx.RequestID(),
-	})
+	if ctx.ResponseWriter.Status() == 200 {
+		ctx.WriteHeader(500)
+		ctx.WriteRender(map[string]string{
+			"status":	"500",
+			"x-request-id":	ctx.RequestID(),
+		})
+	}
 	ctx.End()
 }
 

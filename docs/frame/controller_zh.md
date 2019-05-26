@@ -1,29 +1,24 @@
-package eudore
+# Controller
 
-import (
-	"fmt"
-	"sync"
-	"reflect"
-	"strings"
-)
+eudore控制器实现通过分析控制器得到路由方法路径和闭包执行控制器方法。
 
-type (
-	ControllerParseFunc func(Controller) (*RouterConfig, error)
-	Controller interface{
-		Init(Context) error
-		Release() error
-	}
-	ControllerRoute interface {
-		ControllerRoute() map[string]string
-	}
-	ControllerBase struct{
-		Context
-	}
-	ControllerData struct{
-		ContextData
-	}
-)
+控制器解析函数用路由器注册使用。
 
+控制器接口需要实现初始化和释放两个方法，完成控制器对象的初始化和释放过程。
+
+```golang
+type ControllerParseFunc func(Controller) (*RouterConfig, error)
+type Controller interface{
+	Init(Context) error
+	Release() error
+}
+```
+
+默认实现了一个控制器解析函数`ControllerBaseParseFunc`, 需要控制器实现`ControllerRoute`接口，获得控制器的执行方法和路径，控制器的注册方法通过方法名称截取到方法，截取非法名称就是使用ANY方法。
+
+然后使用函数分析控制器对象，然后闭包执行过程获得HandlerFunc函数对象，然后构建成一个RouterConfig配置。
+
+```golang
 func ControllerBaseParseFunc(controller Controller) (*RouterConfig, error) {	
 	iType := reflect.TypeOf(controller)
 	pool := sync.Pool{
@@ -60,6 +55,13 @@ func ControllerBaseParseFunc(controller Controller) (*RouterConfig, error) {
 	return &RouterConfig{Routes:	configs}, nil
 }
 
+```
+
+`convertHandler`分析对应的方法的全部入参信息，返回`HandlerFunc`函数对象。
+
+`HandlerFunc`函数先从池获得控制器对象，然后使用ctx调用初始化，再创建入参并初始化，然后调用对应的执行函数，最后释放控制器对象。
+
+```golang
 func convertHandler(pool sync.Pool, controller Controller, index int) HandlerFunc {
 	iType := reflect.TypeOf(controller)
 	fType := iType.Method(index)
@@ -89,71 +91,4 @@ func convertHandler(pool sync.Pool, controller Controller, index int) HandlerFun
 	}
 }
 
-func checkAllowMethod(method string) bool {
-	for _, i := range []string{"Any", "Get", "Post", "Put", "Delete", "Patch", "Options"} {
-		if i == method {
-			return true
-		}
-	}
-	return false
-}
-
-func splitName(name string) (strs []string) {
-	var head int = 0
-	for i, c := range name {
-		if 0x40 < c && c < 0x5B && i != 0 {
-			strs = append(strs, name[head:i])
-			head = i
-		}
-	}
-	strs = append(strs, name[head:len(name)])
-	return
-}
-
-func getFirstUp(name string) string {
-	for i, c := range name {
-		if 0x40 < c && c < 0x5B && i != 0 {
-			return name[:i]
-		}
-	}
-	return name
-}
-
-func getFuncArgs(name string) (strs []string) {	
-	var head int = 0
-	var isBy bool
-	for i, c := range name {
-		if 0x40 < c && c < 0x5B && i != 0 {
-			if isBy {
-				strs = append(strs, strings.ToLower(name[head:i]) )
-			}
-			if name[head:i] == "By" {
-				isBy = true
-			}
-			head = i
-		}
-	}
-	if isBy {
-		strs = append(strs, strings.ToLower(name[head:len(name)]) )
-	}
-	return
-
-}
-
-func (c *ControllerBase) Init(ctx Context) error {
-	c.Context = ctx
-	return nil
-}
-
-func (c *ControllerBase) Release() error {
-	return nil
-}
-
-func (c *ControllerData) Init(ctx Context) error {
-	c.ContextData.Context = ctx
-	return nil
-}
-
-func (c *ControllerData) Release() error {
-	return nil
-}
+```

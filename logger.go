@@ -234,6 +234,8 @@ func (l *LoggerStd) Set(key string, val interface{}) error {
 		// l.LoggerHandleFunc = i
 	case LoggerLevel:
 		l.Config.Level = i
+	default:
+		return ErrComponentNoSupportField
 	}
 	return nil
 }

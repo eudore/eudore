@@ -207,6 +207,8 @@ func (srv *ServerStd) Set(key string, val interface{}) error {
 		srv.Config = v
 	case *ServerListenConfig:
 		srv.Config.Listeners = append(srv.Config.Listeners, v)
+	default:
+		return ErrComponentNoSupportField
 	}
 	return nil
 }

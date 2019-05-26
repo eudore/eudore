@@ -33,7 +33,7 @@ type (
 	RouterMethod interface {
 		Group(string) RouterMethod
 		AddHandler(string, string, ...HandlerFunc) RouterMethod
-		AddMiddleware(...HandlerFunc) RouterMethod
+		AddMiddleware(string, string, ...HandlerFunc) RouterMethod
 		AddController(...Controller) RouterMethod
 		Any(string, ...Handler)
 		AnyFunc(string, ...HandlerFunc)
@@ -146,10 +146,10 @@ func (config *RouterConfig) Inject(r RouterMethod) {
 	r.AddHandler(config.Method, config.Path, NewHandlerFuncs(config.Handler)...)
 
 	// middleware
-	r = r.Group(config.Path)
-	r.AddMiddleware(NewHandlerFuncs(config.Middleware)...)
+	r.AddMiddleware(config.Method, config.Path, NewHandlerFuncs(config.Middleware)...)
 	
 	// routes
+	r = r.Group(config.Path)
 	for _, i := range config.Routes {
 		i.Inject(r)
 	}
@@ -171,10 +171,6 @@ func DefaultRouter404Func(ctx Context) {
 
 
 
-
-func (m *RouterMethodStd) Register(mr RouterCore) {
-	m.RouterCore = mr
-}
 
 func (m *RouterMethodStd) Group(path string) RouterMethod {
 	// 将路径前缀和路径参数分割出来
@@ -207,9 +203,10 @@ func (m *RouterMethodStd) AddHandler(method ,path string, hs ...HandlerFunc) Rou
 	}
 	return m
 }
-func (m *RouterMethodStd) AddMiddleware(hs ...HandlerFunc) RouterMethod {
+
+func (m *RouterMethodStd) AddMiddleware(method ,path string, hs ...HandlerFunc) RouterMethod {
 	if len(hs) > 0 {
-		m.RegisterMiddleware(MethodAny, m.prefix + "/", hs)
+		m.RegisterMiddleware(method, m.prefix + path, hs)
 	}
 	return m
 }

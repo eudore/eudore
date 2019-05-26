@@ -162,6 +162,8 @@ func (srv *Server) Set(key string, val interface{}) error {
 	case map[string]interface{}:
 		_, err := eudore.ConvertStruct(srv.Config, val)
 		return err
+	default:
+		return eudore.ErrComponentNoSupportField
 	}
 	return nil
 }

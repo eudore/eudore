@@ -19,10 +19,10 @@ type (
 	//
 	// App组合主要功能接口，启动等实例化操作需要额外封装。
 	App struct {
-		Config
-		Logger
-		Server
-		Router
+		Config			`set:"config"`
+		Logger			`set:"logger"`
+		Server			`set:"server"`
+		Router			`set:"router"`
 		Cache
 		Session
 		Client

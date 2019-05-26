@@ -74,9 +74,9 @@
 - [ ] SRI值自动设置
 - [x] 自动http2 push
 - [x] http代理实现
-- [ ] pprof支持
-- [ ] expvar支持
-- [ ] 运行时对象数据显示
+- [x] pprof支持
+- [x] expvar支持
+- [x] 运行时对象数据显示
 - Session
 - [x] Session实现
 - Middleware
@@ -111,7 +111,7 @@ client未实现
 | router-radix | 使用基数树实现标准功能路由器 | 内置 |
 | router-full | 使用基数树实现完整功能路由器 | 内置 |
 | router-init | 初始时使用的路由处理 | github.com/eudore/eudore/component/router/init |
-| router-host | 匹配host路由到不同路由器处理 | github.com/eudore/eudore/component/router/host |
+| router-host | 匹配host路由到不同路由器处理 |  未更新、github.com/eudore/eudore/component/router/host |
 | logger-init | 初始化日志处理，保存日志由设置的日志对象处理 | 内置 |
 | logger-std | 基础日志库实现 | 内置 |
 | logger-elastic | 将日志直接输出到es中 | 未更新、github.com/eudore/eudore/component/eslogger |

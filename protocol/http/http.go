@@ -1,6 +1,7 @@
 package http
 
 import (
+	"io"
 	"net"
 	"fmt"
 	"sync"
@@ -56,7 +57,7 @@ func (hh *HttpHandler) EudoreConn(ctx context.Context, c net.Conn) {
 	resp := responsePool.Get().(*Response)
 	resp.request = req
 	for {
-		if err := req.Reset(c); err != nil {
+		if err := req.Reset(c); err != nil && err != io.EOF {
 			// handler error
 			hh.ErrFunc(err)
 			c.Close()

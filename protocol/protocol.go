@@ -65,10 +65,10 @@ type (
 
 
 	RequestWriter interface {
-		Url(string)
-		Method(string)
+		// Url(string)
+		// Method(string)
 		Header() Header
-		Body(interface{})
+		// Body(interface{})
 		Do() (ResponseReader, error)
 	}
 	// ResponseReader is used to read the http protocol response message information.

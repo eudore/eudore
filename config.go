@@ -46,8 +46,8 @@ type (
 	}
 	ConfigEudore struct {
 		Key 	interface{} 	`set:"key"`
-		mu 		sync.RWMutex
-		funcs	[]ConfigParseFunc
+		mu 		sync.RWMutex	`set:"-"`
+		funcs	[]ConfigParseFunc	`set:"-"`
 	}
 )
 

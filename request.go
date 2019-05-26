@@ -5,6 +5,7 @@ import (
 	"io"
 	"fmt"
 	"bytes"
+	"strings"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -43,8 +44,8 @@ type (
 		reader *bytes.Reader
 	}
 	RequestWriterHttp struct {
-		http.Request
 		*http.Client
+		*http.Request
 		err error
 	}
 	RequestReaderTest struct {
@@ -210,10 +211,40 @@ func (r *RequestReaderTest) TLS() *tls.ConnectionState {
 		return nil
 	}
 	return &tls.ConnectionState{
-			Version:           tls.VersionTLS12,
-			HandshakeComplete: true,
-			ServerName:        r.Host(),
-		}
+		Version:           tls.VersionTLS12,
+		HandshakeComplete: true,
+		ServerName:        r.Host(),
+	}
+}
+
+func (r *RequestWriterHttp) Header() protocol.Header {
+	return HeaderMap(r.Request.Header)	
+}
+
+
+func (r *RequestWriterHttp) Do() (protocol.ResponseReader, error) {
+	resp, err := r.Client.Do(r.Request)
+	if err != nil {
+		return nil, err
+	}
+	return NewResponseReaderHttp(resp), nil
+}
+
+
+func transbody(body interface{}) (io.Reader, error) {
+	if body == nil {
+		return nil, nil
+	}
+	switch t := body.(type) {
+	case string:
+		return strings.NewReader(t), nil
+	case []byte:
+		return bytes.NewReader(t), nil
+	case io.Reader:
+		return t, nil
+	default:
+		return nil, fmt.Errorf("unknown type used for body: %+v", body)
+	}
 }
 
 // func (r *RequestWriterHttp)
