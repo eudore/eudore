@@ -6,13 +6,13 @@ import (
 	"encoding/json"
 
 	"github.com/eudore/eudore"
-	"eudore/middleware/ram"
+	"github.com/eudore/eudore/middleware/ram"
 )
 
 type (
 	Pbac struct {
-		Binds map[int][]int
-		Policys	map[int]Policy
+		Binds map[int][]int		`json:"-" key:"-"`
+		Policys	map[int]Policy	`json:"-" key:"-"`
 	}
 
 	Policy struct {

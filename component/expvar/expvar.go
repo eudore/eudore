@@ -1,10 +1,13 @@
 package expvar
 
 import (
+	"fmt"
 	"time"
 	"expvar"
 	"runtime"
 	"encoding/json"
+
+	"github.com/eudore/eudore"
 )
 
 
@@ -86,4 +89,19 @@ func init() {
 	expvar.Publish("gcpause", expvar.Func(getLastGCPauseTime))
 	expvar.Publish("compiler", expvar.Func(getGoCompiler))
 	expvar.Publish("goarch", expvar.Func(getGOARCH))
+}
+
+func Expvar(ctx eudore.Context) {
+	ctx.SetHeader("Content-Type", "application/json; charset=utf-8")
+	ctx.WriteHeader(200)
+	ctx.Write([]byte("{\n"))
+	first := true
+	expvar.Do(func(kv expvar.KeyValue) {
+		if !first {
+			ctx.Write([]byte(",\n"))
+		}
+		first = false
+		fmt.Fprintf(ctx, "%q: %s", kv.Key, kv.Value)
+	})
+	ctx.Write([]byte("\n}\n"))
 }

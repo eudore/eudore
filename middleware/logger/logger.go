@@ -25,14 +25,15 @@ func (l *Logger) Handle(ctx eudore.Context) {
 		ctx.Request().Header().Add(eudore.HeaderXRequestID, requestId)
 	}
 	f := eudore.Fields{
-		"method":		ctx.Method(),
+		"method":			ctx.Method(),
 		"path":				ctx.Path(),
 		"remote":			ctx.RemoteAddr(),
 		"proto":			ctx.Request().Proto(),
 		"host":				ctx.Host(),
 	}
 	ctx.Next()
-	f["status"] = ctx.Response().Status()
+	status := ctx.Response().Status()
+	f["status"] = status
 	f["time"] = time.Now().Sub(now).String()
 	f["size"] = ctx.Response().Size()
 	if parentId := ctx.GetHeader(eudore.HeaderXParentID);len(parentId) > 0 {
@@ -44,13 +45,16 @@ func (l *Logger) Handle(ctx eudore.Context) {
 	if ram := ctx.GetParam(eudore.ParamRam); len(ram) > 0 {
 		f["ram"] = ram
 	}
-	if ram := ctx.GetParam(eudore.ParamRoute); len(ram) > 0 {
-		f["route"] = ram
+	if route := ctx.GetParam(eudore.ParamRoute); len(route) > 0 {
+		f["route"] = route
 	}
 	// if routes := ctx.Params()[eudore.ParamRoutes]; len(routes) > 0 {
 	// 	f["routes"] = strings.Join(routes, " ")
 	// }
-	if ctx.Response().Status() < 400 {
+	if 300 < status && status < 400 {
+		f["location"] = ctx.Response().Header().Get(eudore.HeaderLocation)
+	}
+	if status < 400 {
 		ctx.WithFields(f).Info()	
 	}else {
 		ctx.WithFields(f).Error()

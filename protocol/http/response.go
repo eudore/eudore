@@ -25,6 +25,7 @@ type Response struct {
 	size		int
 	iswrite		bool
 	chunked		bool
+	ishjack		bool
 	// buffer 
 	buf 		[]byte
 	n			int
@@ -40,6 +41,7 @@ func (w *Response) Reset(conn net.Conn) {
 	w.size = 0
 	w.iswrite = false
 	w.chunked = false
+	w.ishjack = false
 	w.err = nil
 	w.n = 0
 }
@@ -118,8 +120,8 @@ func (w *Response) writerResponseLine() {
 	// Write headers
 	// 写入headers
 	h := w.header
-	for i, k := range h.keys {
-		fmt.Fprintf(w.writer, "%s: %s\r\n", k, h.vals[i])
+	for i, k := range h.Keys {
+		fmt.Fprintf(w.writer, "%s: %s\r\n", k, h.Vals[i])
 	}
 	// 写入时间和Server
 	fmt.Fprintf(w.writer, "Date: %s\r\nServer: eudore\r\n", time.Now().Format(TimeFormat))
@@ -175,6 +177,7 @@ func (w *Response) finalFlush() error {
 
 
 func (w *Response) Hijack() (net.Conn, error) {
+	w.ishjack = true
 	return w.request.conn, nil
 }
 

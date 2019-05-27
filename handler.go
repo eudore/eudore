@@ -1,3 +1,11 @@
+/*
+Handler
+
+Handler接口定义了Context对象请求处理函数。
+
+文件：handler.go
+*/
+
 package eudore
 
 import (
@@ -10,6 +18,8 @@ import (
 	"regexp"
 	"strings"
 	"strconv"
+	"reflect"
+	"runtime"
 	"errors"
 	"mime/multipart"
 	"net/textproto"
@@ -17,6 +27,7 @@ import (
 	"crypto/sha512"
 	"net/http"
 	"net/http/httptest"
+	"github.com/eudore/eudore/protocol"
 )
 
 type (
@@ -43,8 +54,28 @@ var (
 	errNoOverlap = errors.New("invalid range: failed to overlap")
 )
 
+func NewHandlerFuncs(i interface{}) HandlerFuncs {
+	switch val := i.(type) {
+	case func(Context):
+		return HandlerFuncs{val}
+	case HandlerFunc:
+		return HandlerFuncs{val}
+	case HandlerFuncs:
+		return val
+	case string:
+	var hs HandlerFuncs
+		for _, i := range strings.Split(val, ",") {
+			h := ConfigLoadHandleFunc(i)
+			if h != nil {
+				hs = append(hs, h)
+			}
+		}
+		return hs
+	}
+	return nil
+}
 
-func CombineHandlers(hs1, hs2 HandlerFuncs) HandlerFuncs {
+func CombineHandlerFuncs(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	// if nil
 	if len(hs1) == 0 {
 		return hs2
@@ -62,6 +93,20 @@ func CombineHandlers(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	copy(hs, hs1)
 	copy(hs[len(hs1):], hs2)
 	return hs
+}
+
+func GetHandlerNames(hs HandlerFuncs) []string {
+	names := make([]string, len(hs))
+	for i, h := range hs {
+		names[i] = GetHandlerName(h)
+	}
+	return names
+}
+
+func GetHandlerName(h HandlerFunc) string {
+	pc := reflect.ValueOf(h).Pointer()
+	return runtime.FuncForPC(pc).Name()
+
 }
 
 func TestHttpHandler(h http.Handler, method, path string) {
@@ -93,7 +138,7 @@ func HandlerPush(ctx Context, path string) {
 }
 
 func HandlerError(ctx Context, error string, code int) {
-	ctx.Response().Header().Set("Content-Type", "text/plain; charset=utf-8")
+	ctx.Response().Header().Set(HeaderContentType, "text/plain; charset=utf-8")
 	ctx.Response().Header().Set("X-Content-Type-Options", "nosniff")
 	ctx.WriteHeader(code)
 	ctx.WriteString(error)
@@ -113,7 +158,6 @@ func handlerErrorStatus(err error) (string, int) {
 func HandlerFile(ctx Context, path string) (error) {
 	f, err := os.Open(path)
 	if err != nil {
-		ctx.Error(err)
 		msg, code := handlerErrorStatus(err)
 		HandlerError(ctx, msg, code)
 		return err
@@ -122,13 +166,11 @@ func HandlerFile(ctx Context, path string) (error) {
 
 	desc, err := f.Stat()
 	if err != nil {
-		ctx.Error(err)
 		msg, code := handlerErrorStatus(err)
 		HandlerError(ctx, msg, code)
 		return err
 	}
 
-	// TODO: not test
 	// index page
 	if desc.IsDir() {
 		ctx.Redirect(307, path + "index.html")
@@ -147,10 +189,10 @@ func handlerContext(ctx Context, path string, content *os.File) error {
 /*	ctype := h.Get(HeaderContentType)
 	if len(ctype) == 0 {
 		ctype = getFileType(path)
-		h.Set("Content-Type", ctype)
+		h.Set(HeaderContentType, ctype)
 	}*/
 	ctype := getFileType(path)
-	h.Set("Content-Type", ctype)
+	h.Set(HeaderContentType, ctype)
 
 
 	// handle Content-Range header.
@@ -160,7 +202,7 @@ func handlerContext(ctx Context, path string, content *os.File) error {
 		ranges, err := parseRange(ctx.GetHeader("Range"), sendSize)
 		if err != nil {
 			if err == errNoOverlap {
-				ctx.SetHeader("Content-Range", fmt.Sprintf("bytes */%d", sendSize))
+				ctx.SetHeader(HeaderContentRange, fmt.Sprintf("bytes */%d", sendSize))
 			}
 			HandlerError(ctx, err.Error(), StatusRequestedRangeNotSatisfiable)
 			return err
@@ -180,14 +222,14 @@ func handlerContext(ctx Context, path string, content *os.File) error {
 				HandlerError(ctx, err.Error(), StatusRequestedRangeNotSatisfiable)
 				return err
 			}
-			ctx.SetHeader("Content-Range", ra.contentRange(sendSize))
+			ctx.SetHeader(HeaderContentRange, ra.contentRange(sendSize))
 			ctx.WriteHeader(StatusPartialContent)
 			sendSize = ra.length
 		default:
 			ctx.WriteHeader(StatusPartialContent)
 			pr, pw := io.Pipe()
 			mw := multipart.NewWriter(pw)
-			ctx.SetHeader("Content-Type", "multipart/byteranges; boundary="+mw.Boundary())
+			ctx.SetHeader(HeaderContentType, "multipart/byteranges; boundary="+mw.Boundary())
 			sendContent = pr
 			defer pr.Close() 
 			go func() {
@@ -240,8 +282,8 @@ func (r httpRange) contentRange(size int64) string {
 
 func (r httpRange) mimeHeader(contentType string, size int64) textproto.MIMEHeader {
 	return textproto.MIMEHeader{
-		"Content-Range": {r.contentRange(size)},
-		"Content-Type":  {contentType},
+		HeaderContentRange: {r.contentRange(size)},
+		HeaderContentType:  {contentType},
 	}
 }
 
@@ -253,7 +295,7 @@ func parseRange(s string, size int64) ([]httpRange, error) {
 	}
 	const b = "bytes="
 	if !strings.HasPrefix(s, b) {
-		return nil, errors.New("invalid range")
+		return nil, ErrHandlerInvalidRange
 	}
 	var ranges []httpRange
 	noOverlap := false
@@ -264,7 +306,7 @@ func parseRange(s string, size int64) ([]httpRange, error) {
 		}
 		i := strings.Index(ra, "-")
 		if i < 0 {
-			return nil, errors.New("invalid range")
+			return nil, ErrHandlerInvalidRange
 		}
 		start, end := strings.TrimSpace(ra[:i]), strings.TrimSpace(ra[i+1:])
 		var r httpRange
@@ -273,7 +315,7 @@ func parseRange(s string, size int64) ([]httpRange, error) {
 			// range start relative to the end of the file.
 			i, err := strconv.ParseInt(end, 10, 64)
 			if err != nil {
-				return nil, errors.New("invalid range")
+				return nil, ErrHandlerInvalidRange
 			}
 			if i > size {
 				i = size
@@ -283,7 +325,7 @@ func parseRange(s string, size int64) ([]httpRange, error) {
 		} else {
 			i, err := strconv.ParseInt(start, 10, 64)
 			if err != nil || i < 0 {
-				return nil, errors.New("invalid range")
+				return nil, ErrHandlerInvalidRange
 			}
 			if i >= size {
 				// If the range begins after the size of the content,
@@ -298,7 +340,7 @@ func parseRange(s string, size int64) ([]httpRange, error) {
 			} else {
 				i, err := strconv.ParseInt(end, 10, 64)
 				if err != nil || r.start > i {
-					return nil, errors.New("invalid range")
+					return nil, ErrHandlerInvalidRange
 				}
 				if i >= size {
 					i = size - 1
@@ -385,3 +427,77 @@ func getFileType(path string) string {
 	}
 	return ctype
 }
+
+
+
+// Hop-by-hop headers. These are removed when sent to the backend.
+// As of RFC 7230, hop-by-hop headers are required to appear in the
+// Connection header field. These are the headers defined by the
+// obsoleted RFC 2616 (section 13.5.1) and are used for backward
+// compatibility.
+var hopHeaders = []string{
+	HeaderConnection,
+	"Proxy-Connection", // non-standard but still sent by libcurl and rejected by e.g. google
+	"Keep-Alive",
+	"Proxy-Authenticate",
+	"Proxy-Authorization",
+	"Te",      // canonicalized version of "TE"
+	"Trailer", // not Trailers per URL above; https://www.rfc-editor.org/errata_search.php?eid=4522
+	"Transfer-Encoding",
+	HeaderUpgrade,
+}
+
+func isEndHeader(key string) bool {
+	for _, i := range hopHeaders {
+		if i == key {
+			return false
+		}
+	}
+	return true
+}
+
+func copyheader(source protocol.Header, target protocol.Header) {
+	source.Range(func(key, val string){{
+		if isEndHeader(key) {
+			target.Add(key, val)
+		}
+	}})
+}
+
+func HandlerProxy(addr string) HandlerFunc {
+	client := NewClientHttp()
+	return func(ctx Context) {
+		req := client.NewRequest(ctx.Method(), addr + ctx.Request().RequestURI(), ctx)
+		copyheader(ctx.Request().Header(), req.Header())
+
+		req.Header().Set(HeaderXForwardedFor, ctx.RemoteAddr())
+		if ctx.GetHeader("Te") == "trailers" {
+			req.Header().Add("Te", "trailers")
+		}
+		// After stripping all the hop-by-hop connection headers above, add back any
+		// necessary for protocol upgrades, such as for websockets.
+		if upType := ctx.GetHeader(HeaderUpgrade); len(upType) > 0 {
+			req.Header().Add(HeaderConnection, HeaderUpgrade)
+			req.Header().Add(HeaderUpgrade, upType)
+		}
+
+
+		resp, err := req.Do()
+		if err != nil {
+			ctx.Error(err)
+			ctx.WriteHeader(502)
+			return
+		}
+		if resp.Statue() == StatusSwitchingProtocols  {
+			// handle Upgrade Response
+			return
+		}
+
+		// 
+		ctx.WriteHeader(resp.Statue())
+		copyheader(resp.Header(), ctx.Response().Header())
+		io.Copy(ctx, resp)
+	}
+}
+
+

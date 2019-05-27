@@ -27,6 +27,7 @@ type (
 	}
 	Server struct {
 		Config			*ServerConfig 	`set:"config"`
+		Print			func(...interface{})	`set:"print"`
 		mu				sync.Mutex
 		wg				sync.WaitGroup
 		handler			protocol.Handler
@@ -47,7 +48,7 @@ func init() {
 func NewServer() (*Server) {
 	return &Server{
 		Config:	&ServerConfig{},
-		handler:	protocol.HandlerFunc(func(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
+		handler:	protocol.HandlerFunc(func(_ context.Context, w protocol.ResponseWriter, _ protocol.RequestReader) {
 			w.Write([]byte("start eudore server, this default page."))
 		}),
 	}
@@ -72,6 +73,7 @@ func (srv *Server) Start() error {
 		}
 		srv.EnableFastcgi()
 		srv.wg.Add(1)
+		srv.Print("Listen fastcgi:", fastcgi.Addr)
 		go func(ln net.Listener){
 			errs.HandleError(srv.fastcgi.Serve(ln))
 			srv.wg.Done()
@@ -86,6 +88,11 @@ func (srv *Server) Start() error {
 		}
 		srv.EnableHttp()
 		srv.wg.Add(1)
+		if http.Https {
+			srv.Print("Listen https:", http.Addr)
+		}else {
+			srv.Print("Listen http:", http.Addr)
+		}
 		go func(ln net.Listener){
 			errs.HandleError(srv.http.Serve(ln))
 			srv.wg.Done()
@@ -155,6 +162,8 @@ func (srv *Server) Set(key string, val interface{}) error {
 	case map[string]interface{}:
 		_, err := eudore.ConvertStruct(srv.Config, val)
 		return err
+	default:
+		return eudore.ErrComponentNoSupportField
 	}
 	return nil
 }

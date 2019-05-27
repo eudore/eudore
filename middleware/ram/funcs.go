@@ -2,7 +2,6 @@ package ram
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/util/cast"
 )
 
 
@@ -52,7 +51,7 @@ func GetIdDefault(ctx eudore.Context) (id int) {
 }
 
 func GetIdJwt(ctx eudore.Context) int {
-	data := cast.NewMap(ctx.Value(eudore.ValueJwt))
+	data := eudore.NewStringMap(ctx.Value(eudore.ValueJwt))
 	if data != nil {
 		return data.GetInt(UserIdString)
 	}
@@ -60,7 +59,7 @@ func GetIdJwt(ctx eudore.Context) int {
 }
 
 func GetIdSession(ctx eudore.Context) int {
-	data := cast.NewMap(ctx.Value(eudore.ValueSession))
+	data := eudore.NewStringMap(ctx.Value(eudore.ValueSession))
 	if data != nil {
 		return data.GetInt(UserIdString)
 	}

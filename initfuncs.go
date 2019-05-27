@@ -34,7 +34,11 @@ func InitSignal(e *Eudore) error {
 	// signal 15
 	SignalRegister(syscall.SIGTERM, false, func() error {
 		e.WithField("signal", 15).Info("eudore received SIGTERM, eudore shutting down HTTP server.")
-		return e.Shutdown()
+		err := e.Shutdown()
+        if err != nil {
+            e.Error("eudore shutdown error: ", err)
+        }
+		return err
 	})
 	return nil
 }
@@ -43,9 +47,19 @@ func InitConfig(app *Eudore) error {
 	return app.Config.Parse()
 }
 
+func InitWorkdir(app *Eudore) error {
+	dir := GetString(app.Config.Get("workdir"))
+	if dir != "" {
+		app.Info("changes working directory to: " + dir)
+		return os.Chdir(dir)
+	}
+	return nil
+}
+
 func InitCommand(app *Eudore) error {
-	cmd := GetString(app.Config.Get("command"))
-	pid := GetString(app.Config.Get("pidfile"))
+	cmd := GetDefaultString(app.Config.Get("command"), "start")
+	pid := GetDefaultString(app.Config.Get("pidfile"), "/var/run/eudore.pid")
+	app.Infof("current command is %s, pidfile in %s.", cmd, pid)
 	return NewCommand(cmd , pid).Run()
 }
 
@@ -54,10 +68,12 @@ func InitLogger(app *Eudore) error {
 	key := GetDefaultString(app.Config.Get("keys.logger"), "component.logger")
 	c := app.Config.Get(key)
 	if c != nil {
-		err := app.RegisterComponent("", c)
+		_, err := app.RegisterComponent("", c)
 		if err != nil {
 			return err
 		}
+		ComponentSet(app.Router, "print", app.Logger.Debug)
+		Set(app.Server, "print", app.Logger.Debug)
 	}
 	return nil
 }
@@ -66,10 +82,11 @@ func InitServer(app *Eudore) error {
 	key := GetDefaultString(app.Config.Get("keys.server"), "component.server")
 	c := app.Config.Get(key)
 	if c != nil {
-		err := app.RegisterComponent("", c)
+		_, err := app.RegisterComponent("", c)
 		if err != nil {
 			return err
 		}
+		Set(app.Server, "print", app.Logger.Debug)
 	}
 	return nil 
 }
@@ -90,29 +107,6 @@ func InitServerStart(app *Eudore) error {
 }
 
 
-func InitDefaultLogger(e *Eudore) error {
-	if _, ok := e.Logger.(*LoggerInit); ok {
-		e.Warning("eudore use default logger.")
-		return e.RegisterComponent(ComponentLoggerStdName, &LoggerStdConfig{
-			Std:		true,
-			Level:		0,
-			Format:		"json",
-		})
-	}
-	return nil
-}
-func InitDefaultServer(e *Eudore) error {
-	if e.Server == nil {
-		e.Warning("eudore use default server.")
-		// return e.RegisterComponent(ComponentServerStdName, &ServerConfigGeneral{
-		// 	Addr:		":8082",
-		// 	Https:		false,
-		// 	Handler:	e,
-		// })
-	}
-	return nil
-}
-
 
 func InitListComponent(e *Eudore) error {
 	e.Info("list all register component:", ComponentList())
@@ -122,6 +116,7 @@ func InitListComponent(e *Eudore) error {
 		e.Logger,
 		e.Router,
 		e.Cache,
+		e.Session,
 		e.View,
 		// e.Binder,
 		// e.Renderer,

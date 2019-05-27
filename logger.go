@@ -54,6 +54,11 @@ type (
 		Warning(...interface{})
 		Error(...interface{})
 		Fatal(...interface{})
+		Debugf(string, ...interface{})
+		Infof(string, ...interface{})
+		Warningf(string, ...interface{})
+		Errorf(string, ...interface{})
+		Fatalf(string, ...interface{})
 		WithField(key string, value interface{}) LogOut
 		WithFields(fields Fields) LogOut
 	}
@@ -138,18 +143,12 @@ func NewLogger(name string, arg interface{}) (Logger, error) {
 
 func NewLoggerStd(arg interface{}) (Logger, error) {
 	// 解析配置
-	config, ok := arg.(*LoggerStdConfig)
-	// TODO: 等待SetDefault优化
-	if !ok {
-		config = &LoggerStdConfig{}
-		if arg != nil {
-			_, err := ConvertStructOnce(config, arg)
-			if err != nil {
-				return nil, err
-			}
-		}
+	config := &LoggerStdConfig{
+		Format:		"json",
+		TimeFormat:	"2006-01-02 15:04:05",
 	}
-	SetDefault(config)
+	ConvertTo(arg, config)
+
 	// 创建并初始化日志处理器
 	l := &LoggerStd {
 		Config:		config,
@@ -162,6 +161,7 @@ func NewLoggerStd(arg interface{}) (Logger, error) {
 	if err := l.initHandle(); err != nil {
 		return nil, err
 	}
+
 	// 定时写入日志
 	go func(){
 		l.ticker = time.NewTicker(time.Millisecond * 50)
@@ -214,7 +214,7 @@ func (l *LoggerStd) initHandle() error {
 		}
 	}else {
 		tmpl, err := template.New("").Parse(l.Config.Format)
-		if err != err {
+		if err != nil {
 			return err
 		}
 		l.handle = func(i interface{}) {
@@ -224,6 +224,9 @@ func (l *LoggerStd) initHandle() error {
 	return nil
 }
 
+func (l *LoggerStd) Flush() error {
+	return l.out.Flush()
+}
 
 func (l *LoggerStd) Set(key string, val interface{}) error {
 	switch i := val.(type) {
@@ -231,6 +234,8 @@ func (l *LoggerStd) Set(key string, val interface{}) error {
 		// l.LoggerHandleFunc = i
 	case LoggerLevel:
 		l.Config.Level = i
+	default:
+		return ErrComponentNoSupportField
 	}
 	return nil
 }
@@ -243,6 +248,7 @@ func (l *LoggerStd) HandleEntry(e interface{}) {
 func (l *LoggerStd) newEntry() (entry *entryStd) {
 	entry =  l.pool.Get().(*entryStd)
 	entry.Time.Time = time.Now()
+	entry.Fields = nil
 	return
 }
 
@@ -274,6 +280,26 @@ func (l *LoggerStd) Fatal(args ...interface{}) {
 	l.newEntry().Fatal(args...)
 }
 
+func (l *LoggerStd) Debugf(format string, args ...interface{}) {
+	l.newEntry().Debugf(format, args...)
+}
+
+func (l *LoggerStd) Infof(format string, args ...interface{}) {
+	l.newEntry().Infof(format, args...)
+}
+
+func (l *LoggerStd) Warningf(format string, args ...interface{}) {
+	l.newEntry().Warningf(format, args...)
+}
+
+func (l *LoggerStd) Errorf(format string, args ...interface{}) {
+	l.newEntry().Errorf(format, args...)
+}
+
+func (l *LoggerStd) Fatalf(format string, args ...interface{}) {
+	l.newEntry().Fatalf(format, args...)
+}
+
 func (l *LoggerStd) GetName() string {
 	return ComponentLoggerStdName
 }
@@ -289,7 +315,8 @@ func (l *LoggerStdConfig) GetName() string {
 func (e *entryStd) Debug(args ...interface{}) {
 	if e.level < 1 {
 		e.Level = 0
-		e.Message = fmt.Sprint(args...)
+		e.Message = fmt.Sprintln(args...)
+		e.Message = e.Message[:len(e.Message) - 1]
 		e.logger.HandleEntry(e)
 	}
 	e.pool.Put(e)
@@ -298,7 +325,8 @@ func (e *entryStd) Debug(args ...interface{}) {
 func (e *entryStd) Info(args ...interface{}) {
 	if e.level < 2 {
 		e.Level = 1
-		e.Message = fmt.Sprint(args...)
+		e.Message = fmt.Sprintln(args...)
+		e.Message = e.Message[:len(e.Message) - 1]
 		e.logger.HandleEntry(e)
 	}
 	e.pool.Put(e)
@@ -330,9 +358,57 @@ func (e *entryStd) Fatal(args ...interface{}) {
 	panic(args)
 }
 
+
+
+func (e *entryStd) Debugf(format string,args ...interface{}) {
+	if e.level < 1 {
+		e.Level = 0
+		e.Message = fmt.Sprintf(format, args...)
+		e.Message = e.Message[:len(e.Message) - 1]
+		e.logger.HandleEntry(e)
+	}
+	e.pool.Put(e)
+}
+
+func (e *entryStd) Infof(format string,args ...interface{}) {
+	if e.level < 2 {
+		e.Level = 1
+		e.Message = fmt.Sprintf(format, args...)
+		e.Message = e.Message[:len(e.Message) - 1]
+		e.logger.HandleEntry(e)
+	}
+	e.pool.Put(e)
+}
+
+func (e *entryStd) Warningf(format string,args ...interface{}) {
+	if e.level < 3 {
+		e.Level = 2
+		e.Message = fmt.Sprintf(format, args...)
+		e.logger.HandleEntry(e)
+	}
+	e.pool.Put(e)
+}
+
+func (e *entryStd) Errorf(format string,args ...interface{}) {
+	if e.level < 4 {
+		e.Level = 3
+		e.Message = fmt.Sprintf(format, args...)
+		e.logger.HandleEntry(e)
+	}
+	e.pool.Put(e)
+}
+
+func (e *entryStd) Fatalf(format string,args ...interface{}) {
+	e.Level = 4
+	e.Message = fmt.Sprintf(format, args...)
+	e.logger.HandleEntry(e)
+	e.pool.Put(e)
+	panic(args)
+}
+
 func (e *entryStd) WithField(key string, value interface{}) LogOut {
 	if e.Fields == nil {
-		e.Fields = make(Fields)
+		e.Fields = make(Fields, 3)
 	}
 	if key == "time" {
 		var ok bool
@@ -367,6 +443,7 @@ func (l *LoggerInit) newEntry() *entryInit {
 }
 
 func (l *LoggerInit) HandleEntry(e interface{}) {
+	// Do nothing because of LoggerInit not handler entry.
 }
 
 func (l *LoggerInit) NextHandler(logger Logger) {
@@ -416,6 +493,27 @@ func (l *LoggerInit) Fatal(args ...interface{}) {
 	l.newEntry().Fatal(args...)
 }
 
+
+func (l *LoggerInit) Debugf(format string, args ...interface{}) {
+	l.newEntry().Debugf(format, args...)
+}
+
+func (l *LoggerInit) Infof(format string, args ...interface{}) {
+	l.newEntry().Infof(format, args...)
+}
+
+func (l *LoggerInit) Warningf(format string, args ...interface{}) {
+	l.newEntry().Warningf(format, args...)
+}
+
+func (l *LoggerInit) Errorf(format string, args ...interface{}) {
+	l.newEntry().Errorf(format, args...)
+}
+
+func (l *LoggerInit) Fatalf(format string, args ...interface{}) {
+	l.newEntry().Fatalf(format, args...)
+}
+
 func (l *LoggerInit) GetName() string {
 	return ComponentLoggerInitName
 }
@@ -449,6 +547,32 @@ func (e *entryInit) Error(args ...interface{}) {
 func (e *entryInit) Fatal(args ...interface{}) {
 	e.Level = 4
 	e.Message = fmt.Sprint(args...)
+}
+
+
+func (e *entryInit) Debugf(format string, args ...interface{}) {
+	e.Level = 0
+	e.Message = fmt.Sprintf(format, args...)
+}
+
+func (e *entryInit) Infof(format string, args ...interface{}) {
+	e.Level = 1
+	e.Message = fmt.Sprintf(format, args...)
+}
+
+func (e *entryInit) Warningf(format string, args ...interface{}) {
+	e.Level = 2
+	e.Message = fmt.Sprintf(format, args...)
+}
+
+func (e *entryInit) Errorf(format string, args ...interface{}) {
+	e.Level = 3
+	e.Message = fmt.Sprintf(format, args...)
+}
+
+func (e *entryInit) Fatalf(format string, args ...interface{}) {
+	e.Level = 4
+	e.Message = fmt.Sprintf(format, args...)
 }
 
 func (e *entryInit) WithField(key string, value interface{}) LogOut {

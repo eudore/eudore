@@ -50,9 +50,12 @@ func NewCommand(cmd , pidfile string) *Command {
 //
 // 解析命令并执行。
 func (c *Command) Run() (err error) {
+	if c.pidfile == "" {
+		fmt.Println("pidfile is empty string.")
+		return errors.New("pidfile is empty string.")
+	}
 	switch c.cmd {
-	case "start", "":
-		c.cmd = "start"
+	case "start":
 		err = c.Start()
 	case "daemon":
 		err = c.Daemon()

@@ -64,13 +64,13 @@ type (
 	}
 
 
-/*	RequestWriter interface {
-		Host(string)
-		Method(string)
-		Path(string)
-		Body(io.Reader)
+	RequestWriter interface {
+		// Url(string)
+		// Method(string)
 		Header() Header
-	}*/
+		// Body(interface{})
+		Do() (ResponseReader, error)
+	}
 	// ResponseReader is used to read the http protocol response message information.
 	//
 	// ResponseReader用于读取http协议响应报文信息。

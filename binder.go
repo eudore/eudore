@@ -14,6 +14,7 @@ package eudore
 
 import (
 	"io"
+	"fmt"
 	"mime"
 	"time"
 	"errors"
@@ -55,20 +56,23 @@ func (fn BindFunc) Bind(r protocol.RequestReader, i interface{}) error {
 }
 
 func BinderDefaultFunc(r protocol.RequestReader, i interface{}) error {
-	switch r.Header().Get("Content-Type") {
+	switch strings.SplitN(r.Header().Get(HeaderContentType), ";", 2)[0] {
 	case MimeApplicationJson:
 		return BinderJSON.Bind(r, i)
 	case MimeTextXml, MimeApplicationXml:
 		return BinderXML.Bind(r, i)
-	case MimeApplicationForm, MimeMultipartForm:
+	case MimeMultipartForm:
 		return BinderForm.Bind(r, i)
+	case MimeApplicationForm:
+		return BinderUrl.Bind(r, i)
 	default: //case MIMEPOSTForm, MIMEMultipartPOSTForm:
+		fmt.Println("default bind", r.Header().Get(HeaderContentType))
 		return BinderForm.Bind(r, i)
 	}
 }
 
 func BindFormFunc(r protocol.RequestReader, i interface{}) error {
-	d, params, err := mime.ParseMediaType(r.Header().Get("Content-Type"))
+	d, params, err := mime.ParseMediaType(r.Header().Get(HeaderContentType))
 	if err != nil {
 		return nil
 	}
@@ -79,7 +83,7 @@ func BindFormFunc(r protocol.RequestReader, i interface{}) error {
 	if err != nil {
 		return nil
 	}
-	return mapFormByTag(i, form.Value, "form")
+	return mapFormByTag(i, form.Value)
 }
 
 // body读取限制32kb.
@@ -92,7 +96,7 @@ func BindUrlFunc(r protocol.RequestReader, i interface{}) error {
 	if err != nil {
 		return nil
 	}
-	return mapFormByTag(i, uri, "uri")
+	return mapFormByTag(i, uri)
 }
 
 func BindJsonFunc(r protocol.RequestReader, i interface{}) error {
@@ -104,7 +108,7 @@ func BindXmlFunc(r protocol.RequestReader, i interface{}) error {
 }
 
 // source gin
-func mapFormByTag(ptr interface{}, form map[string][]string, tag string) error {
+func mapFormByTag(ptr interface{}, form map[string][]string) error {
 	typ := reflect.TypeOf(ptr).Elem()
 	val := reflect.ValueOf(ptr).Elem()
 	for i := 0; i < typ.NumField(); i++ {
@@ -116,7 +120,7 @@ func mapFormByTag(ptr interface{}, form map[string][]string, tag string) error {
 
 		structFieldKind := structField.Kind()
 		// 从tag获取属性名称
-		inputFieldName := typeField.Tag.Get(tag)
+		inputFieldName := typeField.Tag.Get("bind")
 
 		if inputFieldName == "" {
 			// 设置名称为结构体属性名
@@ -134,7 +138,7 @@ func mapFormByTag(ptr interface{}, form map[string][]string, tag string) error {
 			}
 			// 如果对象属性是结构体，则设置该对象属性
 			if structFieldKind == reflect.Struct {
-				err := mapFormByTag(structField.Addr().Interface(), form, tag)
+				err := mapFormByTag(structField.Addr().Interface(), form)
 				if err != nil {
 					return err
 				}

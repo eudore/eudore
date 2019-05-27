@@ -41,7 +41,7 @@ func (resp *Response) WriteHeader(code int) {
 }
 
 func (resp *Response) Flush() {
-	
+	// Do nothing because nosuppert	
 }
 
 func (resp *Response) Hijack() (net.Conn, error) {

@@ -1,28 +1,34 @@
 package http
 
+import (
+	"net/textproto"
+)
+
 type Header struct {
-	keys	[]string
-	vals	[]string
+	Keys	[]string
+	Vals	[]string
 }
 
 func (h *Header) Reset() {
-	h.keys = h.keys[0:0]
-	h.vals = h.vals[0:0]
+	h.Keys = h.Keys[0:0]
+	h.Vals = h.Vals[0:0]
 }
 
 func (h *Header) Get(key string) string {
-	for i, k := range h.keys {
+	key = textproto.CanonicalMIMEHeaderKey(key)
+	for i, k := range h.Keys {
 		if k == key {
-			return h.vals[i]
+			return h.Vals[i]
 		}
 	}
 	return ""
 }
 
 func (h *Header) Set(key string, val string) {
-	for i, k := range h.keys {
+	key = textproto.CanonicalMIMEHeaderKey(key)
+	for i, k := range h.Keys {
 		if k == key {
-			h.vals[i] = val
+			h.Vals[i] = val
 			return
 		}
 	}
@@ -30,21 +36,23 @@ func (h *Header) Set(key string, val string) {
 }
 
 func (h *Header) Add(key string, val string) {
-	h.keys = append(h.keys, key)
-	h.vals = append(h.vals, val)
+	key = textproto.CanonicalMIMEHeaderKey(key)
+	h.Keys = append(h.Keys, key)
+	h.Vals = append(h.Vals, val)
 }
 
 func (h *Header) Del(key string) {
-	for i, k := range h.keys {
+	key = textproto.CanonicalMIMEHeaderKey(key)
+	for i, k := range h.Keys {
 		if k == key {
-			h.keys[i] = ""
+			h.Keys[i] = ""
 			return
 		}
 	}
 }
 
 func (h *Header) Range(fn func(string, string)) {
-	for i, k := range h.keys {
-		fn(k, h.vals[i])
+	for i, k := range h.Keys {
+		fn(k, h.Vals[i])
 	}
 }

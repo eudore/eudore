@@ -19,40 +19,34 @@ type (
 	//
 	// App组合主要功能接口，启动等实例化操作需要额外封装。
 	App struct {
-		Config
-		Server
-		Logger
-		Router
+		Config			`set:"config"`
+		Logger			`set:"logger"`
+		Server			`set:"server"`
+		Router			`set:"router"`
 		Cache
+		Session
+		Client
+		View
 		Binder
 		Renderer
-		View
-		// pools存储各种Context、、构造函数，用于sync.pool Get一个新对象。
-		Pools map[string]PoolGetFunc
 	}
 )
 
 func NewApp() *App {
 	return &App{
-		Pools:	make(map[string]PoolGetFunc),
+		Binder:	BinderDefault,
 	}
 }
-
-// Set the program sync.Pool create function
-//
-// 设置程序sync.Pool创建函数
-func (app *App) RegisterPoolFunc(name string, fn PoolGetFunc) {
-	app.Pools[name] = fn
-}
-
 
 // Load components in bulk, using null values.
 //
 // 批量加载组件，使用的参数都是空值。
 func (app *App) RegisterComponents(names []string, args []interface{}) error {
+	var err error
 	errs := NewErrors()
 	for i, name := range names {
-		errs.HandleError(app.RegisterComponent(name, args[i]))
+		_, err = app.RegisterComponent(name, args[i])
+		errs.HandleError(err)
 	}
 	return errs.GetError()
 }
@@ -60,15 +54,15 @@ func (app *App) RegisterComponents(names []string, args []interface{}) error {
 // Load a component and assign it to app.
 //
 // 加载一个组件，并赋值给app。
-func (app *App) RegisterComponent(name string,  arg interface{}) error {
+func (app *App) RegisterComponent(name string,  arg interface{}) (Component, error) {
 	c, err := NewComponent(name, arg)
 	if err != nil {
 		app.Error(err)
-		return err
+		return nil, err
 	}
 	switch c.(type) {
-	case Router:
-		app.Router = c.(Router)
+	case Config:
+		app.Config = c.(Config)
 	case Logger:
 		li, ok := app.Logger.(LoggerInitHandler)
 		app.Logger = c.(Logger)
@@ -77,16 +71,47 @@ func (app *App) RegisterComponent(name string,  arg interface{}) error {
 		}
 	case Server:
 		app.Server = c.(Server)
+	case Router:
+		app.Router = c.(Router)
 	case Cache:
 		app.Cache = c.(Cache)
-	case Config:
-		app.Config = c.(Config)
+	case Session:
+		app.Session = c.(Session)
 	case View:
 		app.View = c.(View)
 	default:
 		err := fmt.Errorf("app undefined component: %s", name)
 		app.Error(err)
-		return err
+		return nil, err
+	}
+	return c, nil
+}
+
+
+func (app *App) GetAllComponent() ([]string, []Component) {
+	var names []string = []string{"config", "logger", "server", "router", "cache", "session", "view"}
+	return names, []Component{
+		app.Config,
+		app.Logger,
+		app.Server,
+		app.Router,
+		app.Cache,
+		app.Session,
+		// app.Client,
+		app.View,
+	}
+}
+
+
+func (app *App) InitComponent() error {
+	names, components := app.GetAllComponent()
+	for i, name := range names {
+		if components[i] == nil {
+			_, err := app.RegisterComponent(name, nil)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

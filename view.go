@@ -82,8 +82,8 @@ func (v *ViewStd) loadTemplate(path string) (*template.Template, error) {
 	return v.root.AddParseTree(path, t.Tree)
 }
 
-func (v *ViewStd) Set(key string, val interface{}) error {
-	return nil
+func (v *ViewStd) Set(key string, val interface{}) error { 
+	return ErrComponentNoSupportField
 }
 
 func (*ViewStdConfig) GetName() string {

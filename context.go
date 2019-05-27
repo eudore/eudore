@@ -1,3 +1,10 @@
+/*
+Context
+
+Context定义一个请求上下文
+
+文件：context.go
+*/
 package eudore
 
 import (
@@ -8,6 +15,7 @@ import (
 	"strings"
 	"context"
 	"net/http"
+	"net/url"
 	"io/ioutil"
 	// "crypto/tls"
 	// "golang.org/x/net/http2"
@@ -48,17 +56,20 @@ type (
 		Istls() bool
 		Body() []byte
 
-		// param header cookie
+		// param header cookie session
 		Params() Params
 		GetParam(string) string
 		SetParam(string, string)
 		AddParam(string, string)
+		GetQuery(string) string
 		GetHeader(name string) string
 		SetHeader(string, string)
 		Cookies() []*Cookie
 		GetCookie(name string) string
 		SetCookie(cookie *SetCookie)
 		SetCookieValue(string, string, int)
+		GetSession() SessionData
+		SetSession(SessionData)
 
 
 		// response
@@ -74,12 +85,18 @@ type (
 		// binder and renderer
 		ReadBind(interface{}) error
 		WriteRender(interface{}) error
+
 		// log LogOut interface
 		Debug(...interface{})
 		Info(...interface{})
 		Warning(...interface{})
 		Error(...interface{})
 		Fatal(...interface{})
+		Debugf(string, ...interface{})
+		Infof(string, ...interface{})
+		Warningf(string, ...interface{})
+		Errorf(string, ...interface{})
+		Fatalf(string, ...interface{})
 		WithField(key string, value interface{}) LogOut
 		WithFields(fields Fields) LogOut
 		// app
@@ -87,42 +104,59 @@ type (
 	}
 
 	/* 实现Context接口 */
-	ContextHttp struct {
+	ContextBase struct {
 		context.Context
 		protocol.RequestReader
 		protocol.ResponseWriter
-		// Middleware
+		ParamsArray
+		QueryUrl
+		// run handler
+		index		int
+		handler		HandlerFuncs
 		// data
 		keys		map[interface{}]interface{}
 		path 		string
 		rawQuery	string
-		pkeys		[]string
-		pvals		[]string
 		cookies 	[]*Cookie
 		isReadBody	bool
 		postBody	[]byte
-		isrun		bool
-		index		int
-		handler		HandlerFuncs
 		// component
 		app			*App
 		log			Logger
 		fields		Fields
 	}
-
+	ParamsArray struct {
+		Keys		[]string
+		Vals		[]string
+	}
+	QueryUrl struct {
+		keys		[]string
+		vals		[]string
+	}
 )
 
-// Convert nil to type *ContextHttp, detect ContextHttp object to implement Context interface
+// Convert nil to type *ContextBase, detect ContextBase object to implement Context interface
 //
-// 将nil强制类型转换成*ContextHttp，检测ContextHttp对象实现Context接口
-var _ Context			=	(*ContextHttp)(nil)
+// 将nil强制类型转换成*ContextBase，检测ContextBase对象实现Context接口
+var _ Context			=	(*ContextBase)(nil)
+
+
+func NewContextBase(app *App) *ContextBase {
+	return &ContextBase{
+		app:	app,
+		fields:	make(Fields, 5),
+	}
+}
 
 // context
-func (ctx *ContextHttp) Reset(pctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
+func (ctx *ContextBase) Reset(pctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
 	ctx.Context = pctx
 	ctx.RequestReader = r
 	ctx.ResponseWriter = w
 	ctx.keys = nil
+	// logger
+	ctx.log = ctx.app.Logger
+
 	// path and raw
 	uri := r.RequestURI()
 	pos := strings.IndexByte(uri, '?')
@@ -133,43 +167,52 @@ func (ctx *ContextHttp) Reset(pctx context.Context, w protocol.ResponseWriter, r
 		ctx.path = uri[:pos]
 		ctx.rawQuery = uri[pos + 1:]
 	}
-
-	ctx.isrun = true
-	ctx.pkeys = ctx.pkeys[0:0]
-	ctx.pvals = ctx.pvals[0:0]
-	// ctx.params = make(Params)
-	// ctx.AddParam(ParamRoutePath, ctx.path)
-	// ctx.AddParam(ParamRouteMethod, ctx.Method())
-	ctx.cookies = ctx.cookies[0:0]
-	ctx.readCookies(r.Header().Get(HeaderCookie))
+	
+	// query
+	err := ctx.QueryUrl.readQuery(ctx.rawQuery)
+	if err != nil {
+		ctx.Error(err)
+	}
+	// url parsm
+	ctx.path, err = url.QueryUnescape(ctx.path)
+	if err != nil {
+		ctx.Error(err)
+	}
+	
+	// body
 	ctx.isReadBody = false
 	ctx.postBody = ctx.postBody[0:0]
-	ctx.log = ctx.app.Logger
-	readQuery(ctx.rawQuery, ctx)
+
+	// params
+	ctx.ParamsArray.Keys = ctx.ParamsArray.Keys[0:0]
+	ctx.ParamsArray.Vals = ctx.ParamsArray.Vals[0:0]
+	// cookies
+	ctx.cookies = ctx.cookies[0:0]
+	ctx.readCookies(r.Header().Get(HeaderCookie))
 }
 
-func (ctx *ContextHttp) Request() protocol.RequestReader {
+func (ctx *ContextBase) Request() protocol.RequestReader {
 	return ctx.RequestReader
 }
 
-func (ctx *ContextHttp) Response() protocol.ResponseWriter {
+func (ctx *ContextBase) Response() protocol.ResponseWriter {
 	return ctx.ResponseWriter
 }
 
-func (ctx *ContextHttp) SetRequest(r protocol.RequestReader) {
+func (ctx *ContextBase) SetRequest(r protocol.RequestReader) {
 	ctx.RequestReader = r
 }
 
-func (ctx *ContextHttp) SetResponse(w protocol.ResponseWriter) {
+func (ctx *ContextBase) SetResponse(w protocol.ResponseWriter) {
 	ctx.ResponseWriter = w
 }
 
-func (ctx *ContextHttp) SetHandler(fs HandlerFuncs) {
+func (ctx *ContextBase) SetHandler(fs HandlerFuncs) {
 	ctx.index = -1
 	ctx.handler = fs
 }
 
-func (ctx *ContextHttp) Next() {
+func (ctx *ContextBase) Next() {
 	ctx.index++
 	for ctx.index < len(ctx.handler) {
 		ctx.handler[ctx.index](ctx)
@@ -177,11 +220,11 @@ func (ctx *ContextHttp) Next() {
 	}
 }
 
-func (ctx *ContextHttp) End() {
-	ctx.isrun = false
+func (ctx *ContextBase) End() {
+	ctx.index = 0xff
 }
 
-func (ctx *ContextHttp) NewRequest(method, url string, body io.Reader) (protocol.ResponseReader, error) {
+func (ctx *ContextBase) NewRequest(method, url string, body io.Reader) (protocol.ResponseReader, error) {
 	// tr := &http2.Transport{
 	// 	AllowHTTP: true, //充许非加密的链接
 	// 	TLSClientConfig: &tls.Config{
@@ -212,7 +255,7 @@ func (ctx *ContextHttp) NewRequest(method, url string, body io.Reader) (protocol
 	return NewResponseReaderHttp(resp), err
 }
 
-func (ctx *ContextHttp) Value(key interface{}) interface{} {
+func (ctx *ContextBase) Value(key interface{}) interface{} {
 	v, ok := ctx.keys[key]
 	if ok {
 		return v
@@ -220,7 +263,7 @@ func (ctx *ContextHttp) Value(key interface{}) interface{} {
 	return ctx.Context.Value(key)
 }
 
-func (ctx *ContextHttp) SetValue(key interface{}, val interface{}) {
+func (ctx *ContextBase) SetValue(key interface{}, val interface{}) {
 	if ctx.keys == nil {
 		ctx.keys = make(map[interface{}]interface{})
 	}
@@ -229,21 +272,11 @@ func (ctx *ContextHttp) SetValue(key interface{}, val interface{}) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-func (ctx *ContextHttp) Path() string {
+func (ctx *ContextBase) Path() string {
 	return ctx.path
 }
 
-func (ctx *ContextHttp) RemoteAddr() string {
+func (ctx *ContextBase) RemoteAddr() string {
 	xforward := ctx.RequestReader.Header().Get(HeaderXForwardedFor)
 	if "" == xforward {
 		return strings.SplitN(ctx.RequestReader.RemoteAddr(), ":", 2)[0]
@@ -251,23 +284,23 @@ func (ctx *ContextHttp) RemoteAddr() string {
 	return strings.SplitN(string(xforward), ",", 2)[0]
 }
 
-func (ctx *ContextHttp) RequestID() string {
+func (ctx *ContextBase) RequestID() string {
 	return ctx.GetHeader(HeaderXRequestID)
 }
 
-func (ctx *ContextHttp) Referer() string {
+func (ctx *ContextBase) Referer() string {
 	return ctx.GetHeader(HeaderReferer)
 }
 
-func (ctx *ContextHttp) ContentType() string {
+func (ctx *ContextBase) ContentType() string {
 	return ctx.GetHeader(HeaderContentType)
 }
 
-func (ctx *ContextHttp) Istls() bool {
+func (ctx *ContextBase) Istls() bool {
 	return ctx.RequestReader.TLS() != nil
 }
 
-func (ctx *ContextHttp) Body() []byte {
+func (ctx *ContextBase) Body() []byte {
 	if !ctx.isReadBody {
 		bts, err := ioutil.ReadAll(ctx.RequestReader)
 		if err != nil {
@@ -282,65 +315,23 @@ func (ctx *ContextHttp) Body() []byte {
 
 
 
-func (ctx *ContextHttp) Params() Params {
-	return ctx
+func (ctx *ContextBase) Params() Params {
+	return &ctx.ParamsArray
 }
 
-func (ctx *ContextHttp) GetParam(key string) string {
-	for i, str := range ctx.pkeys {
-		if str == key {
-			return ctx.pvals[i]
-		}
-	}
-	return ""
-}
-
-func (ctx *ContextHttp) AddParam(key string, val string) {
-	ctx.pkeys = append(ctx.pkeys, key)
-	ctx.pvals = append(ctx.pvals, val)
-}
-
-func (ctx *ContextHttp) SetParam(key string, val string) {
-	for i, str := range ctx.pkeys {
-		if str == key {
-			ctx.pvals[i] = val
-			return
-		}
-	}
-	ctx.AddParam(key, val)
-}
-/*
-
-func (ctx *ContextHttp) Params() Params {
-	return ctx.params
-}
-
-func (ctx *ContextHttp) GetParam(key string) string {
-	return ctx.params.GetPa(key)
-}
-
-func (ctx *ContextHttp) SetParam(key string, val string) {
-	ctx.params.Set(key, val)
-}
-
-func (ctx *ContextHttp) AddParam(key string, val string) {
-	ctx.params.Add(key, val)
-}*/
-
-
-func (ctx *ContextHttp) GetHeader(name string) string {
+func (ctx *ContextBase) GetHeader(name string) string {
 	return ctx.RequestReader.Header().Get(name)
 }
 
-func (ctx *ContextHttp) SetHeader(name string, val string) {
+func (ctx *ContextBase) SetHeader(name string, val string) {
 	ctx.ResponseWriter.Header().Set(name, val)
 }
 
-func (ctx *ContextHttp) Cookies() []*Cookie {
+func (ctx *ContextBase) Cookies() []*Cookie {
 	return ctx.cookies
 }
 
-func (ctx *ContextHttp) GetCookie(name string) string {
+func (ctx *ContextBase) GetCookie(name string) string {
 	for _, ctx := range ctx.cookies {
 		if ctx.Name == name {
 			return ctx.Value	
@@ -349,58 +340,50 @@ func (ctx *ContextHttp) GetCookie(name string) string {
 	return ""
 }
 
-func (ctx *ContextHttp) SetCookie(cookie *SetCookie) {
+func (ctx *ContextBase) SetCookie(cookie *SetCookie) {
 	if v := cookie.String(); v != "" {
 		ctx.ResponseWriter.Header().Add("Set-Cookie", v)
 	}
 }
-func (ctx *ContextHttp) SetCookieValue(name, value string, maxAge int) {
+
+func (ctx *ContextBase) SetCookieValue(name, value string, maxAge int) {
 	ctx.ResponseWriter.Header().Add("Set-Cookie", fmt.Sprintf("%s=%s; Max-Age=%d", name, value ,maxAge))
 //	ctx.SetCookie(&http.Cookie{Name: name, Value: url.QueryEscape(value), Path: "/", MaxAge: maxAge})
 }
 
-
-
-
-
-// response
-//
-// func (ctx *ContextHttp) Write([]byte) (int, error) from protocol.ResponseWriter
-//
-// func (ctx *ContextHttp) WriteHeader(int) from protocol.ResponseWriter
-
-// Implement request redirection, divided into internal redirection and external redirection.
-//
-// No host information is internally redirected, rerouted and processed.
-//
-// There is host information for external redirects, and the request returns redirect information.
-//
-// 实现请求重定向，分内部重定向和外部重定向。
-//
-// 无主机信息为内部重定向，重新路由并处理。
-//
-// 有主机信息为外部重定向，请求返回重定向信息。
-func (ctx *ContextHttp) Redirect(code int, url string) {
-	HandlerRedirect(ctx, url, code)
+func (ctx *ContextBase) GetSession() SessionData {
+	return ctx.app.Session.SessionLoad(ctx)
+} 
+func (ctx *ContextBase) SetSession(sess SessionData) {
+	ctx.app.Session.SessionSave(sess)
 }
 
-func (ctx *ContextHttp) Push(target string, opts *protocol.PushOptions) error {
+
+
+// Implement request redirection.
+//
+// 实现请求重定向。
+func (ctx *ContextBase) Redirect(code int, url string) {
+	HandlerRedirectExternal(ctx, url, code)
+}
+
+func (ctx *ContextBase) Push(target string, opts *protocol.PushOptions) error {
 	if opts == nil {
 		opts = &protocol.PushOptions{
-			Header: HeaderHttp{
+			Header: HeaderMap{
 				HeaderAcceptEncoding: []string{ctx.RequestReader.Header().Get(HeaderAcceptEncoding)},
 			},
 		}
 	}
-	// TODO: add opts
+
 	err := ctx.ResponseWriter.Push(target, opts)
 	if err != nil {
-		ctx.Debug(fmt.Sprintf("Failed to push: %v, Resource path: %s.", err, target))
+		ctx.Errorf("Failed to push: %v, Resource path: %s.", err, target)
 	}
 	return err
 }
 
-func (ctx *ContextHttp) WriteView(path string,i interface{}) error {	
+func (ctx *ContextBase) WriteView(path string,i interface{}) error {	
 	if i == nil {
 		i = ctx.keys
 	}
@@ -408,20 +391,20 @@ func (ctx *ContextHttp) WriteView(path string,i interface{}) error {
 	return ctx.app.View.ExecuteTemplate(ctx.ResponseWriter, path, i)
 }
 
-func (ctx *ContextHttp) WriteString(i string) (err error) {
+func (ctx *ContextBase) WriteString(i string) (err error) {
 	_, err = ctx.Write(*(*[]byte)(unsafe.Pointer(&i)))
 	return 
 }
 
-func (ctx *ContextHttp) WriteJson(i interface{}) error {
+func (ctx *ContextBase) WriteJson(i interface{}) error {
 	return ctx.WriteRenderWith(i, RendererJson)
 }
 
-func (ctx *ContextHttp) WriteXml(i interface{}) error {
+func (ctx *ContextBase) WriteXml(i interface{}) error {
 	return ctx.WriteRenderWith(i, RendererXml)
 }
 
-func (ctx *ContextHttp) WriteFile(path string) (err error) {
+func (ctx *ContextBase) WriteFile(path string) (err error) {
 	err = HandlerFile(ctx, path)
 	if err != nil {
 		ctx.Fatal(err)
@@ -431,7 +414,7 @@ func (ctx *ContextHttp) WriteFile(path string) (err error) {
 
 
 
-func (ctx *ContextHttp) ReadBind(i interface{}) error {
+func (ctx *ContextBase) ReadBind(i interface{}) error {
 	if i == nil {
 		if ctx.keys == nil {
 			ctx.keys = make(map[interface{}]interface{})
@@ -442,10 +425,10 @@ func (ctx *ContextHttp) ReadBind(i interface{}) error {
 }
 
 
-func (ctx *ContextHttp) WriteRender(i interface{}) error {
+func (ctx *ContextBase) WriteRender(i interface{}) error {
 	var r Renderer
-	for _, accept := range strings.Split(ctx.GetHeader(HeaderAccept), ",") {
-		if accept[0] == ' ' {
+	for _, accept := range strings.Split( GetStringDefault(ctx.GetHeader(HeaderAccept), ctx.GetHeader("accept")) , ",") {
+		if accept != "" && accept[0] == ' ' {
 			accept = accept[1:]
 		}
 		switch accept {
@@ -474,7 +457,7 @@ func (ctx *ContextHttp) WriteRender(i interface{}) error {
 	return ctx.WriteRenderWith(i, r)
 }
 
-func (ctx *ContextHttp) WriteRenderWith(i interface{}, r Renderer) error {
+func (ctx *ContextBase) WriteRenderWith(i interface{}, r Renderer) error {
 	if i == nil {
 		i = ctx.keys
 	}
@@ -490,30 +473,53 @@ func (ctx *ContextHttp) WriteRenderWith(i interface{}, r Renderer) error {
 }
 
 // logger
-func (ctx *ContextHttp) Debug(args ...interface{}) {
+func (ctx *ContextBase) Debug(args ...interface{}) {
 	ctx.logReset().Debug(fmt.Sprint(args...))
-	ctx.fields = make(Fields, 3)
 }
-func (ctx *ContextHttp) Info(args ...interface{}) {
+func (ctx *ContextBase) Info(args ...interface{}) {
 	ctx.logReset().Info(fmt.Sprint(args...))
-	ctx.fields = make(Fields, 3)
 }
-func (ctx *ContextHttp) Warning(args ...interface{}) {
+func (ctx *ContextBase) Warning(args ...interface{}) {
 	ctx.logReset().Warning(fmt.Sprint(args...))
-	ctx.fields = make(Fields, 3)
 }
-func (ctx *ContextHttp) Error(args ...interface{}) {
+func (ctx *ContextBase) Error(args ...interface{}) {
 	// 空错误不处理
 	if len(args) == 1 && args[0] == nil {
 		return
 	}
 	ctx.logReset().Error(fmt.Sprint(args...))
-	ctx.fields = make(Fields, 3)
 }
 
-func (ctx *ContextHttp) Fatal(args ...interface{}) {
+func (ctx *ContextBase) Fatal(args ...interface{}) {
 	ctx.logReset().Error(fmt.Sprint(args...))
-	ctx.fields = make(Fields, 3)	
+	// 结束Context
+	if ctx.ResponseWriter.Status() == 200 {
+		ctx.WriteHeader(500)
+		ctx.WriteRender(map[string]string{
+			"status":	"500",
+			"x-request-id":	ctx.RequestID(),
+		})
+	}
+	ctx.End()
+}
+
+
+func (ctx *ContextBase) Debugf(format string, args ...interface{}) {
+	ctx.logReset().Debug(fmt.Sprintf(format, args...))
+}
+func (ctx *ContextBase) Infof(format string, args ...interface{}) {
+	ctx.logReset().Info(fmt.Sprintf(format, args...))
+}
+func (ctx *ContextBase) Warningf(format string, args ...interface{}) {
+	ctx.logReset().Warning(fmt.Sprintf(format, args...))
+}
+
+func (ctx *ContextBase) Errorf(format string, args ...interface{}) {
+	ctx.logReset().Error(fmt.Sprintf(format, args...))
+}
+
+func (ctx *ContextBase) Fatalf(format string, args ...interface{}) {
+	ctx.logReset().Error(fmt.Sprintf(format, args...))
 	// 结束Context
 	ctx.WriteHeader(500)
 	ctx.WriteRender(map[string]string{
@@ -523,7 +529,7 @@ func (ctx *ContextHttp) Fatal(args ...interface{}) {
 	ctx.End()
 }
 
-func (ctx *ContextHttp) logReset() LogOut {
+func (ctx *ContextBase) logReset() LogOut {
 	file, line := LogFormatFileLine(0)
 	ctx.fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
 	ctx.fields["file"] = file
@@ -531,7 +537,7 @@ func (ctx *ContextHttp) logReset() LogOut {
 	return ctx.app.Logger.WithFields(ctx.fields)
 }
 
-func (ctx *ContextHttp) WithField(key string, value interface{}) LogOut {
+func (ctx *ContextBase) WithField(key string, value interface{}) LogOut {
 	if ctx.fields == nil {
 		ctx.fields = make(Fields)
 	}
@@ -539,18 +545,18 @@ func (ctx *ContextHttp) WithField(key string, value interface{}) LogOut {
 	return ctx
 }
 
-func (ctx *ContextHttp) WithFields(fields Fields) LogOut {
+func (ctx *ContextBase) WithFields(fields Fields) LogOut {
 	ctx.fields = fields
 	return ctx
 }
 
 
-func (ctx *ContextHttp) App() *App {
+func (ctx *ContextBase) App() *App {
 	return ctx.app
 }
 
 
-func (ctx *ContextHttp) readCookies(line string) {
+func (ctx *ContextBase) readCookies(line string) {
 	if len(line) == 0 {
 		return
 	}
@@ -571,22 +577,83 @@ func (ctx *ContextHttp) readCookies(line string) {
 		if !ok {
 			continue
 		}
-		// ctx.cookies = append(ctx.cookies, &CookieRead{Name: name, Value: val})
+		ctx.cookies = append(ctx.cookies, &Cookie{Name: name, Value: val})
 	}
 }
 
 
 
-
-
-
-
-
-
-
-func validCookieValueByte(b byte) bool {
-	return 0x20 <= b && b < 0x7f && b != '"' && b != ';' && b != '\\'
+func (p *ParamsArray) GetParam(key string) string {
+	for i, str := range p.Keys {
+		if str == key {
+			return p.Vals[i]
+		}
+	}
+	return ""
 }
+
+func (p *ParamsArray) AddParam(key string, val string) {
+	p.Keys = append(p.Keys, key)
+	p.Vals = append(p.Vals, val)
+}
+
+func (p *ParamsArray) SetParam(key string, val string) {
+	for i, str := range p.Keys {
+		if str == key {
+			p.Vals[i] = val
+			return
+		}
+	}
+	p.AddParam(key, val)
+}
+
+func (q *QueryUrl) GetQuery(key string) string {
+	for i, str := range q.keys {
+		if str == key {
+			return q.vals[i]
+		}
+	}
+	return ""
+}
+
+func (q *QueryUrl) readQuery(query string) (err error) {
+	q.keys = q.keys[0:0]
+	q.vals = q.vals[0:0]
+	for query != "" {
+		key := query
+		if i := strings.IndexAny(key, "&;"); i >= 0 {
+			key, query = key[:i], key[i+1:]
+		} else {
+			query = ""
+		}
+		if key == "" {
+			continue
+		}
+		value := ""
+		if i := strings.Index(key, "="); i >= 0 {
+			key, value = key[:i], key[i+1:]
+		}
+		key, err1 := url.QueryUnescape(key)
+		if err1 != nil {
+			if err == nil {
+				err = err1
+			}
+			continue
+		}
+		value, err1 = url.QueryUnescape(value)
+		if err1 != nil {
+			if err == nil {
+				err = err1
+			}
+			continue
+		}
+		q.keys = append(q.keys, key)
+		q.vals = append(q.vals, value)
+	}
+	return err
+}
+
+
 
 func parseCookieValue(raw string, allowDoubleQuote bool) (string, bool) {
 	// Strip the quotes, if present.
@@ -599,6 +666,10 @@ func parseCookieValue(raw string, allowDoubleQuote bool) (string, bool) {
 		}
 	}
 	return raw, true
+}
+
+func validCookieValueByte(b byte) bool {
+	return 0x20 <= b && b < 0x7f && b != '"' && b != ';' && b != '\\'
 }
 
 func isCookieNameValid(raw string) bool {

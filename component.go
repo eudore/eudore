@@ -41,6 +41,8 @@ const (
 	ComponentRouterRadixVersion	=	"eudore router radix,use radix tree std router."
 	ComponentRouterFullName		=	"router-full"
 	ComponentRouterFullVersion	=	"eudore router full,use radix tree full router."
+	ComponentRouterDebugName	=	"router-debug"
+	ComponentRouterDebugVersion	=	"eudore router debug, use router full."
 	ComponentRouterHostName		=	"router-host"
 	ComponentRouterHostVersion	=	"eudore router host."
 	ComponentRouterInitName	=	"router-init"
@@ -50,6 +52,11 @@ const (
 	ComponentCacheMapVersion	=	"eudore cache map v1.0, from sync.Map."
 	ComponentCacheGroupName		=	"cache-group"
 	ComponentCacheGroupVersion	=	"eudore cache group v1.0."
+	ComponentSessionName		=	"session"
+	ComponentSessionMapName		=	"session-map"
+	ComponentSessionMapVersion	=	"eudore session map v1.0, from sync.Map."
+	ComponentSessionCacheName		=	"session-cache"
+	ComponentSessionCacheVersion	=	"eudore session cache v1.0, save all data to eudore cache."
 	ComponentViewName			=	"view"
 	ComponentViewStdName		=	"view-std"
 	ComponentViewStdVersion		=	"eudore view std v1.0, golang std library html/template."
@@ -71,6 +78,13 @@ type (
 		ComponentName
 		Version() string
 	}
+	ComponentConfig struct {
+		Name	string		`set:"name"`
+		Config	interface{}	`set:"config"`
+	}
+	Printer interface {
+		Print(...interface{})
+	}
 )
 
 var (
@@ -87,6 +101,7 @@ func init() {
 		ComponentServerName:	ComponentServerStdName,
 		ComponentRouterName:	ComponentRouterRadixName,
 		ComponentCacheName:		ComponentCacheMapName,
+		ComponentSessionName:	ComponentSessionMapName,
 		ComponentViewName:		ComponentViewStdName,
 	}
 	components = make(map[string]ComponentFunc)
@@ -123,6 +138,12 @@ func init() {
 	})
 	RegisterComponent(ComponentCacheGroupName, func(i interface{}) (Component, error) {
 		return NewCacheGroup(i)
+	})
+	RegisterComponent(ComponentSessionMapName, func(i interface{}) (Component, error) {
+		return NewSessionMap(i)
+	})
+	RegisterComponent(ComponentSessionCacheName, func(i interface{}) (Component, error) {
+		return NewSessionCache(i)
 	})
 	RegisterComponent(ComponentViewStdName, func(i interface{}) (Component, error) {
 		return NewViewStd(i)
@@ -214,3 +235,4 @@ func ComponentSet(c Component, key string, val interface{}) (err error) {
 	_, err = Set(c, key, val)
 	return
 }
+

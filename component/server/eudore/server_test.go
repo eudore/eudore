@@ -18,7 +18,7 @@ func TestStart(t *testing.T) {
 	srv.Set("", &eudore.HttpConfig{
 		Addr:	":8088",
 	})
-	srv.Set("", protocol.HandlerFunc(func(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
+	srv.Set("", protocol.HandlerFunc(func(_ context.Context, w protocol.ResponseWriter, _ protocol.RequestReader) {
 		w.Write([]byte("start eudore server, this default page."))
 	}))
 	// startCPUProfile()
@@ -28,11 +28,10 @@ func TestStart(t *testing.T) {
 
 
 
-
-func TestHttp(t *testing.T) {
+func TestHttp(*testing.T) {
 	srv := http.Server{
 		Addr:	":8088",
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Write([]byte("start eudore server, this default page."))
 		}),
 	}

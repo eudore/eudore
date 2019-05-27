@@ -32,7 +32,9 @@ type (
 	// 路由默认直接注册的方法，其他方法可以使用RouterRegister接口直接注册。
 	RouterMethod interface {
 		Group(string) RouterMethod
-		AddMiddleware(...HandlerFunc) RouterMethod
+		AddHandler(string, string, ...HandlerFunc) RouterMethod
+		AddMiddleware(string, string, ...HandlerFunc) RouterMethod
+		AddController(...Controller) RouterMethod
 		Any(string, ...Handler)
 		AnyFunc(string, ...HandlerFunc)
 		Delete(string, ...Handler)
@@ -70,6 +72,7 @@ type (
 	// 默认路由器方法注册实现
 	RouterMethodStd struct {
 		RouterCore
+		ControllerParseFunc
 		prefix		string
 		tags		string
 	}
@@ -92,8 +95,8 @@ type (
 		// Type		string
 		Path		string
 		Method		string
-		Handler		string
-		Middleware  []string
+		Handler		interface{}
+		Middleware  interface{}
 		Routes		[]*RouterConfig
 	}
 )
@@ -137,35 +140,31 @@ func NewRouterClone(r Router) Router {
 	return NewRouterMust(r.GetName(), nil)
 }
 
-// 未实现。
-func SetRouterConfig(r RouterMethod, c *RouterConfig) {
-	// add Middleware
-	if len(c.Method) == 0 {
-		c.Method = MethodAny
-	}
-	if len(c.Path) > 0 && len(c.Handler) > 0 {
+// 将路由配置注入到路由中。
+func (config *RouterConfig) Inject(r RouterMethod) {
+	// handler
+	r.AddHandler(config.Method, config.Path, NewHandlerFuncs(config.Handler)...)
 
-	}
-	if len(c.Path) > 0 {
-		r = r.Group(c.Path)
-	}
-	for _, i := range c.Middleware {
-		r.AddMiddleware(ConfigLoadHandleFunc(i))
-	}
-	for _, i := range c.Routes {
-		SetRouterConfig(r, i)
+	// middleware
+	r.AddMiddleware(config.Method, config.Path, NewHandlerFuncs(config.Middleware)...)
+	
+	// routes
+	r = r.Group(config.Path)
+	for _, i := range config.Routes {
+		i.Inject(r)
 	}
 }
 
+
 func DefaultRouter405Func(ctx Context) {
-	const page405 string = "405 method not allowed"
+	const page405 string = "405 method not allowed\n"
 	ctx.Response().Header().Add("Allow", "HEAD, GET, POST, PUT, DELETE, PATCH")
 	ctx.WriteHeader(405)
 	ctx.WriteString(page405)
 }
 
 func DefaultRouter404Func(ctx Context) {
-	const page404 string = "404 page not found"
+	const page404 string = "404 page not found\n"
 	ctx.WriteHeader(404)
 	ctx.WriteString(page404)
 }
@@ -173,15 +172,12 @@ func DefaultRouter404Func(ctx Context) {
 
 
 
-func (m *RouterMethodStd) Register(mr RouterCore) {
-	m.RouterCore = mr
-}
-
 func (m *RouterMethodStd) Group(path string) RouterMethod {
 	// 将路径前缀和路径参数分割出来
 	args := strings.Split(path, " ")
 	prefix := args[0]
 	tags := path[len(prefix):]
+
 	// 如果路径是'/*'或'/'结尾，则移除后缀。
 	// '/*'为路由结尾，不可为路由前缀
 	// '/'不可为路由前缀，会导致出现'//'
@@ -191,22 +187,47 @@ func (m *RouterMethodStd) Group(path string) RouterMethod {
 	if len(prefix) > 0 && prefix[len(prefix) - 1] == '/' {
 		prefix = prefix[:len(prefix) - 1]
 	}
+
 	// 构建新的路由方法配置器
 	return &RouterMethodStd{
 		RouterCore:	m.RouterCore,
+		ControllerParseFunc:	m.ControllerParseFunc,
 		prefix:		m.prefix + prefix,
 		tags:		tags + m.tags,
 	}
 }
 
-func (m *RouterMethodStd) AddMiddleware(hs ...HandlerFunc) RouterMethod {
-	m.RegisterMiddleware(MethodAny, m.prefix + "/", hs)
+func (m *RouterMethodStd) AddHandler(method ,path string, hs ...HandlerFunc) RouterMethod {
+	if len(hs) > 0 {
+		m.registerHandlers(method, path, hs)
+	}
+	return m
+}
+
+func (m *RouterMethodStd) AddMiddleware(method ,path string, hs ...HandlerFunc) RouterMethod {
+	if len(hs) > 0 {
+		m.RegisterMiddleware(method, m.prefix + path, hs)
+	}
+	return m
+}
+
+func (m *RouterMethodStd) AddController(cs ...Controller) RouterMethod {
+	for _, c := range cs {
+		// controllerRegister(m, c)
+		config, err := m.ControllerParseFunc(c)
+		if err == nil {
+			config.Inject(m)
+		}else {
+			fmt.Println(err)
+		}
+	}
 	return m
 }
 
 func (m *RouterMethodStd) registerHandlers(method ,path string, hs HandlerFuncs) {
 	m.RouterCore.RegisterHandler(method, m.prefix + path + m.tags, hs)
 }
+
 
 // Router Register handler
 func (m *RouterMethodStd) Any(path string, h ...Handler) {
@@ -287,7 +308,6 @@ func (m *RouterMethodStd) OptionsFunc(path string, h ...HandlerFunc) {
 
 
 func (t *middNode) Insert(key string, val HandlerFuncs) {
-	// fmt.Println("Insert:", key)
 	t.recursiveInsertTree(key, key ,val)
 }
 
@@ -297,7 +317,6 @@ func (t *middNode) Lookup(searchKey string) HandlerFuncs {
 	if searchKey[len(searchKey) - 1] == '*' {
 		searchKey = searchKey[:len(searchKey) - 1]
 	}
-	// fmt.Println("Lookup:", searchKey)
 	return t.recursiveLoopup(searchKey)
 }
 
@@ -306,7 +325,7 @@ func (r *middNode) InsertNode(path, key string, value HandlerFuncs) {
 	if len(path) == 0 {
 		// 路径空就设置当前node的值
 		r.key = key
-		r.val = CombineHandlers(r.val, value)
+		r.val = CombineHandlerFuncs(r.val, value)
 	}else {
 		// 否则新增node
 		r.children = append(r.children, &middNode{path: path, key: key, val: value})
@@ -316,24 +335,15 @@ func (r *middNode) InsertNode(path, key string, value HandlerFuncs) {
 // 对指定路径为edgeKey的Node分叉，公共前缀路径为pathKey
 func (r *middNode) SplitNode(pathKey, edgeKey string) *middNode {
 	for i, _ := range r.children {
-		// 找到路径为edgeKey路径的Node，然后分叉
 		if r.children[i].path == edgeKey {
-			// 创建新的分叉Node，路径为公共前缀路径pathKey
 			newNode := &middNode{path: pathKey}
-			// 将原来edgeKey的数据移动到新的分叉Node之下
-			// 直接新增Node，原Node数据仅改变路径为截取后的后段路径
 			newNode.children = append(newNode.children, &middNode{
-				// 截取路径
 				path:	strings.TrimPrefix(edgeKey, pathKey),
-				// 复制数据
 				key:	r.children[i].key,
 				val:	r.children[i].val,
 				children:	r.children[i].children,
 			})
-			// 设置middNode的child[i]的Node为分叉Node
-			// 原理路径Node的数据移到到了分叉Node的child里面，原Node对象GC释放。
 			r.children[i] = newNode
-			// 返回分叉新创建的Node
 			return newNode
 		}
 	}
@@ -341,38 +351,25 @@ func (r *middNode) SplitNode(pathKey, edgeKey string) *middNode {
 }
 
 
-// 给currentNode递归添加，路径为containKey的Node
-//
-// targetKey和targetValue为新Node数据。
+// 给currentNode递归添加，路径为containKey的Node。
 func (currentNode *middNode) recursiveInsertTree(containKey string, targetKey string, targetValue HandlerFuncs) {
-	// fmt.Println("recursiveInsertTree", containKey, targetKey)
 	for i, _ := range currentNode.children {
-		// 检查当前遍历的Node和插入路径是否有公共路径
-		// subStr是两者的公共路径，find表示是否有
 		subStr, find := getSubsetPrefix(containKey, currentNode.children[i].path)
 		if find {
-			// 如果child路径等于公共最大路径，则该node添加child
-			// child的路径为插入路径先过滤公共路径的后面部分。
 			if subStr == currentNode.children[i].path {
 				nextTargetKey := strings.TrimPrefix(containKey, currentNode.children[i].path)
-				// 当前node新增子Node可能原本有多个child，所以需要递归添加
 				currentNode.children[i].recursiveInsertTree(nextTargetKey, targetKey, targetValue)
 			}else {
-				// 如果公共路径不等于当前node的路径
-				// 则将currentNode.children[i]路径分叉
-				// 分叉后的就拥有了公共路径，然后添加新Node
 				newNode := currentNode.SplitNode(subStr, currentNode.children[i].path)
 				if newNode == nil {
 					panic("Unexpect error on split node")
 				}
-				// 添加新的node
-				// 分叉后树一定只有一个没有相同路径的child，所以直接添加node
+				
 				newNode.InsertNode(strings.TrimPrefix(containKey, subStr), targetKey, targetValue)
 			}
 			return
 		}
 	}
-	// 没有相同前缀路径存在，直接添加为child
 	currentNode.InsertNode(containKey, targetKey, targetValue)
 }
 
@@ -380,28 +377,21 @@ func (currentNode *middNode) recursiveInsertTree(containKey string, targetKey st
 
 // 递归获得searchNode路径为searchKey的Node数据。
 func (searchNode *middNode) recursiveLoopup(searchKey string) (HandlerFuncs) {
-	// fmt.Println("recursiveLoopup:", searchKey)
-	// 匹配node，返回数据
-	// fmt.Println(1)
 	if len(searchKey) == 0  {
 		return searchNode.val
 	}
 
-	// fmt.Println(2)
 	for _, edgeObj := range searchNode.children {
 		// 寻找相同前缀node
 		if contrainPrefix(searchKey, edgeObj.path) {
-			// 截取为匹配的路径
 			nextSearchKey := strings.TrimPrefix(searchKey, edgeObj.path)
-			// 然后当前Node递归判断
 			return append(searchNode.val, edgeObj.recursiveLoopup(nextSearchKey)...)
 		}
 	}
-	// fmt.Println(3)
+
 	if len(searchNode.key) == 0 || searchNode.key[len(searchNode.key)-1] =='/'  {
 		return searchNode.val
 	}
 
-	// fmt.Println(4)
 	return nil
 }

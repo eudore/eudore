@@ -120,7 +120,7 @@ func setAcceptEncodingForPushOptions(opts *protocol.PushOptions) *protocol.PushO
 
 	if opts == nil {
 		opts = &protocol.PushOptions{
-			Header: eudore.HeaderHttp{
+			Header: eudore.HeaderMap{
 				eudore.HeaderAcceptEncoding: []string{"gzip"},
 			},
 		}
@@ -128,7 +128,7 @@ func setAcceptEncodingForPushOptions(opts *protocol.PushOptions) *protocol.PushO
 	}
 
 	if opts.Header == nil {
-		opts.Header = eudore.HeaderHttp{
+		opts.Header = eudore.HeaderMap{
 			eudore.HeaderAcceptEncoding: []string{"gzip"},
 		}
 		return opts

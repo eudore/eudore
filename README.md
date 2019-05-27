@@ -4,8 +4,8 @@
 
 ## Features
 
-- 核心全部接口化,支持重写Application、Context、Request、Response、Router、Middleware、Logger、Server、Config、Cache、Bind、Render、View。
-- 对象语义明确，框架源码简单易懂注释多，无注释部分变动可能较大。
+- 核心全部接口化,支持重写Application、Context、Request、Response、Router、Middleware、Logger、Server、Config、Cache、Session、View、Bind、Render、Controller。
+- 对象语义明确，框架源码简单易懂，无注释部分变动可能较大。
 
 ## Lsit
 
@@ -19,15 +19,13 @@
 - [x] Context与server完全解耦
 - [x] 根据Content-type自动序列化数据
 - [x] 根据Accept反序列化数据
-- [ ] 内部重定向支持
 - [x] http2 push
 - Config
 - [x] 配置库集成
 - [x] 支持基于路径读写对象
+- [ ] 解析参数环境变量和差异化配置
 - [x] map和结构体相互转换
-- [ ] 结构体基于tag初始化
-- [ ] 数据类型转换工具
-- [ ] 数据设置时验证
+- [x] 数据类型转换工具
 - [ ] 生成对象帮助信息
 - Server
 - [x] 支持net/http启动server
@@ -38,7 +36,7 @@
 - [x] websocket协议支持
 - [ ] 重新实现websocket协议
 - [x] 支持TLS和双向TLS
-- [ ] quic协议支持
+- [ ] 自动自签TLS证书
 - [ ] http3协议学不动了
 - [x] server热重启支持
 - [x] server后台启动
@@ -53,6 +51,7 @@
 - [x] 组级中间件注册
 - [x] api级中间件注册
 - [x] 路由默认参数
+- [ ] 默认参数匹配注册中间件
 - [x] 路由匹配参数捕获
 - [x] 路由匹配参数校验
 - [ ] 路由匹配参数正则捕捉
@@ -66,34 +65,44 @@
 - [ ] 日志写入到es
 - View
 - [ ] 多模板库接入
+- Mvc
+- [x] mvc支持
+- [x] 控制器函数输入参数
 - Tools
 - [x] 程序启动命令解析
 - [x] 信号响应支持
 - [ ] SRI值自动设置
 - [x] 自动http2 push
-- [ ] http代理实现
-- [ ] pprof支持
-- [ ] expvar支持
-- [ ] 运行时对象数据显示
+- [x] http代理实现
+- [x] pprof支持
+- [x] expvar支持
+- [x] 运行时对象数据显示
+- Session
+- [x] Session实现
 - Middleware
 - [x] gzip压缩
 - [x] 限流
 - [x] 黑名单
-- [ ] Session实现
+- [x] 异常捕捉
+- [x] 访问日志
 
 ## issue
 
 setting 基于配置初始化对象未实现
 
-缺少完整websocket实现，仅有upgrade部分
-
-config-eudore未测试，已实现通过路径设置获得属性。
-
-组件Set方法等待config-eudore实现后复用功能
-
 fasthttp不支持多端口和hijack
 
 handlefile处理304缓存
+
+handlerproxy未支持101
+
+组件debug日志
+
+websocket未完善
+
+client未实现
+
+反射接口处理
 
 ## Component
 
@@ -102,7 +111,7 @@ handlefile处理304缓存
 | router-radix | 使用基数树实现标准功能路由器 | 内置 |
 | router-full | 使用基数树实现完整功能路由器 | 内置 |
 | router-init | 初始时使用的路由处理 | github.com/eudore/eudore/component/router/init |
-| router-host | 匹配host路由到不同路由器处理 | github.com/eudore/eudore/component/router/host |
+| router-host | 匹配host路由到不同路由器处理 |  未更新、github.com/eudore/eudore/component/router/host |
 | logger-init | 初始化日志处理，保存日志由设置的日志对象处理 | 内置 |
 | logger-std | 基础日志库实现 | 内置 |
 | logger-elastic | 将日志直接输出到es中 | 未更新、github.com/eudore/eudore/component/eslogger |
@@ -413,13 +422,13 @@ package main
 import (
 	"github.com/eudore/eudore"
 	"github.com/gobwas/ws/wsutil"
+	_ "github.com/eudore/eudore/component/router/init"
 )
 
 func main() {
 	app := eudore.NewCore()
-	eudore.SetComponent(app.Logger, eudore.LoggerHandleFunc(eudore.LoggerHandleJson))
-	app.RegisterComponent(eudore.ComponentRouterEmptyName, eudore.HandlerFunc(func(ctx eudore.Context){
-		conn, _, err := eudore.UpgradeHttp(ctx) 
+	app.RegisterComponent(eudore.ComponentRouterInitName, eudore.HandlerFunc(func(ctx eudore.Context){
+		conn, err := eudore.UpgradeHttp(ctx) 
 		if err != nil {
 			// handle error
 			ctx.Error(err)
@@ -431,6 +440,7 @@ func main() {
 				msg, op, err := wsutil.ReadClientData(conn)
 				if err != nil {
 					ctx.Error(err)
+					break
 					// handle error
 				}
 				ctx.Info(string(msg))
