@@ -48,7 +48,7 @@ func NewJwt(fn VerifyFunc) eudore.HandlerFunc {
 				ctx.Warning("jwt expirese")
 				return
 			}
-			ctx.SetValue(eudore.ValueJwt, jwt)
+			// ctx.SetValue(eudore.ValueJwt, jwt)
 		}else {
 			ctx.WithField("error", "bearer invalid").Warning("")	
 		}
@@ -82,4 +82,19 @@ func (fn VerifyFunc) ParseToken(token string) (map[string]interface{}, error) {
 		return nil, err
 	}
 	return dst, nil
+}
+
+
+func (fn VerifyFunc) ParseBearer(jwtstr string) (map[string]interface{}, error) {
+	if strings.HasPrefix(jwtstr, BearerStar) {
+		jwt, err := fn.ParseToken(jwtstr[7:])
+		if err != nil {
+			return nil, err
+		}
+		if int64(jwt["exp"].(float64)) < time.Now().Unix() {
+			return nil, errors.New("jwt expirese")
+		}
+		return jwt, nil
+	}
+	return nil, errors.New("Bearer invalid")
 }

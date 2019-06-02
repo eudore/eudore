@@ -17,6 +17,7 @@ var (
 	ErrServerNotSetRuntimeInfo		=	errors.New("server not set runtime info")
 	ErrApplicationStop				=	errors.New("stop application")
 	ErrHandlerInvalidRange			=	errors.New("invalid range")
+	ErrContextHandlerEnd			=	errors.New("context handler end")
 )
 
 type (

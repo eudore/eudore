@@ -100,9 +100,7 @@ handlerproxy未支持101
 
 websocket未完善
 
-client未实现
-
-反射接口处理
+client未完善
 
 ## Component
 
@@ -132,9 +130,8 @@ client未实现
 - [Server](#Server)
 - [Logger](#logger)
 - [Router and Middleware](#router-and-middleware)
-- [Middleware](#middleware)
-	- [Jwt and Session](#jwt-and-session)
-	- [Ram](#ram)
+- [Middleware]
+	- [Ram]
 - [Context]
 	- [Bind]
 	- [Param]
@@ -300,113 +297,6 @@ func handleparam(ctx eudore.Context) {
 	ctx.WriteString(ctx.GetParam("*"))
 }
 ```
-
-
-### Jwt and Session
-
-```golang
-func main() {
-	core := eudore.NewCore()
-	core.AddHandler(
-		jwt.NewJwt(jwt.NewVerifyHS256("1234")),
-		eudore.HandlerFunc(session.SessionFunc),
-	)
-	core.Any("/", any)
-	core.Run()
-}
-
-func any(ctx *eudore.Context) {
-	ctx.Info(ctx.Value(eudore.ValueJwt))
-	ctx.Info(ctx.Value(eudore.ValueSession))
-
-	// inti
-	sess := cast.NewMap(ctx.Value(eudore.ValueJwt))
-	// get
-	ctx.Info(sess.GetInt("uid"))
-	// set
-	sess.Set("name", "ky2")
-	// release，未实现检查map是否变化然后自动释放。
-	ctx.SetValue(eudore.ValueSession, sess)
-
-	// inti
-	jwt := cast.NewMap(ctx.Value(eudore.ValueSession))
-	// get
-	ctx.Info(jwt.Get("exp"))
-}
-
-```
-
-### Ram
-
-资源访问管理
-
-`github.com/eudore/eudore/middleware/ram`包共有acl、pbac、rbac、shell四种鉴权方式。
-
-ram.RamHttp对象定义：
-
-```golang
-type RamHttp struct {
-    RamHandler
-    GetId     GetIdFunc
-    GetAction GetActionFunc
-    Forbidden ForbiddenFunc
-}
-type RamHttp
-    func NewRamHttp(rams ...RamHandler) *RamHttp
-    func (r *RamHttp) Handle(ctx eudore.Context)
-    func (r *RamHttp) Set(f1 GetIdFunc, f2 GetActionFunc, f3 ForbiddenFunc) *RamHttp
-```
-
-RamHttp需要Set设置获取id、获取行为、403执行，三个行为参数。
-
-```golang
-// bug
-package main
-
-import (
-	"strconv"
-	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/middleware/ram"
-	"github.com/eudore/eudore/middleware/ram/acl"
-)
-
-func main() {
-	app := eudore.NewCore()	
-	eudore.SetComponent(app.Logger, eudore.LoggerHandleFunc(eudore.LoggerHandleJson))
-	// add
-	ramAcl := acl.NewAcl()
-	ramAcl.AddAllowPermission(1, []string{"Show", "Get"})
-	app.AddHandler(
-		ram.NewRamHttp(
-			// 执行acl鉴权
-			ramAcl,
-			// rbac.NewRbac(),
-			// 默认执行拒绝
-			ram.DenyHander,
-		).Set(getid, nil, nil),
-	)
-
-	app.AnyFunc("/:id/:action ss:00", func(ctx eudore.Context) {
-		ctx.Info(ctx.GetParam("action"))
-		ctx.WriteString("Allow " + ctx.GetParam("action"))
-	})
-	app.AnyFunc("/", func(ctx eudore.Context) {
-		ctx.Info(ctx.Path())
-	})
-	// start
-	app.Listen(":8088")
-	app.Run()
-}
-
-func getid(ctx eudore.Context) int {
-	i, err := strconv.Atoi(ctx.GetParam("id"))
-	if err != nil {
-		return 0
-	}
-	return i
-}
-```
-
 
 # Websocket
 

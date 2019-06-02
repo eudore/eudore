@@ -42,7 +42,7 @@ func Cmdline(ctx eudore.Context) {
 func sleep(ctx eudore.Context, d time.Duration) {
 	select {
 	case <-time.After(d):
-	case <-ctx.Done():
+	case <-ctx.Context().Done():
 	}
 }
 

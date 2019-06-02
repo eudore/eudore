@@ -43,25 +43,5 @@ func ForbiddenDefault(ctx eudore.Context) {
 }
 
 func GetIdDefault(ctx eudore.Context) (id int) {
-	if id = GetIdJwt(ctx);id != 0 {
-		return
-	}
-	id = GetIdSession(ctx)
-	return
-}
-
-func GetIdJwt(ctx eudore.Context) int {
-	data := eudore.NewStringMap(ctx.Value(eudore.ValueJwt))
-	if data != nil {
-		return data.GetInt(UserIdString)
-	}
-	return 0
-}
-
-func GetIdSession(ctx eudore.Context) int {
-	data := eudore.NewStringMap(ctx.Value(eudore.ValueSession))
-	if data != nil {
-		return data.GetInt(UserIdString)
-	}
-	return 0
+	return eudore.GetInt(ctx.GetParam(UserIdString))
 }

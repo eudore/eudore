@@ -16,9 +16,7 @@ import (
 	"io"
 	"fmt"
 	"mime"
-	"time"
 	"errors"
-	"reflect"
 	"strings"
 	// "strconv"
 	"net/url"
@@ -40,7 +38,6 @@ var (
 	BinderUrl		=	BindFunc(BindUrlFunc)
 	BinderJSON		=	BindFunc(BindJsonFunc)
 	BinderXML		=	BindFunc(BindXmlFunc)
-	ErrNotMultipart = 	errors.New("request Content-Type isn't multipart/form-data")
 )
 
 
@@ -65,38 +62,37 @@ func BinderDefaultFunc(r protocol.RequestReader, i interface{}) error {
 		return BinderForm.Bind(r, i)
 	case MimeApplicationForm:
 		return BinderUrl.Bind(r, i)
-	default: //case MIMEPOSTForm, MIMEMultipartPOSTForm:
-		fmt.Println("default bind", r.Header().Get(HeaderContentType))
-		return BinderForm.Bind(r, i)
+	default:
+		fmt.Println(errors.New("bind not suppert content type " + r.Header().Get(HeaderContentType)))
+		return errors.New("bind not suppert content type " + r.Header().Get(HeaderContentType))
 	}
 }
 
 func BindFormFunc(r protocol.RequestReader, i interface{}) error {
-	d, params, err := mime.ParseMediaType(r.Header().Get(HeaderContentType))
+	_, params, err := mime.ParseMediaType(r.Header().Get(HeaderContentType))
 	if err != nil {
-		return nil
+		return err
 	}
-	if d != "multipart/form-data" && d != "multipart/mixed" {
-		return ErrNotMultipart
-	}
+
 	form, err := multipart.NewReader(r, params["boundary"]).ReadForm(defaultMaxMemory)
 	if err != nil {
-		return nil
+		return err
 	}
-	return mapFormByTag(i, form.Value)
+	ConvertTo(form.File, i)
+	return ConvertTo(form.Value, i)
 }
 
 // body读取限制32kb.
 func BindUrlFunc(r protocol.RequestReader, i interface{}) error {
 	body, err := ioutil.ReadAll(io.LimitReader(r, 32 << 10))
 	if err != nil {
-		return nil
+		return err
 	}
 	uri, err := url.ParseQuery(string(body))
 	if err != nil {
-		return nil
+		return err
 	}
-	return mapFormByTag(i, uri)
+	return ConvertTo(uri, i)
 }
 
 func BindJsonFunc(r protocol.RequestReader, i interface{}) error {
@@ -105,81 +101,4 @@ func BindJsonFunc(r protocol.RequestReader, i interface{}) error {
 
 func BindXmlFunc(r protocol.RequestReader, i interface{}) error {
 	return xml.NewDecoder(r).Decode(i)
-}
-
-// source gin
-func mapFormByTag(ptr interface{}, form map[string][]string) error {
-	typ := reflect.TypeOf(ptr).Elem()
-	val := reflect.ValueOf(ptr).Elem()
-	for i := 0; i < typ.NumField(); i++ {
-		typeField := typ.Field(i)
-		structField := val.Field(i)
-		if !structField.CanSet() {
-			continue
-		}
-
-		structFieldKind := structField.Kind()
-		// 从tag获取属性名称
-		inputFieldName := typeField.Tag.Get("bind")
-
-		if inputFieldName == "" {
-			// 设置名称为结构体属性名
-			inputFieldName = typeField.Name
-
-			// if "form" tag is nil, we inspect if the field is a struct or struct pointer.
-			// this would not make sense for JSON parsing but it does for a form
-			// since data is flatten
-			if structFieldKind == reflect.Ptr {
-				if !structField.Elem().IsValid() {
-					structField.Set(reflect.New(structField.Type().Elem()))
-				}
-				structField = structField.Elem()
-				structFieldKind = structField.Kind()
-			}
-			// 如果对象属性是结构体，则设置该对象属性
-			if structFieldKind == reflect.Struct {
-				err := mapFormByTag(structField.Addr().Interface(), form)
-				if err != nil {
-					return err
-				}
-				continue
-			}
-		}
-		// 从输入数据读取值
-		inputValue, exists := form[inputFieldName]
-
-		// 如果值不存在，有默认值则初始化对象并使用默认值
-		if !exists {
-			inputValue = strings.Split(typeField.Tag.Get("default"), ",")
-		}
-		if len(inputValue) == 0 {
-			continue
-		}
-
-		numElems := len(inputValue)
-		// 处理数组
-		if structFieldKind == reflect.Slice && numElems > 0 {
-			sliceOf := structField.Type().Elem().Kind()
-			slice := reflect.MakeSlice(structField.Type(), numElems, numElems)
-			for i := 0; i < numElems; i++ {
-				if err := setWithString(sliceOf, slice.Index(i), inputValue[i]); err != nil {
-					return err
-				}
-			}
-			val.Field(i).Set(slice)
-			continue
-		}
-		// 处理时间类型
-		if _, isTime := structField.Interface().(time.Time); isTime {
-			if err := setTimeField(inputValue[0], typeField, structField); err != nil {
-				return err
-			}
-			continue
-		}
-		// 处理其他类型
-		if err := setWithString(typeField.Type.Kind(), structField, inputValue[0]); err != nil {
-			return err
-		}
-	}
-	return nil
 }

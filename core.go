@@ -111,6 +111,7 @@ func (app *Core) EudoreHTTP(pctx context.Context,w protocol.ResponseWriter, req 
 	ctx.Reset(pctx, w, req)
 	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx))
 	ctx.Next()
+	ctx.End()
 	// release
 	app.Poolctx.Put(ctx)
 }

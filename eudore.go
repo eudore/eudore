@@ -368,6 +368,7 @@ func (e *Eudore) EudoreHTTP(pctx context.Context,w protocol.ResponseWriter, req 
 	ctx.Reset(pctx, w, req)
 	ctx.SetHandler(e.Router.Match(ctx.Method(), ctx.Path(), ctx))
 	ctx.Next()
+	ctx.End()
 	// release
 	e.Httpcontext.Put(ctx)
 }

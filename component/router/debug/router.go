@@ -6,14 +6,14 @@ import (
 
 type (
 	RouterDebug struct {
-		eudore.RouterMethod
-		eudore.RouterCore
-		router		eudore.Router	`json:"-" set:"-"`
+		eudore.RouterMethod		`json:"-" xml:"-" set:"-"`
+		eudore.RouterCore		`json:"-" xml:"-" set:"-"`
+		router		eudore.Router	`json:"-" xml:"-" set:"-"`
+		Methods		[]string	`json:"methods"`
+		Paths		[]string	`json:"paths"`
 	}
 	RouterDebugCore struct {
 		eudore.RouterCore		`json:"-" set:"-"`
-		Methods		[]string	`json:"methods"`
-		Paths		[]string	`json:"paths"`
 	}
 )
 
@@ -25,18 +25,15 @@ func init() {
 
 func NewRouterDebug(i interface{}) (eudore.Router, error) {
 	r2, err := eudore.NewRouterFull(i)
-	core := &RouterDebugCore{
-		RouterCore:	r2,
-	}
 	r := &RouterDebug{
-		RouterCore:	core,
+		RouterCore: r2,
 		router:		r2,
 	}
 	r.RouterMethod = &eudore.RouterMethodStd{
-		RouterCore:			core,
+		RouterCore:			r,
 		ControllerParseFunc:	eudore.ControllerBaseParseFunc,
 	}
-	r.GetFunc("/eudore/debug/router/list", core.ListPath)
+	r.GetFunc("/eudore/debug/router/data", r.getData)
 	r.GetFunc("/eudore/debug/router/ui", func(ctx eudore.Context) {
 		if UIpath != "" {
 			ctx.WriteFile(UIpath)
@@ -45,6 +42,16 @@ func NewRouterDebug(i interface{}) (eudore.Router, error) {
 		}
 	})
 	return r, err
+}
+
+func (r *RouterDebug) RegisterHandler(method, path string, hs eudore.HandlerFuncs) {
+	r.Methods = append(r.Methods, method)
+	r.Paths = append(r.Paths, path)
+	r.RouterCore.RegisterHandler(method, path, hs)
+}
+
+func (r *RouterDebug) getData(ctx eudore.Context) {
+	ctx.WriteRender(r)
 }
 
 func (r *RouterDebug) Set(key string, i interface{}) error {
@@ -59,12 +66,3 @@ func (*RouterDebug) Version() string {
 	return eudore.ComponentRouterDebugVersion
 }
 
-func (r *RouterDebugCore) RegisterHandler(method, path string, hs eudore.HandlerFuncs) {
-	r.Methods = append(r.Methods, method)
-	r.Paths = append(r.Paths, path)
-	r.RouterCore.RegisterHandler(method, path, hs)
-}
-
-func (r *RouterDebugCore) ListPath(ctx eudore.Context) {
-	ctx.WriteRender(r)
-}

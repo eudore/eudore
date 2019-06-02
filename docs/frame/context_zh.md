@@ -4,14 +4,13 @@ Context是一次请求的上下文环境，接口大概分类为：context设置
 
 Context的生命周期就是一个请求开始到结束，里面记录整个请求的数据。
 
-context.Context接口实现未完善。
-
 Context的定义：
 
 ```golang
 type Context interface {
 	// context
 	Reset(context.Context, protocol.ResponseWriter, protocol.RequestReader)
+	Context() context.Context
 	Request() protocol.RequestReader
 	Response() protocol.ResponseWriter
 	SetRequest(protocol.RequestReader)
@@ -95,6 +94,10 @@ type Context interface {
 
 Reset方法在EudoreHTTP中来使用http请求数据初始化ctx对象。
 
+`Context() context.Context`
+
+获得当前ctx的context.Context
+
 `Request() protocol.RequestReader` 和 `Response() protocol.ResponseWriter`
 
 获取ctx的请求和响应对象，允许直接操作ctx的底层请求对象。
@@ -121,18 +124,11 @@ fmt.Println("后执行")
 
 结束ctx的处理，忽略全部剩余的请求处理者，未实现获取是否结束处理状态。
 
+同时结束Conext的生命周期
+
 `NewRequest(string, string, io.Reader) (protocol.ResponseReader, error)`
 
 使用客户端发起一次http请求。
-
-`// context`
-`Deadline() (time.Time, bool)`
-`Done() <-chan struct{}`
-`Err() error`
-`Value(key interface{}) interface{}`
-`SetValue(interface{}, interface{})`
-
-未实现
 
 ### 请求信息
 

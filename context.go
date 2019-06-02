@@ -29,6 +29,7 @@ type (
 	Context interface {
 		// context
 		Reset(context.Context, protocol.ResponseWriter, protocol.RequestReader)
+		Context() context.Context
 		Request() protocol.RequestReader
 		Response() protocol.ResponseWriter
 		SetRequest(protocol.RequestReader)
@@ -37,12 +38,6 @@ type (
 		Next()
 		End()
 		NewRequest(string, string, io.Reader) (protocol.ResponseReader, error)
-		// context
-		Deadline() (time.Time, bool)
-		Done() <-chan struct{}
-		Err() error
-		Value(key interface{}) interface{}
-		SetValue(interface{}, interface{})
 
 		// request info
 		Read([]byte) (int, error)
@@ -105,7 +100,6 @@ type (
 
 	/* 实现Context接口 */
 	ContextBase struct {
-		context.Context
 		protocol.RequestReader
 		protocol.ResponseWriter
 		ParamsArray
@@ -114,7 +108,8 @@ type (
 		index		int
 		handler		HandlerFuncs
 		// data
-		keys		map[interface{}]interface{}
+		ctx			context.Context
+		cancel		context.CancelFunc 
 		path 		string
 		rawQuery	string
 		cookies 	[]*Cookie
@@ -150,10 +145,9 @@ func NewContextBase(app *App) *ContextBase {
 
 // context
 func (ctx *ContextBase) Reset(pctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
-	ctx.Context = pctx
+	ctx.ctx, ctx.cancel = context.WithCancel(pctx)
 	ctx.RequestReader = r
 	ctx.ResponseWriter = w
-	ctx.keys = nil
 	// logger
 	ctx.log = ctx.app.Logger
 
@@ -191,6 +185,10 @@ func (ctx *ContextBase) Reset(pctx context.Context, w protocol.ResponseWriter, r
 	ctx.readCookies(r.Header().Get(HeaderCookie))
 }
 
+
+func (ctx *ContextBase) Context() context.Context {
+	return ctx.ctx
+}
 func (ctx *ContextBase) Request() protocol.RequestReader {
 	return ctx.RequestReader
 }
@@ -222,6 +220,7 @@ func (ctx *ContextBase) Next() {
 
 func (ctx *ContextBase) End() {
 	ctx.index = 0xff
+	ctx.cancel()
 }
 
 func (ctx *ContextBase) NewRequest(method, url string, body io.Reader) (protocol.ResponseReader, error) {
@@ -233,7 +232,7 @@ func (ctx *ContextBase) NewRequest(method, url string, body io.Reader) (protocol
 	// }
 	// httpClient := http.Client{Transport: tr}
 
-	cctx, cancel := context.WithCancel(ctx)
+	cctx, cancel := context.WithCancel(ctx.ctx)
 	time.AfterFunc(5*time.Second, func() {
 		cancel()
 	})
@@ -254,22 +253,6 @@ func (ctx *ContextBase) NewRequest(method, url string, body io.Reader) (protocol
 	}
 	return NewResponseReaderHttp(resp), err
 }
-
-func (ctx *ContextBase) Value(key interface{}) interface{} {
-	v, ok := ctx.keys[key]
-	if ok {
-		return v
-	}
-	return ctx.Context.Value(key)
-}
-
-func (ctx *ContextBase) SetValue(key interface{}, val interface{}) {
-	if ctx.keys == nil {
-		ctx.keys = make(map[interface{}]interface{})
-	}
-	ctx.keys[key] = val
-}
-
 
 
 func (ctx *ContextBase) Path() string {
@@ -364,9 +347,10 @@ func (ctx *ContextBase) SetSession(sess SessionData) {
 //
 // 实现请求重定向。
 func (ctx *ContextBase) Redirect(code int, url string) {
-	HandlerRedirectExternal(ctx, url, code)
+	HandlerRedirect(ctx, url, code)
 }
 
+// 实现http2 push
 func (ctx *ContextBase) Push(target string, opts *protocol.PushOptions) error {
 	if opts == nil {
 		opts = &protocol.PushOptions{
@@ -415,19 +399,13 @@ func (ctx *ContextBase) WriteFile(path string) (err error) {
 
 
 func (ctx *ContextBase) ReadBind(i interface{}) error {
-	if i == nil {
-		if ctx.keys == nil {
-			ctx.keys = make(map[interface{}]interface{})
-		}
-		i = ctx.keys
-	}
 	return ctx.app.Binder.Bind(ctx.Request(), i)
 }
 
 
 func (ctx *ContextBase) WriteRender(i interface{}) error {
 	var r Renderer
-	for _, accept := range strings.Split( GetStringDefault(ctx.GetHeader(HeaderAccept), ctx.GetHeader("accept")) , ",") {
+	for _, accept := range strings.Split(ctx.GetHeader(HeaderAccept), ",") {
 		if accept != "" && accept[0] == ' ' {
 			accept = accept[1:]
 		}
@@ -444,7 +422,7 @@ func (ctx *ContextBase) WriteRender(i interface{}) error {
 				return ctx.WriteView(temp, i)
 			}
 		default:
-			// return fmt.Errorf("undinf accept: %v", c.GetHeader(HeaderAccept))
+			return fmt.Errorf("undinf accept: %v", ctx.GetHeader(HeaderAccept))
 		}
 		if r != nil {
 			break

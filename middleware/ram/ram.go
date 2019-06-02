@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	UserIdString			=	"uid"
+	UserIdString			=	"UID"
 	ForbiddenString			=	"Forbidden"
 )
 

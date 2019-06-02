@@ -160,7 +160,7 @@ func (srv *Server) Set(key string, val interface{}) error {
 	case *FastcgiConfig:
 		srv.Config.Fastcgi = append(srv.Config.Fastcgi, v)
 	case map[string]interface{}:
-		_, err := eudore.ConvertStruct(srv.Config, val)
+		err := eudore.ConvertTo(srv.Config, val)
 		return err
 	default:
 		return eudore.ErrComponentNoSupportField

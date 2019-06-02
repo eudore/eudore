@@ -8,20 +8,28 @@ func Set(i interface{}, key string, val interface{}) (interface{}, error)
 功能2：map和结构体相互转换
 func ConvertMap(i interface{}) map[interface{}]interface{}
 func ConvertMapString(i interface{}) map[string]interface{}
-func ConvertStruct(i interface{}, m interface{}) error
 func ConvertTo(source interface{}, target interface{}) error
 
 */
 
 import (
-	"io"
 	"fmt"
 	"time"
 	"errors"
 	"reflect"
-	"strings"
 	"strconv"
+	"strings"
 	"encoding/json"
+)
+
+const (
+	defaultConvertTag	=	"set"
+)
+
+var (
+	ErrInputDataNil		=	errors.New("input value is nil.")
+	ErrSourceDataNil	=	errors.New("source data is nil.")
+
 )
 
 // Set the properties of an object.
@@ -108,7 +116,7 @@ func setPtr(iType reflect.Type, iValue reflect.Value, key []string, val interfac
 func setInterface(iType reflect.Type, iValue reflect.Value, key []string, val interface{}) (err error) {
 	// 如果路径匹配完直接设置该对象，不确定是否有效，未测试。
 	if len(key) == 0 {
-		return setWithInterface(iType.Kind(), iValue, val)
+		return setWithInterface(iType, iValue, val)
 	}
 	// 如果是空接口，初始化为map[string]interface{}类型
 	if iValue.Elem().Kind() == reflect.Invalid {
@@ -150,7 +158,7 @@ func setMap(iType reflect.Type, iValue reflect.Value, key []string, val interfac
 
 	// 设置map value
 	if len(key) == 1 {
-		err = setWithInterface(mapValueType.Kind(), mapvalue, val)
+		err = setWithInterface(mapValueType, mapvalue, val)
 	}else {
 		err = setValue(mapValueType, mapvalue, key[1:], val)
 	}
@@ -185,7 +193,7 @@ func setSlice(iType reflect.Type, iValue reflect.Value, key []string, val interf
 	}
 	// 设置新元素的值
 	if len(key) == 1 {
-		err = setWithInterface(arrayType.Kind(), newValue, val)	
+		err = setWithInterface(arrayType, newValue, val)	
 	}else {
 		err = setValue(arrayType, newValue, key[1:], val)
 	}
@@ -214,7 +222,7 @@ func getArrayIndex(key string) int {
 // 处理结构体设置属性
 func setStruct(iType reflect.Type, iValue reflect.Value, key []string, val interface{}) error {
 	// 查找属性是结构体的第几个属性。
-	var index int = getStructField(iType, key[0])
+	var index int = getStructFieldOfTag(iType, key[0], defaultConvertTag)
 	// 未找到直接返回错误。
 	if index == -1 {
 		return errors.New("struct not field " + key[0])
@@ -229,23 +237,12 @@ func setStruct(iType reflect.Type, iValue reflect.Value, key []string, val inter
 		if !structField.CanSet() {
 			return fmt.Errorf("struct %s field %s not set, use pointer type. ", iValue.Type().String(), key[0])
 		}
-		return setWithInterface(typeField.Type.Kind(), structField, val)
+		return setWithInterface(typeField.Type, structField, val)
 	}
 	return setValue(typeField.Type, structField, key[1:], val)
 }
 
-// 通过字符串获取结构体属性的索引
-func getStructField(iType reflect.Type, name string) int {
-	// 遍历匹配
-	for i := 0; i < iType.NumField(); i++ {
-		typeField := iType.Field(i)
-		// 字符串为结构体名称或结构体属性的set标签的值，则匹配返回索引。
-		if typeField.Name == name || typeField.Tag.Get("set") == name {
-			return i
-		}
-	}
-	return -1
-}
+
 
 // A more path to get an attribute from an object.
 //
@@ -299,7 +296,7 @@ func getPtr(iType reflect.Type, iValue reflect.Value, key []string) interface{} 
 // 处理结构体对象的读取
 func getStruct(iType reflect.Type, iValue reflect.Value, key []string) interface{} {
 	// 查找key对应的属性索引，不存在返回-1。
-	var index int = getStructField(iType, key[0])
+	var index int = getStructFieldOfTag(iType, key[0], defaultConvertTag)
 	if index == -1 {
 		return nil
 	}
@@ -373,173 +370,12 @@ func getInterface(iType reflect.Type, iValue reflect.Value, key []string) interf
 }
 
 
-// 将map转换成结构体对象。
-//
-// 第一参数i为结构体，第二参数m为map。
-//
-// 如果输入结构体是不可取地址的例如结构体、数组，可能修改后对象改变，会返回新的值，其他情况下返回值等于输出的对象。
-func ConvertStruct(i interface{}, m interface{}) (interface{}, error) {
-	if i == nil || m == nil {
-		return i, fmt.Errorf("input value is nil.")
-	}
-	// 将结构体转换成可取地址的reflect.Value。
-	newValue := reflect.New(reflect.TypeOf(i)).Elem()
-	newValue.Set(reflect.ValueOf(i))
-	err := getConvertStruct(newValue.Type(), newValue, reflect.TypeOf(m), reflect.ValueOf(m))
-	return newValue.Interface(), err
-}
-
-// 将map m转换成结构体i。
-func getConvertStruct(iType reflect.Type, iValue reflect.Value, mType reflect.Type, mValue reflect.Value) error {
-	// 判断map的类型，是指针和接口接触引用，是map进行转换。
-	switch mType.Kind() {
-	case reflect.Ptr:
-		// 检查指针是否有效
-		if mValue.IsNil() {
-			return nil
-		}
-		return getConvertStruct(iType, iValue, mValue.Elem().Type(), mValue.Elem())
-	case reflect.Interface:
-		// 检查接口是否有效
-		if mValue.Elem().Kind() == reflect.Invalid {
-			return nil
-		}
-		return getConvertStruct(iType, iValue, mValue.Elem().Type(), mValue.Elem())
-	case reflect.Slice, reflect.Array:
-		if iType.Kind() == reflect.Slice {
-			var err error
-			length := mValue.Len()
-			if iValue.IsNil() {
-				iValue.Set(reflect.MakeSlice(iType, length, length))
-			}
-			for i := 0; i < length; i++ {
-				err = getConvertStruct(iType.Elem(), iValue.Index(i), mType.Elem(), mValue.Index(i))
-				if err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	case reflect.Map:
-		// 判断i的类型，是指针和接口接触引用，是结构体进行转换。
-		switch iType.Kind() {
-		case reflect.Ptr:
-			if iValue.IsNil() {
-				iValue.Set(reflect.New(iType.Elem()))
-			}
-			return getConvertStruct(iValue.Elem().Type(), iValue.Elem(), mType, mValue)
-		case reflect.Interface:
-			if iValue.Elem().Kind() == reflect.Invalid {
-				return nil
-			}
-			return getConvertStruct(iValue.Elem().Type(), iValue.Elem(), mType, mValue)
-		case reflect.Struct:
-			return convertMapToStruct(iType, iValue, mType, mValue)
-		}
-	}
-	// 无法处理的转换，直接类型转换。
-	return setWithInterface(iType.Kind(), iValue, mValue.Interface())
-}
-
-// 执行map属性转换成结构体属性
-func convertMapToStruct(iType reflect.Type, iValue reflect.Value, mType reflect.Type, mValue reflect.Value) error {
-	var tmp reflect.Value
-	for _, key := range mValue.MapKeys() {
-		// 查找结构体是否该属性
-		index := getStructField(iType, getTypeName(key))
-		// 找到后就设置值
-		if index != -1 {
-			tmp = mValue.MapIndex(key)
-			getConvertStruct(iType.Field(index).Type, iValue.Field(index), tmp.Type(), tmp)
-		}
-	}
-	return nil
-}
-
-// 获取类型的名称
-func getTypeName(iValue reflect.Value) string {
-	switch iValue.Kind() {
-	// 字符串直接返回值
-	case reflect.String:
-		return iValue.String()
-	// 对指针和接口接触引用
-	case reflect.Interface, reflect.Ptr:
-		return getTypeName(iValue.Elem())
-	// 默认返回字符串输出，未实现接口获得名称
-	default:
-		return fmt.Sprint(iValue.Interface())
-	}
-}
-
-// 将结构体转换成map
-//
-// 功能与ConvertStruct相同，但不递归处理多层。
-func ConvertStructOnce(i interface{}, m interface{}) (interface{}, error) {
-	if i == nil || m == nil {
-		return i, fmt.Errorf("input value is nil.")
-	}
-	// 将结构体转换成可取地址的reflect.Value。
-	newValue := reflect.New(reflect.TypeOf(i)).Elem()
-	newValue.Set(reflect.ValueOf(i))
-	err := getConvertStructOnce(newValue.Type(), newValue, reflect.TypeOf(m), reflect.ValueOf(m))
-	return newValue.Interface(), err
-}
-
-// 将map m转换成结构体i。
-func getConvertStructOnce(iType reflect.Type, iValue reflect.Value, mType reflect.Type, mValue reflect.Value) error {
-	// 判断map的类型，是指针和接口接触引用，是map进行转换。
-	switch mType.Kind() {
-	case reflect.Ptr:
-		// 检查指针是否有效
-		if mValue.IsNil() {
-			return nil
-		}
-		return getConvertStructOnce(iType, iValue, mValue.Elem().Type(), mValue.Elem())
-	case reflect.Interface:
-		// 检查接口是否有效
-		if mValue.Elem().Kind() == reflect.Invalid {
-			return nil
-		}
-		return getConvertStructOnce(iType, iValue, mValue.Elem().Type(), mValue.Elem())
-	case reflect.Map:
-		// 判断i的类型，是指针和接口接触引用，是结构体进行转换。
-		switch iType.Kind() {
-		case reflect.Ptr:
-			if iValue.IsNil() {
-				iValue.Set(reflect.New(iType.Elem()))
-			}
-			return getConvertStructOnce(iValue.Elem().Type(), iValue.Elem(), mType, mValue)
-		case reflect.Interface:
-			if iValue.Elem().Kind() == reflect.Invalid {
-				return nil
-			}
-			return getConvertStructOnce(iValue.Elem().Type(), iValue.Elem(), mType, mValue)
-		case reflect.Struct:
-			return convertMapToStructOnce(iType, iValue, mType, mValue)
-		}
-	}
-	// 无法处理的转换，直接类型转换。
-	return nil
-}
-
-// 执行map属性转换成结构体属性
-func convertMapToStructOnce(iType reflect.Type, iValue reflect.Value, mType reflect.Type, mValue reflect.Value) error {
-	for _, key := range mValue.MapKeys() {
-		// 查找结构体是否该属性
-		index := getStructField(iType, getTypeName(key))
-		// 找到后就设置值
-		if index != -1 {
-			setWithInterface(iType.Field(index).Type.Kind(), iValue.Field(index),  mValue.MapIndex(key).Interface())
-		}
-	}
-	return nil
-}
 
 // 将一个结构体转换成map[string]interface{}
 //
 // 其他map转map[string]interface{}未测试。 
 func ConvertMapString(i interface{}) map[string]interface{} {
-	val, ok := getConvertMapString(reflect.TypeOf(i), reflect.ValueOf(i)).(map[string]interface{})
+	val, ok := convertMapString(reflect.TypeOf(i), reflect.ValueOf(i)).(map[string]interface{})
 	if ok {
 		return val
 	}
@@ -547,7 +383,7 @@ func ConvertMapString(i interface{}) map[string]interface{} {
 }
 
 // 将一个map或结构体对象转换成map[string]interface{}返回。
-func getConvertMapString(iType reflect.Type, iValue reflect.Value) interface{} {
+func convertMapString(iType reflect.Type, iValue reflect.Value) interface{} {
 	// fmt.Println(iType.Kind(), iType)
 	switch iType.Kind() {
 	// 接口类型解除引用
@@ -556,23 +392,23 @@ func getConvertMapString(iType reflect.Type, iValue reflect.Value) interface{} {
 		if iValue.Elem().Kind() == reflect.Invalid {
 			return iValue.Interface()
 		}
-		return getConvertMapString(iValue.Elem().Type(), iValue.Elem())
+		return convertMapString(iValue.Elem().Type(), iValue.Elem())
 	// 指针类型解除引用
 	case reflect.Ptr: 
 		// 空指针直接返回
 		if iValue.IsNil() {
 			return iValue.Interface()
 		}
-		return getConvertMapString(iValue.Elem().Type(), iValue.Elem())
+		return convertMapString(iValue.Elem().Type(), iValue.Elem())
 	// 将map转换成map[string]interface{}
 	case reflect.Map:
 		val := make(map[string]interface{})
-		convertMapToMapString(iType, iValue, val)
+		convertMapstrngMapToMapString(iType, iValue, val)
 		return val
 	// 将结构体转换成map[string]interface{}
 	case reflect.Struct:
 		val := make(map[string]interface{})
-		convertStructToMapString(iType, iValue, val)
+		convertMapstringStructToMapString(iType, iValue, val)
 		return val
 	}
 	// 其他类型直接返回
@@ -580,25 +416,25 @@ func getConvertMapString(iType reflect.Type, iValue reflect.Value) interface{} {
 }
 
 // 结构体转换成map[string]interface{}
-func convertStructToMapString(iType reflect.Type, iValue reflect.Value, val map[string]interface{}) {
+func convertMapstringStructToMapString(iType reflect.Type, iValue reflect.Value, val map[string]interface{}) {
 	// 遍历结构体的属性
 	for i := 0; i < iType.NumField(); i++ {
 		fieldKey := iType.Field(i)
 		fieldValue := iValue.Field(i)		
 		// map设置键位结构体的名称，值为结构体值转换，基本类型会直接返回。
 		// 未支持接口和标签
-		val[fieldKey.Name] = getConvertMapString(fieldValue.Type(), fieldValue)
+		val[fieldKey.Name] = convertMapString(fieldValue.Type(), fieldValue)
 	}
 }
 
 // 将map转换成map[string]interface{}
-func convertMapToMapString(iType reflect.Type, iValue reflect.Value, val map[string]interface{}) {
+func convertMapstrngMapToMapString(iType reflect.Type, iValue reflect.Value, val map[string]interface{}) {
 	// 遍历map的全部keys
 	for _, key := range iValue.MapKeys() {
 		v := iValue.MapIndex(key)
 		// 设置新map的键为原map的字符串输出，未支持接口转换
 		// 设置新map的值为原map匹配的值的转换，值为基本类型会直接返回。
-		val[fmt.Sprint(key.Interface())] = getConvertMapString(v.Type(), v)
+		val[fmt.Sprint(key.Interface())] = convertMapString(v.Type(), v)
 	}
 }
 
@@ -607,7 +443,7 @@ func convertMapToMapString(iType reflect.Type, iValue reflect.Value, val map[str
 //
 // 其他map转map[interface{}]interface{}未测试。
 func ConvertMap(i interface{}) map[interface{}]interface{} {
-	val, ok := getConvertMap(reflect.TypeOf(i), reflect.ValueOf(i)).(map[interface{}]interface{})
+	val, ok := convertMap(reflect.TypeOf(i), reflect.ValueOf(i)).(map[interface{}]interface{})
 	if ok {
 		return val
 	}
@@ -615,62 +451,58 @@ func ConvertMap(i interface{}) map[interface{}]interface{} {
 }
 
 // 将一个map或结构体对象转换成map[interface{}]interface{}返回。
-func getConvertMap(iType reflect.Type, iValue reflect.Value) interface{} {
+func convertMap(iType reflect.Type, iValue reflect.Value) interface{} {
 	switch iType.Kind() {
 	case reflect.Interface:
 		if iValue.Elem().Kind() == reflect.Invalid {
 			return iValue.Interface()
 		}
-		return getConvertMap(iValue.Elem().Type(), iValue.Elem())
+		return convertMap(iValue.Elem().Type(), iValue.Elem())
 	case reflect.Ptr: 
 		if iValue.IsNil() {
 			return iValue.Interface()
 		}
-		return getConvertMap(iValue.Elem().Type(), iValue.Elem())
+		return convertMap(iValue.Elem().Type(), iValue.Elem())
 	case reflect.Map:
 		val := make(map[interface{}]interface{})
-		convertMapToMap(iType, iValue, val)
+		convertMapMapToMap(iType, iValue, val)
 		return val
 	case reflect.Struct:
 		val := make(map[interface{}]interface{})
-		convertStructToMap(iType, iValue, val)
+		convertMapStructToMap(iType, iValue, val)
 		return val
 	}
 	return iValue.Interface()
 }
 
 // 结构体转换成map[interface{}]interface{}
-func convertStructToMap(iType reflect.Type, iValue reflect.Value, val map[interface{}]interface{}) {
+func convertMapStructToMap(iType reflect.Type, iValue reflect.Value, val map[interface{}]interface{}) {
 	// 遍历结构体的属性
 	for i := 0; i < iType.NumField(); i++ {
 		fieldKey := iType.Field(i)
 		fieldValue := iValue.Field(i)		
 		// map设置键位结构体的名称，值为结构体值转换，基本类型会直接返回。
 		// 未支持接口和标签
-		val[fieldKey.Name] = getConvertMap(fieldValue.Type(), fieldValue)
+		val[fieldKey.Name] = convertMap(fieldValue.Type(), fieldValue)
 	}
 }
 
 // 将map转换成map[interface{}]interface{}
-func convertMapToMap(iType reflect.Type, iValue reflect.Value, val map[interface{}]interface{}) {
+func convertMapMapToMap(iType reflect.Type, iValue reflect.Value, val map[interface{}]interface{}) {
 	// 遍历map的全部keys	
 	for _, key := range iValue.MapKeys() {
 		v := iValue.MapIndex(key)
 		// 设置新map的键为原map的字符串输出，未支持接口转换
 		// 设置新map的值为原map匹配的值的转换，值为基本类型会直接返回。
-		val[key.Interface()] = getConvertMap(v.Type(), v)
+		val[key.Interface()] = convertMap(v.Type(), v)
 	}
 }
 
 
 
-
-
-
-
 func ConvertTo(source interface{}, target interface{}) error {
 	if source == nil || target == nil {
-		return fmt.Errorf("input value is nil.")
+		return ErrInputDataNil
 	}
 	return convertTo(reflect.TypeOf(source), reflect.ValueOf(source), reflect.TypeOf(target), reflect.ValueOf(target))
 }
@@ -678,7 +510,7 @@ func ConvertTo(source interface{}, target interface{}) error {
 func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) error {
 	var kind int = 0
 
-	// 检测目标类型并接触引用和初始化空对象
+	// 检测目标类型并解除引用和初始化空对象
 	switch tType.Kind() {
 	case reflect.Ptr:
 		if tValue.IsNil() {
@@ -688,7 +520,7 @@ func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tVa
 	case reflect.Interface:
 		// 如果目标类型无法解引用，直接转换
 		if tValue.Elem().Kind() == reflect.Invalid {
-			return convertSetValue1(sType, sValue, tType, tValue)
+			return setWithValue(sType, sValue, tType, tValue)
 		}else {
 			return convertTo(sType, sValue, tValue.Elem().Type(), tValue.Elem())	
 		}
@@ -700,21 +532,21 @@ func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tVa
 	case reflect.Struct:
 		kind = kind | 0x02
 	}
-	// 检测源类型并接触引用
+	// 检测源类型并解除引用
 	switch sType.Kind() {
 	case reflect.Ptr:
 		if sValue.IsNil() {
-			return nil
+			return ErrSourceDataNil
 		}
 		return convertTo(sValue.Elem().Type(), sValue.Elem(), tType, tValue)
 	case reflect.Interface:
 		if sValue.Elem().Kind() == reflect.Invalid {
-			return nil
+			return ErrSourceDataNil
 		}
 		return convertTo(sValue.Elem().Type(), sValue.Elem(), tType, tValue)
 	case reflect.Map:
 		if sValue.IsNil() {
-			return nil
+			return ErrSourceDataNil
 		}
 		kind = kind | 0x10
 	case reflect.Struct:
@@ -725,17 +557,82 @@ func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tVa
 	// 更具数据类型执行转换
 	switch kind {
 	case 0x11:
-		convertMapToMap1(sType, sValue, tType, tValue)
+		convertToMapToMap(sType, sValue, tType, tValue)
 	case 0x21:
-		convertStructToMap1(sType, sValue, tType, tValue)
+		convertToStructToMap(sType, sValue, tType, tValue)
 	case 0x12:
-		convertMapToStruct1(sType, sValue, tType, tValue)
+		convertToMapToStruct(sType, sValue, tType, tValue)
 	case 0x22:
-		convertStructToStruct1(sType, sValue, tType, tValue)
+		convertToStructToStruct(sType, sValue, tType, tValue)
 	default:
-		convertSetValue1(sType, sValue, tType, tValue)
+		setWithValue(sType, sValue, tType, tValue)
 	}
 	return nil
+}
+
+
+
+func convertToMapToMap(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) {
+	for _, key := range sValue.MapKeys() {
+		mapvalue := reflect.New(tType.Elem()).Elem()
+		if err := convertTo(sValue.MapIndex(key).Type(), sValue.MapIndex(key), tType.Elem(), mapvalue); err == nil {
+			tValue.SetMapIndex(key, mapvalue)
+		}
+		// tValue.SetMapIndex(key, sValue.MapIndex(key))
+	}
+}
+
+func convertToMapToStruct(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) {
+	for _, key := range sValue.MapKeys() {
+		index := getStructFieldOfTag(tType, fmt.Sprint(key.Interface()), defaultConvertTag)
+		if index == -1 {
+			continue
+		}
+		convertTo(sValue.MapIndex(key).Type(), sValue.MapIndex(key), tType.Field(index).Type, tValue.Field(index))
+		// tValue.Field(index).Set(sValue.MapIndex(key))
+	}
+}
+
+func convertToStructToStruct(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) {
+	for i := 0; i < sType.NumField(); i++ {
+		if checkValueNil(sValue.Field(i)) {
+			continue
+		}
+		index := getStructFieldOfTag(tType, sType.Field(i).Name, defaultConvertTag)
+		if index == -1 {
+			continue
+		}
+		convertTo(sType.Field(i).Type, sValue.Field(i), tType.Field(index).Type, tValue.Field(index))
+		// tValue.Field(index).Set(sValue.Field(i))
+	}
+}
+
+func convertToStructToMap(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) {
+	for i := 0; i < sType.NumField(); i++ {
+		if checkValueNil(sValue.Field(i)) {
+			continue
+		}
+		mapvalue := reflect.New(tType.Elem()).Elem()
+		if err := convertTo(sType.Field(i).Type, sValue.Field(i), tType.Elem(), mapvalue); err == nil {
+			tValue.SetMapIndex(reflect.ValueOf(sType.Field(i).Name), mapvalue)
+		}
+		// tValue.SetMapIndex(reflect.ValueOf(sType.Field(i).Name), sValue.Field(i))
+	}
+}
+
+
+
+// 通过字符串获取结构体属性的索引
+func getStructFieldOfTag(iType reflect.Type, name, tag string) int {
+	// 遍历匹配
+	for i := 0; i < iType.NumField(); i++ {
+		typeField := iType.Field(i)
+		// 字符串为结构体名称或结构体属性的set标签的值，则匹配返回索引。
+		if typeField.Name == name || typeField.Tag.Get(tag) == name {
+			return i
+		}
+	}
+	return -1
 }
 
 // 检测一个值是否为空
@@ -759,106 +656,6 @@ func checkValueNil(iValue reflect.Value) bool {
 	return true
 }
 
-func convertMapToMap1(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) {
-	for _, key := range sValue.MapKeys() {
-		mapvalue := reflect.New(tType.Elem()).Elem()
-		if err := convertTo(sValue.MapIndex(key).Type(), sValue.MapIndex(key), tType.Elem(), mapvalue); err == nil {
-			tValue.SetMapIndex(key, mapvalue)
-		}
-		// tValue.SetMapIndex(key, sValue.MapIndex(key))
-	}
-}
-
-func convertMapToStruct1(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) {
-	for _, key := range sValue.MapKeys() {
-		index := getStructField(tType, fmt.Sprint(key.Interface()))
-		if index == -1 {
-			continue
-		}
-		convertTo(sValue.MapIndex(key).Type(), sValue.MapIndex(key), tType.Field(index).Type, tValue.Field(index))
-		// tValue.Field(index).Set(sValue.MapIndex(key))
-	}
-}
-
-func convertStructToStruct1(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) {
-	for i := 0; i < sType.NumField(); i++ {
-		if checkValueNil(sValue.Field(i)) {
-			continue
-		}
-		index := getStructField(tType, sType.Field(i).Name)
-		if index == -1 {
-			continue
-		}
-		convertTo(sType.Field(i).Type, sValue.Field(i), tType.Field(index).Type, tValue.Field(index))
-		// tValue.Field(index).Set(sValue.Field(i))
-	}
-}
-
-func convertStructToMap1(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) {
-	for i := 0; i < sType.NumField(); i++ {
-		if checkValueNil(sValue.Field(i)) {
-			continue
-		}
-		mapvalue := reflect.New(tType.Elem()).Elem()
-		if err := convertTo(sType.Field(i).Type, sValue.Field(i), tType.Elem(), mapvalue); err == nil {
-			tValue.SetMapIndex(reflect.ValueOf(sType.Field(i).Name), mapvalue)
-		}
-		// tValue.SetMapIndex(reflect.ValueOf(sType.Field(i).Name), sValue.Field(i))
-	}
-}
-
-func convertSetValue1(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) error {
-	// fmt.Println("convertSetValue1", sValue.Interface())
-	if sType.AssignableTo(tType) {
-		tValue.Set(sValue)
-		return nil
-	}
-	if sType.Kind() == reflect.String {
-		return setWithString(tType.Kind(), tValue, sValue.String())
-	}
-	if tType.Kind() == reflect.String {
-		tValue.SetString(getValueString(sType, sValue))
-		return nil
-	}
-	return setWithString(tType.Kind(), tValue, getValueString(sType, sValue))
-}
-
-
-// Output a help message for the interface{} object, and each structure member uses the description tag as the description.
-//
-// 输出一个interface{}对象的帮助信息，每个结构体成员使用description tag为描述信息。
-//
-// Help(c, "  --", os.Stdio)
-func Help(p interface{}, prefix string, w io.Writer) error {
-	getDesc(p, prefix, w)
-	return nil
-}
-
-func getDesc(p interface{}, prefix string, w io.Writer) {
-	pt := reflect.TypeOf(p).Elem()
-	pv := reflect.ValueOf(p).Elem()
-	for i := 0; i < pt.NumField(); i++ {
-		sv := pv.Field(i)
-		if c :=  pt.Field(i).Tag.Get("description");c != "" {
-			fmt.Printf("%s%s\t%s\n",prefix, strings.ToLower(pt.Field(i).Name), c)
-		}
-		if c := pt.Field(i).Tag.Get("help");c == "-" {
-			continue
-		}
-		if sv.Type().Kind() == reflect.Ptr {
-			// is null
-			if sv.Elem().Kind() == reflect.Invalid {
-				sv.Set(reflect.New(sv.Type().Elem()))	
-			}
-			sv=sv.Elem()
-		}
-		if sv.Kind() == reflect.Struct {
-			getDesc(sv.Addr().Interface(),fmt.Sprintf("%s%s.",prefix,strings.ToLower(pt.Field(i).Name)), w)
-		}
-	}
-}
-
-
 func getValueString(iType reflect.Type, iValue reflect.Value) string {
 	switch iType.Kind() {
 	case reflect.Array, reflect.Slice, reflect.Struct, reflect.Map:
@@ -878,23 +675,27 @@ func getValueString(iType reflect.Type, iValue reflect.Value) string {
 	return ""
 }
 
+
 // 将一个interface{}赋值给对象
-func setWithInterface(iTypeKind reflect.Kind, iValue reflect.Value, val interface{}) error {
-	// 类型可以转换直接设置
-	if reflect.TypeOf(val).AssignableTo(iValue.Type()) {
-		iValue.Set(reflect.ValueOf(val))
+func setWithInterface(iType reflect.Type, iValue reflect.Value, val interface{}) error {
+	return setWithValue(reflect.TypeOf(val), reflect.ValueOf(val), iType, iValue)
+}
+
+func setWithValue(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) error {
+	if sType.AssignableTo(tType) {
+		tValue.Set(sValue)
 		return nil
 	}
-	// 值的类型是字符串，进行类型转换。
-	if reflect.TypeOf(val).Kind() == reflect.String {
-		return setWithString(iTypeKind, iValue, val.(string))
+	switch sType.Kind() {
+	case reflect.String:
+		return setWithString(tType.Kind(), tValue, sValue.String())
+	case reflect.Array, reflect.Slice:
+		err := setWithValue(sType.Elem(), sValue.Index(0), tType, tValue)
+		if err == nil {
+			return nil
+		}
 	}
-	// 目标类型是字符串直接输出interface{}对象。
-	// 为支持接口。
-	if iTypeKind == reflect.String {
-		iValue.SetString(fmt.Sprint(val))
-	}	
-	return nil
+	return setWithString(tType.Kind(), tValue, getValueString(sType, sValue))
 }
 
 // 将一个字符串赋值给对象
@@ -909,6 +710,10 @@ func setWithString(iTypeKind reflect.Kind, iValue reflect.Value, val string) err
 	case reflect.Int32:
 		return setIntField(val, 32, iValue)
 	case reflect.Int64:
+		switch iValue.Interface().(type) {
+		case time.Duration:
+			return setTimeDuration(val, iValue)
+		}
 		return setIntField(val, 64, iValue)
 	case reflect.Uint:
 		return setUintField(val, 0, iValue)
@@ -928,9 +733,21 @@ func setWithString(iTypeKind reflect.Kind, iValue reflect.Value, val string) err
 		return setFloatField(val, 64, iValue)
 	case reflect.String:
 		iValue.SetString(val)
-	// 目标类型是数组、切片、结构体、map使用json反序列化解析。
-	case reflect.Slice, reflect.Array, reflect.Struct, reflect.Map:
-		 json.Unmarshal([]byte(val), iValue.Addr().Interface())
+	case reflect.Slice, reflect.Array:
+		return json.Unmarshal([]byte(val), iValue.Addr().Interface())
+	case reflect.Struct:
+		switch iValue.Interface().(type) {
+		case time.Time:
+			t, err := time.Parse(time.RFC3339, val)
+			if err != nil {
+				return err
+			}
+			iValue.Set(reflect.ValueOf(t))
+			return nil
+		}
+		return json.Unmarshal([]byte(val), iValue.Addr().Interface())
+	case reflect.Map:
+		return json.Unmarshal([]byte(val), iValue.Addr().Interface())
 	// 目标类型是字符串直接设置
 	case reflect.Interface:
 		iValue.Set(reflect.ValueOf(val))
@@ -939,7 +756,7 @@ func setWithString(iTypeKind reflect.Kind, iValue reflect.Value, val string) err
 		if !iValue.Elem().IsValid() {
 			iValue.Set(reflect.New(iValue.Type().Elem()))
 		}
-		return setWithInterface(iValue.Elem().Kind(), iValue.Elem(), val)
+		return setWithString(iValue.Elem().Kind(), iValue.Elem(), val)
 	default:
 		return errors.New("Unknown type " + iTypeKind.String())
 	}
@@ -993,6 +810,19 @@ func setFloatField(val string, bitSize int, field reflect.Value) error {
 	}
 	return err
 }
+
+
+// 设置时间类型，未支持未使用
+func setTimeDuration(val string, ivalue reflect.Value) error {
+	t, err := time.ParseDuration(val)
+	if err != nil {
+		return err
+	}
+
+	ivalue.Set(reflect.ValueOf(t))
+	return nil
+}
+
 
 // 设置时间类型，未支持未使用
 func setTimeField(val string, structField reflect.StructField, value reflect.Value) error {
