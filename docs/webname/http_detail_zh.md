@@ -93,7 +93,7 @@ eudore http使用一个[]byte作为缓冲，会记录未发送的缓冲数据，
 
 http反向代理的原理就是请求转发，处理者接收请求然后发送目标。
 
-转发时需要移除跳对跳Header，并写入正确的header
+转发时需要移除跳对跳Header，并写入正确的header,如果遇到Upgrade返回101之后就进行双向io.Cpoy进行tcp代理
 
 
 ## http跨域请求
@@ -102,7 +102,11 @@ http反向代理的原理就是请求转发，处理者接收请求然后发送�
 
 ## http重定向过程
 
+返回30x状态和Location header，状态码表示重定向类型，而Location里面记录了重定向地址。
+
 ## http gzip压缩
+
+
 
 ## http 304响应
 
@@ -111,3 +115,7 @@ http反向代理的原理就是请求转发，处理者接收请求然后发送�
 ## websocket握手过程
 
 ## http2握手过程
+
+h2握手利用了tls的ALPN或NPN机制，如果想ws那样的握手就是h2c，基于http实现的http2，不是基于https。
+
+tls配置有一项NextProtos属性，用于tls的ALPN扩展，如果值是h2，在tls握手时就可以完成h2握手，客户端在tls握手时，发现APLPN扩展的值是h2，就自动服务端支持h2，然后客户端发送固定的请求行`PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n`

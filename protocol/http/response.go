@@ -78,12 +78,12 @@ func (w *Response) Write(p []byte) (int, error) {
 //
 // 提升分块效率，会将大小两块合并发送。
 func (w *Response) writeDate(p []byte, length int) (n int, err error) {
+	// 写入状态行
+	w.writerResponseLine()
 	// 如果有写入错误，或者数据长度为0则返回。
 	if w.err != nil || (length + w.n) == 0 {
 		return 0, w.err
 	}
-	// 写入状态行
-	w.writerResponseLine()
 	// 数据写入
 	if w.chunked {
 		// 分块写入
@@ -127,7 +127,7 @@ func (w *Response) writerResponseLine() {
 	fmt.Fprintf(w.writer, "Date: %s\r\nServer: eudore\r\n", time.Now().Format(TimeFormat))
 	// 检测是否有写入长度，没有则进行分块传输。
 	// 未检测Content-Length值是否合法
-	w.chunked = len(w.header.Get("Content-Length")) == 0
+	w.chunked = len(w.header.Get("Content-Length")) == 0 && w.header.Get("Upgrade") == ""
 	if w.chunked {
 		fmt.Fprintf(w.writer, "Transfer-Encoding: chunked\r\n")
 	}

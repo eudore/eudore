@@ -38,6 +38,9 @@ eudore具有以下对象，除Application以为均为接口，每个对象都具
 | util.go | 辅助函数 |
 | version.go | 版本信息常量 |
 
+# Q & A
+
+
 
 # RequestReader & ResponseWriter
 

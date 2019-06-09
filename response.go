@@ -19,6 +19,10 @@ type (
 		Data 	*http.Response
 		header	protocol.Header
 	}
+	ResponseReaderHttpWithWiter struct {
+		ResponseReaderHttp
+		io.Writer
+	}
 	// net/http.ResponseWriter接口封装
 	ResponseWriterHttp struct {
 		http.ResponseWriter
@@ -126,11 +130,24 @@ func (w *ResponseWriterHttp) Status() int {
 
 
 func NewResponseReaderHttp(resp *http.Response) protocol.ResponseReader {
-	return &ResponseReaderHttp{
+	var r = ResponseReaderHttp{
 		ReadCloser:	resp.Body,
 		Data:		resp,
 		header:		HeaderMap(resp.Header),
 	}
+
+	w, ok := resp.Body.(io.Writer)
+	if ok {
+		return &ResponseReaderHttpWithWiter {
+			ResponseReaderHttp:	r,
+			Writer:		w,
+		}
+	}
+	return &r
+}
+
+func (r *ResponseReaderHttpWithWiter) Write(p []byte) (n int, err error) {
+	return r.Writer.Write(p)
 }
 
 func (r *ResponseReaderHttp) Proto() string {

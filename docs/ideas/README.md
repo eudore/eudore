@@ -13,7 +13,7 @@
 [netwebscoket][websocket]
 
 
-[nethttp]: readNetHttp_zh.md
+[nethttp]: readNetHttpServer_zh.md
 [basecontext]: baseContextWeb_zh.md
 [microweb]: microWeb.go
 [golf]: readDineverGolf_zh.md

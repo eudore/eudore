@@ -7,7 +7,7 @@
 - 核心全部接口化,支持重写Application、Context、Request、Response、Router、Middleware、Logger、Server、Config、Cache、Session、View、Bind、Render、Controller。
 - 对象语义明确，框架源码简单易懂，无注释部分变动可能较大。
 
-## Lsit
+## List
 
 功能列表，在未稳定前不会编写演示
 
@@ -68,6 +68,7 @@
 - Mvc
 - [x] mvc支持
 - [x] 控制器函数输入参数
+- [x] 自定义控制器执行
 - Tools
 - [x] 程序启动命令解析
 - [x] 信号响应支持
@@ -77,6 +78,7 @@
 - [x] pprof支持
 - [x] expvar支持
 - [x] 运行时对象数据显示
+- [x] api模拟工具
 - Session
 - [x] Session实现
 - Middleware

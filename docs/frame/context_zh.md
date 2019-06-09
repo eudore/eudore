@@ -301,3 +301,7 @@ WithFields(fields Fields) LogOut
 `App() *App`
 
 获得请求对象的App，**用途未知，可能移除**，推荐传入App然后闭包返回eudore.HanderFunc对象，
+
+## 其他
+
+曾经Context实现了context.Context接口，后来删除了实现改为`Context() context.Context`方法返回对象，因为自己实现的Context对象在context中会出现一些无法处理的问题，例如cancel取消子ctx，在cancelCtx对象的parentCancelCtx方法实现中使用了断言，自己实现的ctx无法被断言到会出现问题，具体参考context包源码。

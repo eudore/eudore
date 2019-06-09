@@ -15,6 +15,7 @@ import (
 	"sync"
 	"mime"
 	"path"
+	"time"
 	"bufio"
 	"regexp"
 	"strings"
@@ -184,6 +185,9 @@ func HandlerFile(ctx Context, path string) (error) {
 
 func handlerContext(ctx Context, path string, content *os.File) error {
 	desc, _ := content.Stat()
+	if checkPreconditions(ctx, desc.ModTime()) {
+		return nil
+	}
 	// If Content-Type isn't set, use the file's extension to find it, but
 	// if the Content-Type is unset explicitly, do not sniff the type.
 	h := ctx.Response().Header()
@@ -264,6 +268,221 @@ func handlerContext(ctx Context, path string, content *os.File) error {
 	}
 	_, err := io.CopyN(ctx, sendContent, sendSize)
 	return err
+}
+
+func checkPreconditions(ctx Context, modtime time.Time) bool {
+	ch := checkIfMatch(ctx)
+	if ch == condNone {
+		ch = checkIfUnmodifiedSince(ctx, modtime)
+	}
+	if ch == condFalse {
+		ctx.WriteHeader(StatusPreconditionFailed)
+		return true
+	}
+	switch checkIfNoneMatch(ctx) {
+	case condFalse:
+		if ctx.Method() == "GET" || ctx.Method() == "HEAD" {
+			writeNotModified(ctx)
+			return true
+		}else {
+			ctx.WriteHeader(StatusPreconditionFailed)
+			return true
+		}
+	case condNone:
+		if checkIfModifiedSince(ctx, modtime) == condFalse {
+			writeNotModified(ctx)
+			return true
+		}
+	}
+	return false
+}
+
+type condResult int
+
+const (
+	condNone condResult = iota
+	condTrue
+	condFalse
+)
+
+func checkIfMatch(ctx Context) condResult {
+	im := ctx.GetHeader("If-Match")
+	if im == "" {
+		return condNone
+	}
+	for {
+		im = textproto.TrimString(im)
+		if len(im) == 0 {
+			break
+		}
+		if im[0] == '.' {
+			im = im[1:]
+			continue
+		}
+		if im[0] == '*' {
+			return condTrue
+		}
+		etag, remian := scanETag(im)
+		if etag == "" {
+			break
+		}
+		if etagStrongMatch(etag, ctx.Response().Header().Get("Etag")) {
+			return condTrue
+		}
+		im = remian
+	}
+	return condFalse
+}
+func checkIfUnmodifiedSince(ctx Context, modtime time.Time) condResult {
+	ius := ctx.GetHeader("If-Unmodified-Since")
+	if ius == "" || isZeroTime(modtime) {
+		return condNone
+	}
+	if t, err := http.ParseTime(ius); err == nil {
+		if modtime.Before(t.Add(1 * time.Second)) {
+			return condTrue
+		}
+		return condFalse
+	}
+	return condNone
+}
+
+
+func checkIfNoneMatch(ctx Context) condResult {
+	inm := ctx.GetHeader("If-None-Match")
+	if inm == "" {
+		return condNone
+	}
+	buf := inm
+	for {
+		buf = textproto.TrimString(buf)
+		if len(buf) == 0 {
+			break
+		}
+		if buf[0] == ',' {
+			buf = buf[1:]
+		}
+		if buf[0] == '*' {
+			return condFalse
+		}
+		etag, remain := scanETag(buf)
+		if etag == "" {
+			break
+		}
+		if etagWeakMatch(etag, ctx.Response().Header().Get("Etag")) {
+			return condFalse
+		}
+		buf = remain
+	}
+	return condTrue
+}
+
+func checkIfModifiedSince(ctx Context, modtime time.Time) condResult {
+	if ctx.Method() != "GET" && ctx.Method() != "HEAD" {
+		return condNone
+	}
+	ims := ctx.GetHeader("If-Modified-Since")
+	if ims == "" || isZeroTime(modtime) {
+		return condNone
+	}
+	t, err := http.ParseTime(ims)
+	if err != nil {
+		return condNone
+	}
+	// The Date-Modified header truncates sub-second precision, so
+	// use mtime < t+1s instead of mtime <= t to check for unmodified.
+	if modtime.Before(t.Add(1 * time.Second)) {
+		return condFalse
+	}
+	return condTrue
+}
+
+func checkIfRange(ctx Context, modtime time.Time) condResult {
+	if ctx.Method() != "GET" && ctx.Method() != "HEAD" {
+		return condNone
+	}
+	ir := ctx.GetHeader("If-Range")
+	if ir == "" {
+		return condNone
+	}
+	etag, _ := scanETag(ir)
+	if etag != "" {
+		if etagStrongMatch(etag, ctx.Response().Header().Get("Etag")) {
+			return condTrue
+		} else {
+			return condFalse
+		}
+	}
+	// The If-Range value is typically the ETag value, but it may also be
+	// the modtime date. See golang.org/issue/8367.
+	if modtime.IsZero() {
+		return condFalse
+	}
+	t, err := http.ParseTime(ir)
+	if err != nil {
+		return condFalse
+	}
+	if t.Unix() == modtime.Unix() {
+		return condTrue
+	}
+	return condFalse
+}
+
+func writeNotModified(ctx Context) {
+	h := ctx.Response().Header()
+	h.Del("Content-Type")
+	h.Del("Content-Length")
+	if h.Get("Etag") != "" {
+		h.Del("Last-Modified")
+	}
+	ctx.WriteHeader(StatusNotModified)
+}
+
+// etagStrongMatch reports whether a and b match using strong ETag comparison.
+// Assumes a and b are valid ETags.
+func etagStrongMatch(a, b string) bool {
+	return a == b && a != "" && a[0] == '"'
+}
+
+// etagWeakMatch reports whether a and b match using weak ETag comparison.
+// Assumes a and b are valid ETags.
+func etagWeakMatch(a, b string) bool {
+	return strings.TrimPrefix(a, "W/") == strings.TrimPrefix(b, "W/")
+}
+
+// scanETag determines if a syntactically valid ETag is present at s. If so,
+// the ETag and remaining text after consuming ETag is returned. Otherwise,
+// it returns "", "".
+func scanETag(s string) (etag string, remain string) {
+	s = textproto.TrimString(s)
+	start := 0
+	if strings.HasPrefix(s, "W/") {
+		start = 2
+	}
+	if len(s[start:]) < 2 || s[start] != '"' {
+		return "", ""
+	}
+	// ETag is either W/"text" or "text".
+	// See RFC 7232 2.3.
+	for i := start + 1; i < len(s); i++ {
+		c := s[i]
+		switch {
+		// Character values allowed in ETags.
+		case c == 0x21 || c >= 0x23 && c <= 0x7E || c >= 0x80:
+		case c == '"':
+			return s[:i+1], s[i+1:]
+		default:
+			return "", ""
+		}
+	}
+	return "", ""
+}
+
+var unixEpochTime = time.Unix(0, 0)
+
+// isZeroTime reports whether t is obviously unspecified (either zero or Unix()=0).
+func isZeroTime(t time.Time) bool {
+	return t.IsZero() || t.Equal(unixEpochTime)
 }
 
 func sumRangesSize(ranges []httpRange) (size int64) {
@@ -483,29 +702,73 @@ func HandlerProxy(addr string) HandlerFunc {
 			req.Header().Add(HeaderUpgrade, upType)
 		}
 
-
+		// send proxy
 		resp, err := req.Do()
 		if err != nil {
 			ctx.Error(err)
 			ctx.WriteHeader(502)
 			return
 		}
+		ctx.WriteHeader(resp.Statue())
+		copyheader(resp.Header(), ctx.Response().Header())
+
 		if resp.Statue() == StatusSwitchingProtocols  {
 			// handle Upgrade Response
-			handleUpgradeResponse(ctx, resp)
+			err = handleUpgradeResponse(ctx, resp)
+			if err != nil {
+				ctx.Fatal(err)
+			}
 			return
 		}
 
-		// 
-		ctx.WriteHeader(resp.Statue())
-		copyheader(resp.Header(), ctx.Response().Header())
+		//  handle http body
 		io.Copy(ctx, resp)
 	}
 }
 
-func handleUpgradeResponse(ctx Context, resp protocol.ResponseReader) {
+func handleUpgradeResponse(ctx Context, resp protocol.ResponseReader) error {
+	backConn, ok := resp.(io.ReadWriteCloser)
+	if !ok {
+		return errors.New("ResponseReader not suppert io.Writer")
+	}
+	defer backConn.Close()
 
+	conn, err := ctx.Response().Hijack()
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	// return ws response
+	h := ctx.Response().Header()
+	h.Add("Connection", "Upgrade")
+	h.Add("Upgrade", "websocket")
+	ctx.Response().Flush()
+
+	// start ws io cp
+	errc := make(chan error, 1)
+	spc := switchProtocolCopier{user: conn, backend: backConn}
+	go spc.copyToBackend(errc)
+	go spc.copyFromBackend(errc)
+	return <- errc
 }
+
+// switchProtocolCopier exists so goroutines proxying data back and
+// forth have nice names in stacks.
+type switchProtocolCopier struct {
+	user, backend io.ReadWriter
+}
+
+func (c switchProtocolCopier) copyFromBackend(errc chan<- error) {
+	_, err := io.Copy(c.user, c.backend)
+	errc <- err
+}
+
+func (c switchProtocolCopier) copyToBackend(errc chan<- error) {
+	_, err := io.Copy(c.backend, c.user)
+	errc <- err
+}
+
 
 // Redirect a Context.
 //

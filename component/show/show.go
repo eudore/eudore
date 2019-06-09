@@ -38,7 +38,7 @@ func getVal(key1, key2 string) interface{} {
 	val, ok := objs[key1]
 	if ok {
 		if key2 != "" {
-			return eudore.Get(val, strings.ReplaceAll(key2[1:], "/", ".") )
+			return eudore.Get(val, strings.Replace(key2[1:], "/", ".", -1) )
 		}
 		return val
 	}

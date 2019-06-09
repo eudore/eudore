@@ -1,13 +1,29 @@
-http2.ConfigureServer(s *http.Server, conf *Server) error
-	http2.*Server.ServeConn(c net.Conn, opts *ServeConnOpts) 
-		http2.*serverConn.serve()
-			http2.*serverConn.processFrameFromReader(res readFrameResult) bool
-				http2.*serverConn.processFrame(f Frame) error
-					http2.*serverConn.processSettings
-					http2.*serverConn.processHeaders
-						http2.*serverConn.newWriterAndRequest(*stream, *MetaHeadersFrame) (*responseWriter, *http.Request, error)
-							http2.*serverConn.newWriterAndRequestNoBody(*stream, requestParam) (*responseWriter, *http.Request, error) 
-						http2.*serverConn.runHandler(*responseWriter, *http.Request, func(http.ResponseWriter, *http.Request))
-					http2.*serverConn.processData
-					http2.*serverConn....
+HTTP2引入了一下的三个新概念：
+
+Stream: 已经建立连接的双向字节流，用唯一ID标示，可以传输一个或多个消息.
+Message: 逻辑上的HTTP消息，请求或者响应，可以包含多个frame.
+Frame: HTTP2通信的最小单位，二进制头封装，封装HTTP头部或body
+
+HTTP2是把一个HTTP数据包分成多个帧发送，每个帧有一个二进制头，并把HTTP分成多个独立小帧，多个帧组成一个Message在流中发送。不同流的帧有可能交错到达，帧的报文头中标示了属于哪一个流。
+
+
+
++-----------------------------------------------+
+|                Length (24)                    |
++---------------+---------------+---------------+
+|  Type (8)     |  Flags (8)    |
++-+-------------+---------------+-------------------------------+
+|R|                Stream Identifier (31)                       |
++=+=============================================================+
+|                  Frame Payload (0...)                       ...
++---------------------------------------------------------------+
+
+
+
+帧头为固定的9个字节（(24+8+8+1+31)/8=9）呈现，变化的为帧的负载(payload)，负载内容是由帧类型（Type）定义。
+
+
+
+
+
 
