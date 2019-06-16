@@ -1,6 +1,6 @@
 # Eudore
 
-本框架为个人学习研究的重框架，每周最多同步更新一次，未稳定前不欢迎issue、pr、using，可查看http及go web框架[相关文档][docs]，交流q群373278915。
+本框架为个人学习研究的重框架，每周最多同步更新一次，未稳定前不欢迎issue、pr、using，可查看http及go web框架[相关文档](docs)，交流q群373278915。
 
 ## Features
 
@@ -17,13 +17,13 @@
 - [ ] 完全配置化启动程序
 - Context
 - [x] Context与server完全解耦
-- [x] 根据Content-type自动序列化数据
+- [x] [根据Content-type自动序列化数据](docs/example/bind.go)
 - [x] 根据Accept反序列化数据
-- [x] http2 push
+- [x] [http2 push](docs/example/serverPush.go)
 - Config
 - [x] 配置库集成
 - [x] 支持基于路径读写对象
-- [ ] 解析参数环境变量和差异化配置
+- [x] 解析参数环境变量和[差异化配置](docs/example/configMods.go)
 - [x] map和结构体相互转换
 - [x] 数据类型转换工具
 - [ ] 生成对象帮助信息
@@ -33,10 +33,10 @@
 - [x] 重新实现http协议server
 - [x] http2协议两种server支持
 - [x] fastcgi协议两种server支持
-- [x] websocket协议支持
+- [x] [websocket协议支持](docs/example/websocket.go)
 - [ ] 重新实现websocket协议
 - [x] 支持TLS和双向TLS
-- [ ] 自动自签TLS证书
+- [x] 自动自签TLS证书
 - [ ] http3协议学不动了
 - [x] server热重启支持
 - [x] server后台启动
@@ -66,7 +66,7 @@
 - View
 - [ ] 多模板库接入
 - Mvc
-- [x] mvc支持
+- [x] [mvc支持](docs/example/mvc.go)
 - [x] 控制器函数输入参数
 - [x] 自定义控制器执行
 - Tools
@@ -77,10 +77,11 @@
 - [x] http代理实现
 - [x] pprof支持
 - [x] expvar支持
-- [x] 运行时对象数据显示
+- [x] [运行时对象数据显示](component/show)
 - [x] api模拟工具
+- [x] [更新代码自动重启](component/notify)
 - Session
-- [x] Session实现
+- [x] [Session实现](docs/example/session.go)
 - Middleware
 - [x] gzip压缩
 - [x] 限流
@@ -93,10 +94,6 @@
 setting 基于配置初始化对象未实现
 
 fasthttp不支持多端口和hijack
-
-handlefile处理304缓存
-
-handlerproxy未支持101
 
 组件debug日志
 
@@ -146,7 +143,6 @@ client未完善
 	- [Redirect]
 
 	- [Logger]
-- [Websocket](#websocket)
 
 
 ## Application
@@ -299,54 +295,3 @@ func handleparam(ctx eudore.Context) {
 	ctx.WriteString(ctx.GetParam("*"))
 }
 ```
-
-# Websocket
-
-目前没有独立的websocket库，且不与net/http兼容,推荐使用`github.com/gobwas/ws`库。
-
-eudore.UpgradeHttp获取net.Conn链接并写入建立请求响应，然后wsutil库读写数据。
-
-`ctx.Response().Hijack()`可以直接获得原始tcp连接，然后读取header判断请求，写入101数据，再操作websocket连接。
-
-```golang
-package main
-
-import (
-	"github.com/eudore/eudore"
-	"github.com/gobwas/ws/wsutil"
-	_ "github.com/eudore/eudore/component/router/init"
-)
-
-func main() {
-	app := eudore.NewCore()
-	app.RegisterComponent(eudore.ComponentRouterInitName, eudore.HandlerFunc(func(ctx eudore.Context){
-		conn, err := eudore.UpgradeHttp(ctx) 
-		if err != nil {
-			// handle error
-			ctx.Error(err)
-		}
-		go func() {
-			defer conn.Close()
-
-			for {
-				msg, op, err := wsutil.ReadClientData(conn)
-				if err != nil {
-					ctx.Error(err)
-					break
-					// handle error
-				}
-				ctx.Info(string(msg))
-				err = wsutil.WriteServerMessage(conn, op, msg)
-				if err != nil {
-					// handle error
-				}
-			}
-		}()
-	}))
-
-	app.Listen(":8088")
-	app.Run()
-}
-```
-
-[docs]: docs

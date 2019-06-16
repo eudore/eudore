@@ -5,7 +5,8 @@ import (
 	"reflect"
 	"github.com/eudore/eudore"
 
-	//  "github.com/kr/pretty"
+	"fmt"
+	"github.com/kr/pretty"
 )
 
 var objs map[string]interface{} = make(map[string]interface{})
@@ -70,7 +71,7 @@ func Showkey(ctx eudore.Context) {
 	}
 	ctx.SetHeader(eudore.HeaderContentType, "text/plain; charset=utf-8")
 	// ctx.WriteRender(fields)
-	ctx.WriteJson(fields)
-	// fmt.Fprintf(ctx, "%# v", pretty.Formatter(val))
+	// ctx.WriteJson(fields)
+	fmt.Fprintf(ctx, "%# v", pretty.Formatter(val))
 }
 

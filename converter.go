@@ -694,6 +694,8 @@ func setWithValue(sType reflect.Type, sValue reflect.Value, tType reflect.Type, 
 		if err == nil {
 			return nil
 		}
+	case reflect.Ptr: 
+		return setWithValue(sType.Elem(), sValue.Elem(), tType, tValue)
 	}
 	return setWithString(tType.Kind(), tValue, getValueString(sType, sValue))
 }

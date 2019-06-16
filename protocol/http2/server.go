@@ -1889,21 +1889,8 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 		requestURI = rp.path
 	}
 
-/*	var url_ *url.URL
-	var requestURI string
-	if rp.method == "CONNECT" {
-		url_ = &url.URL{Host: rp.authority}
-		requestURI = rp.authority // mimic HTTP/1 server behavior
-	} else {
-		var err error
-		url_, err = url.ParseRequestURI(rp.path)
-		if err != nil {
-			return nil, nil, streamError(st.id, ErrCodeProtocol)
-		}
-		requestURI = rp.path
-	}*/
-
 	req := &requestReader{
+		ctx:			st.ctx,
 		requestBody:	requestBody{
 			conn:			sc,
 			stream:			st,
@@ -1918,27 +1905,6 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 		tls:			tlsState,
 		trailer:		trailer,
 	}
-/*	
-	body := &requestBody{
-		conn:          sc,
-		stream:        st,
-		needsContinue: needsContinue,
-	}
-	req := &http.Request{
-		Method:     rp.method,
-		URL:        url_,
-		RemoteAddr: sc.remoteAddrStr,
-		Header:     rp.header,
-		RequestURI: requestURI,
-		Proto:      "HTTP/2.0",
-		ProtoMajor: 2,
-		ProtoMinor: 0,
-		TLS:        tlsState,
-		Host:       rp.authority,
-		Body:       body,
-		Trailer:    trailer,
-	}
-	req = req.WithContext(st.ctx)*/
 
 	rws := responseWriterStatePool.Get().(*responseWriterState)
 	bwSave := rws.bw
@@ -1976,7 +1942,7 @@ func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, handler
 		}
 		rw.handlerDone()
 	}()
-	handler.EudoreHTTP(sc.baseCtx, rw, req)
+	handler.EudoreHTTP(req.ctx, rw, req)
 	didPanic = false
 }
 
@@ -2174,6 +2140,7 @@ func (h Header) Range(fn func(string, string)) {
 type (
 	requestReader struct {
 		requestBody
+		ctx			context.Context
 		method		string
 		uri			string
 		remoteAddr	string

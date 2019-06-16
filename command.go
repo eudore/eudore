@@ -21,6 +21,7 @@ import (
 // 程序后台启动时使用的环境变量名，用于表示是否fork来后台启动。
 const (
 	DAEMON_ENVIRON_KEY		= "EUDORE_IS_DEAMON"
+	DAEMON_NOTPID 			= "EUDORE_NOTPID"
 )
 
 // Command is a command parser that performs the corresponding behavior based on the current command.
@@ -36,7 +37,7 @@ type Command struct {
 // if the behavior is start will execute the handler.
 //
 // 返回一个命令解析对象，需要当前命令和进程pid文件路径，如果行为是start会执行handler。
-func NewCommand(cmd , pidfile string) *Command {
+func NewCommand(cmd, pidfile string) *Command {
 	if len(pidfile) == 0 {
 		pidfile = "/var/run/eudore.pid"
 	}
@@ -44,6 +45,11 @@ func NewCommand(cmd , pidfile string) *Command {
 		cmd: 	cmd,
 		pidfile:		pidfile,
 	}
+}
+
+func (c *Command) Reset(cmd, pidfile string) {
+	c.cmd = cmd
+	c.pidfile = pidfile
 }
 
 // Parse the command and execute it.
@@ -75,6 +81,12 @@ func (c *Command) Run() (err error) {
 	}else {
 		fmt.Printf("%s is true.\n", c.cmd)
 	}
+	if c.cmd == "daemon" {
+		if os.Getenv(DAEMON_ENVIRON_KEY) == "" {
+			os.Exit(0)
+		}
+		return
+	}
 	// 非启动命令结束程序
 	if c.cmd != "start" {
 		os.Exit(0)
@@ -89,7 +101,7 @@ func (c *Command) Start() error{
 	// 测试文件是否被锁定
 	_, err := c.readpid()
 	if err != nil {
-		return nil
+		return err
 	}
 	// 写入pid
 	return c.writepid()
@@ -99,15 +111,13 @@ func (c *Command) Start() error{
 //
 // 后台启动进程。若不是后台启动，则创建一个后台进程。
 func (c *Command) Daemon() error {
-	if os.Getenv(DAEMON_ENVIRON_KEY) == "" {
-		cmd := exec.Command(os.Args[0], os.Args[1:]...)
-		cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", DAEMON_ENVIRON_KEY, 1))
-		return cmd.Start()
-	}else{
-		c.cmd = "start"
+	if os.Getenv(DAEMON_ENVIRON_KEY) != "" {
 		return c.Start()
 	}
-	return nil
+	
+	cmd := exec.Command(os.Args[0], os.Args[1:]...)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", DAEMON_ENVIRON_KEY, 1))
+	return cmd.Start()
 }
 
 func (c *Command) Status() error {
@@ -132,12 +142,14 @@ func (c *Command) Restart() error {
 func (c *Command) ExecSignal(sig os.Signal) error {
 	pid, err := c.readpid()
 	if err != nil {
-		return err
+		return fmt.Errorf("read pidfile %s error: %v", c.pidfile, err)
 	}
+
 	process, err := os.FindProcess(pid)
 	if err != nil {
-		return err
+		return fmt.Errorf("find process %d error: %v", pid, err)
 	}
+
 	return process.Signal(sig)
 }
 
@@ -160,6 +172,9 @@ func (c *Command) readpid() (int, error) {
 //
 // 打开并锁定pid文件，写入pid的值。
 func (c *Command) writepid() (err error) {
+	if os.Getenv(DAEMON_NOTPID) != "" {
+		return nil
+	}
 	c.file, err = os.OpenFile(c.pidfile, os.O_WRONLY | os.O_CREATE , 0666)
 	if err != nil {
 		return
@@ -181,7 +196,7 @@ func (c *Command) writepid() (err error) {
 // Close the delete pid file and release the exclusive lock
 //
 // 关闭删除pid文件，并解除独占锁
-func (c *Command) release() error {
+func (c *Command) Release() error {
 	// defer os.Remove(c.pidfile)
 	defer c.file.Close()
 	return syscall.Flock(int(c.file.Fd()), syscall.LOCK_UN)

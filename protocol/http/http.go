@@ -1,7 +1,6 @@
 package http
 
 import (
-	"io"
 	"net"
 	"fmt"
 	"sync"
@@ -16,18 +15,14 @@ var (
 	crlf		= []byte("\r\n")
 	colonSpace	= []byte(": ")
 	constinueMsg	=	[]byte("HTTP/1.1 100 Continue\r\n\r\n")
-	requestPool		=	sync.Pool {
-		New:	func() interface{} {
-			return &Request{
-				reader:	bufio.NewReaderSize(nil, 2048),
-			}
-		},
-	}
-	responsePool	=	sync.Pool {
+	rwPool	=	sync.Pool {
 		New:	func() interface{} {
 			return &Response{
-				writer:	bufio.NewWriterSize(nil, 2048),
-				buf:	make([]byte, 2048),
+				request:	&Request{
+								reader:	bufio.NewReaderSize(nil, 2048),
+							},
+				writer:		bufio.NewWriterSize(nil, 2048),
+				buf:		make([]byte, 2048),
 			}
 		},
 	}
@@ -36,7 +31,7 @@ var (
 
 type HttpHandler struct {
 	Handler		protocol.Handler
-	ErrFunc		func(error)			`set:"errfunc`
+	Errfunc		func(error)			`set:"errfunc`
 }
 
 func NewHttpHandler(h protocol.Handler) *HttpHandler {
@@ -50,31 +45,29 @@ func printErr(err error) {
 // Handling http connections
 //
 // 处理http连接
-func (hh *HttpHandler) EudoreConn(ctx context.Context, c net.Conn) {
+func (hh *HttpHandler) EudoreConn(pctx context.Context, c net.Conn) {
 	// Initialize the request object.
 	// 初始化请求对象。
-	req := requestPool.Get().(*Request)
-	resp := responsePool.Get().(*Response)
-	resp.request = req
+	resp := rwPool.Get().(*Response)
 	for {
-		if err := req.Reset(c); err != nil && err != io.EOF {
+		if err := resp.request.Reset(c); err != nil { // && err != io.EOF
 			// handler error
-			hh.ErrFunc(err)
-			c.Close()
-			return
-		}
-		resp.Reset(c)
-		// 处理请求
-		hh.Handler.EudoreHTTP(ctx, resp, req)
-		resp.finalFlush()
-		if resp.ishjack {
+			hh.Errfunc(err)
 			break
 		}
-		if req.header.Get("Connection") != "keep-alive" || resp.ishjack {
-			c.Close()
+		resp.Reset(c)
+		ctx, cancelCtx := context.WithCancel(pctx)
+		resp.cancel = cancelCtx
+		// 处理请求
+		hh.Handler.EudoreHTTP(ctx, resp, resp.request)
+		if resp.ishjack {
+			return
+		}
+		resp.finalFlush()
+		if resp.request.isnotkeep {
 			break
 		}
 	}
-	requestPool.Put(req)
-	responsePool.Put(resp)
+	c.Close()
+	rwPool.Put(resp)
 }

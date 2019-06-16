@@ -111,10 +111,10 @@ type (
 	entryStd struct {
 		pool		*sync.Pool
 		logger		*LoggerStd
-		level 		LoggerLevel
+		checklevel	LoggerLevel
+		Time		*LoggerTime	`json:"time"`
 		Level		LoggerLevel	`json:"level"`
 		Fields		Fields		`json:"fields,omitempty"`
-		Time		*LoggerTime	`json:"time"`
 		Message		string		`json:"message,omitempty"`
 	}
 )
@@ -178,7 +178,7 @@ func (l *LoggerStd) initPool() {
 		return &entryStd{
 			pool:	&l.pool,
 			logger:	l,
-			level:	l.Config.Level,
+			checklevel:	l.Config.Level,
 			Time:	&LoggerTime{
 				Format:	l.Config.TimeFormat,
 			},
@@ -313,7 +313,7 @@ func (l *LoggerStdConfig) GetName() string {
 }
 
 func (e *entryStd) Debug(args ...interface{}) {
-	if e.level < 1 {
+	if e.checklevel < 1 {
 		e.Level = 0
 		e.Message = fmt.Sprintln(args...)
 		e.Message = e.Message[:len(e.Message) - 1]
@@ -323,7 +323,7 @@ func (e *entryStd) Debug(args ...interface{}) {
 }
 
 func (e *entryStd) Info(args ...interface{}) {
-	if e.level < 2 {
+	if e.checklevel < 2 {
 		e.Level = 1
 		e.Message = fmt.Sprintln(args...)
 		e.Message = e.Message[:len(e.Message) - 1]
@@ -333,7 +333,7 @@ func (e *entryStd) Info(args ...interface{}) {
 }
 
 func (e *entryStd) Warning(args ...interface{}) {
-	if e.level < 3 {
+	if e.checklevel < 3 {
 		e.Level = 2
 		e.Message = fmt.Sprint(args...)
 		e.logger.HandleEntry(e)
@@ -342,7 +342,7 @@ func (e *entryStd) Warning(args ...interface{}) {
 }
 
 func (e *entryStd) Error(args ...interface{}) {
-	if e.level < 4 {
+	if e.checklevel < 4 {
 		e.Level = 3
 		e.Message = fmt.Sprint(args...)
 		e.logger.HandleEntry(e)
@@ -361,7 +361,7 @@ func (e *entryStd) Fatal(args ...interface{}) {
 
 
 func (e *entryStd) Debugf(format string,args ...interface{}) {
-	if e.level < 1 {
+	if e.checklevel < 1 {
 		e.Level = 0
 		e.Message = fmt.Sprintf(format, args...)
 		e.Message = e.Message[:len(e.Message) - 1]
@@ -371,7 +371,7 @@ func (e *entryStd) Debugf(format string,args ...interface{}) {
 }
 
 func (e *entryStd) Infof(format string,args ...interface{}) {
-	if e.level < 2 {
+	if e.checklevel < 2 {
 		e.Level = 1
 		e.Message = fmt.Sprintf(format, args...)
 		e.Message = e.Message[:len(e.Message) - 1]
@@ -381,7 +381,7 @@ func (e *entryStd) Infof(format string,args ...interface{}) {
 }
 
 func (e *entryStd) Warningf(format string,args ...interface{}) {
-	if e.level < 3 {
+	if e.checklevel < 3 {
 		e.Level = 2
 		e.Message = fmt.Sprintf(format, args...)
 		e.logger.HandleEntry(e)
@@ -390,7 +390,7 @@ func (e *entryStd) Warningf(format string,args ...interface{}) {
 }
 
 func (e *entryStd) Errorf(format string,args ...interface{}) {
-	if e.level < 4 {
+	if e.checklevel < 4 {
 		e.Level = 3
 		e.Message = fmt.Sprintf(format, args...)
 		e.logger.HandleEntry(e)
@@ -438,6 +438,7 @@ func NewLoggerInit(interface{}) (Logger, error) {
 
 func (l *LoggerInit) newEntry() *entryInit {
 	entry := &entryInit{}
+	entry.Time = time.Now()
 	l.data = append(l.data, entry)
 	return entry
 }

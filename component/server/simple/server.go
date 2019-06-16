@@ -1,3 +1,5 @@
+// Simple implementation of the http protocol as a learning sample.
+//
 package simple
 
 import (

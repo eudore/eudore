@@ -98,7 +98,11 @@ http反向代理的原理就是请求转发，处理者接收请求然后发送�
 
 ## http跨域请求
 
+[Cors](http_cors_zh.md)
+
 ## http cookie实现原理
+
+[Cookie](http_cookie_zh.md)
 
 ## http重定向过程
 
@@ -106,7 +110,7 @@ http反向代理的原理就是请求转发，处理者接收请求然后发送�
 
 ## http gzip压缩
 
-
+gzip是内容编码，重写Write方法封装一层gzip.Writer，将原始数据写入gzip.Writer，最后将gzip编码后的数据输出到http.ResponseWriter。
 
 ## http 304响应
 
@@ -114,8 +118,10 @@ http反向代理的原理就是请求转发，处理者接收请求然后发送�
 
 ## websocket握手过程
 
+[Websocket Upgrade](../webname/proto_websocket_zh.md#Upgrade)
+
 ## http2握手过程
 
 h2握手利用了tls的ALPN或NPN机制，如果想ws那样的握手就是h2c，基于http实现的http2，不是基于https。
 
-tls配置有一项NextProtos属性，用于tls的ALPN扩展，如果值是h2，在tls握手时就可以完成h2握手，客户端在tls握手时，发现APLPN扩展的值是h2，就自动服务端支持h2，然后客户端发送固定的请求行`PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n`
+tls配置有一项NextProtos属性，用于tls的ALPN扩展，如果值是h2，在tls握手时就可以完成h2握手，客户端在tls握手时，发现APLPN扩展的值是h2，就自动服务端支持h2，然后客户端发送固定的请求行`PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n`，服务端解析到就将http Connn转换成http2 Conn，然后安装h2协议开始操作链接。

@@ -24,6 +24,7 @@ type Request struct {
 	length		int
 	sawEOF		bool
 	expect		bool
+	isnotkeep	bool
 }
 
 
@@ -62,6 +63,7 @@ func(r *Request) Reset(conn net.Conn) error {
 	// body长度为零时，读取body直接返回EOF。
 	r.sawEOF = r.length == 0
 	r.expect = r.header.Get("Expect") == "100-continue"
+	r.isnotkeep = r.header.Get("Connection") != "keep-alive"
 	return err
 }
 

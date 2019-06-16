@@ -27,7 +27,8 @@ type (
 	}
 	Server struct {
 		Config			*ServerConfig 	`set:"config"`
-		Print			func(...interface{})	`set:"print"`
+		Print			func(...interface{})	`set:"print" json:"-"`
+		Errfunc			eudore.ErrorFunc		`set:"errfunc" json:"-"`
 		mu				sync.Mutex
 		wg				sync.WaitGroup
 		handler			protocol.Handler
@@ -183,7 +184,9 @@ func (srv *Server) EnableHttp() {
 			Handler:	srv.handler,
 		}
 		// 设服务连接处理为http
-		srv.http.SetHandler(http.NewHttpHandler(srv.handler))
+		httphandler := http.NewHttpHandler(srv.handler)
+		httphandler.Errfunc = srv.Errfunc
+		srv.http.SetHandler(httphandler)
 		srv.http.SetNextHandler("h2", http2.NewServer(srv.handler))
 	})
 }

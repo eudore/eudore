@@ -24,6 +24,7 @@ type (
 		Httpcontext		sync.Pool
 		inits			map[string]initInfo
 		stop 			chan error
+		cmd				*Command
 	}
 	// eudore reload funcs.
 	InitFunc func(*Eudore) error
@@ -53,6 +54,7 @@ func NewEudore(components ...ComponentConfig) *Eudore {
 			},
 		},
 		stop: 			make(chan error, 10),
+		cmd:			NewCommand("start" , "/var/run/eudore.pid"),
 	}
 	// set eudore context pool
 	app.Httpcontext = sync.Pool {
@@ -71,8 +73,8 @@ func NewEudore(components ...ComponentConfig) *Eudore {
 	app.RegisterInit("eudore-config", 0x008, InitConfig)
 	app.RegisterInit("eudore-workdir", 0x009, InitWorkdir)
 	app.RegisterInit("eudore-command", 0x00a, InitCommand)
-	app.RegisterInit("eudore-server", 0x015 , InitServer)
-	app.RegisterInit("eudore-logger", 0x01f , InitLogger)
+	app.RegisterInit("eudore-logger", 0x013 , InitLogger)
+	app.RegisterInit("eudore-server", 0x017 , InitServer)
 	app.RegisterInit("eudore-component-info", 0x54 , InitListComponent)
 	app.RegisterInit("eudore-signal", 0x57 , InitSignal)
 	app.RegisterInit("eudore-server-start", 0xff0 , InitServerStart)
@@ -209,16 +211,19 @@ func (app *Eudore) getInitNames(names []string) []string {
 // Restart Eudore
 // Invoke ServerManager Restart
 func (app *Eudore) Restart() error {
+	app.cmd.Release()
 	return app.Server.Restart()
 }
 
 // Eudore Stop immediately
 func (app *Eudore) Stop() error {
+	app.cmd.Release()
 	return app.Server.Close()
 }
 
 // Eudore Wait quit.
 func (app *Eudore) Shutdown() error {
+	app.cmd.Release()
 	return app.Server.Shutdown(context.Background())
 }
 

@@ -13,13 +13,13 @@ import (
 
 
 func ConfigParseInit(c Config) error {
-	return c.Set("keys.config", "file:///data/web/golang/src/wejass/config/config-eudore.json")
+	return nil
 }
 
 func ConfigParseRead(c Config) error {
-	path := c.Get("keys.config").(string)
+	path := GetString(c.Get("keys.config"))
 	if path == "" {
-		return fmt.Errorf("config data is null")
+		return nil //fmt.Errorf("config data is null")
 	}
 	// read protocol
 	// get read func
@@ -27,7 +27,7 @@ func ConfigParseRead(c Config) error {
 	fn := ConfigLoadConfigReadFunc(s[0])
 	if fn == nil {
 		// use default read func
-		fmt.Println("undefined read config: " + path + ", use default.")
+		fmt.Println("undefined read config: " + path + ", use default file:// .")
 		fn = ConfigLoadConfigReadFunc("default")
 	}
 	data, err := fn(path)
@@ -36,15 +36,18 @@ func ConfigParseRead(c Config) error {
 }
 
 func ConfigParseConfig(c Config) error {
-	err := json.Unmarshal(c.Get("keys.configdata").([]byte), c.Get(""))
-	//Json(string(c.Config.Data), c)
+	data := c.Get("keys.configdata")
+	if data == nil {
+		return nil
+	}
+
+	err := json.Unmarshal(data.([]byte), c)
 	return err	
 }
 
 func ConfigParseArgs(c Config) (err error) {
 	for _, str := range os.Args[1:] {
 		if !strings.HasPrefix(str, "--") {
-			// fmt.Println("invalid args", str)
 			continue
 		}
 		c.Set(split2byte(str[2:], '='))
@@ -63,7 +66,33 @@ func ConfigParseEnvs(c Config) error {
 	return nil
 }
 
+func ConfigParseMods(c Config) error {
+	mod, ok  := c.Get("enable").([]string)
+	if !ok {
+		modi, ok := c.Get("enable").([]interface{})
+		if ok {
+			mod = make([]string, len(modi))
+			for i, s := range modi {
+				mod[i] = fmt.Sprint(s)
+			}
+		}else {
+			return nil
+		}
+	}
 
+	for _, i := range mod {
+		ConvertTo(c.Get("mods." + i), c.Get(""))
+	}
+	return nil
+}
+
+func ConfigParseHelp(c Config) error {
+	ok := c.Get("keys.help") != nil
+	if ok {
+		Json(c)
+	}
+	return nil
+}
 
 // Read config file
 func ConfigReadFile(path string) ([]byte, error) {

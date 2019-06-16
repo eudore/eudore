@@ -14,17 +14,15 @@ package eudore
 
 import (
 	"io"
-	"fmt"
 	"mime"
 	"errors"
 	"strings"
-	// "strconv"
+	"context"
 	"net/url"
 	"io/ioutil"
 	"encoding/json"
 	"encoding/xml"
 	"mime/multipart"
-	"github.com/eudore/eudore/protocol"
 )
 
 const (
@@ -34,8 +32,9 @@ const (
 
 var (
 	BinderDefault	=	BindFunc(BinderDefaultFunc)
-	BinderForm		=	BindFunc(BindFormFunc)
 	BinderUrl		=	BindFunc(BindUrlFunc)
+	BinderForm		=	BindFunc(BindFormFunc)
+	BinderUrlBody	=	BindFunc(BindUrlBodyFunc)
 	BinderJSON		=	BindFunc(BindJsonFunc)
 	BinderXML		=	BindFunc(BindXmlFunc)
 )
@@ -43,48 +42,66 @@ var (
 
 type (
 	Binder interface {
-		Bind(protocol.RequestReader, interface{}) error
+		Bind(Context, interface{}) error
 	}
-	BindFunc func(protocol.RequestReader, interface{}) error
+	BindFunc func(Context, interface{}) error
 )
 
-func (fn BindFunc) Bind(r protocol.RequestReader, i interface{}) error {
-	return fn(r, i)
+func (fn BindFunc) Bind(ctx Context, i interface{}) error {
+	return fn(ctx, i)
 }
 
-func BinderDefaultFunc(r protocol.RequestReader, i interface{}) error {
-	switch strings.SplitN(r.Header().Get(HeaderContentType), ";", 2)[0] {
+func BinderDefaultFunc(ctx Context, i interface{}) error {
+	if ctx.Method() == MethodGet || ctx.Method() == MethodHead {
+		return nil
+	}
+	switch strings.SplitN(ctx.GetHeader(HeaderContentType), ";", 2)[0] {
 	case MimeApplicationJson:
-		return BinderJSON.Bind(r, i)
+		return BinderJSON.Bind(ctx, i)
 	case MimeTextXml, MimeApplicationXml:
-		return BinderXML.Bind(r, i)
+		return BinderXML.Bind(ctx, i)
 	case MimeMultipartForm:
-		return BinderForm.Bind(r, i)
+		return BinderForm.Bind(ctx, i)
 	case MimeApplicationForm:
-		return BinderUrl.Bind(r, i)
+		return BinderUrlBody.Bind(ctx, i)
 	default:
-		fmt.Println(errors.New("bind not suppert content type " + r.Header().Get(HeaderContentType)))
-		return errors.New("bind not suppert content type " + r.Header().Get(HeaderContentType))
+		err := errors.New("bind not suppert content type " + ctx.GetHeader(HeaderContentType))
+		ctx.Error(err)
+		return err
 	}
 }
 
-func BindFormFunc(r protocol.RequestReader, i interface{}) error {
-	_, params, err := mime.ParseMediaType(r.Header().Get(HeaderContentType))
+func BindUrlFunc(ctx Context, i interface{}) error {
+	return nil
+}
+
+func BindFormFunc(ctx Context, i interface{}) error {
+	_, params, err := mime.ParseMediaType(ctx.GetHeader(HeaderContentType))
 	if err != nil {
 		return err
 	}
 
-	form, err := multipart.NewReader(r, params["boundary"]).ReadForm(defaultMaxMemory)
+	form, err := multipart.NewReader(ctx, params["boundary"]).ReadForm(defaultMaxMemory)
 	if err != nil {
 		return err
 	}
+	go func(ctx context.Context) {
+		for {
+			select {
+			case <- ctx.Done():
+				form.RemoveAll()
+				return
+			}
+		}
+
+	}(ctx.Context())
 	ConvertTo(form.File, i)
 	return ConvertTo(form.Value, i)
 }
 
 // body读取限制32kb.
-func BindUrlFunc(r protocol.RequestReader, i interface{}) error {
-	body, err := ioutil.ReadAll(io.LimitReader(r, 32 << 10))
+func BindUrlBodyFunc(ctx Context, i interface{}) error {
+	body, err := ioutil.ReadAll(io.LimitReader(ctx, 32 << 10))
 	if err != nil {
 		return err
 	}
@@ -95,10 +112,10 @@ func BindUrlFunc(r protocol.RequestReader, i interface{}) error {
 	return ConvertTo(uri, i)
 }
 
-func BindJsonFunc(r protocol.RequestReader, i interface{}) error {
-	return json.NewDecoder(r).Decode(i)
+func BindJsonFunc(ctx Context, i interface{}) error {
+	return json.NewDecoder(ctx).Decode(i)
 }
 
-func BindXmlFunc(r protocol.RequestReader, i interface{}) error {
-	return xml.NewDecoder(r).Decode(i)
+func BindXmlFunc(ctx Context, i interface{}) error {
+	return xml.NewDecoder(ctx).Decode(i)
 }

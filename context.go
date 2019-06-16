@@ -109,7 +109,6 @@ type (
 		handler		HandlerFuncs
 		// data
 		ctx			context.Context
-		cancel		context.CancelFunc 
 		path 		string
 		rawQuery	string
 		cookies 	[]*Cookie
@@ -118,7 +117,6 @@ type (
 		// component
 		app			*App
 		log			Logger
-		fields		Fields
 	}
 	ParamsArray struct {
 		Keys		[]string
@@ -139,13 +137,12 @@ var _ Context			=	(*ContextBase)(nil)
 func NewContextBase(app *App) *ContextBase {
 	return &ContextBase{
 		app:	app,
-		fields:	make(Fields, 5),
 	}
 }
 
 // context
 func (ctx *ContextBase) Reset(pctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
-	ctx.ctx, ctx.cancel = context.WithCancel(pctx)
+	ctx.ctx = pctx
 	ctx.RequestReader = r
 	ctx.ResponseWriter = w
 	// logger
@@ -220,7 +217,6 @@ func (ctx *ContextBase) Next() {
 
 func (ctx *ContextBase) End() {
 	ctx.index = 0xff
-	ctx.cancel()
 }
 
 func (ctx *ContextBase) NewRequest(method, url string, body io.Reader) (protocol.ResponseReader, error) {
@@ -399,7 +395,7 @@ func (ctx *ContextBase) WriteFile(path string) (err error) {
 
 
 func (ctx *ContextBase) ReadBind(i interface{}) error {
-	return ctx.app.Binder.Bind(ctx.Request(), i)
+	return ctx.app.Binder.Bind(ctx, i)
 }
 
 
@@ -421,6 +417,7 @@ func (ctx *ContextBase) WriteRender(i interface{}) error {
 			if len(temp) > 0 {
 				return ctx.WriteView(temp, i)
 			}
+			r = RendererText
 		default:
 			return fmt.Errorf("undinf accept: %v", ctx.GetHeader(HeaderAccept))
 		}
@@ -474,6 +471,7 @@ func (ctx *ContextBase) Fatal(args ...interface{}) {
 	if ctx.ResponseWriter.Status() == 200 {
 		ctx.WriteHeader(500)
 		ctx.WriteRender(map[string]string{
+			// "error":	fmt.Sprint(args...),
 			"status":	"500",
 			"x-request-id":	ctx.RequestID(),
 		})
@@ -508,24 +506,20 @@ func (ctx *ContextBase) Fatalf(format string, args ...interface{}) {
 }
 
 func (ctx *ContextBase) logReset() LogOut {
+	fields := make(Fields)
 	file, line := LogFormatFileLine(0)
-	ctx.fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
-	ctx.fields["file"] = file
-	ctx.fields["line"] = line
-	return ctx.app.Logger.WithFields(ctx.fields)
+	fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
+	fields["file"] = file
+	fields["line"] = line
+	return ctx.log.WithFields(fields)
 }
 
 func (ctx *ContextBase) WithField(key string, value interface{}) LogOut {
-	if ctx.fields == nil {
-		ctx.fields = make(Fields)
-	}
-	ctx.fields[key] = value
-	return ctx
+	return ctx.logReset().WithField(key, value)
 }
 
 func (ctx *ContextBase) WithFields(fields Fields) LogOut {
-	ctx.fields = fields
-	return ctx
+	return ctx.log.WithFields(fields)
 }
 
 

@@ -19,6 +19,7 @@ import (
 	"os"
 	"fmt"
 	"sync"
+	"encoding/json"
 	// "strings"
 )
 
@@ -27,9 +28,9 @@ type (
 	Seter interface {
 		Set(string, interface{}) error
 	}
+	ConfigReadFunc func(string) ([]byte, error)
 	//
 	ConfigParseFunc func(Config) error
-	ConfigReadFunc func(string) ([]byte, error)
 	ConfigParseOption func([]ConfigParseFunc) []ConfigParseFunc
 	//
 	Config interface {
@@ -45,7 +46,7 @@ type (
 		mu		sync.RWMutex
 	}
 	ConfigEudore struct {
-		Key 	interface{} 	`set:"key"`
+		Keys 	interface{} 	`set:"key"`
 		mu 		sync.RWMutex	`set:"-"`
 		funcs	[]ConfigParseFunc	`set:"-"`
 	}
@@ -85,7 +86,8 @@ func NewConfigMap(arg interface{}) (Config, error) {
 			ConfigParseConfig,
 			ConfigParseArgs,
 			ConfigParseEnvs,
-			// ParseKeys,
+			ConfigParseMods,
+			ConfigParseHelp,
 		},
 	}, nil
 }
@@ -94,7 +96,7 @@ func (c *ConfigMap) Get(key string) interface{} {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if len(key) == 0 {
-		return &c.Keys
+		return c.Keys
 	}
 	return c.Keys[key]
 }
@@ -149,6 +151,14 @@ func (c *ConfigMap) Version() string {
 	return ComponentConfigMapVersion
 }
 
+func (c *ConfigMap) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Keys)
+}
+
+func (c *ConfigMap) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &c.Keys)
+}
+
 
 
 func NewConfigEudore(i interface{}) (Config, error) {
@@ -156,24 +166,25 @@ func NewConfigEudore(i interface{}) (Config, error) {
 		i = make(map[string]interface{})
 	}
 	return &ConfigEudore{
-		Key: i,
+		Keys: i,
 		funcs:	[]ConfigParseFunc{
 			ConfigParseInit,
 			ConfigParseRead,
 			ConfigParseConfig,
 			ConfigParseArgs,
 			ConfigParseEnvs,
-			// ParseKeys,
+			ConfigParseMods,
+			ConfigParseHelp,
 		},
 	}, nil
 }
 
 func (c *ConfigEudore) Get(key string) (i interface{}) {
 	if len(key) == 0 {
-		return c.Key
+		return c.Keys
 	}
 	c.mu.Lock()
-	i = Get(c.Key, key)
+	i = Get(c.Keys, key)
 	c.mu.Unlock()
 	return 
 }
@@ -181,9 +192,9 @@ func (c *ConfigEudore) Get(key string) (i interface{}) {
 func (c *ConfigEudore) Set(key string, val interface{}) (err error) {
 	c.mu.RLock()
 	if len(key) == 0 {
-		c.Key = val
+		c.Keys = val
 	}else {
-		c.Key, err = Set(c.Key, key, val)		
+		c.Keys, err = Set(c.Keys, key, val)		
 	}	
 	c.mu.RUnlock()
 	return 
@@ -209,4 +220,12 @@ func (c *ConfigEudore) GetName() string {
 
 func (c *ConfigEudore) Version() string {
 	return ComponentConfigEudoreVersion
+}
+
+func (c *ConfigEudore) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.Keys)
+}
+
+func (c *ConfigEudore) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &c.Keys)
 }

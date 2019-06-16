@@ -20,8 +20,8 @@ func main() {
 		Format:	"json",
 	})
 	// 全局级请求处理中间件
-	app.AddMiddleware(
-		logger.NewLogger(eudore.GetRandomString).Handle,
+	app.AddMiddleware("ANY", "",
+		logger.NewLogger(),
 		// gzip.NewGzip(5),
 	)
 
@@ -29,7 +29,7 @@ func main() {
 	// apiv1 := eudore.NewRouterClone(app.Router)
 	apiv1 := app.Group("/api/v1")
 	// 路由级请求处理中间件
-	apiv1.AddMiddleware(recover.RecoverFunc)
+	apiv1.AddMiddleware("ANY", "", recover.RecoverFunc)
 	{
 		apiv1.GetFunc("/get/:name", handleget)
 		// Api级请求处理中间件

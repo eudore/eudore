@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 	"bufio"
+	"context"
 	"strings"
 	"github.com/eudore/eudore/protocol"
 )
@@ -18,7 +19,6 @@ var Status = map[int]string{
 
 type Response struct {
 	request		*Request
-	conn		net.Conn
 	writer		*bufio.Writer
 	header		Header
 	status		int
@@ -30,11 +30,16 @@ type Response struct {
 	buf 		[]byte
 	n			int
 	err			error
+	//
+	cancel	context.CancelFunc
 }
 
+type CancelConn struct {
+	net.Conn
+	cancel context.CancelFunc
+}
 
 func (w *Response) Reset(conn net.Conn) {
-	w.conn = conn
 	w.writer.Reset(conn)
 	w.header.Reset()
 	w.status = 200
@@ -146,7 +151,7 @@ func (w *Response) Flush() {
 }
 
 // 请求结束时flush写入数据。
-func (w *Response) finalFlush() error {
+func (w *Response) finalFlush() (err error) {
 	// 如果没有写入状态行，并且没有指定内容长度。
 	// 设置内容长度为当前缓冲数据。
 	if !w.iswrite && len(w.header.Get("Content-Length")) == 0 {
@@ -172,13 +177,15 @@ func (w *Response) finalFlush() error {
 		}
 	}
 	// 发送数据
-	return w.writer.Flush()
+	err = w.writer.Flush()
+	w.cancel()
+	return
 }
 
 
 func (w *Response) Hijack() (net.Conn, error) {
 	w.ishjack = true
-	return w.request.conn, nil
+	return &CancelConn{w.request.conn, w.cancel}, nil
 }
 
 // http协议不支持push方法。
@@ -192,4 +199,10 @@ func (w *Response) Status() int {
 
 func (w *Response) Size() int {
 	return w.size
+}
+
+func (c *CancelConn) Close() (err error) {
+	err = c.Conn.Close()
+	c.cancel()
+	return
 }

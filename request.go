@@ -223,6 +223,9 @@ func (r *RequestWriterHttp) Header() protocol.Header {
 
 
 func (r *RequestWriterHttp) Do() (protocol.ResponseReader, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
 	resp, err := r.Client.Do(r.Request)
 	if err != nil {
 		return nil, err

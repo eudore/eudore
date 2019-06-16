@@ -28,6 +28,8 @@ func InitSignal(e *Eudore) error {
 		err := e.Restart()
 		if err != nil {
 			e.Error("eudore reload error: ", err)
+		}else {
+			e.Info("eudore restart success.")
 		}
 		return err
 	})
@@ -60,7 +62,8 @@ func InitCommand(app *Eudore) error {
 	cmd := GetDefaultString(app.Config.Get("command"), "start")
 	pid := GetDefaultString(app.Config.Get("pidfile"), "/var/run/eudore.pid")
 	app.Infof("current command is %s, pidfile in %s.", cmd, pid)
-	return NewCommand(cmd , pid).Run()
+	app.cmd.Reset(cmd , pid)
+	return app.cmd.Run()
 }
 
 
@@ -99,7 +102,14 @@ func InitServerStart(app *Eudore) error {
 	}
 
 	ComponentSet(app.Server, "config.handler", app)
-	ComponentSet(app.Server, "errfunc", app.HandleError)
+	ComponentSet(app.Server, "errfunc", func(err error) {
+		fields := make(Fields)
+		file, line := LogFormatFileLine(0)
+		fields["component"] = app.Server.GetName()
+		fields["file"] = file
+		fields["line"] = line
+		app.WithFields(fields).Errorf("server error: %v", err)
+	})
 	go func() {
 		app.stop <- app.Server.Start()
 	}()

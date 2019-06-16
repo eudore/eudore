@@ -1,6 +1,6 @@
 # Eudore
 
-eudore具有以下对象，除Application以为均为接口，每个对象都具有明确语义，Application是最顶级对象可以通过组合方式实现重写，其他对象为接口定义直接重新实现，或组合接口实现部分重写。
+eudore最大的特点是解耦，具有以下对象，除Application以为均为接口，每个对象都具有明确语义，Application是最顶级对象可以通过组合方式实现重写，其他对象为接口定义直接重新实现，或组合接口实现部分重写。
 
 | 名称 | 作用 | 定义 |
 | ------------ | ------------ | ------------ |
@@ -12,7 +12,7 @@ eudore具有以下对象，除Application以为均为接口，每个对象都具
 | [Middleware](middleware_zh.md) | 多Handler组合运行 | handler.go |
 | Logger | App和Ctx日志输出 | logger.go |
 | Server | http Server启动 | server.go |
-| Config | 配置数据管理 | config.go configparse.go |
+| Config | [配置数据管理](config_zh.md) | config.go configparse.go |
 | Cache | 全局缓存对象 | cache.go |
 | View | 模板渲染 | view.go |
 | Client | http客户端 | client.go |
@@ -40,7 +40,9 @@ eudore具有以下对象，除Application以为均为接口，每个对象都具
 
 # Q & A
 
+eudore的完整学习方式？
 
+先了解从整体上了解每种组件的作用，
 
 # RequestReader & ResponseWriter
 

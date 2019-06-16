@@ -31,6 +31,9 @@ func init() {
 	addrs := os.Getenv(EUDORE_GRACEFUL_ADDRS)
 	GlobalListener = &globalListener{}
 	for i, addr := range strings.Split(addrs, ",") {
+		if addr == "" {
+			continue
+		}
 		file := os.NewFile(uintptr(i + 3), "")
 		ln, err := net.FileListener(file)
 		if err == nil {

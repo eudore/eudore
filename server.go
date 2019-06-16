@@ -20,6 +20,11 @@ import (
 	"strings"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"crypto/rsa"
+	"crypto/rand"
+	"math/big"
+
 )
 
 const (
@@ -336,10 +341,12 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 	if slc.Http2 {
 		config.NextProtos = []string{"h2"}
 	}
-	config.Certificates[0], err = tls.LoadX509KeyPair(slc.Certfile, slc.Keyfile)
+
+	config.Certificates[0], err = loadCertificate(slc.Certfile, slc.Keyfile)
 	if err != nil {
 		return nil, err
 	}
+
 	// set mutual tls
 	if slc.Mutual {
 		config.ClientAuth = tls.RequireAndVerifyClientCert	
@@ -352,6 +359,38 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 		config.ClientCAs = pool
 	}
 	return tls.NewListener(ln, config), nil
+}
+
+func loadCertificate(cret, key string) (tls.Certificate, error) {
+	if cret != "" && key != "" {
+		return tls.LoadX509KeyPair(cret, key)
+	}
+
+	ca := &x509.Certificate{
+		SerialNumber: big.NewInt(1653),
+		Subject: pkix.Name{
+			Country: []string{"China"},
+			Organization: []string{"eudore"},
+			OrganizationalUnit: []string{"eudore"},
+		},
+		NotBefore: time.Now(),
+		NotAfter: time.Now().AddDate(10,0,0),
+		SubjectKeyId: []byte{1,2,3,4,5},
+		BasicConstraintsValid: true,
+		IsCA: true,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage: x509.KeyUsageDigitalSignature|x509.KeyUsageCertSign,
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(ca)
+
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	caByte, err := x509.CreateCertificate(rand.Reader, ca, ca, &priv.PublicKey, priv)
+
+	return tls.Certificate{
+		Certificate: [][]byte{ caByte },
+		PrivateKey: priv,
+	}, err
 }
 
 
