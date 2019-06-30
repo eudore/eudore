@@ -3,49 +3,49 @@
 package simple
 
 import (
-	"io"
-	"fmt"
-	"time"
 	"bufio"
 	"context"
-	"strings"
+	"crypto/tls"
+	"fmt"
+	"io"
 	"net"
 	"net/textproto"
-	"crypto/tls"
+	"strings"
+	"time"
 )
 
 type (
 	Server struct {
-		ctx			context.Context
-		Handler		func(*Response, *Request)
+		ctx     context.Context
+		Handler func(*Response, *Request)
 	}
 	conn struct {
-		server		*Server
-		rwc			net.Conn
+		server *Server
+		rwc    net.Conn
 	}
 	Request struct {
-		method		string
-		requestURI	string
-		proto		string
-		header		Header
-		reader		io.Reader
-		conn		net.Conn
+		method     string
+		requestURI string
+		proto      string
+		header     Header
+		reader     io.Reader
+		conn       net.Conn
 	}
 	Response struct {
-		request		*Request
-		iswrite		bool
-		status		int
-		header		Header
-		writer		*bufio.ReadWriter
-
+		request *Request
+		iswrite bool
+		status  int
+		header  Header
+		writer  *bufio.ReadWriter
 	}
 	Header map[string][]string
 	Params = Header
 )
 
 const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
+
 var Status = map[int]string{
-	200:	"OK",
+	200: "OK",
 }
 
 // 监听一个tcp连接，并启动服务。
@@ -81,7 +81,7 @@ func (srv *Server) Serve(l net.Listener) error {
 // 封装一个http连接对象
 func (srv *Server) newConn(rwc net.Conn) *conn {
 	return &conn{
-		server:	srv,
+		server: srv,
 		rwc:    rwc,
 	}
 }
@@ -103,15 +103,15 @@ func (c *conn) serve(ctx context.Context) {
 		// Initialize the request object.
 		// 初始化请求对象。
 		req := &Request{
-			header:	Header{},
+			header: Header{},
 			reader: rw,
-			conn:	c.rwc,
+			conn:   c.rwc,
 		}
 		resp := &Response{
-			request:req,
-			status: 200,
-			header:	Header{},
-			writer:	rw,
+			request: req,
+			status:  200,
+			header:  Header{},
+			writer:  rw,
 		}
 		// Read the http request line.
 		// 读取http请求行。
@@ -177,7 +177,6 @@ func split2(str string, s string) (string, string) {
 	return "", ""
 }
 
-
 func (r *Request) Method() string {
 	return r.method
 }
@@ -196,6 +195,7 @@ func (r *Request) Read(b []byte) (int, error) {
 func (r *Request) Host() string {
 	return r.header.Get("Host")
 }
+
 // conn data
 func (r *Request) RemoteAddr() string {
 	return r.conn.RemoteAddr().String()
@@ -203,7 +203,6 @@ func (r *Request) RemoteAddr() string {
 func (r *Request) TLS() *tls.ConnectionState {
 	return nil
 }
-
 
 func (w *Response) Header() Header {
 	return w.header

@@ -1,26 +1,25 @@
 package shell
 
-
 import (
-	"time"
 	"bytes"
-	"regexp"
 	"os/exec"
+	"regexp"
+	"time"
 
 	"github.com/eudore/eudore"
 )
 
 type Shell struct {
-	List 	[]string
+	List []string
 }
 
 func NewShell() *Shell {
 	s := &Shell{}
 	go func() {
 		s.Update()
-		time.Sleep(10 * time.Second)	
+		time.Sleep(10 * time.Second)
 	}()
-	
+
 	return s
 }
 
@@ -48,4 +47,3 @@ func (s *Shell) Update() {
 	}
 	s.List = ips
 }
-

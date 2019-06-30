@@ -1,20 +1,16 @@
 package main
 
 import (
+	"github.com/eudore/eudore"
 	"os"
 	"time"
-	"github.com/eudore/eudore"
-
-
-/*	"fmt"
-	"github.com/kr/pretty"*/
-)
+	/*	"fmt"
+		"github.com/kr/pretty"*/)
 
 func main() {
 	modstd()
 	modeudore()
 }
-
 
 func modstd() {
 	content := []byte(`{
@@ -29,7 +25,6 @@ func modstd() {
 	defer os.Remove(tmpfile.Name())
 	tmpfile.Write(content)
 
-
 	app := eudore.NewCore()
 	app.Config.Set("keys.config", "example.json")
 	app.Config.Set("enable", []string{"debug"})
@@ -39,11 +34,10 @@ func modstd() {
 	time.Sleep(100 * time.Millisecond)
 }
 
-
 type conf struct {
-	Keys	map[string]interface{} `set:"keys"`
-	Enable	[]string	`set:"enable"`
-	Mods	map[string]*conf	`set:"mods"`
+	Keys   map[string]interface{} `set:"keys"`
+	Enable []string               `set:"enable"`
+	Mods   map[string]*conf       `set:"mods"`
 }
 
 func modeudore() {
@@ -64,7 +58,6 @@ func modeudore() {
 	tmpfile, _ := os.Create("example.json")
 	defer os.Remove(tmpfile.Name())
 	tmpfile.Write(content)
-
 
 	app := eudore.NewCore()
 	app.RegisterComponent("config-eudore", new(conf))

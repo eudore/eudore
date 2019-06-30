@@ -1,37 +1,37 @@
 package http
 
 import (
-	"io"
-	"fmt"
-	"net"
-	"time"
 	"bufio"
 	"context"
-	"strings"
+	"fmt"
 	"github.com/eudore/eudore/protocol"
+	"io"
+	"net"
+	"strings"
+	"time"
 )
 
 const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
 
 var Status = map[int]string{
-	200:    "OK",
+	200: "OK",
 }
 
 type Response struct {
-	request		*Request
-	writer		*bufio.Writer
-	header		Header
-	status		int
-	size		int
-	iswrite		bool
-	chunked		bool
-	ishjack		bool
-	// buffer 
-	buf 		[]byte
-	n			int
-	err			error
+	request *Request
+	writer  *bufio.Writer
+	header  Header
+	status  int
+	size    int
+	iswrite bool
+	chunked bool
+	ishjack bool
+	// buffer
+	buf []byte
+	n   int
+	err error
 	//
-	cancel	context.CancelFunc
+	cancel context.CancelFunc
 }
 
 type CancelConn struct {
@@ -62,7 +62,7 @@ func (w *Response) WriteHeader(codeCode int) {
 // 写入数据，如果写入数据长度小于缓冲，不会立刻返回，也不会写入状态行。
 func (w *Response) Write(p []byte) (int, error) {
 	// 数据大于缓冲，发送数据
-	if w.n + len(p) > len(w.buf) {
+	if w.n+len(p) > len(w.buf) {
 		// 写入数据
 		n, _ := w.writeDate(p, len(p))
 		// 更新数据长度
@@ -86,19 +86,19 @@ func (w *Response) writeDate(p []byte, length int) (n int, err error) {
 	// 写入状态行
 	w.writerResponseLine()
 	// 如果有写入错误，或者数据长度为0则返回。
-	if w.err != nil || (length + w.n) == 0 {
+	if w.err != nil || (length+w.n) == 0 {
 		return 0, w.err
 	}
 	// 数据写入
 	if w.chunked {
 		// 分块写入
-		fmt.Fprintf(w.writer, "%x\r\n", length + w.n)
+		fmt.Fprintf(w.writer, "%x\r\n", length+w.n)
 		// 写入缓冲数据和当前数据
 		w.writer.Write(w.buf[0:w.n])
 		n, err = w.writer.Write(p)
 		// 分块结束
-		w.writer.Write([]byte{13, 10})	
-	}else {
+		w.writer.Write([]byte{13, 10})
+	} else {
 		w.writer.Write(w.buf[0:w.n])
 		n, err = w.writer.Write(p)
 	}
@@ -165,8 +165,8 @@ func (w *Response) finalFlush() (err error) {
 		tr := w.header.Get("Trailer")
 		if len(tr) == 0 {
 			// 没有Trailer,直接写入结束
-			w.writer.Write([]byte{0x30, 0x0d, 0x0a, 0x0d, 0x0a})	
-		}else {
+			w.writer.Write([]byte{0x30, 0x0d, 0x0a, 0x0d, 0x0a})
+		} else {
 			// 写入结尾
 			w.writer.Write([]byte{0x30, 0x0d, 0x0a})
 			// 写入Trailer的值
@@ -181,7 +181,6 @@ func (w *Response) finalFlush() (err error) {
 	w.cancel()
 	return
 }
-
 
 func (w *Response) Hijack() (net.Conn, error) {
 	w.ishjack = true

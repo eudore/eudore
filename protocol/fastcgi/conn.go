@@ -1,16 +1,15 @@
 package fastcgi
 
 import (
-	"sync"
-	"io"
 	"bytes"
 	"encoding/binary"
+	"io"
+	"sync"
 )
 
 // for padding so we don't have to allocate all the time
 // not synchronized because we don't care what the contents are
 var pad [maxPad]byte
-
 
 // conn sends records over rwc
 type conn struct {

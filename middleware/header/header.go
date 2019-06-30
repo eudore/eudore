@@ -1,13 +1,12 @@
 package header
 
 import (
-
 	"github.com/eudore/eudore"
 )
 
 type Header struct {
-	keys 	[]string
-	vals	[]string
+	keys []string
+	vals []string
 }
 
 func (h *Header) AddHeader(key, val string) {

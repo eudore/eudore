@@ -3,8 +3,8 @@ package eudore_test
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/middleware/gzip"
-	"github.com/eudore/eudore/middleware/recover"
 	"github.com/eudore/eudore/middleware/logger"
+	"github.com/eudore/eudore/middleware/recover"
 )
 
 // eudore core
@@ -12,9 +12,9 @@ func ExampleNewCore() {
 	// 创建App
 	app := eudore.NewCore()
 	app.RegisterComponent("logger-std", &eudore.LoggerStdConfig{
-		Std:	true,
-		Level:	eudore.LogDebug,
-		Format:	"json",
+		Std:    true,
+		Level:  eudore.LogDebug,
+		Format: "json",
 	})
 	// 全局级请求处理中间件
 	app.AddMiddleware(
@@ -33,7 +33,7 @@ func ExampleNewCore() {
 		apiv1.AnyFunc("/*", handlepre1, handleparam)
 	}
 	// 默认路由
-	app.AnyFunc("/*path", func(ctx eudore.Context){
+	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.WriteString(ctx.Method() + " " + ctx.Path())
 		ctx.WriteString("\nstar param: " + " " + ctx.GetParam("path"))
 	})
@@ -61,7 +61,7 @@ func ExampleNewRouterRadix() {
 	r.AnyFunc("/api/v1/*", func(ctx eudore.Context) {
 		ctx.WriteString(ctx.GetParam("*"))
 	})
-	r.GetFunc("/api/v1/info/:name action:showname version:v1", func(ctx eudore.Context){
+	r.GetFunc("/api/v1/info/:name action:showname version:v1", func(ctx eudore.Context) {
 		// Get route additional parameters and path parameters
 		// 获取路由附加参数和路径参数
 		ctx.WithField("version", ctx.GetParam("version")).Info("user name is: " + ctx.GetParam("name"))

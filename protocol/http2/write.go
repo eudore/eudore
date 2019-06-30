@@ -177,9 +177,9 @@ func splitHeaderBlock(ctx writeContext, headerBlock []byte, fn func(ctx writeCon
 // for HTTP response headers or trailers from a server handler.
 type writeResHeaders struct {
 	streamID    uint32
-	httpResCode int         // 0 means no ":status" line
-	h           Header // may be nil
-	trailers    []string    // if non-nil, which keys of h to write. nil means all.
+	httpResCode int      // 0 means no ":status" line
+	h           Header   // may be nil
+	trailers    []string // if non-nil, which keys of h to write. nil means all.
 	endStream   bool
 
 	date          string

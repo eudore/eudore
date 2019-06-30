@@ -1,16 +1,16 @@
-package eudore 
+package eudore
 
 import (
-	"sync"
 	"os"
 	"os/signal"
+	"sync"
 )
 
 var (
-	graceSignalMu		sync.Mutex
-	graceSignalTables	[]os.Signal
-	graceSignalChan		chan os.Signal
-	graceSignalFuncs	map[os.Signal][]SignalFunc
+	graceSignalMu     sync.Mutex
+	graceSignalTables []os.Signal
+	graceSignalChan   chan os.Signal
+	graceSignalFuncs  map[os.Signal][]SignalFunc
 )
 
 // Signal handle func.
@@ -48,8 +48,8 @@ func SignalRegister(sig os.Signal, bf bool, fn SignalFunc) {
 	defer graceSignalMu.Unlock()
 	if bf {
 		graceSignalFuncs[sig] = append([]SignalFunc{fn}, graceSignalFuncs[sig]...)
-	}else {
-		graceSignalFuncs[sig] = append(graceSignalFuncs[sig], fn)	
+	} else {
+		graceSignalFuncs[sig] = append(graceSignalFuncs[sig], fn)
 	}
 
 	for _, s := range graceSignalTables {
@@ -65,7 +65,7 @@ func SignalRegister(sig os.Signal, bf bool, fn SignalFunc) {
 func SignalListen(sigs []os.Signal) {
 	signal.Stop(graceSignalChan)
 	signal.Notify(
-		graceSignalChan,		
+		graceSignalChan,
 		sigs...,
 	)
 }

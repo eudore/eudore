@@ -50,7 +50,6 @@ import (
 	"golang.org/x/net/http/httpguts"
 	"golang.org/x/net/http2/hpack"
 
-
 	"github.com/eudore/eudore/protocol"
 )
 
@@ -93,10 +92,10 @@ func NewServer(h protocol.Handler) *Server {
 
 // Server is an HTTP/2 server.
 type Server struct {
-	handler	protocol.Handler
+	handler        protocol.Handler
 	MaxHeaderBytes time.Duration
-	ReadTimeout time.Duration
-	WriteTimeout time.Duration
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
 
 	// MaxHandlers limits the number of http.Handler ServeHTTP goroutines
 	// which may run at a time over all connections.
@@ -446,8 +445,8 @@ type stream struct {
 	wroteHeaders     bool        // whether we wrote headers (not status 100)
 	writeDeadline    *time.Timer // nil if unused
 
-	trailer			Header // accumulated trailers
-	reqTrailer		Header // handler's Request.Trailer
+	trailer    Header // accumulated trailers
+	reqTrailer Header // handler's Request.Trailer
 }
 
 func (sc *serverConn) Framer() *Framer  { return sc.framer }
@@ -1890,20 +1889,20 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 	}
 
 	req := &requestReader{
-		ctx:			st.ctx,
-		requestBody:	requestBody{
-			conn:			sc,
-			stream:			st,
-			needsContinue:	needsContinue,
+		ctx: st.ctx,
+		requestBody: requestBody{
+			conn:          sc,
+			stream:        st,
+			needsContinue: needsContinue,
 		},
-		method:			rp.method,
-		uri:			requestURI,
-		remoteAddr:		sc.remoteAddrStr,
-		header:			rp.header,
-		proto:			"HTTP/2.0",
-		host:			rp.authority,
-		tls:			tlsState,
-		trailer:		trailer,
+		method:     rp.method,
+		uri:        requestURI,
+		remoteAddr: sc.remoteAddrStr,
+		header:     rp.header,
+		proto:      "HTTP/2.0",
+		host:       rp.authority,
+		tls:        tlsState,
+		trailer:    trailer,
 	}
 
 	rws := responseWriterStatePool.Get().(*responseWriterState)
@@ -2117,11 +2116,11 @@ func (h Header) Get(key string) string {
 	return textproto.MIMEHeader(h).Get(key)
 }
 
-func (h Header) Set(key ,value string) {
+func (h Header) Set(key, value string) {
 	textproto.MIMEHeader(h).Set(key, value)
 }
 
-func (h Header) Add(key ,value string) {
+func (h Header) Add(key, value string) {
 	textproto.MIMEHeader(h).Add(key, value)
 }
 
@@ -2140,16 +2139,16 @@ func (h Header) Range(fn func(string, string)) {
 type (
 	requestReader struct {
 		requestBody
-		ctx			context.Context
-		method		string
-		uri			string
-		remoteAddr	string
-		header		Header
-		proto		string
-		host		string
-		length		int64
-		trailer		Header
-		tls			*tls.ConnectionState
+		ctx        context.Context
+		method     string
+		uri        string
+		remoteAddr string
+		header     Header
+		proto      string
+		host       string
+		length     int64
+		trailer    Header
+		tls        *tls.ConnectionState
 	}
 )
 
@@ -2186,8 +2185,6 @@ func (r *requestReader) TLS() *tls.ConnectionState {
 	return r.tls
 }
 
-
-
 // responseWriter is the http.ResponseWriter implementation. It's
 // intentionally small (1 pointer wide) to minimize garbage. The
 // responseWriterState pointer inside is zeroed at the end of a
@@ -2210,20 +2207,20 @@ type responseWriterState struct {
 	stream *stream
 	req    *requestReader
 	// body   *requestBody // to close at end of request, if DATA frames didn't
-	conn   *serverConn
+	conn *serverConn
 
 	// TODO: adjust buffer writing sizes based on server config, frame size updates from peer, etc
 	bw *bufio.Writer // writing to a chunkWriter{this *responseWriterState}
 
 	// mutated by http.Handler goroutine:
-	handlerHeader Header // nil until called
-	snapHeader    Header // snapshot of handlerHeader at WriteHeader time
-	trailers      []string    // set in writeChunk
-	status        int         // status code passed to WriteHeader
-	wroteHeader   bool        // WriteHeader called (explicitly or implicitly). Not necessarily sent to user yet.
-	sentHeader    bool        // have we sent the header frame?
-	handlerDone   bool        // handler has finished
-	dirty         bool        // a Write failed; don't reuse this responseWriterState
+	handlerHeader Header   // nil until called
+	snapHeader    Header   // snapshot of handlerHeader at WriteHeader time
+	trailers      []string // set in writeChunk
+	status        int      // status code passed to WriteHeader
+	wroteHeader   bool     // WriteHeader called (explicitly or implicitly). Not necessarily sent to user yet.
+	sentHeader    bool     // have we sent the header frame?
+	handlerDone   bool     // handler has finished
+	dirty         bool     // a Write failed; don't reuse this responseWriterState
 
 	sentContentLen int64 // non-zero if handler set a Content-Length header
 	wroteBytes     int64
@@ -2509,12 +2506,11 @@ func cloneHeader(h Header) Header {
 	return h2
 }
 
-
 func cloneProtocolHeader(h protocol.Header) Header {
 	// TODO: ???
 	// h2 := make(Header, len(h))
 	h2 := make(Header)
-	h.Range(func(k, v string){
+	h.Range(func(k, v string) {
 		h2.Add(k, v)
 	})
 	return h2
@@ -2619,7 +2615,7 @@ func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
 		opts.Header = Header{}
 	}
 	wantScheme := "http"
-	if w.rws.req.TLS != nil {
+	if w.rws.req.TLS() != nil {
 		wantScheme = "https"
 	}
 
@@ -2643,7 +2639,7 @@ func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
 		}
 	}
 	// TODO: ???
-/*	for k := range opts.Header {
+	/*	for k := range opts.Header {
 		if strings.HasPrefix(k, ":") {
 			return fmt.Errorf("promised request headers cannot include pseudo header %q", k)
 		}
@@ -2832,7 +2828,7 @@ func checkValidHTTP2RequestProtocolHeaders(h protocol.Header) error {
 		}
 	}
 	te := h.Get("Te")
-	if len(te) > 0 && te != "trailers"  {
+	if len(te) > 0 && te != "trailers" {
 		return errors.New(`request header "TE" may only be "trailers" in HTTP/2`)
 	}
 	return nil

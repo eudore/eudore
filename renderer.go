@@ -1,9 +1,9 @@
 package eudore
 
 import (
-	"fmt"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"github.com/eudore/eudore/protocol"
 )
 
@@ -13,20 +13,18 @@ type (
 		Render(protocol.ResponseWriter, interface{}) error
 		ContentType() string
 	}
-	rendererText struct {}
-	rendererJson struct {}
-	rendererIndentJson struct {}
-	rendererXml struct {}
+	rendererText       struct{}
+	rendererJson       struct{}
+	rendererIndentJson struct{}
+	rendererXml        struct{}
 )
 
 var (
-	RendererText		=	rendererText{}
-	RendererJson		=	rendererJson{}
-	RendererIndentJson		=	rendererIndentJson{}
-	RendererXml			=	rendererXml{}
+	RendererText       = rendererText{}
+	RendererJson       = rendererJson{}
+	RendererIndentJson = rendererIndentJson{}
+	RendererXml        = rendererXml{}
 )
-
-
 
 func (rendererText) Render(w protocol.ResponseWriter, i interface{}) error {
 	_, err := fmt.Fprint(w, i)
@@ -37,7 +35,6 @@ func (rendererText) ContentType() string {
 	const textContentType = MimeTextPlainCharsetUtf8
 	return textContentType
 }
-
 
 func (rendererJson) Render(w protocol.ResponseWriter, i interface{}) error {
 	return json.NewEncoder(w).Encode(i)

@@ -2,7 +2,7 @@ package fasthttp
 
 type (
 	Header struct {
-		header	FastHeaer
+		header FastHeaer
 	}
 	FastHeaer interface {
 		Set(string, string)

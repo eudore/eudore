@@ -1,30 +1,29 @@
 package fasthttp
 
 import (
-	"net"
-	"fmt"
 	"errors"
+	"fmt"
 	"github.com/eudore/eudore/protocol"
 	"github.com/valyala/fasthttp"
+	"net"
 )
 
 type (
 	Response struct {
-		ctx			*fasthttp.RequestCtx
-		Response	*fasthttp.Response
-		header		*Header
+		ctx      *fasthttp.RequestCtx
+		Response *fasthttp.Response
+		header   *Header
 	}
 )
-
 
 func (resp *Response) Reset(ctx *fasthttp.RequestCtx) {
 	resp.ctx = ctx
 	resp.Response = &ctx.Response
 	resp.header.header = &ctx.Response.Header
 	ctx.Response.Header.SetContentType("")
-	resp.header.Range(func(key, val string){
-		fmt.Println(key,val)
-		})
+	resp.header.Range(func(key, val string) {
+		fmt.Println(key, val)
+	})
 }
 
 func (resp *Response) Write(b []byte) (int, error) {
@@ -41,7 +40,7 @@ func (resp *Response) WriteHeader(code int) {
 }
 
 func (resp *Response) Flush() {
-	// Do nothing because nosuppert	
+	// Do nothing because nosuppert
 }
 
 func (resp *Response) Hijack() (net.Conn, error) {
@@ -59,4 +58,3 @@ func (resp *Response) Size() int {
 func (resp *Response) Status() int {
 	return resp.Response.Header.StatusCode()
 }
-

@@ -2,8 +2,8 @@ package test
 
 import (
 	"fmt"
-	"testing"
 	"github.com/eudore/eudore"
+	"testing"
 )
 
 func TestErros(t *testing.T) {

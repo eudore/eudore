@@ -1,43 +1,43 @@
 package eudore
 
 import (
-	"log"
-	"fmt"
 	"errors"
+	"fmt"
+	"log"
 )
+
 const (
-	StatueRouter		=	610
-	StatusLogger		=	611
-	StatusCache			=	612
+	StatueRouter = 610
+	StatusLogger = 611
+	StatusCache  = 612
 )
 
 var (
-	ErrRouterSetNoSupportType		=	errors.New("router set type is nosupport")
-	ErrComponentNoSupportField		=	errors.New("component no support field")
-	ErrServerNotSetRuntimeInfo		=	errors.New("server not set runtime info")
-	ErrApplicationStop				=	errors.New("stop application")
-	ErrHandlerInvalidRange			=	errors.New("invalid range")
-	ErrContextHandlerEnd			=	errors.New("context handler end")
+	ErrRouterSetNoSupportType  = errors.New("router set type is nosupport")
+	ErrComponentNoSupportField = errors.New("component no support field")
+	ErrServerNotSetRuntimeInfo = errors.New("server not set runtime info")
+	ErrApplicationStop         = errors.New("stop application")
+	ErrHandlerInvalidRange     = errors.New("invalid range")
+	ErrContextHandlerEnd       = errors.New("context handler end")
 )
 
 type (
-	ErrorFunc func(error)
+	ErrorFunc    func(error)
 	ErrorHandler interface {
 		HandleError(err error)
 	}
-	Errors struct{
+	Errors struct {
 		errs []error
 	}
-
 )
 
 type ErrorHttp struct {
-	code	int
-	message		string
+	code    int
+	message string
 }
 
-func NewError(c int,str string) *ErrorHttp {
-	return &ErrorHttp{code:	c, message:	str}
+func NewError(c int, str string) *ErrorHttp {
+	return &ErrorHttp{code: c, message: str}
 }
 
 func (e *ErrorHttp) Error() string {
@@ -48,15 +48,14 @@ func (e *ErrorHttp) Code() int {
 	return e.code
 }
 
-
 type HttpError struct {
-	handle		ErrorFunc
-	log 		*log.Logger
+	handle ErrorFunc
+	log    *log.Logger
 }
 
 func NewHttpError(fn ErrorFunc) *HttpError {
 	e := &HttpError{
-		handle:		fn,
+		handle: fn,
 	}
 	e.log = log.New(e, "", 0)
 	return e
@@ -71,13 +70,12 @@ func (e *HttpError) Logger() *log.Logger {
 	return e.log
 }
 
-
 func NewErrors() *Errors {
 	return &Errors{}
 }
 
 func (e *Errors) HandleError(errs ...error) {
-	for _, err := range errs {		
+	for _, err := range errs {
 		if err != nil {
 			e.errs = append(e.errs, err)
 		}
@@ -101,6 +99,6 @@ func (e *Errors) GetError() error {
 // The default error handler, outputting an error to std.out.
 //
 // 默认错误处理函数，输出错误到std.out。
-func DefaultErrorHandleFunc(e error){
+func DefaultErrorHandleFunc(e error) {
 	fmt.Println(e)
 }

@@ -92,3 +92,32 @@ func convertHandler(pool sync.Pool, controller Controller, index int) HandlerFun
 }
 
 ```
+
+# 路由器控制器解析函数
+
+如果路由器方法使用的是RouterMethodStd，可以使用Set方法或者构造新路由器来设置ControllerParseFunc属性。
+
+暂时没有新的控制器执行方法设计，未使用改功能。
+
+```golang
+// 默认路由器方法注册实现
+type RouterMethodStd struct {
+	RouterCore
+	ControllerParseFunc
+	prefix		string
+	tags		string
+}
+
+func (m *RouterMethodStd) AddController(cs ...Controller) RouterMethod {
+	for _, c := range cs {
+		// controllerRegister(m, c)
+		config, err := m.ControllerParseFunc(c)
+		if err == nil {
+			config.Inject(m)
+		}else {
+			fmt.Println(err)
+		}
+	}
+	return m
+}
+```

@@ -4,9 +4,9 @@
 package protocol
 
 import (
-	"net"
 	"context"
 	"crypto/tls"
+	"net"
 )
 
 type (
@@ -63,7 +63,6 @@ type (
 		Status() int
 	}
 
-
 	RequestWriter interface {
 		Header() Header
 		Do() (ResponseReader, error)
@@ -97,5 +96,5 @@ func (fn HandlerFunc) EudoreHTTP(ctx context.Context, w ResponseWriter, r Reques
 }
 
 var (
-	HeaderTransferEncoding			=	"Transfer-Encoding"
+	HeaderTransferEncoding = "Transfer-Encoding"
 )

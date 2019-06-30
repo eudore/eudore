@@ -5,17 +5,16 @@ Cache
 */
 package eudore
 
-
 import (
 	"fmt"
-	"time"
-	"unsafe"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
+	"unsafe"
 )
 
-type ( 
+type (
 	Cache interface {
 		Component
 		// get cached value by key.
@@ -39,30 +38,30 @@ type (
 	//
 	// 基于sync.Map添加过期时间实现。
 	CacheMap struct {
-		mu			sync.Mutex
-		read 		atomic.Value
+		mu   sync.Mutex
+		read atomic.Value
 		// *interface{}
-		dirty		map[string]*cacheEntry
+		dirty  map[string]*cacheEntry
 		misses int
 	}
 	readOnly struct {
-		m			map[string]*cacheEntry
-		amended		bool
+		m       map[string]*cacheEntry
+		amended bool
 	}
 	cacheEntry struct {
-		expire		time.Time
-		p			unsafe.Pointer // *interface{}
+		expire time.Time
+		p      unsafe.Pointer // *interface{}
 	}
 	CacheGroupConfig struct {
-		Keys	[]string
-		Vals	[]interface{}
+		Keys []string
+		Vals []interface{}
 	}
 	// Cache combination to match different keys to the specified cache processing.
 	//
 	// 缓存组合，将不同键匹配给指定缓存处理。
 	CacheGroup struct {
 		*CacheGroupConfig
-		Caches	[]Cache
+		Caches []Cache
 	}
 )
 
@@ -79,8 +78,6 @@ func NewCache(name string, arg interface{}) (Cache, error) {
 	return nil, fmt.Errorf("Component %s cannot be converted to Cache type", name)
 }
 
-
-
 func NewCacheMap() (Cache, error) {
 	return &CacheMap{}, nil
 }
@@ -91,8 +88,8 @@ func NewCacheGroup(arg interface{}) (Cache, error) {
 		return nil, fmt.Errorf("create cachegroup arg not is CacheGroupConfig Pointer.")
 	}
 	c := &CacheGroup{
-		CacheGroupConfig:	cf,
-		Caches:				make([]Cache, len(cf.Keys)),
+		CacheGroupConfig: cf,
+		Caches:           make([]Cache, len(cf.Keys)),
 	}
 	var err error
 	for i, v := range cf.Vals {
@@ -131,7 +128,6 @@ func (c *CacheMap) Get(key string) interface{} {
 	return e.load()
 }
 
-
 func (e *cacheEntry) load() interface{} {
 	// check time
 	if time.Now().After(e.expire) {
@@ -144,9 +140,6 @@ func (e *cacheEntry) load() interface{} {
 	}
 	return *(*interface{})(p)
 }
-
-
-
 
 // Store sets the value for a key.
 func (c *CacheMap) Set(key string, val interface{}, timeout time.Duration) error {
@@ -179,7 +172,6 @@ func (c *CacheMap) Set(key string, val interface{}, timeout time.Duration) error
 	return nil
 }
 
-
 func (e *cacheEntry) tryStore(i *interface{}, timeout time.Duration) bool {
 	p := atomic.LoadPointer(&e.p)
 	if p == expunged {
@@ -196,8 +188,6 @@ func (e *cacheEntry) tryStore(i *interface{}, timeout time.Duration) bool {
 		}
 	}
 }
-
-
 
 func (e *cacheEntry) unexpungeLocked() (wasExpunged bool) {
 	return atomic.CompareAndSwapPointer(&e.p, expunged, nil)
@@ -238,8 +228,6 @@ func (e *cacheEntry) delete() (hadValue bool) {
 	}
 }
 
-
-
 func (c *CacheMap) missLocked() {
 	c.misses++
 	if c.misses < len(c.dirty) {
@@ -249,7 +237,6 @@ func (c *CacheMap) missLocked() {
 	c.dirty = nil
 	c.misses = 0
 }
-
 
 func (c *CacheMap) dirtyLocked() {
 	if c.dirty != nil {
@@ -294,11 +281,9 @@ func (c *CacheMap) Count() int {
 	return len(read.m)
 }
 
-
 func (c *CacheMap) CleanAll() error {
 	return nil
 }
-
 
 func (c *CacheMap) GetName() string {
 	return ComponentCacheMapName
@@ -307,8 +292,6 @@ func (c *CacheMap) GetName() string {
 func (c *CacheMap) Version() string {
 	return ComponentCacheMapVersion
 }
-
-
 
 func (c *CacheGroup) getCache(key string) Cache {
 	for i, k := range c.Keys {
@@ -354,12 +337,11 @@ func (c *CacheGroup) CleanAll() (err error) {
 		}
 	}
 	return nil
-} 
+}
 
 func (*CacheGroup) Version() string {
 	return ComponentCacheGroupVersion
 }
-
 
 func (*CacheGroupConfig) GetName() string {
 	return ComponentCacheGroupName

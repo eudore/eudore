@@ -1,28 +1,27 @@
 package eslogger
 
-
 import (
-	"fmt"
 	"context"
+	"fmt"
 	"github.com/olivere/elastic"
 
 	"github.com/eudore/eudore"
 )
 
-
 const (
-	ComponentLoggerElasticName		=	"logger-elastic"
-	ComponentLoggerElasticVersion	=	"logger-elastic v1.0, output log entry to elasticsearch."
+	ComponentLoggerElasticName    = "logger-elastic"
+	ComponentLoggerElasticVersion = "logger-elastic v1.0, output log entry to elasticsearch."
 )
+
 type (
 	LoggerConfig struct {
-		Addr 		string
-		Index		string	
+		Addr  string
+		Index string
 	}
 	Logger struct {
 		*LoggerConfig
-		client		*elastic.Client
-		index		*elastic.IndexService
+		client *elastic.Client
+		index  *elastic.IndexService
 	}
 )
 
@@ -36,8 +35,8 @@ func NewLogger(arg interface{}) (eudore.Logger, error) {
 	c, ok := arg.(*LoggerConfig)
 	if !ok {
 		c = &LoggerConfig{
-			Addr:	"http://localhost:9200",
-			Index:	"eudore",
+			Addr:  "http://localhost:9200",
+			Index: "eudore",
 		}
 	}
 	// check elastic
@@ -61,9 +60,9 @@ func NewLogger(arg interface{}) (eudore.Logger, error) {
 		}
 	}
 	return &Logger{
-		LoggerConfig:	c,
-		client:			client,
-		index:			client.Index().Index(c.Index).Type("doc"),
+		LoggerConfig: c,
+		client:       client,
+		index:        client.Index().Index(c.Index).Type("doc"),
 	}, nil
 }
 

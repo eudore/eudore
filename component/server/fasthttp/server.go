@@ -1,44 +1,43 @@
 package fasthttp
 
 import (
-	"net"
-	"fmt"
-	"sync"
 	"bytes"
 	"context"
+	"fmt"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/protocol"
 	"github.com/valyala/fasthttp"
+	"net"
+	"sync"
 )
 
 type (
 	Server struct {
-		Config		*ServerConfig		`set:"config"`
-		Fasthttp	*fasthttp.Server 	`set:"fasthttp"`
-		handler		protocol.Handler
-		pool		sync.Pool
-		wg			sync.WaitGroup
+		Config   *ServerConfig    `set:"config"`
+		Fasthttp *fasthttp.Server `set:"fasthttp"`
+		handler  protocol.Handler
+		pool     sync.Pool
+		wg       sync.WaitGroup
 	}
 	ServerConfig struct {
-		Handler		interface{}			`set:"handler" json:"-"`
-		Http		[]*eudore.ServerListenConfig `set:"http"`
-
+		Handler interface{}                  `set:"handler" json:"-"`
+		Http    []*eudore.ServerListenConfig `set:"http"`
 	}
 )
 
 var (
-	poolreq			= sync.Pool{
+	poolreq = sync.Pool{
 		New: func() interface{} {
 			return &Request{
-				read:	bytes.NewReader(nil),
-				header:	&Header{},
+				read:   bytes.NewReader(nil),
+				header: &Header{},
 			}
 		},
 	}
-	poolresp			= sync.Pool{
+	poolresp = sync.Pool{
 		New: func() interface{} {
 			return &Response{
-				header:	&Header{},
+				header: &Header{},
 			}
 		},
 	}
@@ -56,8 +55,8 @@ func NewServer(arg interface{}) (*Server, error) {
 		config = &ServerConfig{}
 	}
 	return &Server{
-		Config:		config,
-		Fasthttp:	&fasthttp.Server{},
+		Config:   config,
+		Fasthttp: &fasthttp.Server{},
 	}, nil
 }
 
@@ -70,13 +69,13 @@ func (srv *Server) Start() error {
 	// 启动fasthttp
 	errs := eudore.NewErrors()
 	for _, http := range srv.Config.Http {
-		ln, err := http.Listen()		
+		ln, err := http.Listen()
 		if err != nil {
 			errs.HandleError(err)
 			continue
 		}
 		srv.wg.Add(1)
-		go func(ln net.Listener){
+		go func(ln net.Listener) {
 			errs.HandleError(srv.Fasthttp.Serve(ln))
 			srv.wg.Done()
 		}(ln)
@@ -85,7 +84,6 @@ func (srv *Server) Start() error {
 	srv.wg.Wait()
 	return errs.GetError()
 }
-
 
 func (srv *Server) Restart() error {
 	err := eudore.StartNewProcess()
@@ -119,16 +117,12 @@ func (srv *Server) Set(key string, val interface{}) (err error) {
 	return
 }
 
-
-
-
-
-func (*ServerConfig)  GetName() string {
+func (*ServerConfig) GetName() string {
 	return eudore.ComponentServerFasthttpName
 }
-func (*Server)  GetName() string {
+func (*Server) GetName() string {
 	return eudore.ComponentServerFasthttpName
 }
-func (*Server)  Version() string {
+func (*Server) Version() string {
 	return eudore.ComponentServerFasthttpVersion
 }

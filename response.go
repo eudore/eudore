@@ -1,13 +1,13 @@
 package eudore
 
 import (
-	"io"
-	"fmt"
 	"bytes"
+	"crypto/tls"
+	"fmt"
+	"github.com/eudore/eudore/protocol"
+	"io"
 	"net"
 	"net/http"
-	"crypto/tls"
-	"github.com/eudore/eudore/protocol"
 )
 
 type (
@@ -16,8 +16,8 @@ type (
 	// 封装net/http.Response响应报文，转换成ResponseReader接口
 	ResponseReaderHttp struct {
 		io.ReadCloser
-		Data 	*http.Response
-		header	protocol.Header
+		Data   *http.Response
+		header protocol.Header
 	}
 	ResponseReaderHttpWithWiter struct {
 		ResponseReaderHttp
@@ -26,9 +26,9 @@ type (
 	// net/http.ResponseWriter接口封装
 	ResponseWriterHttp struct {
 		http.ResponseWriter
-		header	protocol.Header
-		code		int
-		size		int
+		header protocol.Header
+		code   int
+		size   int
 	}
 	// ResponseWriterTest is an implementation of http.ResponseWriter that
 	// records its mutations for later inspection in tests.
@@ -56,19 +56,18 @@ type (
 		// Flushed is whether the Handler called Flush.
 		Flushed bool
 
-//		result      *http.Response // cache of Result's return value
-		snapHeader  HeaderMap    // snapshot of HeaderMap at first Write
+		//		result      *http.Response // cache of Result's return value
+		snapHeader  HeaderMap // snapshot of HeaderMap at first Write
 		wroteHeader bool
 	}
 )
 
-var _ protocol.ResponseWriter	=	&ResponseWriterHttp{}
-
+var _ protocol.ResponseWriter = &ResponseWriterHttp{}
 
 func NewResponseWriterHttp(w http.ResponseWriter) protocol.ResponseWriter {
 	return &ResponseWriterHttp{
 		ResponseWriter: w,
-		header:			HeaderMap(w.Header()),
+		header:         HeaderMap(w.Header()),
 	}
 }
 
@@ -85,7 +84,7 @@ func (w *ResponseWriterHttp) Header() protocol.Header {
 }
 
 func (w *ResponseWriterHttp) Write(data []byte) (int, error) {
-	n, err :=  w.ResponseWriter.Write(data)
+	n, err := w.ResponseWriter.Write(data)
 	w.size = w.size + n
 	return n, err
 }
@@ -101,21 +100,19 @@ func (w *ResponseWriterHttp) Flush() {
 
 func (w *ResponseWriterHttp) Hijack() (conn net.Conn, err error) {
 	if hj, ok := w.ResponseWriter.(http.Hijacker); ok {
-		conn, _, err =  hj.Hijack()
-		return 
+		conn, _, err = hj.Hijack()
+		return
 	}
 	err = fmt.Errorf("http.Hijacker interface is not supported")
 	return
 }
 
 // 如果ResponseWriterHttp实现http.Push接口，则Push资源。
-func (w *ResponseWriterHttp) Push(target string, opts *protocol.PushOptions) error {	
+func (w *ResponseWriterHttp) Push(target string, opts *protocol.PushOptions) error {
 	if pusher, ok := w.ResponseWriter.(http.Pusher); ok {
 		// TODO: add con
-		return pusher.Push(target, &http.PushOptions{
-
-		})	
-	}	
+		return pusher.Push(target, &http.PushOptions{})
+	}
 	return nil
 }
 
@@ -127,20 +124,18 @@ func (w *ResponseWriterHttp) Status() int {
 	return w.code
 }
 
-
-
 func NewResponseReaderHttp(resp *http.Response) protocol.ResponseReader {
 	var r = ResponseReaderHttp{
-		ReadCloser:	resp.Body,
-		Data:		resp,
-		header:		HeaderMap(resp.Header),
+		ReadCloser: resp.Body,
+		Data:       resp,
+		header:     HeaderMap(resp.Header),
 	}
 
 	w, ok := resp.Body.(io.Writer)
 	if ok {
-		return &ResponseReaderHttpWithWiter {
-			ResponseReaderHttp:	r,
-			Writer:		w,
+		return &ResponseReaderHttpWithWiter{
+			ResponseReaderHttp: r,
+			Writer:             w,
 		}
 	}
 	return &r
@@ -169,7 +164,6 @@ func (r *ResponseReaderHttp) Header() protocol.Header {
 func (r *ResponseReaderHttp) TLS() *tls.ConnectionState {
 	return r.Data.TLS
 }
-
 
 func NewResponseWriterTest() *ResponseWriterTest {
 	return &ResponseWriterTest{

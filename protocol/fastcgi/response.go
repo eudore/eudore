@@ -1,13 +1,13 @@
 package fastcgi
 
 import (
-	"io"
-	"fmt"
-	"time"
 	"bufio"
+	"fmt"
+	"github.com/eudore/eudore/protocol"
+	"io"
 	"net"
 	"net/http"
-	"github.com/eudore/eudore/protocol"
+	"time"
 )
 
 // response implements http.ResponseWriter.
@@ -56,11 +56,11 @@ func (r *response) WriteHeader(code int) {
 	}
 
 	fmt.Fprintf(r.w, "Status: %d %s\r\n", code, http.StatusText(code))
-	
+
 	for k, v := range r.header {
 		fmt.Fprintf(r.w, "%s: %s\r\n", k, v[0])
 	}
-	
+
 	r.w.WriteString("\r\n")
 }
 
@@ -79,7 +79,6 @@ func (*response) Push(string, *protocol.PushOptions) error {
 	return nil
 }
 
-
 func (r *response) Size() int {
 	return 0
 }
@@ -92,9 +91,6 @@ func (r *response) Close() error {
 	r.Flush()
 	return r.w.Close()
 }
-
-
-
 
 // bufWriter encapsulates bufio.Writer but also closes the underlying stream when
 // Closed.

@@ -2,11 +2,11 @@ package fasthttp
 
 import (
 	"testing"
-	
+
 	"context"
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/protocol"
 	"github.com/eudore/eudore/component/server/fasthttp"
+	"github.com/eudore/eudore/protocol"
 )
 
 func TestStart(t *testing.T) {
@@ -17,7 +17,6 @@ func TestStart(t *testing.T) {
 	}))
 	t.Log(srv.Start())
 }
-
 
 func TestEudore(t *testing.T) {
 	app := eudore.NewCore()

@@ -8,16 +8,16 @@ import (
 )
 
 const (
-	UserIdString			=	"UID"
-	ForbiddenString			=	"Forbidden"
+	UserIdString    = "UID"
+	ForbiddenString = "Forbidden"
 )
 
 type (
 	GetActionFunc func(eudore.Context) string
-	GetIdFunc func(eudore.Context) int
+	GetIdFunc     func(eudore.Context) int
 	ForbiddenFunc func(eudore.Context)
 	RamHandleFunc func(int, string, eudore.Context) (bool, bool)
-	RamHandler interface {
+	RamHandler    interface {
 		RamHandle(int, string, eudore.Context) (bool, bool)
 		// return1 验证结果 return2 是否验证
 		// RamHandle(int, string, eudore.Context) (bool, bool)
@@ -25,30 +25,30 @@ type (
 	}
 	RamHttp struct {
 		RamHandler
-		GetId		GetIdFunc
-		GetAction	GetActionFunc
-		Forbidden	ForbiddenFunc
+		GetId     GetIdFunc
+		GetAction GetActionFunc
+		Forbidden ForbiddenFunc
 	}
 	RamAny struct {
-		Rams		[]RamHandler	
+		Rams []RamHandler
 	}
 	RanAnd struct {
-		Rams		[]RamHandler
+		Rams []RamHandler
 	}
-	Deny struct{}
+	Deny  struct{}
 	Allow struct{}
 )
 
 var (
-	DenyHander = Deny{}
+	DenyHander   = Deny{}
 	AllowHanlder = Allow{}
 )
 
 func NewRamHttp(rams ...RamHandler) *RamHttp {
 	r := &RamHttp{
-		GetId:			GetIdDefault,
-		GetAction:		GetActionDefault,
-		Forbidden:		ForbiddenDefault,
+		GetId:     GetIdDefault,
+		GetAction: GetActionDefault,
+		Forbidden: ForbiddenDefault,
 	}
 	switch len(rams) {
 	case 0:
@@ -63,7 +63,7 @@ func NewRamHttp(rams ...RamHandler) *RamHttp {
 func (r *RamHttp) Handle(ctx eudore.Context) {
 	action := r.GetAction(ctx)
 	if len(action) > 0 && !HandleDefaultRam(r.GetId(ctx), action, ctx, r.RamHandler.RamHandle) {
-		r.Forbidden(ctx)	
+		r.Forbidden(ctx)
 	}
 }
 
@@ -81,10 +81,9 @@ func (r *RamHttp) Set(f1 GetIdFunc, f2 GetActionFunc, f3 ForbiddenFunc) *RamHttp
 	return r
 }
 
-
 func NewRamAny(hs ...RamHandler) *RamAny {
 	return &RamAny{
-		Rams:		hs,
+		Rams: hs,
 	}
 }
 
@@ -92,7 +91,7 @@ func (r *RamAny) RamHandle(id int, action string, ctx eudore.Context) (bool, boo
 	for _, h := range r.Rams {
 		isgrant, ok := h.RamHandle(id, action, ctx)
 		if ok {
-			ctx.SetParam(eudore.ParamRam, "ram-" + ctx.GetParam(eudore.ParamRam))
+			ctx.SetParam(eudore.ParamRam, "ram-"+ctx.GetParam(eudore.ParamRam))
 			return isgrant, true
 		}
 	}
@@ -103,8 +102,6 @@ func (r *RamAny) RamHandle(id int, action string, ctx eudore.Context) (bool, boo
 func (r *RamAny) Handle(ctx eudore.Context) {
 	DefaultHandle(ctx, r)
 }
-
-
 
 func (Deny) RamHandle(id int, action string, ctx eudore.Context) (bool, bool) {
 	ctx.SetParam(eudore.ParamRam, "deny")

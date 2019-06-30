@@ -2,8 +2,8 @@ package test
 
 import (
 	"fmt"
-	"testing"
 	"github.com/eudore/eudore"
+	"testing"
 )
 
 func TestSubRouter(t *testing.T) {
@@ -37,7 +37,7 @@ func echoHandle(ctx eudore.Context) {
 
 func TestRouterEmpty(t *testing.T) {
 	app := eudore.NewCore()
-	app.RegisterComponent(eudore.ComponentRouterEmptyName, eudore.HandlerFunc(func(ctx eudore.Context){
+	app.RegisterComponent(eudore.ComponentRouterEmptyName, eudore.HandlerFunc(func(ctx eudore.Context) {
 		ctx.WriteString(app.Router.Version())
 		t.Log(app.Router.Version())
 	}))

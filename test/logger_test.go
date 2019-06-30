@@ -1,8 +1,8 @@
 package test
 
 import (
-	"testing"
 	"github.com/eudore/eudore"
+	"testing"
 )
 
 func TestLogger(*testing.T) {

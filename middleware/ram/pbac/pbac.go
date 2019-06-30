@@ -1,9 +1,9 @@
 package pbac
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
-	"encoding/json"
 
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/middleware/ram"
@@ -11,75 +11,71 @@ import (
 
 type (
 	Pbac struct {
-		Binds map[int][]int		`json:"-" key:"-"`
-		Policys	map[int]Policy	`json:"-" key:"-"`
+		Binds   map[int][]int  `json:"-" key:"-"`
+		Policys map[int]Policy `json:"-" key:"-"`
 	}
 
 	Policy struct {
 		// Version string
 		// Description string `json:"description",omitempty`
-		Statement	[]Statement `json:"statement"`
+		Statement []Statement `json:"statement"`
 	}
 	Statement struct {
-		Effect bool
-		Action []string
-		Resource []string
-		Condition Condition `json:"condition",omitempty`
+		Effect    bool
+		Action    []string
+		Resource  []string
+		Condition Condition `json:"condition,omitempty"`
 	}
 	Condition struct {
-		Addr []string
+		Addr   []string
 		Method []string
-		Bash bool
+		Bash   bool
 	}
 
 	Params struct {
-		Action string
+		Action   string
 		Resource string
-		Context eudore.Context
+		Context  eudore.Context
 	}
 )
 
 func NewEudoreParams(action string, ctx eudore.Context) *Params {
 	return &Params{
-		Action:		action, 
-		Resource:	ctx.Path(),
-		Context:	ctx,
+		Action:   action,
+		Resource: ctx.Path(),
+		Context:  ctx,
 	}
 }
 
-func NewPbac() *Pbac{
+func NewPbac() *Pbac {
 	return &Pbac{
-		Binds: 		make(map[int][]int),
-		Policys:	make(map[int]Policy),
+		Binds:   make(map[int][]int),
+		Policys: make(map[int]Policy),
 	}
 }
-
-
 
 func (p *Pbac) Bind(id int, ps []int) {
 	p.Binds[id] = append(p.Binds[id], ps...)
 }
 
-
 func (p *Pbac) BindString(id int, str string) {
 	strs := strings.Split(str, ",")
 	var ps []int = make([]int, len(strs))
 	for i, id := range strs {
-		ps[i], _ = strconv.Atoi(id) 
+		ps[i], _ = strconv.Atoi(id)
 	}
 	p.Binds[id] = append(p.Binds[id], ps...)
 }
 
-
-func(p *Pbac) AddPolicy(id int, policy *Policy) {
+func (p *Pbac) AddPolicy(id int, policy *Policy) {
 	p.Policys[id] = *policy
 }
 
-func(p *Pbac) AddPolicyStringJson(id int, str string) {
+func (p *Pbac) AddPolicyStringJson(id int, str string) {
 	policy := Policy{}
 	if err := json.Unmarshal([]byte(str), &policy); err == nil {
 		p.Policys[id] = policy
-	}else {
+	} else {
 		panic(err)
 	}
 }
@@ -111,7 +107,7 @@ func (p *Pbac) RamHandle(id int, action string, ctx eudore.Context) (bool, bool)
 
 // 检查策略声明是否匹配
 func (s *Statement) Match(param *Params) (bool, bool) {
-	if MatchStarAny(param.Action, s.Action) && 
+	if MatchStarAny(param.Action, s.Action) &&
 		MatchStarAny(param.Resource, s.Resource) &&
 		s.Condition.Match(param.Context) {
 		return s.Effect, true
@@ -121,7 +117,7 @@ func (s *Statement) Match(param *Params) (bool, bool) {
 
 // 检查条件是否匹配
 func (c *Condition) Match(ctx eudore.Context) bool {
-	if len(c.Addr) > 0 && !MatchAddrAny(ctx.RemoteAddr(), c.Addr) {
+	if len(c.Addr) > 0 && !MatchAddrAny(ctx.RealIP(), c.Addr) {
 		return false
 	}
 	if len(c.Method) > 0 && !MatchStringAny(ctx.Method(), c.Method) {
@@ -129,7 +125,6 @@ func (c *Condition) Match(ctx eudore.Context) bool {
 	}
 	return true
 }
-
 
 func MatchStarAny(obj string, patten []string) bool {
 	for _, i := range patten {

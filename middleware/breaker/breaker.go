@@ -1,21 +1,21 @@
 package breaker
 
 import (
-	"sync"
 	"github.com/eudore/eudore"
+	"sync"
 )
 
 const (
-	CircuitBreakerStatueClosed int8	= iota
+	CircuitBreakerStatueClosed int8 = iota
 	CircuitBreakerStatueHalfOpen
-	CircuitBreakerStatueOpen 
+	CircuitBreakerStatueOpen
 )
 
 type CircuitBreaker struct {
-	statue		int8
-	mu			sync.Mutex
-	success		int64
-	failure		int64
+	statue  int8
+	mu      sync.Mutex
+	success int64
+	failure int64
 }
 
 func (cb *CircuitBreaker) Handler(ctx eudore.Context) {
@@ -24,8 +24,8 @@ func (cb *CircuitBreaker) Handler(ctx eudore.Context) {
 		// Close状态,正常处理并统计结果，失败过多进入半开状态
 		ctx.Next()
 		if ctx.Response().Status() < 500 {
-			atomic.AddUint64(cb.success, 1)	
-		}else {
+			atomic.AddUint64(cb.success, 1)
+		} else {
 			atomic.AddUint64(cb.failure, 1)
 			if cb.failure > cb.success/10 {
 				cb.mu.Lock()
@@ -41,7 +41,7 @@ func (cb *CircuitBreaker) Handler(ctx eudore.Context) {
 			cb.mu.Lock()
 			cb.statue = CircuitBreakerStatueClosed
 			cb.mu.Unock()
-		}else {
+		} else {
 			cb.mu.Lock()
 			cb.statue = CircuitBreakerStatueOpen
 			cb.mu.Unock()
@@ -50,5 +50,5 @@ func (cb *CircuitBreaker) Handler(ctx eudore.Context) {
 		// open状态拒绝服务
 		ctx.End()
 		return
-	}	
+	}
 }

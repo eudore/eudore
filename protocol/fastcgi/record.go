@@ -1,6 +1,5 @@
 package fastcgi
 
-
 import (
 	"encoding/binary"
 	"errors"
@@ -38,7 +37,6 @@ type cgiHeader struct {
 	PaddingLength uint8
 	Reserved      uint8
 }
-
 
 func (h *cgiHeader) init(recType recType, reqId uint16, contentLength int) {
 	h.Version = 1

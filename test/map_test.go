@@ -16,9 +16,9 @@ ok  	command-line-arguments	3.599s
 */
 
 var (
-	n int
+	n    int
 	data []int
-	m map[int]int
+	m    map[int]int
 )
 
 func init() {
@@ -41,7 +41,7 @@ func BenchmarkMap(b *testing.B) {
 		}
 		// 查找
 		for _, n := range data {
-			if _, ok := m[n];ok {
+			if _, ok := m[n]; ok {
 				continue
 			}
 		}

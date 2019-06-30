@@ -7,7 +7,6 @@ Application
 */
 package eudore
 
-
 import (
 	"fmt"
 )
@@ -19,10 +18,10 @@ type (
 	//
 	// App组合主要功能接口，启动等实例化操作需要额外封装。
 	App struct {
-		Config			`set:"config"`
-		Logger			`set:"logger"`
-		Server			`set:"server"`
-		Router			`set:"router"`
+		Config `set:"config"`
+		Logger `set:"logger"`
+		Server `set:"server"`
+		Router `set:"router"`
 		Cache
 		Session
 		Client
@@ -34,7 +33,7 @@ type (
 
 func NewApp() *App {
 	return &App{
-		Binder:	BinderDefault,
+		Binder: BinderDefault,
 	}
 }
 
@@ -54,7 +53,7 @@ func (app *App) RegisterComponents(names []string, args []interface{}) error {
 // Load a component and assign it to app.
 //
 // 加载一个组件，并赋值给app。
-func (app *App) RegisterComponent(name string,  arg interface{}) (Component, error) {
+func (app *App) RegisterComponent(name string, arg interface{}) (Component, error) {
 	c, err := NewComponent(name, arg)
 	if err != nil {
 		app.Error(err)
@@ -87,7 +86,6 @@ func (app *App) RegisterComponent(name string,  arg interface{}) (Component, err
 	return c, nil
 }
 
-
 func (app *App) GetAllComponent() ([]string, []Component) {
 	var names []string = []string{"config", "logger", "server", "router", "cache", "session", "view"}
 	return names, []Component{
@@ -101,7 +99,6 @@ func (app *App) GetAllComponent() ([]string, []Component) {
 		app.View,
 	}
 }
-
 
 func (app *App) InitComponent() error {
 	names, components := app.GetAllComponent()

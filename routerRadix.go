@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	radixNodeKindConst	uint8	=	iota
+	radixNodeKindConst uint8 = iota
 	radixNodeKindParam
 	radixNodeKindWildcard
 )
@@ -25,65 +25,64 @@ type (
 		RouterMethod
 		// save middleware
 		// 保存注册的中间件信息
-		Print		func(...interface{})	`set:"print"`
-		middtree	*middNode
+		Print    func(...interface{}) `set:"print"`
+		middtree *middNode
 		// exception handling method
 		// 异常处理方法
-		node404		radixNode
-		nodefunc404	HandlerFuncs
-		node405		radixNode
-		nodefunc405	HandlerFuncs
+		node404     radixNode
+		nodefunc404 HandlerFuncs
+		node405     radixNode
+		nodefunc405 HandlerFuncs
 		// various methods routing tree
 		// 各种方法路由树
-		root		radixNode
-		get			radixNode
-		post		radixNode
-		put			radixNode
-		delete		radixNode
-		options		radixNode
-		head		radixNode
-		patch		radixNode
+		root    radixNode
+		get     radixNode
+		post    radixNode
+		put     radixNode
+		delete  radixNode
+		options radixNode
+		head    radixNode
+		patch   radixNode
 	}
 	// radix节点的定义
 	radixNode struct {
 		// 基本信息
-		kind		uint8
-		path		string
-		name		string
+		kind uint8
+		path string
+		name string
 		// 每次类型子节点
-		Cchildren	[]*radixNode
-		Pchildren	[]*radixNode
-		Wchildren	*radixNode
+		Cchildren []*radixNode
+		Pchildren []*radixNode
+		Wchildren *radixNode
 		// 当前节点的数据
-		tags		[]string
-		vals		[]string
-		handlers		HandlerFuncs
+		tags     []string
+		vals     []string
+		handlers HandlerFuncs
 	}
 )
 
-
 func NewRouterRadix(interface{}) (Router, error) {
 	r := &RouterRadix{
-		Print:		func(...interface{}) {},
-		nodefunc404:	HandlerFuncs{DefaultRouter404Func},
-		nodefunc405:	HandlerFuncs{DefaultRouter405Func},
-		node404:	radixNode{
-			tags:	[]string{ParamRoute},
-			vals:	[]string{"404"},
-			handlers:	HandlerFuncs{DefaultRouter404Func},
+		Print:       func(...interface{}) {},
+		nodefunc404: HandlerFuncs{DefaultRouter404Func},
+		nodefunc405: HandlerFuncs{DefaultRouter405Func},
+		node404: radixNode{
+			tags:     []string{ParamRoute},
+			vals:     []string{"404"},
+			handlers: HandlerFuncs{DefaultRouter404Func},
 		},
-		node405:	radixNode{
-			Wchildren:	&radixNode{
-				tags:	[]string{ParamRoute},
-				vals:	[]string{"405"},
-				handlers:	HandlerFuncs{DefaultRouter405Func},
+		node405: radixNode{
+			Wchildren: &radixNode{
+				tags:     []string{ParamRoute},
+				vals:     []string{"405"},
+				handlers: HandlerFuncs{DefaultRouter405Func},
 			},
 		},
-		middtree:		&middNode{},
+		middtree: &middNode{},
 	}
 	r.RouterMethod = &RouterMethodStd{
-		RouterCore:			r,
-		ControllerParseFunc:	ControllerBaseParseFunc,
+		RouterCore:          r,
+		ControllerParseFunc: ControllerBaseParseFunc,
 	}
 	return r, nil
 }
@@ -95,7 +94,7 @@ func NewRouterRadix(interface{}) (Router, error) {
 // 注册中间件到中间件树中，如果存在则追加处理者。
 //
 // 如果方法非空，路径为空，修改路径为'/'。
-func (r *RouterRadix) RegisterMiddleware(method ,path string, hs HandlerFuncs) {
+func (r *RouterRadix) RegisterMiddleware(method, path string, hs HandlerFuncs) {
 	if len(method) != 0 && len(path) == 0 {
 		path = "/"
 	}
@@ -108,10 +107,10 @@ func (r *RouterRadix) RegisterMiddleware(method ,path string, hs HandlerFuncs) {
 			return
 		}
 		for _, method = range RouterAllMethod {
-			r.middtree.Insert(method + path, hs)
+			r.middtree.Insert(method+path, hs)
 		}
-	}else {
-		r.middtree.Insert(method + path, hs)
+	} else {
+		r.middtree.Insert(method+path, hs)
 	}
 }
 
@@ -120,16 +119,16 @@ func (r *RouterRadix) RegisterMiddleware(method ,path string, hs HandlerFuncs) {
 // The router matches the handlers available to the current path from the middleware tree and adds them to the front of the handler.
 //
 // 给路由器注册一个新的方法请求路径
-// 
+//
 // 路由器会从中间件树中匹配当前路径可使用的处理者，并添加到处理者前方。
 func (r *RouterRadix) RegisterHandler(method string, path string, handler HandlerFuncs) {
 	r.Print("RegisterHandler:", method, path, GetHandlerNames(handler))
-	if method == MethodAny{
+	if method == MethodAny {
 		for _, method := range RouterAllMethod {
-			r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method + path), handler))
+			r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
 		}
-	}else {
-		r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method + path), handler))
+	} else {
+		r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
 	}
 }
 
@@ -192,7 +191,7 @@ func (r *RouterRadix) Set(key string, i interface{}) error {
 		if hs == nil {
 			return ErrRouterSetNoSupportType
 		}
-		
+
 		r.node404.SetTags(args)
 		r.node404.handlers = append(r.middtree.val, hs...)
 		r.nodefunc404 = hs
@@ -210,7 +209,6 @@ func (r *RouterRadix) Set(key string, i interface{}) error {
 	}
 	return nil
 }
-
 
 // Returns the component name of the current router.
 //
@@ -231,8 +229,8 @@ func (*RouterRadix) Version() string {
 // 创建一个405响应的radixNode。
 func newRadixNode405(args string, h HandlerFunc) *radixNode {
 	newNode := &radixNode{
-		Wchildren:	&radixNode{
-			handlers:	HandlerFuncs{h},
+		Wchildren: &radixNode{
+			handlers: HandlerFuncs{h},
 		},
 	}
 	newNode.Wchildren.SetTags(strings.Split(args, " "))
@@ -253,7 +251,7 @@ func newRadixNode(path string) *radixNode {
 		newNode.kind = radixNodeKindWildcard
 		if len(path) == 1 {
 			newNode.name = "*"
-		}else{
+		} else {
 			newNode.name = path[1:]
 		}
 	case ':':
@@ -296,8 +294,8 @@ func (r *radixNode) InsertNode(path string, nextNode *radixNode) *radixNode {
 			if find {
 				if subStr == r.Cchildren[i].path {
 					nextTargetKey := strings.TrimPrefix(path, r.Cchildren[i].path)
-					return r.Cchildren[i].InsertNode(nextTargetKey, nextNode)	
-				}else {
+					return r.Cchildren[i].InsertNode(nextTargetKey, nextNode)
+				} else {
 					newNode := r.SplitNode(subStr, r.Cchildren[i].path)
 					if newNode == nil {
 						panic("Unexpect error on split node")
@@ -353,7 +351,7 @@ func (r *radixNode) SetTags(args []string) {
 	r.tags[0] = ParamRoute
 	r.vals[0] = args[0]
 	for i, str := range args[1:] {
-		r.tags[i + 1], r.vals[i + 1] = split2byte(str, ':')
+		r.tags[i+1], r.vals[i+1] = split2byte(str, ':')
 	}
 }
 
@@ -408,7 +406,7 @@ func (searchNode *radixNode) recursiveLoopup(searchKey string, params Params) Ha
 	for _, edgeObj := range searchNode.Cchildren {
 		if contrainPrefix(searchKey, edgeObj.path) {
 			nextSearchKey := searchKey[len(edgeObj.path):]
-			if n := edgeObj.recursiveLoopup(nextSearchKey, params);n != nil {
+			if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
 				return n
 			}
 			// TODO: 待优化测试，只有一个相同前缀，当前应该直接退出遍历
@@ -419,20 +417,20 @@ func (searchNode *radixNode) recursiveLoopup(searchKey string, params Params) Ha
 	if len(searchNode.Pchildren) > 0 && len(searchKey) > 0 {
 		pos := strings.IndexByte(searchKey, '/')
 		if pos == -1 {
-			pos = len(searchKey) 
+			pos = len(searchKey)
 		}
 		nextSearchKey := searchKey[pos:]
 
 		// Whether the variable Node matches in sequence is satisfied
 		// 遍历参数节点是否后续匹配
 		for _, edgeObj := range searchNode.Pchildren {
-			if n := edgeObj.recursiveLoopup(nextSearchKey, params);n != nil {
+			if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
 				params.AddParam(edgeObj.name, searchKey[:pos])
 				return n
 			}
 		}
 	}
-	
+
 	// If the current Node has a wildcard processing method that directly matches, the result is returned.
 	// 若当前节点有通配符处理方法直接匹配，返回结果。
 	if searchNode.Wchildren != nil {
@@ -483,7 +481,7 @@ func getSpiltPath(key string) []string {
 		if last {
 			last = false
 			strs = append(strs, "/")
-		}else {
+		} else {
 			lastappend(strs, '/')
 		}
 		// Handling special prefix paths
@@ -497,9 +495,9 @@ func getSpiltPath(key string) []string {
 		// 追加常量
 		num := len(strs) - 1
 		strs[num] = strs[num] + str
-	
+
 	}
-	if key[len(key) - 1] == '/' {
+	if key[len(key)-1] == '/' {
 		lastappend(strs, '/')
 	}
 	return strs
@@ -511,7 +509,7 @@ func getSpiltPath(key string) []string {
 func lastappend(strs []string, b byte) {
 	num := len(strs) - 1
 	laststr := strs[num]
-	if laststr[len(laststr) - 1 ] != b {
+	if laststr[len(laststr)-1] != b {
 		strs[num] = strs[num] + string(b)
 	}
 }
@@ -525,11 +523,10 @@ func lastisbyte(strs []string, b byte) bool {
 		return false
 	}
 	laststr := strs[num]
-	return laststr[len(laststr) - 1 ] == b
+	return laststr[len(laststr)-1] == b
 }
 
-
-// Get the largest common prefix of the two strings, 
+// Get the largest common prefix of the two strings,
 // return the largest common prefix and have the largest common prefix.
 //
 // 获取两个字符串的最大公共前缀，返回最大公共前缀和是否拥有最大公共前缀。
@@ -559,7 +556,7 @@ func contrainPrefix(str1, str2 string) bool {
 	if len(str1) < len(str2) {
 		return false
 	}
-	for i := 0; i < len(str2) ; i++ {
+	for i := 0; i < len(str2); i++ {
 		if str1[i] != str2[i] {
 			return false
 		}

@@ -9,7 +9,7 @@ import (
 type (
 	Conn struct {
 		net.Conn
-		frame	Frame
+		frame Frame
 	}
 )
 
@@ -34,29 +34,26 @@ func (con *Conn) ReadFrame() (f Frame, err error) {
 	return f, err
 }
 
-
 func (con *Conn) Write(msg []byte) (n int, err error) {
 	f := Frame{
-		Header:	Header{
-			Fin:	true,
-			OpCode:	FrameTypeBinary,
-			Length:	int64(len(msg)),
+		Header: Header{
+			Fin:    true,
+			OpCode: FrameTypeBinary,
+			Length: int64(len(msg)),
 		},
-		Payload:	msg,
+		Payload: msg,
 	}
 	return len(msg), con.WriteFrame(f)
 }
 
-
-
 func (con *Conn) WriteString(str string) (n int, err error) {
 	f := Frame{
-		Header:	Header{
-			Fin:	true,
-			OpCode:	FrameTypeText,
-			Length:	int64(len(msg)),
+		Header: Header{
+			Fin:    true,
+			OpCode: FrameTypeText,
+			Length: int64(len(msg)),
 		},
-		Payload:	strToBytes(str),
+		Payload: strToBytes(str),
 	}
 	return len(msg), con.WriteFrame(f)
 }

@@ -1,16 +1,17 @@
 package eudore
+
 // source: github.com/gobwas/ws
 
 import (
-	"io"
-	"net"
-	"hash"
-	"sync"
 	"bufio"
-	"unsafe"
-	"reflect"
 	"crypto/sha1"
 	"encoding/base64"
+	"hash"
+	"io"
+	"net"
+	"reflect"
+	"sync"
+	"unsafe"
 )
 
 const (
@@ -29,19 +30,17 @@ const (
 	acceptSize = 28 // base64.StdEncoding.EncodedLen(sha1.Size)
 )
 
-
 var (
-	ErrHandshakeBadProtocol = NewError(StatusHTTPVersionNotSupported, "handshake error: bad HTTP protocol version")
-	ErrHandshakeBadMethod = NewError(StatusMethodNotAllowed, "handshake error: bad HTTP request method")
-	ErrHandshakeBadHost = NewError(StatusBadRequest, "handshake error: bad Host heade")
-	ErrHandshakeBadUpgrade = NewError(StatusBadRequest, "handshake error: bad Upgrade header")
-	ErrHandshakeBadConnection = NewError(StatusBadRequest, "handshake error: bad Connection header")
-	ErrHandshakeBadSecAccept = NewError(StatusBadRequest, "handshake error: bad Sec-Websocket-Accept header")
-	ErrHandshakeBadSecKey = NewError(StatusBadRequest, "handshake error: bad Sec-Websocket-Key header")
-	ErrHandshakeBadSecVersion = NewError(StatusBadRequest, "handshake error: bad Sec-Websocket-Version header")
+	ErrHandshakeBadProtocol     = NewError(StatusHTTPVersionNotSupported, "handshake error: bad HTTP protocol version")
+	ErrHandshakeBadMethod       = NewError(StatusMethodNotAllowed, "handshake error: bad HTTP request method")
+	ErrHandshakeBadHost         = NewError(StatusBadRequest, "handshake error: bad Host heade")
+	ErrHandshakeBadUpgrade      = NewError(StatusBadRequest, "handshake error: bad Upgrade header")
+	ErrHandshakeBadConnection   = NewError(StatusBadRequest, "handshake error: bad Connection header")
+	ErrHandshakeBadSecAccept    = NewError(StatusBadRequest, "handshake error: bad Sec-Websocket-Accept header")
+	ErrHandshakeBadSecKey       = NewError(StatusBadRequest, "handshake error: bad Sec-Websocket-Key header")
+	ErrHandshakeBadSecVersion   = NewError(StatusBadRequest, "handshake error: bad Sec-Websocket-Version header")
 	ErrHandshakeUpgradeRequired = NewError(StatusUpgradeRequired, "handshake error: bad Sec-Websocket-Version header")
 )
-
 
 func UpgradeHttp(ctx Context) (net.Conn, error) {
 	conn, err := ctx.Response().Hijack()
@@ -74,7 +73,7 @@ func UpgradeHttp(ctx Context) (net.Conn, error) {
 	if err == nil {
 		httpWriteResponseUpgrade(rw, []byte(nonce))
 		err = rw.Flush()
-	}else {
+	} else {
 		var code int = 500
 		if err2, ok := err.(*ErrorHttp); ok {
 			code = err2.Code()
@@ -93,7 +92,6 @@ func httpWriteResponseUpgrade(bw *bufio.Writer, nonce []byte) {
 	writeAccept(bw, nonce)
 	bw.WriteString("\r\n\r\n")
 }
-
 
 func writeAccept(w io.Writer, nonce []byte) (int, error) {
 	var b [acceptSize]byte
@@ -137,8 +135,6 @@ func initAcceptFromNonce(dst, nonce []byte) {
 	base64.StdEncoding.Encode(dst, sum)
 }
 
-
-
 var webSocketMagic = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 
 var sha1Pool sync.Pool
@@ -163,4 +159,3 @@ func releaseSha1(h hash.Hash) {
 	h.Reset()
 	sha1Pool.Put(h)
 }
-

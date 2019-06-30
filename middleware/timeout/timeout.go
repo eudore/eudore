@@ -1,9 +1,8 @@
 package timeout
 
-
 import (
-	"time"
 	"github.com/eudore/eudore"
+	"time"
 )
 
 func NewTimeout(t time.Duration) func(eudore.HandlerFunc) {

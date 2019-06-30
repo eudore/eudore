@@ -9,28 +9,29 @@ Handler接口定义了Context对象请求处理函数。
 package eudore
 
 import (
-	"os"
-	"io"
-	"fmt"
-	"sync"
-	"mime"
-	"path"
-	"time"
 	"bufio"
-	"regexp"
-	"strings"
-	"strconv"
-	"reflect"
-	"runtime"
-	"errors"
-	"net/textproto"
-	"path/filepath"
-	"mime/multipart"
 	"crypto/sha512"
-	"unicode/utf8"
+	"errors"
+	"fmt"
+	"github.com/eudore/eudore/protocol"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
-	"github.com/eudore/eudore/protocol"
+	"net/textproto"
+	"os"
+	"path"
+	"path/filepath"
+	"reflect"
+	"regexp"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
 )
 
 type (
@@ -40,21 +41,22 @@ type (
 	Handler interface {
 		Handle(Context)
 	}
-	HandlerFuncs	[]HandlerFunc
+	HandlerFuncs []HandlerFunc
 )
+
 var (
-	sriRegexpScript, _		= regexp.Compile(`\s*<script.*src=([\"\'])(\S*\.js)([\"\']).*></script>`)
-	sriRegexpCss, _			= regexp.Compile(`\s*<link.*href=([\"\'])(\S*\.css)([\"\']).*>`)
-	sriRegexpImg, _			= regexp.Compile(`\s*<img.*src=([\"\'])(\S*)([\"\']).*>`)
-	sriRegexpIntegrity, _	= regexp.Compile(`.*\s+integrity=[\"\'](\S*)[\"\'].*`)
-	sriHashPool				=	sync.Pool {
+	sriRegexpScript, _    = regexp.Compile(`\s*<script.*src=([\"\'])(\S*\.js)([\"\']).*></script>`)
+	sriRegexpCss, _       = regexp.Compile(`\s*<link.*href=([\"\'])(\S*\.css)([\"\']).*>`)
+	sriRegexpImg, _       = regexp.Compile(`\s*<img.*src=([\"\'])(\S*)([\"\']).*>`)
+	sriRegexpIntegrity, _ = regexp.Compile(`.*\s+integrity=[\"\'](\S*)[\"\'].*`)
+	sriHashPool           = sync.Pool{
 		New: func() interface{} {
 			return sha512.New()
 		},
 	}
-	cachePushFile			=	make(map[string][]string)
-	cacheFileType			=	make(map[string]string)
-	errNoOverlap = errors.New("invalid range: failed to overlap")
+	cachePushFile = make(map[string][]string)
+	cacheFileType = make(map[string]string)
+	errNoOverlap  = errors.New("invalid range: failed to overlap")
 )
 
 func NewHandlerFuncs(i interface{}) HandlerFuncs {
@@ -66,7 +68,7 @@ func NewHandlerFuncs(i interface{}) HandlerFuncs {
 	case HandlerFuncs:
 		return val
 	case string:
-	var hs HandlerFuncs
+		var hs HandlerFuncs
 		for _, i := range strings.Split(val, ",") {
 			h := ConfigLoadHandleFunc(i)
 			if h != nil {
@@ -113,12 +115,99 @@ func GetHandlerName(h HandlerFunc) string {
 }
 
 func TestHttpHandler(h http.Handler, method, path string) {
-	r := httptest.NewRequest(method, path, nil)	
+	r := httptest.NewRequest(method, path, nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 }
 
+func HandlerRpc(fn interface{}) HandlerFunc {
+	iType := reflect.TypeOf(fn)
+	iValue := reflect.ValueOf(fn)
+	if iType.Kind() != reflect.Func {
+		panic("func is invalid")
+	}
 
+	var (
+		isCtx  = iType.NumIn() > 0 && iType.In(0) == reflect.TypeOf(new(Context)).Elem()
+		isReq  = isCtx && iType.NumIn() == 2 || !isCtx && iType.NumIn() == 1
+		isErr  = iType.NumOut() > 0 && iType.Out(iType.NumOut()-1) == reflect.TypeOf(new(error)).Elem()
+		isResp = isErr && iType.NumOut() == 2 || !isErr && iType.NumOut() == 1
+	)
+	if iType.NumIn() != bools2int(isCtx, isReq) || iType.NumOut() != bools2int(isResp, isErr) {
+		panic("func params is invalid")
+	}
+	// fmt.Println(iType, iType.NumIn(), iType.NumOut(), isCtx, isReq, isResp, isErr)
+
+	var typeIn reflect.Type
+	if isReq {
+		if isCtx {
+			typeIn = iType.In(1)
+		} else {
+			typeIn = iType.In(0)
+		}
+
+		// 检查请求类型
+		switch typeIn.Kind() {
+		case reflect.Map, reflect.Struct, reflect.Ptr:
+		default:
+			panic("func request not is map, struct, ptr.")
+		}
+	}
+
+	return func(ctx Context) {
+		params := make([]reflect.Value, 0, 2)
+		if isCtx {
+			params = append(params, reflect.ValueOf(ctx))
+		}
+		if isReq {
+			var val reflect.Value
+			switch typeIn.Kind() {
+			case reflect.Ptr:
+				val = reflect.New(typeIn.Elem())
+			case reflect.Struct, reflect.Map:
+				val = reflect.New(typeIn)
+			}
+
+			err := ctx.ReadBind(val.Interface())
+			if err != nil {
+				ctx.Fatal(err)
+				return
+			}
+			if typeIn.Kind() != reflect.Ptr {
+				val = val.Elem()
+			}
+
+			params = append(params, val)
+
+		}
+
+		vals := iValue.Call(params)
+
+		if isErr {
+			err := vals[len(vals)-1].Interface()
+			if err != nil {
+				ctx.Fatal(err)
+				return
+			}
+		}
+		if isResp {
+			Json(vals[0].Interface())
+			err := ctx.WriteRender(vals[0].Interface())
+			if err != nil {
+				ctx.Fatal(err)
+			}
+		}
+	}
+}
+
+func bools2int(bs ...bool) (n int) {
+	for _, b := range bs {
+		if b {
+			n++
+		}
+	}
+	return
+}
 
 func HandlerEmpty(Context) {
 	// Do nothing because empty handler does not process entries.
@@ -158,7 +247,7 @@ func handlerErrorStatus(err error) (string, int) {
 	return "500 Internal Server Error", StatusInternalServerError
 }
 
-func HandlerFile(ctx Context, path string) (error) {
+func HandlerFile(ctx Context, path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		msg, code := handlerErrorStatus(err)
@@ -176,33 +265,24 @@ func HandlerFile(ctx Context, path string) (error) {
 
 	// index page
 	if desc.IsDir() {
-		ctx.Redirect(307, path + "index.html")
+		ctx.Redirect(307, path+"index.html")
 		return nil
 	}
 
-	return handlerContext(ctx, path, f)
+	return HandlerContext(ctx, f, desc.ModTime(), desc.Size(), getFileType(path))
 }
 
-func handlerContext(ctx Context, path string, content *os.File) error {
-	desc, _ := content.Stat()
-	if checkPreconditions(ctx, desc.ModTime()) {
+func HandlerContext(ctx Context, content io.ReadSeeker, modtime time.Time, sendSize int64, ctype string) error {
+	if checkPreconditions(ctx, modtime) {
 		return nil
 	}
 	// If Content-Type isn't set, use the file's extension to find it, but
 	// if the Content-Type is unset explicitly, do not sniff the type.
 	h := ctx.Response().Header()
-	h.Set("Last-Modified", desc.ModTime().UTC().Format(TimeFormat))
-/*	ctype := h.Get(HeaderContentType)
-	if len(ctype) == 0 {
-		ctype = getFileType(path)
-		h.Set(HeaderContentType, ctype)
-	}*/
-	ctype := getFileType(path)
+	h.Set("Last-Modified", modtime.UTC().Format(TimeFormat))
 	h.Set(HeaderContentType, ctype)
 
-
 	// handle Content-Range header.
-	sendSize := desc.Size()
 	var sendContent io.Reader = content
 	if sendSize >= 0 {
 		ranges, err := parseRange(ctx.GetHeader("Range"), sendSize)
@@ -237,7 +317,7 @@ func handlerContext(ctx Context, path string, content *os.File) error {
 			mw := multipart.NewWriter(pw)
 			ctx.SetHeader(HeaderContentType, "multipart/byteranges; boundary="+mw.Boundary())
 			sendContent = pr
-			defer pr.Close() 
+			defer pr.Close()
 			go func() {
 				for _, ra := range ranges {
 					part, err := mw.CreatePart(ra.mimeHeader(ctype, sendSize))
@@ -284,7 +364,7 @@ func checkPreconditions(ctx Context, modtime time.Time) bool {
 		if ctx.Method() == "GET" || ctx.Method() == "HEAD" {
 			writeNotModified(ctx)
 			return true
-		}else {
+		} else {
 			ctx.WriteHeader(StatusPreconditionFailed)
 			return true
 		}
@@ -346,7 +426,6 @@ func checkIfUnmodifiedSince(ctx Context, modtime time.Time) condResult {
 	}
 	return condNone
 }
-
 
 func checkIfNoneMatch(ctx Context) condResult {
 	inm := ctx.GetHeader("If-None-Match")
@@ -584,7 +663,7 @@ func getStatic(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if fileInfo.Size() > 10 << 20 {
+	if fileInfo.Size() > 10<<20 {
 		return nil, fmt.Errorf("%s file is to long, size: %d", path, fileInfo.Size())
 	}
 	// 打开文件
@@ -621,7 +700,6 @@ func getStatic(path string) ([]string, error) {
 	return statics, nil
 }
 
-
 func getFileType(path string) string {
 	ctype := mime.TypeByExtension(filepath.Ext(path))
 	if ctype == "" {
@@ -648,8 +726,6 @@ func getFileType(path string) string {
 	}
 	return ctype
 }
-
-
 
 // Hop-by-hop headers. These are removed when sent to the backend.
 // As of RFC 7230, hop-by-hop headers are required to appear in the
@@ -678,20 +754,27 @@ func isEndHeader(key string) bool {
 }
 
 func copyheader(source protocol.Header, target protocol.Header) {
-	source.Range(func(key, val string){{
-		if isEndHeader(key) {
-			target.Add(key, val)
+	source.Range(func(key, val string) {
+		{
+			if isEndHeader(key) {
+				target.Add(key, val)
+			}
 		}
-	}})
+	})
 }
 
 func HandlerProxy(addr string) HandlerFunc {
 	client := NewClientHttp()
 	return func(ctx Context) {
-		req := client.NewRequest(ctx.Method(), addr + ctx.Request().RequestURI(), ctx)
+		req := client.NewRequest(ctx.Method(), addr+ctx.Request().RequestURI(), ctx)
 		copyheader(ctx.Request().Header(), req.Header())
 
-		req.Header().Set(HeaderXForwardedFor, ctx.RemoteAddr())
+		if clientIP, _, err := net.SplitHostPort(ctx.Request().RemoteAddr()); err == nil {
+			if prior := ctx.GetHeader(HeaderXForwardedFor); prior != "" {
+				clientIP = prior + ", " + clientIP
+			}
+			req.Header().Set(HeaderXForwardedFor, clientIP)
+		}
 		if ctx.GetHeader("Te") == "trailers" {
 			req.Header().Add("Te", "trailers")
 		}
@@ -712,7 +795,7 @@ func HandlerProxy(addr string) HandlerFunc {
 		ctx.WriteHeader(resp.Statue())
 		copyheader(resp.Header(), ctx.Response().Header())
 
-		if resp.Statue() == StatusSwitchingProtocols  {
+		if resp.Statue() == StatusSwitchingProtocols {
 			// handle Upgrade Response
 			err = handleUpgradeResponse(ctx, resp)
 			if err != nil {
@@ -750,7 +833,7 @@ func handleUpgradeResponse(ctx Context, resp protocol.ResponseReader) error {
 	spc := switchProtocolCopier{user: conn, backend: backConn}
 	go spc.copyToBackend(errc)
 	go spc.copyFromBackend(errc)
-	return <- errc
+	return <-errc
 }
 
 // switchProtocolCopier exists so goroutines proxying data back and
@@ -768,7 +851,6 @@ func (c switchProtocolCopier) copyToBackend(errc chan<- error) {
 	_, err := io.Copy(c.backend, c.user)
 	errc <- err
 }
-
 
 // Redirect a Context.
 //
@@ -819,8 +901,6 @@ func HandlerRedirect(ctx Context, redirectUrl string, code int) {
 		fmt.Fprintln(ctx.Response(), body)
 	}
 }
-
-
 
 func hexEscapeNonASCII(s string) string {
 	newLen := 0

@@ -1,16 +1,14 @@
 package eudore
 
 import (
-	"os"
-	"fmt"
-	"strings"
-	"net/http"
-	"io/ioutil"
 	"encoding/json"
-	
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"strings"
 	// etcd "github.com/coreos/etcd/client"
 )
-
 
 func ConfigParseInit(c Config) error {
 	return nil
@@ -42,7 +40,7 @@ func ConfigParseConfig(c Config) error {
 	}
 
 	err := json.Unmarshal(data.([]byte), c)
-	return err	
+	return err
 }
 
 func ConfigParseArgs(c Config) (err error) {
@@ -67,7 +65,7 @@ func ConfigParseEnvs(c Config) error {
 }
 
 func ConfigParseMods(c Config) error {
-	mod, ok  := c.Get("enable").([]string)
+	mod, ok := c.Get("enable").([]string)
 	if !ok {
 		modi, ok := c.Get("enable").([]interface{})
 		if ok {
@@ -75,13 +73,13 @@ func ConfigParseMods(c Config) error {
 			for i, s := range modi {
 				mod[i] = fmt.Sprint(s)
 			}
-		}else {
+		} else {
 			return nil
 		}
 	}
 
 	for _, i := range mod {
-		ConvertTo(c.Get("mods." + i), c.Get(""))
+		ConvertTo(c.Get("mods."+i), c.Get(""))
 	}
 	return nil
 }
@@ -100,13 +98,14 @@ func ConfigReadFile(path string) ([]byte, error) {
 		path = path[7:]
 	}
 	data, err := ioutil.ReadFile(path)
-	
+
 	last := strings.LastIndex(path, ".") + 1
 	if last == 0 {
 		return nil, fmt.Errorf("read file config, type is null")
 	}
 	return data, err
 }
+
 // Send http request get config info
 func ConfigReadHttp(path string) ([]byte, error) {
 	resp, err := http.Get(path)
@@ -117,6 +116,7 @@ func ConfigReadHttp(path string) ([]byte, error) {
 	data, err := ioutil.ReadAll(resp.Body)
 	return data, err
 }
+
 //
 // example: etcd://127.0.0.1:2379/config
 /*func ConfigReadEtcd(path string) (string, error) {

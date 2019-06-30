@@ -8,22 +8,22 @@ Logger定义通用日志处理接口
 package eudore
 
 import (
+	"bufio"
+	"encoding/json"
+	"fmt"
 	"io"
 	"os"
-	"fmt"
-	"time"
-	"sync"
-	"bufio"
-	"strings"
-	"strconv"
 	"runtime"
+	"strconv"
+	"strings"
+	"sync"
 	"sync/atomic"
-	"encoding/json"
 	"text/template"
+	"time"
 )
 
 const (
-	LogDebug	LoggerLevel = iota
+	LogDebug LoggerLevel = iota
 	LogInfo
 	LogWarning
 	LogError
@@ -32,21 +32,21 @@ const (
 )
 
 var (
-	LogLevelString	= [5]string{"DEBUG", "INFO" ,"WARNING" ,"ERROR" ,"FATAL"}
-	poolEntryStd 	= 	sync.Pool{}
-	_ Logger = (*LoggerInit)(nil)
-	_ Logger = (*LoggerStd)(nil)
+	LogLevelString        = [5]string{"DEBUG", "INFO", "WARNING", "ERROR", "FATAL"}
+	poolEntryStd          = sync.Pool{}
+	_              Logger = (*LoggerInit)(nil)
+	_              Logger = (*LoggerStd)(nil)
 )
 
 type (
 	// 日志级别
 	LoggerLevel int32
-	LoggerTime struct {
-		Time	time.Time
-		Format	string
+	LoggerTime  struct {
+		Time   time.Time
+		Format string
 	}
 	Fields map[string]interface{}
-	// LoggerHandleFunc		func(io.Writer, Entry) 
+	// LoggerHandleFunc		func(io.Writer, Entry)
 	// 日志输出接口
 	LogOut interface {
 		Debug(...interface{})
@@ -81,46 +81,46 @@ type (
 	// 初始日志处理器仅记录日志，再设置日志处理器后，
 	// 会将当前记录的日志交给新日志处理器处理，用于处理程序初始化之前产生的日志。
 	LoggerInit struct {
-		data		[]*entryInit
+		data []*entryInit
 	}
 	entryInit struct {
-		Level		LoggerLevel	`json:"level"`
-		Fields		Fields		`json:"fields,omitempty"`
-		Time		time.Time	`json:"time"`
-		Message		string		`json:"message,omitempty"`
+		Level   LoggerLevel `json:"level"`
+		Fields  Fields      `json:"fields,omitempty"`
+		Time    time.Time   `json:"time"`
+		Message string      `json:"message,omitempty"`
 	}
 
 	// 标准日志处理实现，将日志输出到标准输出或者文件。
 	//
 	// 日志格式默认json，可以指定为模板格式。
 	LoggerStd struct {
-		Config		*LoggerStdConfig
-		out			*bufio.Writer
-		pool		sync.Pool
-		ticker		*time.Ticker
-		handle		func(interface{})
+		Config *LoggerStdConfig
+		out    *bufio.Writer
+		pool   sync.Pool
+		ticker *time.Ticker
+		handle func(interface{})
 	}
 	LoggerStdConfig struct {
-		Std			bool		`set:"std"`
-		Path		string		`set:"path"`
-		Level		LoggerLevel	`set:"level"`
-		Format		string		`set:"format" default:"json"`
-		TimeFormat	string		`set:"timeformat" default:"2006-01-02 15:04:05"`
+		Std        bool        `set:"std"`
+		Path       string      `set:"path"`
+		Level      LoggerLevel `set:"level"`
+		Format     string      `set:"format" default:"json"`
+		TimeFormat string      `set:"timeformat" default:"2006-01-02 15:04:05"`
 	}
 	// 标准日志条目
 	entryStd struct {
-		pool		*sync.Pool
-		logger		*LoggerStd
-		checklevel	LoggerLevel
-		Time		*LoggerTime	`json:"time"`
-		Level		LoggerLevel	`json:"level"`
-		Fields		Fields		`json:"fields,omitempty"`
-		Message		string		`json:"message,omitempty"`
+		pool       *sync.Pool
+		logger     *LoggerStd
+		checklevel LoggerLevel
+		Time       *LoggerTime `json:"time"`
+		Level      LoggerLevel `json:"level"`
+		Fields     Fields      `json:"fields,omitempty"`
+		Message    string      `json:"message,omitempty"`
 	}
 )
 
 func init() {
-	poolEntryStd = sync.Pool {
+	poolEntryStd = sync.Pool{
 		New: func() interface{} {
 			return &entryStd{}
 		},
@@ -140,19 +140,18 @@ func NewLogger(name string, arg interface{}) (Logger, error) {
 	return nil, fmt.Errorf("Component %s cannot be converted to Logger type", name)
 }
 
-
 func NewLoggerStd(arg interface{}) (Logger, error) {
 	// 解析配置
 	config := &LoggerStdConfig{
-		Format:		"json",
-		TimeFormat:	"2006-01-02 15:04:05",
+		Format:     "json",
+		TimeFormat: "2006-01-02 15:04:05",
 	}
 	ConvertTo(arg, config)
 
 	// 创建并初始化日志处理器
-	l := &LoggerStd {
-		Config:		config,
-		pool:		sync.Pool{},
+	l := &LoggerStd{
+		Config: config,
+		pool:   sync.Pool{},
 	}
 	l.initPool()
 	if err := l.initOut(); err != nil {
@@ -163,7 +162,7 @@ func NewLoggerStd(arg interface{}) (Logger, error) {
 	}
 
 	// 定时写入日志
-	go func(){
+	go func() {
 		l.ticker = time.NewTicker(time.Millisecond * 50)
 		for range l.ticker.C {
 			l.out.Flush()
@@ -172,15 +171,14 @@ func NewLoggerStd(arg interface{}) (Logger, error) {
 	return l, nil
 }
 
-
 func (l *LoggerStd) initPool() {
 	l.pool.New = func() interface{} {
 		return &entryStd{
-			pool:	&l.pool,
-			logger:	l,
-			checklevel:	l.Config.Level,
-			Time:	&LoggerTime{
-				Format:	l.Config.TimeFormat,
+			pool:       &l.pool,
+			logger:     l,
+			checklevel: l.Config.Level,
+			Time: &LoggerTime{
+				Format: l.Config.TimeFormat,
 			},
 		}
 	}
@@ -188,16 +186,16 @@ func (l *LoggerStd) initPool() {
 
 func (l *LoggerStd) initOut() error {
 	if len(l.Config.Path) == 0 {
-		l.out = bufio.NewWriter(os.Stdout) 
-	}else {
-		file, err := os.OpenFile(l.Config.Path, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0666)
+		l.out = bufio.NewWriter(os.Stdout)
+	} else {
+		file, err := os.OpenFile(l.Config.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			return err
 		}
 		if l.Config.Std {
-			l.out = bufio.NewWriter(io.MultiWriter(os.Stdout, file)) 
-		}else{
-			l.out = bufio.NewWriter(file) 
+			l.out = bufio.NewWriter(io.MultiWriter(os.Stdout, file))
+		} else {
+			l.out = bufio.NewWriter(file)
 		}
 	}
 	return nil
@@ -212,7 +210,7 @@ func (l *LoggerStd) initHandle() error {
 		l.handle = func(i interface{}) {
 			handle.Encode(i)
 		}
-	}else {
+	} else {
 		tmpl, err := template.New("").Parse(l.Config.Format)
 		if err != nil {
 			return err
@@ -231,7 +229,7 @@ func (l *LoggerStd) Flush() error {
 func (l *LoggerStd) Set(key string, val interface{}) error {
 	switch i := val.(type) {
 	// case LoggerHandleFunc:
-		// l.LoggerHandleFunc = i
+	// l.LoggerHandleFunc = i
 	case LoggerLevel:
 		l.Config.Level = i
 	default:
@@ -240,13 +238,12 @@ func (l *LoggerStd) Set(key string, val interface{}) error {
 	return nil
 }
 
-
 func (l *LoggerStd) HandleEntry(e interface{}) {
 	l.handle(e)
 }
 
 func (l *LoggerStd) newEntry() (entry *entryStd) {
-	entry =  l.pool.Get().(*entryStd)
+	entry = l.pool.Get().(*entryStd)
 	entry.Time.Time = time.Now()
 	entry.Fields = nil
 	return
@@ -316,7 +313,7 @@ func (e *entryStd) Debug(args ...interface{}) {
 	if e.checklevel < 1 {
 		e.Level = 0
 		e.Message = fmt.Sprintln(args...)
-		e.Message = e.Message[:len(e.Message) - 1]
+		e.Message = e.Message[:len(e.Message)-1]
 		e.logger.HandleEntry(e)
 	}
 	e.pool.Put(e)
@@ -326,7 +323,7 @@ func (e *entryStd) Info(args ...interface{}) {
 	if e.checklevel < 2 {
 		e.Level = 1
 		e.Message = fmt.Sprintln(args...)
-		e.Message = e.Message[:len(e.Message) - 1]
+		e.Message = e.Message[:len(e.Message)-1]
 		e.logger.HandleEntry(e)
 	}
 	e.pool.Put(e)
@@ -358,29 +355,27 @@ func (e *entryStd) Fatal(args ...interface{}) {
 	panic(args)
 }
 
-
-
-func (e *entryStd) Debugf(format string,args ...interface{}) {
+func (e *entryStd) Debugf(format string, args ...interface{}) {
 	if e.checklevel < 1 {
 		e.Level = 0
 		e.Message = fmt.Sprintf(format, args...)
-		e.Message = e.Message[:len(e.Message) - 1]
+		e.Message = e.Message[:len(e.Message)-1]
 		e.logger.HandleEntry(e)
 	}
 	e.pool.Put(e)
 }
 
-func (e *entryStd) Infof(format string,args ...interface{}) {
+func (e *entryStd) Infof(format string, args ...interface{}) {
 	if e.checklevel < 2 {
 		e.Level = 1
 		e.Message = fmt.Sprintf(format, args...)
-		e.Message = e.Message[:len(e.Message) - 1]
+		e.Message = e.Message[:len(e.Message)-1]
 		e.logger.HandleEntry(e)
 	}
 	e.pool.Put(e)
 }
 
-func (e *entryStd) Warningf(format string,args ...interface{}) {
+func (e *entryStd) Warningf(format string, args ...interface{}) {
 	if e.checklevel < 3 {
 		e.Level = 2
 		e.Message = fmt.Sprintf(format, args...)
@@ -389,7 +384,7 @@ func (e *entryStd) Warningf(format string,args ...interface{}) {
 	e.pool.Put(e)
 }
 
-func (e *entryStd) Errorf(format string,args ...interface{}) {
+func (e *entryStd) Errorf(format string, args ...interface{}) {
 	if e.checklevel < 4 {
 		e.Level = 3
 		e.Message = fmt.Sprintf(format, args...)
@@ -398,7 +393,7 @@ func (e *entryStd) Errorf(format string,args ...interface{}) {
 	e.pool.Put(e)
 }
 
-func (e *entryStd) Fatalf(format string,args ...interface{}) {
+func (e *entryStd) Fatalf(format string, args ...interface{}) {
 	e.Level = 4
 	e.Message = fmt.Sprintf(format, args...)
 	e.logger.HandleEntry(e)
@@ -417,20 +412,14 @@ func (e *entryStd) WithField(key string, value interface{}) LogOut {
 			return e
 		}
 	}
-	e.Fields[key] = value	
+	e.Fields[key] = value
 	return e
 }
 
 func (e *entryStd) WithFields(fields Fields) LogOut {
 	e.Fields = fields
 	return e
-} 
-
-
-
-
-
-
+}
 
 func NewLoggerInit(interface{}) (Logger, error) {
 	return &LoggerInit{}, nil
@@ -465,7 +454,6 @@ func (l *LoggerInit) NextHandler(logger Logger) {
 	l.data = l.data[0:0]
 }
 
-
 func (l *LoggerInit) WithField(key string, value interface{}) LogOut {
 	return l.newEntry().WithField(key, value)
 }
@@ -493,7 +481,6 @@ func (l *LoggerInit) Error(args ...interface{}) {
 func (l *LoggerInit) Fatal(args ...interface{}) {
 	l.newEntry().Fatal(args...)
 }
-
 
 func (l *LoggerInit) Debugf(format string, args ...interface{}) {
 	l.newEntry().Debugf(format, args...)
@@ -523,8 +510,6 @@ func (l *LoggerInit) Version() string {
 	return ComponentLoggerInitVersion
 }
 
-
-
 func (e *entryInit) Debug(args ...interface{}) {
 	e.Level = 0
 	e.Message = fmt.Sprint(args...)
@@ -549,7 +534,6 @@ func (e *entryInit) Fatal(args ...interface{}) {
 	e.Level = 4
 	e.Message = fmt.Sprint(args...)
 }
-
 
 func (e *entryInit) Debugf(format string, args ...interface{}) {
 	e.Level = 0
@@ -624,16 +608,16 @@ func (t *LoggerTime) MarshalText() (text []byte, err error) {
 	return
 }
 
-
 func LogFormatFileLine(depth int) (string, int) {
 	_, file, line, ok := runtime.Caller(3 + depth)
 	if !ok {
 		file = "???"
 		line = 1
 	} else {
-		slash := strings.LastIndex(file, "/")
+		// slash := strings.LastIndex(file, "/")
+		slash := strings.Index(file, "src")
 		if slash >= 0 {
-			file = file[slash+1:]
+			file = file[slash+4:]
 		}
 	}
 	return file, line

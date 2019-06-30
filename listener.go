@@ -5,21 +5,21 @@ package eudore
 */
 
 import (
-	"os"
 	"net"
-	"sync"
+	"os"
 	"strings"
+	"sync"
 )
 
 type (
 	Listeninfo struct {
-		Using bool
-		Addr string
+		Using    bool
+		Addr     string
 		Listener net.Listener `json:"-"`
 	}
 	globalListener struct {
-		mu			sync.Locker
-		Listeners	[]*Listeninfo
+		mu        sync.Locker
+		Listeners []*Listeninfo
 	}
 )
 
@@ -34,13 +34,13 @@ func init() {
 		if addr == "" {
 			continue
 		}
-		file := os.NewFile(uintptr(i + 3), "")
+		file := os.NewFile(uintptr(i+3), "")
 		ln, err := net.FileListener(file)
 		if err == nil {
 			GlobalListener.Listeners = append(GlobalListener.Listeners, &Listeninfo{
-				Using:		false,
-				Addr:		addr,
-				Listener:	ln,
+				Using:    false,
+				Addr:     addr,
+				Listener: ln,
 			})
 		}
 	}
@@ -56,9 +56,9 @@ func (gl *globalListener) Listen(addr string) (net.Listener, error) {
 	ln, err := newListener(addr)
 	if err == nil {
 		GlobalListener.Listeners = append(GlobalListener.Listeners, &Listeninfo{
-			Using:		true,
-			Addr:		addr,
-			Listener:	ln,
+			Using:    true,
+			Addr:     addr,
+			Listener: ln,
 		})
 	}
 	return ln, err

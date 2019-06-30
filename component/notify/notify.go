@@ -2,18 +2,18 @@ package notify
 
 import (
 	"fmt"
-	"time"
-	"os"
-	"os/exec"
-	"strings"
-	"io/ioutil"
-	"path/filepath"
 	"github.com/eudore/eudore"
 	"github.com/fsnotify/fsnotify"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 const (
-	NOTIFY_ENVIRON_KEY		= "EUDORE_IS_NOTIFY"
+	NOTIFY_ENVIRON_KEY = "EUDORE_IS_NOTIFY"
 )
 
 func Init(app *eudore.Eudore) error {
@@ -21,13 +21,12 @@ func Init(app *eudore.Eudore) error {
 	return nil
 }
 
-
 type Notify struct {
 	eudore.Logger
-	cmd			*exec.Cmd
-	buildCmd	[]string
-	startCmd	[]string
-	watchDir	[]string
+	cmd      *exec.Cmd
+	buildCmd []string
+	startCmd []string
+	watchDir []string
 }
 
 func NewNotify(app *eudore.App) *Notify {
@@ -36,9 +35,9 @@ func NewNotify(app *eudore.App) *Notify {
 		return nil
 	}
 	var (
-		buildCmd =	getArgs(app.Config.Get("component.notify.buildcmd"))
-		startCmd =	getArgs(app.Config.Get("component.notify.startcmd"))
-		watchDir =	getArgs(app.Config.Get("component.notify.watchdir"))
+		buildCmd = getArgs(app.Config.Get("component.notify.buildcmd"))
+		startCmd = getArgs(app.Config.Get("component.notify.startcmd"))
+		watchDir = getArgs(app.Config.Get("component.notify.watchdir"))
 	)
 
 	if len(buildCmd) == 0 || len(watchDir) == 0 {
@@ -50,10 +49,10 @@ func NewNotify(app *eudore.App) *Notify {
 		startCmd = os.Args
 	}
 	return &Notify{
-		buildCmd:	buildCmd,
-		startCmd:	startCmd,
-		watchDir:	watchDir,
-		Logger:		app.Logger,
+		buildCmd: buildCmd,
+		startCmd: startCmd,
+		watchDir: watchDir,
+		Logger:   app.Logger,
 	}
 }
 
@@ -64,10 +63,9 @@ func (n *Notify) Watch(string) {
 func (n *Notify) Run() {
 	if os.Getenv(NOTIFY_ENVIRON_KEY) == "" && n != nil {
 		n.start()
-	}else {
+	} else {
 		return
 	}
-
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -86,7 +84,7 @@ func (n *Notify) Run() {
 
 	for _, i := range n.watchDir {
 		// 递归目录处理
-		if i[len(i) - 1] == '/' {
+		if i[len(i)-1] == '/' {
 			listDir(i, addfn)
 		}
 		addfn(i)
@@ -98,7 +96,7 @@ func (n *Notify) Run() {
 		select {
 		case event, ok := <-watcher.Events:
 			if !ok {
-				return
+				break
 			}
 
 			// 监听go文件写入
@@ -107,13 +105,13 @@ func (n *Notify) Run() {
 
 				// 等待0.2秒执行更新，防止短时间大量触发
 				timer.Stop()
-				timer = time.AfterFunc(200 * time.Millisecond, func() {
+				timer = time.AfterFunc(200*time.Millisecond, func() {
 					// 执行编译命令
 					body, err := exec.Command(n.buildCmd[0], n.buildCmd[1:]...).CombinedOutput()
 					if err != nil {
 						fmt.Printf("notify build error: %s\n", body)
 						n.Errorf("notify build error: %s", body)
-					}else {
+					} else {
 						n.Info("notify build success, restart process...")
 						time.Sleep(100 * time.Millisecond)
 						// 重启子进程
@@ -123,7 +121,7 @@ func (n *Notify) Run() {
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
-				return
+				break
 			}
 			n.Error("notify watcher error:", err)
 		}

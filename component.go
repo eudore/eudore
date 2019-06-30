@@ -10,57 +10,55 @@ import (
 	"strings"
 )
 
-
-
 // 当前组件名称和版本。
 const (
-	ComponentConfigName			=	"config"
-	ComponentConfigMapName		=	"config-map"
-	ComponentConfigMapVersion	=	"eudore config map v1.0, use map save all config info."
-	ComponentConfigEudoreName		=	"config-eudore"
-	ComponentConfigEudoreVersion	=	"eudore config eudore v1.0, use reflect set and get all config info."
-	ComponentLoggerName			=	"logger"
-	ComponentLoggerInitName		=	"logger-init"
-	ComponentLoggerInitVersion	=	"eudore logger init v1.0, save all entry."
-	ComponentLoggerStdName		=	"logger-std"
-	ComponentLoggerStdVersion	=	"eudore logger std v1.0, output log to /dev/null."
+	ComponentConfigName          = "config"
+	ComponentConfigMapName       = "config-map"
+	ComponentConfigMapVersion    = "eudore config map v1.0, use map save all config info."
+	ComponentConfigEudoreName    = "config-eudore"
+	ComponentConfigEudoreVersion = "eudore config eudore v1.0, use reflect set and get all config info."
+	ComponentLoggerName          = "logger"
+	ComponentLoggerInitName      = "logger-init"
+	ComponentLoggerInitVersion   = "eudore logger init v1.0, save all entry."
+	ComponentLoggerStdName       = "logger-std"
+	ComponentLoggerStdVersion    = "eudore logger std v1.0, output log to /dev/null."
 	// ComponentLoggerMultiName	=	"logger-multi"
 	// ComponentLoggerMultiVersion	=	"eudore logger multi v1.0, output log to multiple logger."
-	ComponentServerName			=	"server"
-	ComponentServerStdName		=	"server-std"
-	ComponentServerStdVersion	=	"eudore server std v1.0."
-	ComponentServerFastcgiName	=	"server-fastcgi"
-	ComponentServerEudoreName	=	"server-eudore"
-	ComponentServerEudoreVersion	=	"eudore server eudore v0.1."
-	ComponentServerFasthttpName		=	"server-fasthttp"
-	ComponentServerFasthttpVersion	=	"eudore server fasthttp."
-	ComponentServerMultiName	=	"server-multi"
-	ComponentServerMultiVersion	=	"eudore server multi v1.0, server multi manage Multiple server."
-	ComponentRouterName			=	"router"
-	ComponentRouterRadixName	=	"router-radix"
-	ComponentRouterRadixVersion	=	"eudore router radix,use radix tree std router."
-	ComponentRouterFullName		=	"router-full"
-	ComponentRouterFullVersion	=	"eudore router full,use radix tree full router."
-	ComponentRouterDebugName	=	"router-debug"
-	ComponentRouterDebugVersion	=	"eudore router debug, use router full."
-	ComponentRouterHostName		=	"router-host"
-	ComponentRouterHostVersion	=	"eudore router host."
-	ComponentRouterInitName	=	"router-init"
-	ComponentRouterInitVersion	=	"eudore router init."
-	ComponentCacheName			=	"cache"
-	ComponentCacheMapName		=	"cache-map"
-	ComponentCacheMapVersion	=	"eudore cache map v1.0, from sync.Map."
-	ComponentCacheGroupName		=	"cache-group"
-	ComponentCacheGroupVersion	=	"eudore cache group v1.0."
-	ComponentSessionName		=	"session"
-	ComponentSessionMapName		=	"session-map"
-	ComponentSessionMapVersion	=	"eudore session map v1.0, from sync.Map."
-	ComponentSessionCacheName		=	"session-cache"
-	ComponentSessionCacheVersion	=	"eudore session cache v1.0, save all data to eudore cache."
-	ComponentViewName			=	"view"
-	ComponentViewStdName		=	"view-std"
-	ComponentViewStdVersion		=	"eudore view std v1.0, golang std library html/template."
-	ErrComponentNameNil			=	"Failed to create component, component name is empty."
+	ComponentServerName            = "server"
+	ComponentServerStdName         = "server-std"
+	ComponentServerStdVersion      = "eudore server std v1.0."
+	ComponentServerFastcgiName     = "server-fastcgi"
+	ComponentServerEudoreName      = "server-eudore"
+	ComponentServerEudoreVersion   = "eudore server eudore v0.1."
+	ComponentServerFasthttpName    = "server-fasthttp"
+	ComponentServerFasthttpVersion = "eudore server fasthttp."
+	ComponentServerMultiName       = "server-multi"
+	ComponentServerMultiVersion    = "eudore server multi v1.0, server multi manage Multiple server."
+	ComponentRouterName            = "router"
+	ComponentRouterRadixName       = "router-radix"
+	ComponentRouterRadixVersion    = "eudore router radix,use radix tree std router."
+	ComponentRouterFullName        = "router-full"
+	ComponentRouterFullVersion     = "eudore router full,use radix tree full router."
+	ComponentRouterDebugName       = "router-debug"
+	ComponentRouterDebugVersion    = "eudore router debug, use router full."
+	ComponentRouterHostName        = "router-host"
+	ComponentRouterHostVersion     = "eudore router host."
+	ComponentRouterInitName        = "router-init"
+	ComponentRouterInitVersion     = "eudore router init."
+	ComponentCacheName             = "cache"
+	ComponentCacheMapName          = "cache-map"
+	ComponentCacheMapVersion       = "eudore cache map v1.0, from sync.Map."
+	ComponentCacheGroupName        = "cache-group"
+	ComponentCacheGroupVersion     = "eudore cache group v1.0."
+	ComponentSessionName           = "session"
+	ComponentSessionMapName        = "session-map"
+	ComponentSessionMapVersion     = "eudore session map v1.0, from sync.Map."
+	ComponentSessionCacheName      = "session-cache"
+	ComponentSessionCacheVersion   = "eudore session cache v1.0, save all data to eudore cache."
+	ComponentViewName              = "view"
+	ComponentViewStdName           = "view-std"
+	ComponentViewStdVersion        = "eudore view std v1.0, golang std library html/template."
+	ErrComponentNameNil            = "Failed to create component, component name is empty."
 )
 
 type (
@@ -79,8 +77,8 @@ type (
 		Version() string
 	}
 	ComponentConfig struct {
-		Name	string		`set:"name"`
-		Config	interface{}	`set:"config"`
+		Name   string      `set:"name"`
+		Config interface{} `set:"config"`
 	}
 	Printer interface {
 		Print(...interface{})
@@ -93,16 +91,15 @@ var (
 	components map[string]ComponentFunc
 )
 
-
 func init() {
 	defaultcom = map[string]string{
-		ComponentConfigName:	ComponentConfigMapName,
-		ComponentLoggerName:	ComponentLoggerStdName,
-		ComponentServerName:	ComponentServerStdName,
-		ComponentRouterName:	ComponentRouterRadixName,
-		ComponentCacheName:		ComponentCacheMapName,
-		ComponentSessionName:	ComponentSessionMapName,
-		ComponentViewName:		ComponentViewStdName,
+		ComponentConfigName:  ComponentConfigMapName,
+		ComponentLoggerName:  ComponentLoggerStdName,
+		ComponentServerName:  ComponentServerStdName,
+		ComponentRouterName:  ComponentRouterRadixName,
+		ComponentCacheName:   ComponentCacheMapName,
+		ComponentSessionName: ComponentSessionMapName,
+		ComponentViewName:    ComponentViewStdName,
 	}
 	components = make(map[string]ComponentFunc)
 	RegisterComponent(ComponentConfigMapName, func(arg interface{}) (Component, error) {
@@ -191,8 +188,6 @@ func ComponentList() []string {
 	return names
 }
 
-
-
 // Handle the component name prefix,
 // name nil returns pre,
 // The name prefix is not pre, then add the prefix and "-".
@@ -200,11 +195,11 @@ func ComponentList() []string {
 // 处理组件名称前缀，
 // 名称为nil则返回pre，
 // 名称前缀不是pre，则增加前缀和“ - ”。
-func ComponentPrefix(name ,pre string) string {
+func ComponentPrefix(name, pre string) string {
 	if len(name) == 0 || name == pre {
 		return pre
 	}
-	if !strings.HasPrefix(name, pre + "-") {
+	if !strings.HasPrefix(name, pre+"-") {
 		name = pre + "-" + name
 	}
 	return name
@@ -214,7 +209,7 @@ func ComponentGetName(i interface{}) string {
 	if c, ok := i.(ComponentName); ok {
 		return c.GetName()
 	}
-	if m, ok := i.(map[string]interface{}); ok{
+	if m, ok := i.(map[string]interface{}); ok {
 		val, ok := m["name"]
 		if ok {
 			return val.(string)
@@ -222,7 +217,6 @@ func ComponentGetName(i interface{}) string {
 	}
 	return ""
 }
-
 
 func ComponentSet(c Component, key string, val interface{}) (err error) {
 	s, ok := c.(Seter)
@@ -235,4 +229,3 @@ func ComponentSet(c Component, key string, val interface{}) (err error) {
 	_, err = Set(c, key, val)
 	return
 }
-

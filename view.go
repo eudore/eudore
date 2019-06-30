@@ -1,11 +1,10 @@
 package eudore
 
 import (
-	"io"
 	"fmt"
 	"html/template"
+	"io"
 )
-
 
 type (
 	View interface {
@@ -15,13 +14,13 @@ type (
 	}
 	ViewStdConfig struct {
 		// Basetemp	[]string
-		Tempdir		string
+		Tempdir string
 	}
 	// 基于html/template封装，目前未测试。
 	ViewStd struct {
 		*ViewStdConfig
-		root		*template.Template
-		funcs		template.FuncMap
+		root  *template.Template
+		funcs template.FuncMap
 		// templates	map[string]*template.Template
 	}
 )
@@ -43,10 +42,10 @@ func NewViewStd(interface{}) (View, error) {
 	return &ViewStd{
 		ViewStdConfig: &ViewStdConfig{
 			// Basetemp:	[]string{"", "/data/web/templates/base.html"},
-			Tempdir:	"/data/web/templates/",	
+			Tempdir: "/data/web/templates/",
 		},
-		root:		template.New(""),
-		funcs:		make(template.FuncMap),
+		root:  template.New(""),
+		funcs: make(template.FuncMap),
 		// templates:	make(map[string]*template.Template),
 	}, nil
 }
@@ -82,7 +81,7 @@ func (v *ViewStd) loadTemplate(path string) (*template.Template, error) {
 	return v.root.AddParseTree(path, t.Tree)
 }
 
-func (v *ViewStd) Set(key string, val interface{}) error { 
+func (v *ViewStd) Set(key string, val interface{}) error {
 	return ErrComponentNoSupportField
 }
 

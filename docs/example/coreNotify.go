@@ -1,6 +1,5 @@
 package main
 
-
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/notify"

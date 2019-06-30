@@ -14,14 +14,13 @@
 - Application
 - [x] 程序启动流程自定义实现，内置两种
 - [x] server异步启动
-- [ ] 完全配置化启动程序
 - Context
 - [x] Context与server完全解耦
 - [x] [根据Content-type自动序列化数据](docs/example/bind.go)
 - [x] 根据Accept反序列化数据
 - [x] [http2 push](docs/example/serverPush.go)
 - Config
-- [x] 配置库集成
+- [x] [配置库集成](docs/frame/config_zh.md)
 - [x] 支持基于路径读写对象
 - [x] 解析参数环境变量和[差异化配置](docs/example/configMods.go)
 - [x] map和结构体相互转换
@@ -41,21 +40,21 @@
 - [x] server热重启支持
 - [x] server后台启动
 - Router
-- [x] 零内存复制快速路由器实现
-- [x] 严格路由匹配顺序
+- [x] [零内存复制快速路由器实现](docs/frame/router_zh.md#RouterRadix)
+- [x] [严格路由匹配顺序](docs/example/core.go#L26-L28)
 - [x] RESTful风格基于方法的路由注册匹配
 - [x] 基于Host进行路由注册匹配
 - [x] 路由器注册初始化时请求处理
-- [x] 组路由注册支持
-- [x] 全局中间件注册
-- [x] 组级中间件注册
-- [x] api级中间件注册
-- [x] 路由默认参数
+- [x] [组路由注册支持](docs/example/core.go#L22-L29)
+- [x] [全局中间件注册](docs/example/core.go#L17-L19)
+- [x] [组级中间件注册](docs/example/core.go#L24)
+- [x] [api级中间件注册](docs/example/core.go#L27)
+- [x] [路由默认参数](docs/example/core.go#L22)
 - [ ] 默认参数匹配注册中间件
-- [x] 路由匹配参数捕获
+- [x] [路由匹配参数捕获](docs/example/core.go#L28)
 - [x] 路由匹配参数校验
 - [ ] 路由匹配参数正则捕捉
-- [x] 路由匹配通配符捕捉
+- [x] [路由匹配通配符捕捉](docs/example/core.go#L27)
 - [x] 路由匹配通配符校验
 - [ ] 路由匹配通配符正则捕捉
 - Logger
@@ -67,15 +66,15 @@
 - [ ] 多模板库接入
 - Mvc
 - [x] [mvc支持](docs/example/mvc.go)
-- [x] 控制器函数输入参数
-- [x] 自定义控制器执行
+- [x] [控制器函数输入参数](docs/example/mvc.go#L27-L30)
+- [x] [自定义控制器执行](docs/frame/controller_zh.md#路由器控制器解析函数)
 - Tools
 - [x] 程序启动命令解析
 - [x] 信号响应支持
 - [ ] SRI值自动设置
 - [x] 自动http2 push
-- [x] http代理实现
-- [x] pprof支持
+- [x] [http代理实现](docs/example/httpProxy.go)
+- [x] [pprof支持](component/pprof)
 - [x] expvar支持
 - [x] [运行时对象数据显示](component/show)
 - [x] api模拟工具

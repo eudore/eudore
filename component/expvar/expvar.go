@@ -1,20 +1,19 @@
 package expvar
 
 import (
-	"fmt"
-	"time"
-	"expvar"
-	"runtime"
 	"encoding/json"
+	"expvar"
+	"fmt"
+	"runtime"
+	"time"
 
 	"github.com/eudore/eudore"
 )
 
-
 // 开始时间
 var start = time.Now()
 
-// 
+//
 func currentUptime() interface{} {
 	return time.Now().String()
 }
@@ -56,7 +55,6 @@ func getNumGoroutins() interface{} {
 func getNumCgoCall() interface{} {
 	return runtime.NumCgoCall()
 }
-
 
 var lastPause uint32
 

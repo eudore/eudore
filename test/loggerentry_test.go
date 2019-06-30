@@ -1,16 +1,16 @@
 package test
 
 import (
-	"testing"
-	"github.com/eudore/eudore"
 	"encoding/json"
+	"github.com/eudore/eudore"
+	"testing"
 )
 
 func TestLoggerEntryStd(t *testing.T) {
 	e := &eudore.EntryStd{
 		Level: 0,
 	}
-	body,err := json.Marshal(e)
+	body, err := json.Marshal(e)
 	t.Log(string(body), err)
 
 	body = []byte(`{

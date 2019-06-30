@@ -1,8 +1,8 @@
 package eudore
 
 import (
-	"os"
 	"fmt"
+	"os"
 	"syscall"
 )
 
@@ -28,7 +28,7 @@ func InitSignal(e *Eudore) error {
 		err := e.Restart()
 		if err != nil {
 			e.Error("eudore reload error: ", err)
-		}else {
+		} else {
 			e.Info("eudore restart success.")
 		}
 		return err
@@ -37,9 +37,9 @@ func InitSignal(e *Eudore) error {
 	SignalRegister(syscall.SIGTERM, false, func() error {
 		e.WithField("signal", 15).Info("eudore received SIGTERM, eudore shutting down HTTP server.")
 		err := e.Shutdown()
-        if err != nil {
-            e.Error("eudore shutdown error: ", err)
-        }
+		if err != nil {
+			e.Error("eudore shutdown error: ", err)
+		}
 		return err
 	})
 	return nil
@@ -62,10 +62,9 @@ func InitCommand(app *Eudore) error {
 	cmd := GetDefaultString(app.Config.Get("command"), "start")
 	pid := GetDefaultString(app.Config.Get("pidfile"), "/var/run/eudore.pid")
 	app.Infof("current command is %s, pidfile in %s.", cmd, pid)
-	app.cmd.Reset(cmd , pid)
+	app.cmd.Reset(cmd, pid)
 	return app.cmd.Run()
 }
-
 
 func InitLogger(app *Eudore) error {
 	key := GetDefaultString(app.Config.Get("keys.logger"), "component.logger")
@@ -91,7 +90,7 @@ func InitServer(app *Eudore) error {
 		}
 		Set(app.Server, "print", app.Logger.Debug)
 	}
-	return nil 
+	return nil
 }
 
 func InitServerStart(app *Eudore) error {
@@ -104,7 +103,7 @@ func InitServerStart(app *Eudore) error {
 	ComponentSet(app.Server, "config.handler", app)
 	ComponentSet(app.Server, "errfunc", func(err error) {
 		fields := make(Fields)
-		file, line := LogFormatFileLine(0)
+		file, line := LogFormatFileLine(-1)
 		fields["component"] = app.Server.GetName()
 		fields["file"] = file
 		fields["line"] = line
@@ -115,8 +114,6 @@ func InitServerStart(app *Eudore) error {
 	}()
 	return nil
 }
-
-
 
 func InitListComponent(e *Eudore) error {
 	e.Info("list all register component:", ComponentList())
@@ -133,12 +130,11 @@ func InitListComponent(e *Eudore) error {
 	}
 	for _, c := range cs {
 		if c != nil {
-			e.Info(c.Version())		
+			e.Info(c.Version())
 		}
 	}
 	return nil
 }
-
 
 func InitStop(app *Eudore) error {
 	if len(os.Getenv("stop")) > 0 {

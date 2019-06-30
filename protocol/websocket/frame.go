@@ -3,42 +3,41 @@ package websocket
 import (
 	"io"
 	// "fmt"
-	"unsafe"
-	"reflect"
 	"encoding/binary"
+	"reflect"
+	"unsafe"
 )
 
 const (
-	FrameTypeContinuation	FrameType = 0x0
-	FrameTypeText			FrameType = 0x1
-	FrameTypeBinary			FrameType = 0x2
-	FrameTypeClose			FrameType = 0x8
-	FrameTypePing			FrameType = 0x9
-	FrameTypePong			FrameType = 0xa
+	FrameTypeContinuation FrameType = 0x0
+	FrameTypeText         FrameType = 0x1
+	FrameTypeBinary       FrameType = 0x2
+	FrameTypeClose        FrameType = 0x8
+	FrameTypePing         FrameType = 0x9
+	FrameTypePong         FrameType = 0xa
 )
 
-
 type (
-	FrameType	int8
-	Frame struct {
+	FrameType int8
+	Frame     struct {
 		Header
 		Payload []byte
-		pos int
+		pos     int
 	}
 	Header struct {
-		Fin		bool
-		Rsv		byte
-		OpCode	FrameType
-		Masked	bool
-		Mask	[4]byte
-		Length	int64
+		Fin    bool
+		Rsv    byte
+		OpCode FrameType
+		Masked bool
+		Mask   [4]byte
+		Length int64
 	}
 )
 
 func NewFrame(op FrameType) Frame {
 	return Frame{
-		Header:	Header{
-			OpCode:	op,
+		Header: Header{
+			OpCode: op,
 		},
 	}
 }
@@ -126,7 +125,6 @@ func ReadHeader(r io.Reader) (h Header, err error) {
 	return
 }
 
-
 func HeaderSize(h Header) (n int) {
 	switch {
 	case h.Length < 126:
@@ -200,11 +198,6 @@ func WriteHeader(w io.Writer, h Header) error {
 	return err
 }
 
-
-
-
-
-
 func ReadFrame(r io.Reader) (f Frame, err error) {
 	f.Header, err = ReadHeader(r)
 	if err != nil {
@@ -245,19 +238,18 @@ func (frame *Frame) Read(msg []byte) (n int, err error) {
 			msg[i] = frame.Payload[frame.pos] ^ frame.Header.Mask[frame.pos%4]
 			frame.pos++
 		}
-	}else {
-		copy(msg, frame.Payload[frame.pos: frame.pos + n])
+	} else {
+		copy(msg, frame.Payload[frame.pos:frame.pos+n])
 		frame.pos += n
 	}
 	return n, nil
 }
 
-
 func (frame *Frame) Write(msg []byte) (n int, err error) {
 	if len(frame.Payload) == 0 {
 		frame.Payload = msg
-	}else {
-		frame.Payload = append(frame.Payload, msg...)	
+	} else {
+		frame.Payload = append(frame.Payload, msg...)
 	}
 	return len(msg), nil
 }

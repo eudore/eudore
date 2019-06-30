@@ -1,36 +1,36 @@
 package gzip
 
 import (
-	"fmt"
-	"sync"
-	"strings"
-	"io/ioutil"
-	"path/filepath"
 	"compress/gzip"
+	"fmt"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/protocol"
+	"io/ioutil"
+	"path/filepath"
+	"strings"
+	"sync"
 )
 
 type (
 	GzipResponse struct {
 		protocol.ResponseWriter
-		writer	*gzip.Writer
+		writer *gzip.Writer
 	}
 	Gzip struct {
-		pool	sync.Pool
+		pool sync.Pool
 	}
 )
 
 func NewGzip(level int) *Gzip {
 	return &Gzip{
-		pool:	sync.Pool{
-			New:	func() interface{} {
+		pool: sync.Pool{
+			New: func() interface{} {
 				gz, err := gzip.NewWriterLevel(ioutil.Discard, level)
 				if err != nil {
 					return err
 				}
 				return &GzipResponse{
-					writer:	gz,
+					writer: gz,
 				}
 			},
 		},
@@ -44,7 +44,7 @@ func (g *Gzip) Handle(ctx eudore.Context) {
 		return
 	}
 	// 初始化ResponseWriter
-	w, err := g.NewGzipResponse(ctx.Response()) 
+	w, err := g.NewGzipResponse(ctx.Response())
 	if err != nil {
 		// 初始化失败，正常写入
 		ctx.Error(err)
@@ -84,12 +84,11 @@ func (w *GzipResponse) Flush() {
 	w.ResponseWriter.Flush()
 }
 
-
 func shouldCompress(ctx eudore.Context) bool {
 	h := ctx.Request().Header()
 	if !strings.Contains(h.Get(eudore.HeaderAcceptEncoding), "gzip") ||
 		strings.Contains(h.Get(eudore.HeaderConnection), "Upgrade") ||
-	        strings.Contains(h.Get(eudore.HeaderContentType), "text/event-stream") {
+		strings.Contains(h.Get(eudore.HeaderContentType), "text/event-stream") {
 
 		return false
 	}
@@ -106,7 +105,6 @@ func shouldCompress(ctx eudore.Context) bool {
 		return true
 	}
 }
-
 
 // Push initiates an HTTP/2 server push.
 // Push returns ErrNotSupported if the client has disabled push or if push

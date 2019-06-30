@@ -1,29 +1,29 @@
 package simple
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"time"
-	"bufio"
 )
 
 type Client struct {
-	nc		net.Conn
-	rw		*bufio.ReadWriter
-	header	Params
+	nc     net.Conn
+	rw     *bufio.ReadWriter
+	header Params
 }
 
-func NewRequest(method, host , url string) error {
+func NewRequest(method, host, url string) error {
 	// 建立连接
-	nc, err := net.DialTimeout("tcp", host, 2 * time.Second)
+	nc, err := net.DialTimeout("tcp", host, 2*time.Second)
 	if err != nil {
 		return err
 	}
 	// 创建Http Client
 	c := &Client{
-		nc:	nc,
-		header:	make(Params),
-		rw:   bufio.NewReadWriter(bufio.NewReader(nc), bufio.NewWriter(nc)),
+		nc:     nc,
+		header: make(Params),
+		rw:     bufio.NewReadWriter(bufio.NewReader(nc), bufio.NewWriter(nc)),
 	}
 	// 设置net/http.Server唯一必要Header host
 	c.header.Add("Host", host)

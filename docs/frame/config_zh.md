@@ -53,6 +53,8 @@ c.Parse()
 
 ### ConfigParseRead
 
+使用`keys.config` 读取到配置信息，然后多种方式读取到并存储给`keys.configdata`，然后后续解析。
+
 ```golang
 func ConfigParseRead(c Config) error {
 	path := GetString(c.Get("keys.config"))
@@ -75,6 +77,8 @@ func ConfigParseRead(c Config) error {
 ```
 
 ### ConfigParseConfig
+
+解析读取到的配置信息，目前使用json解析，待扩展。
 
 ```golang
 func ConfigParseConfig(c Config) error {
@@ -153,7 +157,7 @@ func ConfigParseMods(c Config) error {
 
 ### ConfigParseHelp
 
-ConfigParseHelp的作用是输出当前配置信息，当前实现是检查`keys.help`key是否存在，存在则使用json输出到标准输出。
+ConfigParseHelp的作用是输出当前配置信息，当前实现是检查`keys.help` key是否存在，存在则使用json输出到标准输出。
 
 ```golang
 func ConfigParseHelp(c Config) error {

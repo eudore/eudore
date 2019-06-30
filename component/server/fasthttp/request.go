@@ -9,11 +9,11 @@ import (
 
 type (
 	Request struct {
-		ctx			*fasthttp.RequestCtx
-		Request		*fasthttp.Request
-		header		*Header
-		body		[]byte
-		read		*bytes.Reader
+		ctx     *fasthttp.RequestCtx
+		Request *fasthttp.Request
+		header  *Header
+		body    []byte
+		read    *bytes.Reader
 	}
 )
 

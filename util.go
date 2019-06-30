@@ -1,14 +1,14 @@
 package eudore
 
 import (
-	"fmt"
-	"strings"
-	"strconv"
-	"math/rand"
 	"encoding/json"
+	"fmt"
+	"math/rand"
+	"strconv"
+	"strings"
 )
 
-func arrayclean(names []string) (n []string){
+func arrayclean(names []string) (n []string) {
 	for _, name := range names {
 		if name != "" {
 			n = append(n, name)
@@ -18,7 +18,7 @@ func arrayclean(names []string) (n []string){
 }
 
 // Each string strs handle element, if return is null, then delete this a elem.
-func eachstring(strs []string, fn func(string) string) (s []string){
+func eachstring(strs []string, fn func(string) string) (s []string) {
 	for _, i := range strs {
 		i = fn(i)
 		if i != "" {
@@ -29,12 +29,12 @@ func eachstring(strs []string, fn func(string) string) (s []string){
 }
 
 // Use sep to split str into two strings.
-func split2byte(str string,b byte) (string, string) {
+func split2byte(str string, b byte) (string, string) {
 	pos := strings.IndexByte(str, b)
 	if pos == -1 {
 		return "", ""
 	}
-	return str[:pos], str[pos + 1:]
+	return str[:pos], str[pos+1:]
 }
 
 /*
@@ -65,14 +65,14 @@ func GetRandomString() string {
 
 // 模式匹配对象，运行试验带'*'的模式
 func MatchStar(obj, patten string) bool {
-	ps := strings.Split(patten,"*")
+	ps := strings.Split(patten, "*")
 	if len(ps) == 0 {
 		return patten == obj
 	}
 	if !strings.HasPrefix(obj, ps[0]) {
 		return false
 	}
-	for _,i := range ps {
+	for _, i := range ps {
 		if i == "" {
 			continue
 		}
@@ -80,7 +80,7 @@ func MatchStar(obj, patten string) bool {
 		if pos == -1 {
 			return false
 		}
-		obj = obj[pos + len(i):]
+		obj = obj[pos+len(i):]
 	}
 	return true
 }
@@ -92,8 +92,6 @@ func Json(args ...interface{}) {
 	indent, err := json.MarshalIndent(&args, "", "\t")
 	fmt.Println(string(indent), err)
 }
-
-
 
 func GetBool(i interface{}) bool {
 	return GetDefaultBool(i, false)
@@ -113,10 +111,10 @@ func GetInt(i interface{}) int {
 	return GetDefaultInt(i, 0)
 }
 
-func GetDefaultInt(i interface{},n int) int {
+func GetDefaultInt(i interface{}, n int) int {
 	if v, ok := i.(int); ok {
 		return v
-	}	
+	}
 	if v, err := strconv.Atoi(GetDefaultString(i, "")); err == nil {
 		return v
 	}
@@ -127,10 +125,10 @@ func GetInt64(i interface{}) int64 {
 	return GetDefaultInt64(i, 0)
 }
 
-func GetDefaultInt64(i interface{},n int64) int64 {
+func GetDefaultInt64(i interface{}, n int64) int64 {
 	if v, ok := i.(int64); ok {
 		return v
-	}	
+	}
 	if v, err := strconv.ParseInt(GetDefaultString(i, ""), 10, 64); err == nil {
 		return v
 	}
@@ -141,10 +139,10 @@ func GetUint(i interface{}) uint {
 	return GetDefaultUint(i, 0)
 }
 
-func GetDefaultUint(i interface{},n uint) uint {
+func GetDefaultUint(i interface{}, n uint) uint {
 	if v, ok := i.(uint); ok {
 		return v
-	}	
+	}
 	if v, err := strconv.ParseUint(GetDefaultString(i, ""), 10, 64); err == nil {
 		return uint(v)
 	}
@@ -155,10 +153,10 @@ func GetUint64(i interface{}) uint64 {
 	return GetDefaultUint64(i, 0)
 }
 
-func GetDefaultUint64(i interface{},n uint64) uint64 {
+func GetDefaultUint64(i interface{}, n uint64) uint64 {
 	if v, ok := i.(uint64); ok {
 		return v
-	}	
+	}
 	if v, err := strconv.ParseUint(GetDefaultString(i, ""), 10, 64); err == nil {
 		return v
 	}
@@ -169,10 +167,10 @@ func GetFloat32(i interface{}) float32 {
 	return GetDefaultFloat32(i, 0)
 }
 
-func GetDefaultFloat32(i interface{},n float32) float32 {
+func GetDefaultFloat32(i interface{}, n float32) float32 {
 	if v, ok := i.(float32); ok {
 		return v
-	}	
+	}
 	if v, err := strconv.ParseFloat(GetDefaultString(i, ""), 32); err == nil {
 		return float32(v)
 	}
@@ -183,10 +181,10 @@ func GetFloat64(i interface{}) float64 {
 	return GetDefaultFloat64(i, 0)
 }
 
-func GetDefaultFloat64(i interface{},n float64) float64 {
+func GetDefaultFloat64(i interface{}, n float64) float64 {
 	if v, ok := i.(float64); ok {
 		return v
-	}	
+	}
 	if v, err := strconv.ParseFloat(GetDefaultString(i, ""), 64); err == nil {
 		return v
 	}
@@ -207,8 +205,6 @@ func GetDefaultString(i interface{}, str string) string {
 	return str
 }
 
-
-
 func GetStringBool(str string) bool {
 	return GetStringDefaultBool(str, false)
 }
@@ -224,7 +220,7 @@ func GetStringInt(str string) int {
 	return GetStringDefaultInt(str, 0)
 }
 
-func GetStringDefaultInt(str string,n int) int {
+func GetStringDefaultInt(str string, n int) int {
 	if v, err := strconv.Atoi(str); err == nil {
 		return v
 	}
@@ -235,7 +231,7 @@ func GetStringInt64(str string) int64 {
 	return GetStringDefaultInt64(str, 0)
 }
 
-func GetStringDefaultInt64(str string,n int64) int64 {
+func GetStringDefaultInt64(str string, n int64) int64 {
 	if v, err := strconv.ParseInt(str, 10, 64); err == nil {
 		return v
 	}
@@ -268,7 +264,7 @@ func GetStringFloat32(str string) float32 {
 	return GetStringDefaultFloat32(str, 0)
 }
 
-func GetStringDefaultFloat32(str string,n float32) float32 {
+func GetStringDefaultFloat32(str string, n float32) float32 {
 	if v, err := strconv.ParseFloat(str, 32); err == nil {
 		return float32(v)
 	}
@@ -279,23 +275,22 @@ func GetStringFloat64(str string) float64 {
 	return GetStringDefaultFloat64(str, 0)
 }
 
-func GetStringDefaultFloat64(str string,n float64) float64 {
+func GetStringDefaultFloat64(str string, n float64) float64 {
 	if v, err := strconv.ParseFloat(str, 64); err == nil {
 		return v
 	}
 	return n
 }
 
-func GetStringDefault(s1 , s2 string) string {
+func GetStringDefault(s1, s2 string) string {
 	if len(s1) == 0 {
 		return s2
 	}
 	return s1
 }
 
-
 type (
-	StringMap  map[string]interface{}
+	StringMap map[string]interface{}
 )
 
 func NewStringMap(i interface{}) StringMap {
@@ -307,25 +302,11 @@ func NewStringMap(i interface{}) StringMap {
 }
 
 func (m StringMap) Get(key string) interface{} {
-	if len(key) == 0 {
-		return m
-	}
-	v, ok := m[key]
-	if ok {
-		return v
-	}
-	return nil
+	return m[key]
 }
 
 func (m StringMap) Set(key string, val interface{}) {
-	if len(key) == 0 {
-		v, ok := val.(map[string]interface{})
-		if ok {
-			m = v
-		}
-	}else {
-		m[key] = val
-	}
+	m[key] = val
 }
 
 func (m StringMap) Del(key string) {
@@ -336,7 +317,7 @@ func (m StringMap) GetInt(key string) int {
 	return GetInt(m.Get(key))
 }
 
-func (m StringMap) GetDefultInt(key string,n int) int {
+func (m StringMap) GetDefultInt(key string, n int) int {
 	return GetDefaultInt(m.Get(key), n)
 }
 
@@ -344,6 +325,6 @@ func (m StringMap) GetString(key string) string {
 	return GetString(m.Get(key))
 }
 
-func (m StringMap) GetDefaultString(key string,str string) string {
+func (m StringMap) GetDefaultString(key string, str string) string {
 	return GetDefaultString(m.Get(key), str)
 }

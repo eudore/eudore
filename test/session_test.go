@@ -1,17 +1,17 @@
 package test
 
 import (
-	"time"
-	"testing"
 	"context"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/middleware/logger"
+	"testing"
+	"time"
 )
 
 func TestSession(t *testing.T) {
 	app := eudore.NewCore()
 	c, err := app.RegisterComponent("session-cache", &eudore.SessionCacheConfig{
-		Cache:	app.Cache,
+		Cache: app.Cache,
 	})
 	s, ok := c.(eudore.Session)
 	app.Debug(s, ok)
@@ -19,14 +19,14 @@ func TestSession(t *testing.T) {
 	app.Debug(app.Session.Version())
 
 	app.AddMiddleware(logger.NewLogger(eudore.GetRandomString).Handle)
-	app.Router.Get("/se", eudore.HandlerDataFunc(func(ctx eudore.ContextData){}))
-	app.GetFunc("/set", func(ctx eudore.Context){
+	app.Router.Get("/se", eudore.HandlerDataFunc(func(ctx eudore.ContextData) {}))
+	app.GetFunc("/set", func(ctx eudore.Context) {
 		t.Log("set")
 		sess := ctx.GetSession()
 		sess.Set("key1", 1)
 		ctx.SetSession(sess)
 	})
-	app.GetFunc("/get", func(ctx eudore.Context){
+	app.GetFunc("/get", func(ctx eudore.Context) {
 		t.Log("get")
 		sess := ctx.GetSession()
 		t.Log(sess.Get("key1"))

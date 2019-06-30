@@ -63,7 +63,7 @@ function delCookie(name){
 
 ## 服务端go操作cookie
 
-[net/http.Cookie][1]定义：
+[net/http.Cookie][2]定义：
 
 ```golang
 type Cookie struct {

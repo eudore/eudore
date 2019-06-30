@@ -1,12 +1,12 @@
 package rate
 
 import (
-	"sync"
-	"time"
-	"strings"
-	"net/http"
 	"github.com/eudore/eudore"
 	"golang.org/x/time/rate"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
 )
 
 var rates []*Rate
@@ -15,11 +15,11 @@ func init() {
 	go cleanupVisitors()
 }
 
-type Rate struct{
-	visitors	map[string]*visitor
-	mtx			sync.Mutex
-	Rate	rate.Limit
-	Burst	int
+type Rate struct {
+	visitors map[string]*visitor
+	mtx      sync.Mutex
+	Rate     rate.Limit
+	Burst    int
 }
 
 type visitor struct {
@@ -27,12 +27,11 @@ type visitor struct {
 	lastSeen time.Time
 }
 
-
 func NewRate(r2, burst int) *Rate {
 	r := &Rate{
-		visitors:	make(map[string]*visitor),
-		Rate:	rate.Limit(r2),
-		Burst:	burst,
+		visitors: make(map[string]*visitor),
+		Rate:     rate.Limit(r2),
+		Burst:    burst,
 	}
 	rates = append(rates, r)
 	return r
@@ -49,15 +48,14 @@ func (r *Rate) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *Rate) Handle(ctx eudore.Context) {
-	ip := ctx.RemoteAddr()
+	ip := ctx.RealIP()
 	limiter := r.GetVisitor(ip)
 	if !limiter.Allow() {
-		ctx.Info("rate: " + ctx.RemoteAddr())
+		ctx.Info("rate: " + ip)
 		ctx.WriteHeader(http.StatusTooManyRequests)
 		ctx.End()
 	}
 }
-
 
 func (r *Rate) GetVisitor(ip string) *rate.Limiter {
 	r.mtx.Lock()
@@ -72,7 +70,6 @@ func (r *Rate) GetVisitor(ip string) *rate.Limiter {
 	return v.limiter
 }
 
-
 // Change the the map to hold values of the type visitor.
 func (r *Rate) AddVisitor(ip string) *rate.Limiter {
 	limiter := rate.NewLimiter(r.Rate, r.Burst)
@@ -86,10 +83,10 @@ func (r *Rate) AddVisitor(ip string) *rate.Limiter {
 func cleanupVisitors() {
 	for {
 		time.Sleep(time.Minute)
-		for _,i := range rates {
+		for _, i := range rates {
 			i.mtx.Lock()
 			for ip, v := range i.visitors {
-				if time.Now().Sub(v.lastSeen) > 3 * time.Minute {
+				if time.Now().Sub(v.lastSeen) > 3*time.Minute {
 					delete(i.visitors, ip)
 				}
 			}
@@ -98,8 +95,7 @@ func cleanupVisitors() {
 	}
 }
 
-
-func GetRealClientIP(r *http.Request ) string {
+func GetRealClientIP(r *http.Request) string {
 	xforward := r.Header.Get("X-Forwarded-For")
 	if "" == xforward {
 		return strings.SplitN(r.RemoteAddr, ":", 2)[0]

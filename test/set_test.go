@@ -9,18 +9,18 @@ import (
 	// "strconv"
 	// "encoding/json"
 
-	"testing"
-	"github.com/kr/pretty"
 	"github.com/eudore/eudore"
+	"github.com/kr/pretty"
+	"testing"
 )
 
 type (
 	config struct {
-		Full 	*A 		`set:"full"`
-		Array 	A1 		`set:"array"`
-		Map 	M1		`set:"map"`
-		Face 	interface{}	`set:"face"`
-		Base 	B1	`set:"base"`
+		Full  *A          `set:"full"`
+		Array A1          `set:"array"`
+		Map   M1          `set:"map"`
+		Face  interface{} `set:"face"`
+		Base  B1          `set:"base"`
 	}
 	A struct {
 		A map[int]B
@@ -35,8 +35,8 @@ type (
 		D *E
 	}
 	E struct {
-		E string
-		E2 string `set:"e2"`
+		E  string
+		E2 string      `set:"e2"`
 		E3 interface{} `set:"e3"`
 	}
 
@@ -54,15 +54,15 @@ type (
 		A6 []interface{}
 	}
 	B1 struct {
-		B2 	int
-		B3 	string
+		B2 int
+		B3 string
 		B4 interface{}
-		B5 	[]int
-		BB	BB
+		B5 []int
+		BB BB
 	}
 	BB struct {
-		BB1	int
-		BB2	string
+		BB1 int
+		BB2 string
 	}
 )
 
@@ -104,7 +104,7 @@ func TestSetBase(*testing.T) {
 	fmt.Println(eudore.Set(config, "base.B2", "2"))
 	fmt.Println(eudore.Set(config, "base.B3", 2))
 	fmt.Println(eudore.Set(config, "base.B4.2", "2"))
-	fmt.Println(eudore.Set(config, "base.B5", []int{1,2,3,4}))
+	fmt.Println(eudore.Set(config, "base.B5", []int{1, 2, 3, 4}))
 	fmt.Printf("struct: %# v\n", pretty.Formatter(config))
 }
 func TestSetFull(*testing.T) {
@@ -115,16 +115,16 @@ func TestSetFull(*testing.T) {
 	fmt.Printf("struct: %# v\n", pretty.Formatter(config))
 }
 func TestSetFace(*testing.T) {
-	var config = &config{}	
+	var config = &config{}
 	config.Face = &E{}
 	fmt.Println(eudore.Set(config, "face.E2", "2"))
-	fmt.Println(eudore.Set(config, "face.E3", []int{1,2,3,4}))
+	fmt.Println(eudore.Set(config, "face.E3", []int{1, 2, 3, 4}))
 	fmt.Println(eudore.Set(config, "face.E3.0", 0))
 	fmt.Println(eudore.Set(config, "face.E3.6", 9))
 	fmt.Println(eudore.Set(config, "face.E3.+", 9))
-	fmt.Println(eudore.Set(config, "face.E5", []int{1,2,3,4}))
+	fmt.Println(eudore.Set(config, "face.E5", []int{1, 2, 3, 4}))
 	// fmt.Println(eudore.Set(config, "face.E3", map[string]string{
-		// "ss": "ss",
+	// "ss": "ss",
 	// }))
 	fmt.Printf("struct: %# v\n", pretty.Formatter(config))
 }
@@ -137,15 +137,15 @@ func TestSetZ(*testing.T) {
 func TestGetBase(*testing.T) {
 	var config = &config{
 		Base: B1{
-			B2:	2,
-			B3:	"22",
-			B4:	map[int]string{
-				1:	"11",
-				2:	"22",
+			B2: 2,
+			B3: "22",
+			B4: map[int]string{
+				1: "11",
+				2: "22",
 			},
-			B5:	[]int{1,2,3},
+			B5: []int{1, 2, 3},
 		},
-	}	
+	}
 
 	fmt.Println(eudore.Get(config, "base.B2"))
 	fmt.Println(eudore.Get(config, "base.B3"))
@@ -156,36 +156,34 @@ func TestGetBase(*testing.T) {
 	fmt.Printf("struct: %# v\n", pretty.Formatter(config))
 }
 
-
 func TestConvertMap(*testing.T) {
 	var b interface{} = &B1{
-		B2:	2,
+		B2: 2,
 		B3: "33",
-		B4:	map[string]interface{}{
-			"i":	1,
-			"s":	"ss",
-			"st":	&E{
-				E:	"ee",
-				E2:	"e2",
-				E3:	3,
+		B4: map[string]interface{}{
+			"i": 1,
+			"s": "ss",
+			"st": &E{
+				E:  "ee",
+				E2: "e2",
+				E3: 3,
 			},
 		},
-		B5:	[]int{1,2,3},
+		B5: []int{1, 2, 3},
 	}
 	fmt.Printf("struct: %# v\n", pretty.Formatter(eudore.ConvertMap(b)))
 	fmt.Printf("struct: %# v\n", pretty.Formatter(eudore.ConvertMapString(b)))
 }
 
-
 func TestConvertStruct(*testing.T) {
 	c := map[interface{}]interface{}{
-		"B2":	2,
-		"B3":	2,
-		"B4":	4,
-		"B5":	[]int{0,1,5},
-		"BB":	map[interface{}]interface{}{
-			"BB1":	"1",
-			"BB2":	"2",
+		"B2": 2,
+		"B3": 2,
+		"B4": 4,
+		"B5": []int{0, 1, 5},
+		"BB": map[interface{}]interface{}{
+			"BB1": "1",
+			"BB2": "2",
 		},
 	}
 	var b = &B1{}
@@ -193,7 +191,7 @@ func TestConvertStruct(*testing.T) {
 	fmt.Printf("struct: %# v\n", pretty.Formatter(b))
 
 	var a []int //= make([]int, 3)
-	
+
 	ii, _ := eudore.Set(a, "+", 66)
 	ii, _ = eudore.Set(ii.([]int), "1", 1)
 	fmt.Printf("struct: %# v\n", pretty.Formatter(ii))

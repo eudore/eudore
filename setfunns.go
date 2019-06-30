@@ -10,12 +10,12 @@ import (
 )
 
 var (
-	globalHandler				map[string]Handler
-	globalHandleFuncs				map[string]HandlerFunc
-	globalRouterCheckFunc		map[string]RouterCheckFunc
-	globalRouterNewCheckFunc		map[string]RouterNewCheckFunc
-	globalConfigReadFunc			map[string]ConfigReadFunc
-	globalPoolGetFunc				map[string]PoolGetFunc
+	globalHandler            map[string]Handler
+	globalHandleFuncs        map[string]HandlerFunc
+	globalRouterCheckFunc    map[string]RouterCheckFunc
+	globalRouterNewCheckFunc map[string]RouterNewCheckFunc
+	globalConfigReadFunc     map[string]ConfigReadFunc
+	globalPoolGetFunc        map[string]PoolGetFunc
 )
 
 func init() {
@@ -53,7 +53,6 @@ func ConfigSaveHandleFunc(name string, fn HandlerFunc) {
 func ConfigLoadHandleFunc(name string) HandlerFunc {
 	return globalHandleFuncs[name]
 }
-
 
 // RouterCheckFunc
 func ConfigSaveRouterCheckFunc(name string, fn RouterCheckFunc) {
@@ -103,7 +102,6 @@ func RouterNewCheckFuncRegexp(str string) RouterCheckFunc {
 		return re.MatchString(arg)
 	}
 }
-
 
 // ConfigReadFunc
 func ConfigSaveConfigReadFunc(name string, fn ConfigReadFunc) {

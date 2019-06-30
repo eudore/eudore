@@ -1,33 +1,32 @@
 package sri
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/base64"
 	"fmt"
-	"bufio"
-	"os"
 	"hash"
 	"io"
+	"os"
 	"regexp"
 	"strings"
-	"encoding/base64"
 	"sync"
 )
 
-
 type Srier struct {
-	Webdir	string
-	fnname	string
-	pool	sync.Pool
-	cache	map[string]string
+	Webdir string
+	fnname string
+	pool   sync.Pool
+	cache  map[string]string
 }
 
 var (
-	repScript		*regexp.Regexp
-	repCss			*regexp.Regexp
-	repImg			*regexp.Regexp
-	repIntegrity	*regexp.Regexp
-	HashFunc		map[string]func() hash.Hash
+	repScript    *regexp.Regexp
+	repCss       *regexp.Regexp
+	repImg       *regexp.Regexp
+	repIntegrity *regexp.Regexp
+	HashFunc     map[string]func() hash.Hash
 )
 
 func init() {
@@ -40,16 +39,16 @@ func init() {
 	HashFunc["sha512"] = sha512.New
 }
 
-func NewSrier() *Srier{
+func NewSrier() *Srier {
 	return &Srier{
-		Webdir:	"/data/web/static",
-		fnname:	"sha512",
-		pool:	sync.Pool{
-			New:	func() interface{} {
+		Webdir: "/data/web/static",
+		fnname: "sha512",
+		pool: sync.Pool{
+			New: func() interface{} {
 				return sha512.New()
 			},
 		},
-		cache:	make(map[string]string),
+		cache: make(map[string]string),
 	}
 }
 
@@ -57,7 +56,7 @@ func (sri *Srier) Hash(name string) *Srier {
 	fn, ok := HashFunc[name]
 	if ok {
 		sri.fnname = name
-		sri.pool = sync.Pool {
+		sri.pool = sync.Pool{
 			New: func() interface{} {
 				return fn()
 			},
@@ -72,7 +71,7 @@ func (sri *Srier) Calculate(path string) error {
 	if err != nil {
 		return err
 	}
-	if fileInfo.Size() > 10 << 20 {
+	if fileInfo.Size() > 10<<20 {
 		return fmt.Errorf("%s file is to long, size: %d", path, fileInfo.Size())
 	}
 	// 打开文件
@@ -103,7 +102,7 @@ func (sri *Srier) Calculate(path string) error {
 		if len(params) > 1 {
 			filePath := params[2]
 			// 计算SRI
-			val, _ := sri.getValue(basedir ,filePath)
+			val, _ := sri.getValue(basedir, filePath)
 			// 捕获原SRI
 			paramInter := repIntegrity.FindStringSubmatch(line)
 			if len(paramInter) > 1 {
@@ -112,7 +111,7 @@ func (sri *Srier) Calculate(path string) error {
 				if oldsri != val {
 					line = strings.ReplaceAll(line, oldsri, val)
 				}
-			}else {
+			} else {
 				// 添加SRI值
 				line = strings.ReplaceAll(line, filePath, fmt.Sprintf(`%s%s integrity=%s%s`, filePath, params[1], params[3], val))
 			}
@@ -123,17 +122,17 @@ func (sri *Srier) Calculate(path string) error {
 	return nil
 }
 
-func (sri *Srier) getPath(basedir ,path string) string {
+func (sri *Srier) getPath(basedir, path string) string {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		return path
-	}else if path[0] == '/' {
+	} else if path[0] == '/' {
 		return sri.Webdir + path
-	}else {
+	} else {
 		return basedir + path
 	}
 }
 
-func (sri *Srier) getValue(basedir ,path string) (val string, err error) {
+func (sri *Srier) getValue(basedir, path string) (val string, err error) {
 	// 转换文件路径
 	path = sri.getPath(basedir, path)
 	// 检测缓存
@@ -147,10 +146,10 @@ func (sri *Srier) getValue(basedir ,path string) (val string, err error) {
 		sri.cache[path] = val
 	}()
 	// 读取数据源
-	var read io.ReadCloser 
+	var read io.ReadCloser
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 
-	}else {
+	} else {
 		read, err = os.Open(path)
 	}
 	if err != nil {
@@ -168,6 +167,3 @@ func (sri *Srier) getValue(basedir ,path string) (val string, err error) {
 	val = base64.StdEncoding.EncodeToString(h.Sum(nil))
 	return
 }
-
-
-

@@ -12,7 +12,7 @@ eudore最大的特点是解耦，具有以下对象，除Application以为均为
 | [Middleware](middleware_zh.md) | 多Handler组合运行 | handler.go |
 | Logger | App和Ctx日志输出 | logger.go |
 | Server | http Server启动 | server.go |
-| Config | [配置数据管理](config_zh.md) | config.go configparse.go |
+| [Config](config_zh.md) | 配置数据管理 | config.go configparse.go |
 | Cache | 全局缓存对象 | cache.go |
 | View | 模板渲染 | view.go |
 | Client | http客户端 | client.go |

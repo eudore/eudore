@@ -6,14 +6,14 @@ import (
 
 type (
 	RouterDebug struct {
-		eudore.RouterMethod		`json:"-" xml:"-" set:"-"`
-		eudore.RouterCore		`json:"-" xml:"-" set:"-"`
-		router		eudore.Router	`json:"-" xml:"-" set:"-"`
-		Methods		[]string	`json:"methods"`
-		Paths		[]string	`json:"paths"`
+		eudore.RouterMethod `json:"-" xml:"-" set:"-"`
+		eudore.RouterCore   `json:"-" xml:"-" set:"-"`
+		router              eudore.Router
+		Methods             []string `json:"methods"`
+		Paths               []string `json:"paths"`
 	}
 	RouterDebugCore struct {
-		eudore.RouterCore		`json:"-" set:"-"`
+		eudore.RouterCore `json:"-" set:"-"`
 	}
 )
 
@@ -27,17 +27,17 @@ func NewRouterDebug(i interface{}) (eudore.Router, error) {
 	r2, err := eudore.NewRouterFull(i)
 	r := &RouterDebug{
 		RouterCore: r2,
-		router:		r2,
+		router:     r2,
 	}
 	r.RouterMethod = &eudore.RouterMethodStd{
-		RouterCore:			r,
-		ControllerParseFunc:	eudore.ControllerBaseParseFunc,
+		RouterCore:          r,
+		ControllerParseFunc: eudore.ControllerBaseParseFunc,
 	}
 	r.GetFunc("/eudore/debug/router/data", r.getData)
 	r.GetFunc("/eudore/debug/router/ui", func(ctx eudore.Context) {
 		if UIpath != "" {
 			ctx.WriteFile(UIpath)
-		}else {
+		} else {
 			ctx.WriteString(UIString)
 		}
 	})
@@ -65,4 +65,3 @@ func (*RouterDebug) GetName() string {
 func (*RouterDebug) Version() string {
 	return eudore.ComponentRouterDebugVersion
 }
-

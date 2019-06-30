@@ -20,7 +20,6 @@ import (
 	"github.com/eudore/eudore"
 )
 
-
 func Inject(r eudore.RouterMethod) {
 	r = r.Group("/pprof")
 	r.AnyFunc("/*name", Index)
@@ -59,7 +58,7 @@ func serveError(ctx eudore.Context, status int, txt string) {
 // The package initialization registers it as /debug/pprof/profile.
 func Profile(ctx eudore.Context) {
 	ctx.SetHeader("X-Content-Type-Options", "nosniff")
-	sec, err := strconv.ParseInt(ctx.GetQuery("seconds") , 10, 64)
+	sec, err := strconv.ParseInt(ctx.GetQuery("seconds"), 10, 64)
 	if sec <= 0 || err != nil {
 		sec = 30
 	}
@@ -196,7 +195,7 @@ var profileDescriptions = map[string]string{
 // Index responds to a request for "/debug/pprof/" with an HTML page
 // listing the available profiles.
 func Index(ctx eudore.Context) {
-	if name := ctx.GetParam("name");name != "" {
+	if name := ctx.GetParam("name"); name != "" {
 		handler(name).Handle(ctx)
 		return
 	}

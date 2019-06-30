@@ -1,37 +1,37 @@
 package http
 
 import (
-	"net"
-	"fmt"
-	"sync"
 	"bufio"
-	"errors"
 	"context"
+	"errors"
+	"fmt"
 	"github.com/eudore/eudore/protocol"
+	"io"
+	"net"
+	"sync"
 )
 
-
 var (
-	crlf		= []byte("\r\n")
-	colonSpace	= []byte(": ")
-	constinueMsg	=	[]byte("HTTP/1.1 100 Continue\r\n\r\n")
-	rwPool	=	sync.Pool {
-		New:	func() interface{} {
+	crlf         = []byte("\r\n")
+	colonSpace   = []byte(": ")
+	constinueMsg = []byte("HTTP/1.1 100 Continue\r\n\r\n")
+	rwPool       = sync.Pool{
+		New: func() interface{} {
 			return &Response{
-				request:	&Request{
-								reader:	bufio.NewReaderSize(nil, 2048),
-							},
-				writer:		bufio.NewWriterSize(nil, 2048),
-				buf:		make([]byte, 2048),
+				request: &Request{
+					reader: bufio.NewReaderSize(nil, 2048),
+				},
+				writer: bufio.NewWriterSize(nil, 2048),
+				buf:    make([]byte, 2048),
 			}
 		},
 	}
-	ErrLineInvalid	=	errors.New("request line is invalid")
+	ErrLineInvalid = errors.New("request line is invalid")
 )
 
 type HttpHandler struct {
-	Handler		protocol.Handler
-	Errfunc		func(error)			`set:"errfunc`
+	Handler protocol.Handler
+	Errfunc func(error) `set:"errfunc"`
 }
 
 func NewHttpHandler(h protocol.Handler) *HttpHandler {
@@ -52,7 +52,9 @@ func (hh *HttpHandler) EudoreConn(pctx context.Context, c net.Conn) {
 	for {
 		if err := resp.request.Reset(c); err != nil { // && err != io.EOF
 			// handler error
-			hh.Errfunc(err)
+			if err != io.EOF {
+				hh.Errfunc(err)
+			}
 			break
 		}
 		resp.Reset(c)

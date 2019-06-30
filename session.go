@@ -1,6 +1,5 @@
 package eudore
 
-
 import (
 	"fmt"
 	"sync"
@@ -16,28 +15,28 @@ type (
 	}
 	SessionData interface {
 		Set(key string, value interface{}) error //set session value
-		Get(key string) interface{}  //get session value
-		Del(key string) error     //delete session value
-		SessionID() string                //back current sessionID
+		Get(key string) interface{}              //get session value
+		Del(key string) error                    //delete session value
+		SessionID() string                       //back current sessionID
 	}
 	// SessionMap会将数据存储到sync.Map放在内存，不会数据持久化。
 	SessionMap struct {
-		KeyFync	func(Context) string	`set:"keyfunc"`
-		mem		sync.Map
+		KeyFync func(Context) string `set:"keyfunc"`
+		mem     sync.Map
 	}
 	SessionCacheConfig struct {
-		Cache	Cache	`set:"cache"`
-		Lifetime	time.Duration	`set:"lifetime"`
+		Cache    Cache         `set:"cache"`
+		Lifetime time.Duration `set:"lifetime"`
 	}
 	// SessionCache会将数据存储到eudore.Cache
 	SessionCache struct {
-		Cache		Cache	`set:"cache"`
-		Lifetime	time.Duration		`set:"lifetime"`
-		KeyFync	func(Context) string	`set:"keyfunc"`
+		Cache    Cache                `set:"cache"`
+		Lifetime time.Duration        `set:"lifetime"`
+		KeyFync  func(Context) string `set:"keyfunc"`
 	}
 	SessionDataStd struct {
-		Id		string
-		Data	map[string]interface{}
+		Id   string
+		Data map[string]interface{}
 	}
 )
 
@@ -58,10 +57,9 @@ func NewSession(name string, arg interface{}) (Session, error) {
 	return nil, fmt.Errorf("Component %s cannot be converted to Session type", name)
 }
 
-
 func NewSessionMap(interface{}) (Session, error) {
 	return &SessionMap{
-		KeyFync:	func(ctx Context) string {
+		KeyFync: func(ctx Context) string {
 			return ctx.GetCookie("sessionid")
 		},
 	}, nil
@@ -79,8 +77,6 @@ func SessionFlush(id string) {
 	DefaultSession.SessionFlush(id)
 }
 
-
-
 func (store *SessionMap) SessionLoad(ctx Context) SessionData {
 	key := store.KeyFync(ctx)
 	sess, ok := store.mem.Load(key)
@@ -88,8 +84,8 @@ func (store *SessionMap) SessionLoad(ctx Context) SessionData {
 		return sess.(SessionData)
 	}
 	return &SessionDataStd{
-		Id:		key,
-		Data:	make(map[string]interface{}),
+		Id:   key,
+		Data: make(map[string]interface{}),
 	}
 }
 
@@ -109,18 +105,15 @@ func (*SessionMap) Version() string {
 	return ComponentSessionMapVersion
 }
 
-
-
-
 func NewSessionCache(i interface{}) (Session, error) {
 	config := &SessionCacheConfig{
-		Lifetime:	60 * time.Minute,
+		Lifetime: 60 * time.Minute,
 	}
 	ConvertTo(i, config)
 	return &SessionCache{
-		Cache:		config.Cache,
-		Lifetime:	config.Lifetime,
-		KeyFync:    func(ctx Context) string {
+		Cache:    config.Cache,
+		Lifetime: config.Lifetime,
+		KeyFync: func(ctx Context) string {
 			return ctx.GetCookie("sessionid")
 		},
 	}, nil
@@ -133,8 +126,8 @@ func (store *SessionCache) SessionLoad(ctx Context) SessionData {
 		return sess.(SessionData)
 	}
 	return &SessionDataStd{
-		Id:		key,
-		Data:	make(map[string]interface{}),
+		Id:   key,
+		Data: make(map[string]interface{}),
 	}
 }
 
@@ -153,8 +146,6 @@ func (*SessionCache) GetName() string {
 func (*SessionCache) Version() string {
 	return ComponentSessionCacheVersion
 }
-
-
 
 func (sess *SessionDataStd) Set(key string, val interface{}) error {
 	sess.Data[key] = val

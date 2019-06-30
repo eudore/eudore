@@ -6,17 +6,16 @@ import (
 )
 
 type Acl struct {
-	Data map[int]map[string]bool	`json:"-" key:"-"`
+	Data map[int]map[string]bool `json:"-" key:"-"`
 }
 
 var (
-	empty 				=	struct{}{}
+	empty = struct{}{}
 )
-
 
 func NewAcl() *Acl {
 	return &Acl{
-		Data:			make(map[int]map[string]bool),
+		Data: make(map[int]map[string]bool),
 	}
 }
 
@@ -43,7 +42,7 @@ func (a *Acl) AddPermission(id int, perms []string, allow bool) {
 		a.Data[id] = ps
 	}
 	for _, p := range perms {
-		ps[p] = allow	
+		ps[p] = allow
 	}
 }
 
@@ -54,8 +53,6 @@ func (a *Acl) AddAllowPermission(id int, perms []string) {
 func (a *Acl) AddDenyPermission(id int, perms []string) {
 	a.AddPermission(id, perms, false)
 }
-
-
 
 func (a *Acl) DelPermission(id int, perms []string) {
 	ps, ok := a.Data[id]

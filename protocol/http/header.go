@@ -5,8 +5,8 @@ import (
 )
 
 type Header struct {
-	Keys	[]string
-	Vals	[]string
+	Keys []string
+	Vals []string
 }
 
 func (h *Header) Reset() {

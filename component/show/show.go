@@ -1,16 +1,15 @@
 package show
 
 import (
-	"strings"
-	"reflect"
 	"github.com/eudore/eudore"
+	"reflect"
+	"strings"
 
 	"fmt"
 	"github.com/kr/pretty"
 )
 
 var objs map[string]interface{} = make(map[string]interface{})
-
 
 func RegisterObject(key string, val interface{}) {
 	objs[key] = val
@@ -19,7 +18,6 @@ func RegisterObject(key string, val interface{}) {
 func DeleteObject(key string) {
 	delete(objs, key)
 }
-
 
 func Inject(r eudore.RouterMethod) {
 	r = r.Group("/show")
@@ -39,7 +37,7 @@ func getVal(key1, key2 string) interface{} {
 	val, ok := objs[key1]
 	if ok {
 		if key2 != "" {
-			return eudore.Get(val, strings.Replace(key2[1:], "/", ".", -1) )
+			return eudore.Get(val, strings.Replace(key2[1:], "/", ".", -1))
 		}
 		return val
 	}
@@ -64,7 +62,7 @@ func Showkey(ctx eudore.Context) {
 	fields := make(map[string]interface{}, length)
 	pt := reflect.TypeOf(val).Elem()
 	pv := reflect.ValueOf(val).Elem()
-	for i := 0; i< length; i++ {
+	for i := 0; i < length; i++ {
 		if pv.Field(i).CanInterface() {
 			fields[pt.Field(i).Name] = pv.Field(i).Interface()
 		}
@@ -74,4 +72,3 @@ func Showkey(ctx eudore.Context) {
 	// ctx.WriteJson(fields)
 	fmt.Fprintf(ctx, "%# v", pretty.Formatter(val))
 }
-

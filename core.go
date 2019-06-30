@@ -6,44 +6,44 @@ Core是组合App对象后的一种实例化，用于启动主程序。
 
 import (
 	// "fmt"
-	"sync"
-	"net/http"
 	"context"
 	"github.com/eudore/eudore/protocol"
+	"net/http"
+	"sync"
 )
 
 type (
 	Core struct {
 		*App
-		Poolctx sync.Pool
-		Poolreq	sync.Pool
+		Poolctx  sync.Pool
+		Poolreq  sync.Pool
 		Poolresp sync.Pool
 	}
 )
 
 func NewCore() *Core {
 	app := &Core{
-		App:		NewApp(),
-		Poolctx:	sync.Pool{},
-		Poolreq:	sync.Pool{
-			New: 	func() interface{} {
+		App:     NewApp(),
+		Poolctx: sync.Pool{},
+		Poolreq: sync.Pool{
+			New: func() interface{} {
 				return &RequestReaderHttp{}
 			},
 		},
-		Poolresp:	sync.Pool{
-			New:	func() interface{} {
+		Poolresp: sync.Pool{
+			New: func() interface{} {
 				return &ResponseWriterHttp{}
 			},
 		},
 	}
-	
+
 	app.Poolctx.New = func() interface{} {
 		return NewContextBase(app.App)
 	}
 
 	// 初始化组件
 	app.RegisterComponents(
-		[]string{"logger", "config", "router", "server", "cache", "session", "view"}, 
+		[]string{"logger", "config", "router", "server", "cache", "session", "view"},
 		[]interface{}{nil, nil, nil, nil, nil, nil, nil},
 	)
 	return app
@@ -56,7 +56,7 @@ func (app *Core) Run() (err error) {
 	if err != nil {
 		return
 	}
-	
+
 	// start serverv
 	ComponentSet(app.Server, "handler", app)
 	if err != nil {
@@ -67,21 +67,20 @@ func (app *Core) Run() (err error) {
 
 // 监听一个http端口
 func (app *Core) Listen(addr string) *Core {
-	ComponentSet(app.Server, "config.listeners.+", 	&ServerListenConfig{
-		Addr:		addr,
+	ComponentSet(app.Server, "config.listeners.+", &ServerListenConfig{
+		Addr: addr,
 	})
 	return app
 }
 
-
 // 监听一个https端口，如果支持默认开启h2
 func (app *Core) ListenTLS(addr, key, cert string) *Core {
-	ComponentSet(app.Server, "config.listeners.+", 	&ServerListenConfig{
-		Addr:		addr,
-		Https:		true,
-		Http2:		true,
-		Keyfile:	key,
-		Certfile:	cert,
+	ComponentSet(app.Server, "config.listeners.+", &ServerListenConfig{
+		Addr:     addr,
+		Https:    true,
+		Http2:    true,
+		Keyfile:  key,
+		Certfile: cert,
 	})
 	return app
 }
@@ -103,8 +102,7 @@ func (app *Core) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	app.Poolctx.Put(ctx)
 }
 
-
-func (app *Core) EudoreHTTP(pctx context.Context,w protocol.ResponseWriter, req protocol.RequestReader) {
+func (app *Core) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader) {
 	// init
 	ctx := app.Poolctx.Get().(Context)
 	// handle

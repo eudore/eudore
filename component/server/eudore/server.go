@@ -1,55 +1,55 @@
 package eudore
 
 import (
-	"net"
-	"sync"
-	"time"
 	"context"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/protocol"
-	"github.com/eudore/eudore/protocol/server"
+	"github.com/eudore/eudore/protocol/fastcgi"
 	"github.com/eudore/eudore/protocol/http"
 	"github.com/eudore/eudore/protocol/http2"
-	"github.com/eudore/eudore/protocol/fastcgi"
+	"github.com/eudore/eudore/protocol/server"
+	"net"
+	"sync"
+	"time"
 )
 
 type (
-	HttpConfig = eudore.ServerListenConfig
+	HttpConfig    = eudore.ServerListenConfig
 	FastcgiConfig struct {
-		Addr	string		`set:"addr"`
+		Addr string `set:"addr"`
 	}
 	ServerConfig struct {
-		ReadTimeout		time.Duration	`set:"readtimeout" description:"Http server read timeout."`
-		WriteTimeout	time.Duration	`set:"writetimeout" description:"Http server write timeout."`
-		Http		[]*HttpConfig `set:"http"`
-		Fastcgi		[]*FastcgiConfig `set:"fastcgi"`
-		Handler		interface{}			`set:"handler" json:"-"`
+		ReadTimeout  time.Duration    `set:"readtimeout" description:"Http server read timeout."`
+		WriteTimeout time.Duration    `set:"writetimeout" description:"Http server write timeout."`
+		Http         []*HttpConfig    `set:"http"`
+		Fastcgi      []*FastcgiConfig `set:"fastcgi"`
+		Handler      interface{}      `set:"handler" json:"-"`
 	}
 	Server struct {
-		Config			*ServerConfig 	`set:"config"`
-		Print			func(...interface{})	`set:"print" json:"-"`
-		Errfunc			eudore.ErrorFunc		`set:"errfunc" json:"-"`
-		mu				sync.Mutex
-		wg				sync.WaitGroup
-		handler			protocol.Handler
-		http			*server.Server
-		fastcgi			*server.Server
-		oncehttp		sync.Once
-		oncefastcgi		sync.Once
+		Config      *ServerConfig        `set:"config"`
+		Print       func(...interface{}) `set:"print" json:"-"`
+		Errfunc     eudore.ErrorFunc     `set:"errfunc" json:"-"`
+		mu          sync.Mutex
+		wg          sync.WaitGroup
+		handler     protocol.Handler
+		http        *server.Server
+		fastcgi     *server.Server
+		oncehttp    sync.Once
+		oncefastcgi sync.Once
 	}
 )
 
 func init() {
 	eudore.RegisterComponent(eudore.ComponentServerEudoreName, func(arg interface{}) (eudore.Component, error) {
-		srv := NewServer()		
+		srv := NewServer()
 		return srv, srv.Set("", arg)
 	})
 }
 
-func NewServer() (*Server) {
+func NewServer() *Server {
 	return &Server{
-		Config:	&ServerConfig{},
-		handler:	protocol.HandlerFunc(func(_ context.Context, w protocol.ResponseWriter, _ protocol.RequestReader) {
+		Config: &ServerConfig{},
+		handler: protocol.HandlerFunc(func(_ context.Context, w protocol.ResponseWriter, _ protocol.RequestReader) {
 			w.Write([]byte("start eudore server, this default page."))
 		}),
 	}
@@ -61,7 +61,7 @@ func (srv *Server) Start() error {
 	if h, ok := srv.Config.Handler.(protocol.Handler); ok {
 		srv.handler = h
 	}
-	if len(srv.Config.Fastcgi) + len(srv.Config.Http) == 0 {
+	if len(srv.Config.Fastcgi)+len(srv.Config.Http) == 0 {
 		return eudore.ErrServerNotSetRuntimeInfo
 	}
 	errs := eudore.NewErrors()
@@ -75,14 +75,14 @@ func (srv *Server) Start() error {
 		srv.EnableFastcgi()
 		srv.wg.Add(1)
 		srv.Print("Listen fastcgi:", fastcgi.Addr)
-		go func(ln net.Listener){
+		go func(ln net.Listener) {
 			errs.HandleError(srv.fastcgi.Serve(ln))
 			srv.wg.Done()
 		}(ln)
 	}
 	// 启动http
 	for _, http := range srv.Config.Http {
-		ln, err := http.Listen()		
+		ln, err := http.Listen()
 		if err != nil {
 			errs.HandleError(err)
 			continue
@@ -91,10 +91,10 @@ func (srv *Server) Start() error {
 		srv.wg.Add(1)
 		if http.Https {
 			srv.Print("Listen https:", http.Addr)
-		}else {
+		} else {
 			srv.Print("Listen http:", http.Addr)
 		}
-		go func(ln net.Listener){
+		go func(ln net.Listener) {
 			errs.HandleError(srv.http.Serve(ln))
 			srv.wg.Done()
 		}(ln)
@@ -106,7 +106,7 @@ func (srv *Server) Start() error {
 	return errs.GetError()
 }
 
-func (srv *Server) Restart() error{
+func (srv *Server) Restart() error {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
 	err := eudore.StartNewProcess()
@@ -127,7 +127,7 @@ func (srv *Server) Shutdown(ctx context.Context) (err error) {
 		go func() {
 			stop <- srv.http.Shutdown(ctx)
 		}()
-	}else {
+	} else {
 		stop <- nil
 	}
 	// 关闭fastcgi server
@@ -135,14 +135,14 @@ func (srv *Server) Shutdown(ctx context.Context) (err error) {
 		go func() {
 			stop <- srv.fastcgi.Shutdown(ctx)
 		}()
-	}else {
+	} else {
 		stop <- nil
 	}
 	// 获取关闭结果
-	if e := <- stop; e != nil {
+	if e := <-stop; e != nil {
 		err = e
 	}
-	if e := <- stop; e != nil {
+	if e := <-stop; e != nil {
 		err = e
 	}
 	return err
@@ -178,10 +178,11 @@ func (*Server) Version() string {
 }
 
 func (srv *Server) EnableHttp() {
-	srv.oncehttp.Do(func(){
+	srv.oncehttp.Do(func() {
 		// 创建http使用的服务
 		srv.http = &server.Server{
-			Handler:	srv.handler,
+			Handler: srv.handler,
+			Errfunc: srv.Errfunc,
 		}
 		// 设服务连接处理为http
 		httphandler := http.NewHttpHandler(srv.handler)
@@ -191,18 +192,16 @@ func (srv *Server) EnableHttp() {
 	})
 }
 
-
 func (srv *Server) EnableFastcgi() {
-	srv.oncefastcgi.Do(func(){
+	srv.oncefastcgi.Do(func() {
 		// 创建fastcgi使用的服务
 		srv.fastcgi = &server.Server{
-			Handler:	srv.handler,
+			Handler: srv.handler,
 		}
 		// 设服务连接处理为fastcgi
 		srv.fastcgi.SetHandler(fastcgi.NewServer(srv.handler))
 	})
 }
-
 
 func (*ServerConfig) GetName() string {
 	return eudore.ComponentServerEudoreName

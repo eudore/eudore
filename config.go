@@ -15,11 +15,11 @@ handler
 */
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"os"
-	"fmt"
 	"sync"
-	"encoding/json"
 	// "strings"
 )
 
@@ -30,7 +30,7 @@ type (
 	}
 	ConfigReadFunc func(string) ([]byte, error)
 	//
-	ConfigParseFunc func(Config) error
+	ConfigParseFunc   func(Config) error
 	ConfigParseOption func([]ConfigParseFunc) []ConfigParseFunc
 	//
 	Config interface {
@@ -41,18 +41,16 @@ type (
 		Parse() error
 	}
 	ConfigMap struct {
-		Keys	map[string]interface{}
-		funcs	[]ConfigParseFunc
-		mu		sync.RWMutex
+		Keys  map[string]interface{}
+		funcs []ConfigParseFunc
+		mu    sync.RWMutex
 	}
 	ConfigEudore struct {
-		Keys 	interface{} 	`set:"key"`
-		mu 		sync.RWMutex	`set:"-"`
-		funcs	[]ConfigParseFunc	`set:"-"`
+		Keys  interface{}       `set:"key"`
+		mu    sync.RWMutex      `set:"-"`
+		funcs []ConfigParseFunc `set:"-"`
 	}
 )
-
-
 
 // new router
 func NewConfig(name string, arg interface{}) (Config, error) {
@@ -68,19 +66,16 @@ func NewConfig(name string, arg interface{}) (Config, error) {
 	return nil, fmt.Errorf("Component %s cannot be converted to Config type", name)
 }
 
-
-
-
 func NewConfigMap(arg interface{}) (Config, error) {
 	var keys map[string]interface{}
 	if ks, ok := arg.(map[string]interface{}); ok {
 		keys = ks
-	}else {
+	} else {
 		keys = make(map[string]interface{})
 	}
 	return &ConfigMap{
 		Keys: keys,
-		funcs:	[]ConfigParseFunc{
+		funcs: []ConfigParseFunc{
 			ConfigParseInit,
 			ConfigParseRead,
 			ConfigParseConfig,
@@ -101,7 +96,6 @@ func (c *ConfigMap) Get(key string) interface{} {
 	return c.Keys[key]
 }
 
-
 func (c *ConfigMap) Set(key string, val interface{}) error {
 	c.mu.Lock()
 	if len(key) == 0 {
@@ -109,13 +103,12 @@ func (c *ConfigMap) Set(key string, val interface{}) error {
 		if ok {
 			c.Keys = keys
 		}
-	}else {
+	} else {
 		c.Keys[key] = val
 	}
 	c.mu.Unlock()
 	return nil
 }
-
 
 func (c *ConfigMap) Help(w io.Writer) error {
 	if w == nil {
@@ -159,15 +152,13 @@ func (c *ConfigMap) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &c.Keys)
 }
 
-
-
 func NewConfigEudore(i interface{}) (Config, error) {
 	if i == nil {
 		i = make(map[string]interface{})
 	}
 	return &ConfigEudore{
 		Keys: i,
-		funcs:	[]ConfigParseFunc{
+		funcs: []ConfigParseFunc{
 			ConfigParseInit,
 			ConfigParseRead,
 			ConfigParseConfig,
@@ -186,18 +177,18 @@ func (c *ConfigEudore) Get(key string) (i interface{}) {
 	c.mu.Lock()
 	i = Get(c.Keys, key)
 	c.mu.Unlock()
-	return 
+	return
 }
 
 func (c *ConfigEudore) Set(key string, val interface{}) (err error) {
 	c.mu.RLock()
 	if len(key) == 0 {
 		c.Keys = val
-	}else {
-		c.Keys, err = Set(c.Keys, key, val)		
-	}	
+	} else {
+		c.Keys, err = Set(c.Keys, key, val)
+	}
 	c.mu.RUnlock()
-	return 
+	return
 }
 
 func (c *ConfigEudore) ParseFuncs(fn ConfigParseOption) {

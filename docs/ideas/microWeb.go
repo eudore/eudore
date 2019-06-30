@@ -1,34 +1,34 @@
 package main
 
 import (
-	"io"
-	"os"
 	"fmt"
-	"time"
-	"strings"
+	"io"
 	"net/http"
+	"os"
+	"strings"
+	"time"
 )
 
 type (
 	// 框架主体
 	App struct {
-		Addr 		string
+		Addr string
 		Logger
 		Router
 		Server
-		Middlewares		[]MiddlewareFunc
+		Middlewares []MiddlewareFunc
 	}
 	// 请求处理函数
 	HandleFunc func(*Context)
 	// 中间件函数
-	MiddlewareFunc  func(HandleFunc) HandleFunc
+	MiddlewareFunc func(HandleFunc) HandleFunc
 	// 日志输出接口
 	Logger interface {
 		Print(...interface{})
 		Printf(string, ...interface{})
 	}
 	// 路由器接口
-	Router interface{
+	Router interface {
 		Match(string, string) HandleFunc
 		RegisterFunc(string, string, HandleFunc)
 	}
@@ -44,22 +44,22 @@ type (
 	}
 	// 基于map和遍历实现的简化路由器
 	MyRouter struct {
-		RoutesConst	map[string]HandleFunc
-		RoutesPath	[]string
-		RoutesFunc	[]HandleFunc
+		RoutesConst map[string]HandleFunc
+		RoutesPath  []string
+		RoutesFunc  []HandleFunc
 	}
 	// 输出到标准输出的日志接口实现
 	MyLogger struct {
-		out 	io.Writer
+		out io.Writer
 	}
 )
 
 // 创建一个app
 func NewApp() *App {
 	return &App{
-		Addr:	":8088",
-		Logger:	&MyLogger{},
-		Router:	&MyRouter{},
+		Addr:   ":8088",
+		Logger: &MyLogger{},
+		Router: &MyRouter{},
 	}
 }
 
@@ -68,8 +68,8 @@ func (app *App) Run() error {
 	// Server初始化
 	if app.Server == nil {
 		app.Server = &http.Server{
-			Addr:		app.Addr,
-			Handler:	app,
+			Addr:    app.Addr,
+			Handler: app,
 		}
 	}
 	app.Printf("start server: %s", app.Addr)
@@ -79,9 +79,9 @@ func (app *App) Run() error {
 // 处理Http请求
 func (app *App) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
 	ctx := &Context{
-		Request: req,
-		ResponseWriter:	resp,
-		Logger:	app,
+		Request:        req,
+		ResponseWriter: resp,
+		Logger:         app,
 	}
 	// 路由匹配
 	h := app.Router.Match(ctx.Method(), ctx.Path())
@@ -98,8 +98,6 @@ func (app *App) AddMiddleware(m ...MiddlewareFunc) {
 	app.Middlewares = append(app.Middlewares, m...)
 }
 
-
-
 // 日志输出
 func (l *MyLogger) Print(args ...interface{}) {
 	if l.out == nil {
@@ -113,8 +111,6 @@ func (l *MyLogger) Print(args ...interface{}) {
 func (l *MyLogger) Printf(format string, args ...interface{}) {
 	l.Print(fmt.Sprintf(format, args...))
 }
-
-
 
 // 匹配一个Context的请求
 func (r *MyRouter) Match(method, path string) HandleFunc {
@@ -144,15 +140,13 @@ func (r *MyRouter) RegisterFunc(method string, path string, handle HandleFunc) {
 		r.RoutesConst = make(map[string]HandleFunc)
 	}
 	path = method + path
-	if path[len(path) - 1] == '*' {
+	if path[len(path)-1] == '*' {
 		r.RoutesPath = append(r.RoutesPath, path)
 		r.RoutesFunc = append(r.RoutesFunc, handle)
-	}else {
+	} else {
 		r.RoutesConst[path] = handle
 	}
 }
-
-
 
 // 获取请求方法
 func (ctx *Context) Method() string {
@@ -176,7 +170,6 @@ func (ctx *Context) RemoteAddr() string {
 func (ctx *Context) WriteString(s string) {
 	ctx.ResponseWriter.Write([]byte(s))
 }
-
 
 // 日志中间件函数
 func MiddlewareLoggerFunc(h HandleFunc) HandleFunc {

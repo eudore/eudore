@@ -1,29 +1,26 @@
 package fastcgi
 
-
 import (
+	"crypto/tls"
+	"errors"
+	"github.com/eudore/eudore/protocol"
 	"io"
 	"net"
-	"errors"
 	"strconv"
 	"strings"
-	"crypto/tls"
-	"github.com/eudore/eudore/protocol"
 )
 
 type requestReader struct {
-	method		string
-	uri			string
-	proto		string
-	remoteAddr	string
-	length		int64
-	tls			*tls.ConnectionState
-	header		Header
-	trailer		Header
-	body		io.ReadCloser
+	method     string
+	uri        string
+	proto      string
+	remoteAddr string
+	length     int64
+	tls        *tls.ConnectionState
+	header     Header
+	trailer    Header
+	body       io.ReadCloser
 }
-
-
 
 // RequestFromMap creates an http.Request from CGI variables.
 // The returned Request's Body field is not populated.
@@ -37,7 +34,6 @@ func newRequestReader(params map[string]string) (*requestReader, error) {
 	// r.Close = true
 	r.trailer = make(Header)
 	r.header = make(Header)
-
 
 	if lenstr := params["CONTENT_LENGTH"]; lenstr != "" {
 		clen, err := strconv.ParseInt(lenstr, 10, 64)
@@ -76,9 +72,7 @@ func newRequestReader(params map[string]string) (*requestReader, error) {
 	return r, nil
 }
 
-
-
-func(r *requestReader) Method() string {
+func (r *requestReader) Method() string {
 	return r.method
 }
 

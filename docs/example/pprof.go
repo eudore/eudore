@@ -2,13 +2,12 @@ package main
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/show"
+	"github.com/eudore/eudore/component/pprof"
 )
 
 func main() {
 	app := eudore.NewCore()
-	show.Inject(app.Group("/eudore/debug"))
-	show.RegisterObject("app", app.App)
+	pprof.Inject(app.Group("/eudore/debug"))
 
 	app.Listen(":8088")
 	app.Run()

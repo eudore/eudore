@@ -6,31 +6,30 @@ import (
 
 type (
 	Role struct {
-		Name 	string
-		Binds 	[]string
+		Name  string
+		Binds []string
 	}
 	Rbac struct {
-		Binds	map[int][]*Role
-		Roles	map[string]*Role
+		Binds map[int][]*Role
+		Roles map[string]*Role
 	}
 )
 
-
 func NewRbac() *Rbac {
 	return &Rbac{
-		Binds:	make(map[int][]*Role),
-		Roles:	make(map[string]*Role),
+		Binds: make(map[int][]*Role),
+		Roles: make(map[string]*Role),
 	}
 }
 
 func (r *Rbac) NewRole(name string, perms []string) {
 	r.Roles[name] = &Role{
-		Name:	name,
-		Binds:	perms,
+		Name:  name,
+		Binds: perms,
 	}
 }
 
-func (r *Rbac) AddRoles(name string,role *Role) {
+func (r *Rbac) AddRoles(name string, role *Role) {
 	r.Roles[name] = role
 }
 

@@ -1,26 +1,26 @@
 package server
 
 import (
-	"net"
-	"fmt"
-	"time"
-	"sync"
 	"context"
 	"crypto/tls"
+	"fmt"
 	"github.com/eudore/eudore/protocol"
 	"github.com/eudore/eudore/protocol/http"
+	"net"
+	"sync"
+	"time"
 )
-
 
 type (
 	Server struct {
-		ctx			context.Context
-		Handler		protocol.Handler
-		mu			sync.Mutex
-		listeners	[]net.Listener
-		proto		string
-		nextHandle		protocol.HandlerConn
-		defaultHandle	protocol.HandlerConn
+		ctx           context.Context
+		Handler       protocol.Handler
+		mu            sync.Mutex
+		listeners     []net.Listener
+		proto         string
+		nextHandle    protocol.HandlerConn
+		defaultHandle protocol.HandlerConn
+		Errfunc       func(error) `set:"errfunc"`
 	}
 )
 
@@ -39,7 +39,7 @@ func (srv *Server) ListenAndServe(addr string, handle protocol.Handler) error {
 }
 
 // 监听一个tcp连接，并启动服务。
-func (srv *Server) ListenAndServeTls(addr , certFile, keyFile string, handle protocol.Handler) error {
+func (srv *Server) ListenAndServeTls(addr, certFile, keyFile string, handle protocol.Handler) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -48,11 +48,11 @@ func (srv *Server) ListenAndServeTls(addr , certFile, keyFile string, handle pro
 		srv.Handler = handle
 	}
 	config := &tls.Config{
-		Certificates: make([]tls.Certificate, 1),
-		PreferServerCipherSuites:	true,
+		Certificates:             make([]tls.Certificate, 1),
+		PreferServerCipherSuites: true,
 	}
 
-	if config.NextProtos == nil && len(srv.proto) > 0{
+	if config.NextProtos == nil && len(srv.proto) > 0 {
 		config.NextProtos = []string{srv.proto}
 	}
 
@@ -93,7 +93,6 @@ func (srv *Server) Serve(ln net.Listener) error {
 		// 处理新连接
 		go srv.newConnServe(c)
 	}
-	return nil
 }
 
 func (srv *Server) newConnServe(c net.Conn) {
@@ -111,10 +110,10 @@ func (srv *Server) newConnServe(c net.Conn) {
 			// 	return
 			// }
 			// c.server.logf("http: TLS handshake error from %s: %v", c.rwc.RemoteAddr(), err)
-			fmt.Printf("http: TLS handshake error from %s: %v\n", c.RemoteAddr(), err)
+			srv.Errfunc(fmt.Errorf("TLS handshake error from %s: %v\n", c.RemoteAddr(), err))
 			return
 		}
-		
+
 		if proto := tlsConn.ConnectionState().NegotiatedProtocol; validNPN(proto) && proto == srv.proto {
 			srv.nextHandle.EudoreConn(ctx, c)
 			return
@@ -137,25 +136,24 @@ func (srv *Server) Close() (err error) {
 
 func (srv *Server) Shutdown(ctx context.Context) error {
 	var stop = make(chan error)
-	go func(){
+	go func() {
 		stop <- srv.Close()
 	}()
 	for {
 		select {
-		case <- ctx.Done():
+		case <-ctx.Done():
 			return ctx.Err()
-		case err := <- stop:
+		case err := <-stop:
 			return err
 		}
 	}
-	return nil
 }
 
 func (srv *Server) SetHandler(h protocol.HandlerConn) {
 	srv.defaultHandle = h
 }
 
-func (srv *Server) SetNextHandler(proto string, h protocol.HandlerConn) error{
+func (srv *Server) SetNextHandler(proto string, h protocol.HandlerConn) error {
 	switch proto {
 	case "h2":
 		srv.proto, srv.nextHandle = proto, h
@@ -185,4 +183,3 @@ func tlsRecordHeaderLooksLikeHTTP(hdr [5]byte) bool {
 	}
 	return false
 }
-

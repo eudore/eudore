@@ -14,11 +14,11 @@ package fastcgi
 // the host.
 
 import (
-	"os"
-	"net"
 	"context"
-	"net/textproto"
 	"github.com/eudore/eudore/protocol"
+	"net"
+	"net/textproto"
+	"os"
 )
 
 // recType is a record type, as defined by
@@ -60,18 +60,17 @@ const (
 	statusUnknownRole
 )
 
-type Fastcgi struct{
-	h		protocol.Handler
+type Fastcgi struct {
+	h protocol.Handler
 }
 
-func NewServer(h protocol.Handler) *Fastcgi{
+func NewServer(h protocol.Handler) *Fastcgi {
 	return &Fastcgi{h}
 }
 
 func (f *Fastcgi) EudoreConn(ctx context.Context, rw net.Conn) {
 	newChild(ctx, rw, f.h).serve()
 }
-
 
 // Serve accepts incoming FastCGI connections on the listener l, creating a new
 // goroutine for each. The goroutine reads requests and then calls handler
@@ -97,18 +96,17 @@ func Serve(l net.Listener, handler protocol.Handler) error {
 	}
 }
 
-
 type Header map[string][]string
 
 func (h Header) Get(key string) string {
 	return textproto.MIMEHeader(h).Get(key)
 }
 
-func (h Header) Set(key ,value string) {
+func (h Header) Set(key, value string) {
 	textproto.MIMEHeader(h).Set(key, value)
 }
 
-func (h Header) Add(key ,value string) {
+func (h Header) Add(key, value string) {
 	textproto.MIMEHeader(h).Add(key, value)
 }
 

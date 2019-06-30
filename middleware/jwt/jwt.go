@@ -1,24 +1,24 @@
 package jwt
 
 import (
-	"fmt"
-	"time"
-	"errors"
-	"strings"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/eudore/eudore"
 )
 
 const (
-	BearerStar		=	"Bearer "
+	BearerStar = "Bearer "
 )
 
 type (
-	VerifyFunc func([]byte) string	
+	VerifyFunc func([]byte) string
 )
 
 func NewVerifyHS256(secret []byte) VerifyFunc {
@@ -49,8 +49,8 @@ func NewJwt(fn VerifyFunc) eudore.HandlerFunc {
 				return
 			}
 			// ctx.SetValue(eudore.ValueJwt, jwt)
-		}else {
-			ctx.WithField("error", "bearer invalid").Warning("")	
+		} else {
+			ctx.WithField("error", "bearer invalid").Warning("")
 		}
 	}
 }
@@ -58,7 +58,7 @@ func NewJwt(fn VerifyFunc) eudore.HandlerFunc {
 func (fn VerifyFunc) SignedToken(claims interface{}) string {
 	payload, _ := json.Marshal(claims)
 	var unsigned string = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.` + base64.RawURLEncoding.EncodeToString(payload)
-	return fmt.Sprintf("%s.%s",  unsigned, fn([]byte(unsigned)))
+	return fmt.Sprintf("%s.%s", unsigned, fn([]byte(unsigned)))
 }
 
 func (fn VerifyFunc) ParseToken(token string) (map[string]interface{}, error) {
@@ -67,7 +67,7 @@ func (fn VerifyFunc) ParseToken(token string) (map[string]interface{}, error) {
 		return nil, errors.New("Error: incorrect # of results from string parsing.")
 	}
 
-	if fn([]byte(parts[0] + "." + parts[1])) != parts[2] {
+	if fn([]byte(parts[0]+"."+parts[1])) != parts[2] {
 		return nil, errors.New("Error：jwt validation error.")
 	}
 
@@ -83,7 +83,6 @@ func (fn VerifyFunc) ParseToken(token string) (map[string]interface{}, error) {
 	}
 	return dst, nil
 }
-
 
 func (fn VerifyFunc) ParseBearer(jwtstr string) (map[string]interface{}, error) {
 	if strings.HasPrefix(jwtstr, BearerStar) {

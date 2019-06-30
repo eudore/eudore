@@ -2,31 +2,31 @@ package eudore
 
 import (
 	"fmt"
-	"sync"
 	"reflect"
 	"strings"
+	"sync"
 )
 
 type (
 	ControllerParseFunc func(Controller) (*RouterConfig, error)
-	Controller interface{
+	Controller          interface {
 		Init(Context) error
 		Release() error
 	}
 	ControllerRoute interface {
 		ControllerRoute() map[string]string
 	}
-	ControllerBase struct{
+	ControllerBase struct {
 		Context
 	}
-	ControllerData struct{
+	ControllerData struct {
 		ContextData
 	}
 )
 
-func ControllerBaseParseFunc(controller Controller) (*RouterConfig, error) {	
+func ControllerBaseParseFunc(controller Controller) (*RouterConfig, error) {
 	iType := reflect.TypeOf(controller)
-	pool := sync.Pool{
+	pool := &sync.Pool{
 		New: func() interface{} {
 			return reflect.New(iType.Elem()).Interface()
 		},
@@ -52,19 +52,19 @@ func ControllerBaseParseFunc(controller Controller) (*RouterConfig, error) {
 		}
 
 		configs = append(configs, &RouterConfig{
-			Method:	strings.ToUpper(method),
-			Path:	path,
-			Handler:	convertHandler(pool, controller, m.Index),
+			Method:  strings.ToUpper(method),
+			Path:    path,
+			Handler: convertHandler(pool, controller, m.Index),
 		})
 	}
-	return &RouterConfig{Routes:	configs}, nil
+	return &RouterConfig{Routes: configs}, nil
 }
 
-func convertHandler(pool sync.Pool, controller Controller, index int) HandlerFunc {
+func convertHandler(pool *sync.Pool, controller Controller, index int) HandlerFunc {
 	iType := reflect.TypeOf(controller)
 	fType := iType.Method(index)
 	// 获取函数参数信息
-	var num  int = fType.Type.NumIn() - 1
+	var num int = fType.Type.NumIn() - 1
 	var args []string = getFuncArgs(fType.Name)
 	var typeIn []reflect.Type = make([]reflect.Type, num)
 	for i := 0; i < num; i++ {
@@ -83,7 +83,7 @@ func convertHandler(pool sync.Pool, controller Controller, index int) HandlerFun
 			params[i] = params[i].Elem()
 		}
 		reflect.ValueOf(controller).Method(index).Call(params)
-		
+
 		controller.Release()
 		pool.Put(controller)
 	}
@@ -119,13 +119,13 @@ func getFirstUp(name string) string {
 	return name
 }
 
-func getFuncArgs(name string) (strs []string) {	
+func getFuncArgs(name string) (strs []string) {
 	var head int = 0
 	var isBy bool
 	for i, c := range name {
 		if 0x40 < c && c < 0x5B && i != 0 {
 			if isBy {
-				strs = append(strs, strings.ToLower(name[head:i]) )
+				strs = append(strs, strings.ToLower(name[head:i]))
 			}
 			if name[head:i] == "By" {
 				isBy = true
@@ -134,7 +134,7 @@ func getFuncArgs(name string) (strs []string) {
 		}
 	}
 	if isBy {
-		strs = append(strs, strings.ToLower(name[head:len(name)]) )
+		strs = append(strs, strings.ToLower(name[head:len(name)]))
 	}
 	return
 

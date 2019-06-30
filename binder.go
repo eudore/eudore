@@ -13,32 +13,27 @@ Binder对象用于请求数据反序列化，
 package eudore
 
 import (
-	"io"
-	"mime"
-	"errors"
-	"strings"
-	"context"
-	"net/url"
-	"io/ioutil"
 	"encoding/json"
 	"encoding/xml"
-	"mime/multipart"
+	"errors"
+	"io"
+	"io/ioutil"
+	"net/url"
+	"strings"
 )
 
 const (
 	defaultMaxMemory = 32 << 20 // 32 MB
 )
 
-
 var (
-	BinderDefault	=	BindFunc(BinderDefaultFunc)
-	BinderUrl		=	BindFunc(BindUrlFunc)
-	BinderForm		=	BindFunc(BindFormFunc)
-	BinderUrlBody	=	BindFunc(BindUrlBodyFunc)
-	BinderJSON		=	BindFunc(BindJsonFunc)
-	BinderXML		=	BindFunc(BindXmlFunc)
+	BinderDefault = BindFunc(BinderDefaultFunc)
+	BinderUrl     = BindFunc(BindUrlFunc)
+	BinderForm    = BindFunc(BindFormFunc)
+	BinderUrlBody = BindFunc(BindUrlBodyFunc)
+	BinderJSON    = BindFunc(BindJsonFunc)
+	BinderXML     = BindFunc(BindXmlFunc)
 )
-
 
 type (
 	Binder interface {
@@ -76,32 +71,13 @@ func BindUrlFunc(ctx Context, i interface{}) error {
 }
 
 func BindFormFunc(ctx Context, i interface{}) error {
-	_, params, err := mime.ParseMediaType(ctx.GetHeader(HeaderContentType))
-	if err != nil {
-		return err
-	}
-
-	form, err := multipart.NewReader(ctx, params["boundary"]).ReadForm(defaultMaxMemory)
-	if err != nil {
-		return err
-	}
-	go func(ctx context.Context) {
-		for {
-			select {
-			case <- ctx.Done():
-				form.RemoveAll()
-				return
-			}
-		}
-
-	}(ctx.Context())
-	ConvertTo(form.File, i)
-	return ConvertTo(form.Value, i)
+	ConvertTo(ctx.FormFile(), i)
+	return ConvertTo(ctx.FormValue(), i)
 }
 
 // body读取限制32kb.
 func BindUrlBodyFunc(ctx Context, i interface{}) error {
-	body, err := ioutil.ReadAll(io.LimitReader(ctx, 32 << 10))
+	body, err := ioutil.ReadAll(io.LimitReader(ctx, 32<<10))
 	if err != nil {
 		return err
 	}

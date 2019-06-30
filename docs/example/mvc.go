@@ -4,7 +4,7 @@ import (
 	"github.com/eudore/eudore"
 )
 
-type MyController struct{
+type MyController struct {
 	eudore.ControllerData
 }
 
@@ -29,20 +29,19 @@ func (c *MyController) GetInfoByIdName(id int, name string) {
 	c.WriteString(name)
 }
 
-func (*MyController) GetIndex() {}
+func (*MyController) GetIndex()   {}
 func (*MyController) GetContent() {}
 func (*MyController) ControllerRoute() map[string]string {
 	m := map[string]string{
-		"Any": "/*name",
-		"Get": "/*",
-		"GetIdById": "/:id",
+		"Any":             "/*name",
+		"Get":             "/*",
+		"GetIdById":       "/:id",
 		"GetInfoByIdName": "/info/:id/:name",
-		"GetIndex": "/index",
-		"GetContent": "/content",
+		"GetIndex":        "/index",
+		"GetContent":      "/content",
 	}
 	return m
 }
-
 
 func main() {
 	app := eudore.NewCore()

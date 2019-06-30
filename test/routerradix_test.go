@@ -1,15 +1,14 @@
-
 package test
 
 import (
 	"testing"
-	
+
 	"fmt"
 	"github.com/eudore/eudore"
 	// "github.com/kr/pretty"
 )
-type Params struct{}
 
+type Params struct{}
 
 func (*Params) GetParam(string) string {
 	return ""

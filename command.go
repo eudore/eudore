@@ -6,31 +6,31 @@ package eudore
 */
 
 import (
-	"os"
-	"fmt"
 	"errors"
+	"fmt"
+	"io/ioutil"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
-	"io/ioutil"
 )
 
 // The name of the environment variable used when the program starts in the background, which is used to indicate whether the fork is started in the background.
 //
 // 程序后台启动时使用的环境变量名，用于表示是否fork来后台启动。
 const (
-	DAEMON_ENVIRON_KEY		= "EUDORE_IS_DEAMON"
-	DAEMON_NOTPID 			= "EUDORE_NOTPID"
+	DAEMON_ENVIRON_KEY = "EUDORE_IS_DEAMON"
+	DAEMON_NOTPID      = "EUDORE_NOTPID"
 )
 
 // Command is a command parser that performs the corresponding behavior based on the current command.
 //
 // Command是一个命令解析器，根据当前命令执行对应行为。
 type Command struct {
-	pidfile	string
-	cmd		string
-	file	*os.File
+	pidfile string
+	cmd     string
+	file    *os.File
 }
 
 // Returns a command to parse the object, the current command and the process pid file path,
@@ -41,9 +41,9 @@ func NewCommand(cmd, pidfile string) *Command {
 	if len(pidfile) == 0 {
 		pidfile = "/var/run/eudore.pid"
 	}
-	return &Command{	
-		cmd: 	cmd,
-		pidfile:		pidfile,
+	return &Command{
+		cmd:     cmd,
+		pidfile: pidfile,
 	}
 }
 
@@ -78,7 +78,7 @@ func (c *Command) Run() (err error) {
 	// 输出提升信息
 	if err != nil {
 		fmt.Printf("%s is false, %v.\n", c.cmd, err)
-	}else {
+	} else {
 		fmt.Printf("%s is true.\n", c.cmd)
 	}
 	if c.cmd == "daemon" {
@@ -97,7 +97,7 @@ func (c *Command) Run() (err error) {
 // Execute the startup function and write the pid to the file.
 //
 // 执行启动函数，并将pid写入文件。
-func (c *Command) Start() error{
+func (c *Command) Start() error {
 	// 测试文件是否被锁定
 	_, err := c.readpid()
 	if err != nil {
@@ -114,7 +114,7 @@ func (c *Command) Daemon() error {
 	if os.Getenv(DAEMON_ENVIRON_KEY) != "" {
 		return c.Start()
 	}
-	
+
 	cmd := exec.Command(os.Args[0], os.Args[1:]...)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", DAEMON_ENVIRON_KEY, 1))
 	return cmd.Start()
@@ -175,11 +175,11 @@ func (c *Command) writepid() (err error) {
 	if os.Getenv(DAEMON_NOTPID) != "" {
 		return nil
 	}
-	c.file, err = os.OpenFile(c.pidfile, os.O_WRONLY | os.O_CREATE , 0666)
+	c.file, err = os.OpenFile(c.pidfile, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return
 	}
-	err = syscall.Flock(int(c.file.Fd()), syscall.LOCK_EX | syscall.LOCK_NB)
+	err = syscall.Flock(int(c.file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if err != nil {
 		c.file.Close()
 		return

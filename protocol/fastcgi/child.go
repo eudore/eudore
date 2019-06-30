@@ -7,15 +7,15 @@ package fastcgi
 // This file implements FastCGI from the perspective of a child process.
 
 import (
-	"sync"
-	"errors"
-	"strings"
 	"context"
+	"encoding/binary"
+	"errors"
+	"github.com/eudore/eudore/protocol"
 	"io"
 	"io/ioutil"
-	"encoding/binary"
 	"net/http"
-	"github.com/eudore/eudore/protocol"
+	"strings"
+	"sync"
 )
 
 var errCloseConn = errors.New("fcgi: connection should be closed")
@@ -30,11 +30,10 @@ var ErrRequestAborted = errors.New("fcgi: request aborted by web server")
 // a request after the connection to the web server has been closed.
 var ErrConnClosed = errors.New("fcgi: connection to web server closed")
 
-
 type envVarsContextKey struct{}
 
 type child struct {
-	baseCtx	context.Context
+	baseCtx context.Context
 	conn    *conn
 	handler protocol.Handler
 
@@ -44,10 +43,10 @@ type child struct {
 
 func newChild(ctx context.Context, rwc io.ReadWriteCloser, handler protocol.Handler) *child {
 	return &child{
-		baseCtx:	ctx,
-		conn:		newConn(rwc),
-		handler:	handler,
-		requests:	make(map[uint16]*request),
+		baseCtx:  ctx,
+		conn:     newConn(rwc),
+		handler:  handler,
+		requests: make(map[uint16]*request),
 	}
 }
 
@@ -66,9 +65,6 @@ func (c *child) serve() {
 		}
 	}
 }
-
-
-
 
 func (c *child) handleRecord(rec *record) error {
 	c.mu.Lock()
@@ -158,8 +154,6 @@ func (c *child) handleRecord(rec *record) error {
 	}
 }
 
-
-
 func (c *child) serveRequest(req *request, body io.ReadCloser) {
 	r := newResponse(c, req)
 	httpReq, err := newRequestReader(req.params)
@@ -205,7 +199,6 @@ func (c *child) cleanUp() {
 		}
 	}
 }
-
 
 // request holds the state for an in-progress request. As soon as it's complete,
 // it's converted to an http.Request.
@@ -279,7 +272,6 @@ func readString(s []byte, size uint32) string {
 	return string(s[:size])
 }
 
-
 // filterOutUsedEnvVars returns a new map of env vars without the
 // variables in the given envVars map that are read for creating each http.Request
 func filterOutUsedEnvVars(envVars map[string]string) map[string]string {
@@ -291,8 +283,6 @@ func filterOutUsedEnvVars(envVars map[string]string) map[string]string {
 	}
 	return withoutUsedEnvVars
 }
-
-
 
 // ProcessEnv returns FastCGI environment variables associated with the request r
 // for which no effort was made to be included in the request itself - the data
@@ -329,8 +319,6 @@ func addFastCGIEnvToContext(s string) bool {
 	// Unknown, so include it to be safe.
 	return true
 }
-
-
 
 type beginRequest struct {
 	role     uint16

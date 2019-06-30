@@ -8,18 +8,18 @@ Context定义一个请求上下文
 package eudore
 
 import (
-	"io"
-	"fmt"
-	"time"
-	"unsafe"
-	"strings"
 	"context"
+	"fmt"
+	"github.com/eudore/eudore/protocol"
+	"io"
+	"io/ioutil"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
-	"io/ioutil"
-	// "crypto/tls"
-	// "golang.org/x/net/http2"
-	"github.com/eudore/eudore/protocol"
+	"strings"
+	"time"
+	"unsafe"
 )
 
 const sniffLen = 512
@@ -44,18 +44,19 @@ type (
 		Host() string
 		Method() string
 		Path() string
-		RemoteAddr() string
+		RealIP() string
 		RequestID() string
 		Referer() string
 		ContentType() string
 		Istls() bool
 		Body() []byte
 
-		// param header cookie session
+		// param query header cookie session
 		Params() Params
 		GetParam(string) string
 		SetParam(string, string)
 		AddParam(string, string)
+		// Querys() map[string][]string
 		GetQuery(string) string
 		GetHeader(name string) string
 		SetHeader(string, string)
@@ -65,14 +66,15 @@ type (
 		SetCookieValue(string, string, int)
 		GetSession() SessionData
 		SetSession(SessionData)
-
+		FormValue() map[string][]string
+		FormFile() map[string][]*multipart.FileHeader
 
 		// response
 		Write([]byte) (int, error)
 		WriteHeader(int)
 		Redirect(int, string)
 		Push(string, *protocol.PushOptions) error
-		// render writer 
+		// render writer
 		WriteString(string) error
 		WriteView(string, interface{}) error
 		WriteJson(interface{}) error
@@ -105,38 +107,38 @@ type (
 		ParamsArray
 		QueryUrl
 		// run handler
-		index		int
-		handler		HandlerFuncs
+		index   int
+		handler HandlerFuncs
 		// data
-		ctx			context.Context
-		path 		string
-		rawQuery	string
-		cookies 	[]*Cookie
-		isReadBody	bool
-		postBody	[]byte
+		ctx        context.Context
+		path       string
+		rawQuery   string
+		cookies    []*Cookie
+		isReadBody bool
+		postBody   []byte
+		form       *multipart.Form
 		// component
-		app			*App
-		log			Logger
+		app *App
+		log Logger
 	}
 	ParamsArray struct {
-		Keys		[]string
-		Vals		[]string
+		Keys []string
+		Vals []string
 	}
 	QueryUrl struct {
-		keys		[]string
-		vals		[]string
+		keys []string
+		vals []string
 	}
 )
 
 // Convert nil to type *ContextBase, detect ContextBase object to implement Context interface
 //
 // 将nil强制类型转换成*ContextBase，检测ContextBase对象实现Context接口
-var _ Context			=	(*ContextBase)(nil)
-
+var _ Context = (*ContextBase)(nil)
 
 func NewContextBase(app *App) *ContextBase {
 	return &ContextBase{
-		app:	app,
+		app: app,
 	}
 }
 
@@ -154,11 +156,11 @@ func (ctx *ContextBase) Reset(pctx context.Context, w protocol.ResponseWriter, r
 	if pos == -1 {
 		ctx.path = uri
 		ctx.rawQuery = ""
-	}else {
+	} else {
 		ctx.path = uri[:pos]
-		ctx.rawQuery = uri[pos + 1:]
+		ctx.rawQuery = uri[pos+1:]
 	}
-	
+
 	// query
 	err := ctx.QueryUrl.readQuery(ctx.rawQuery)
 	if err != nil {
@@ -169,7 +171,7 @@ func (ctx *ContextBase) Reset(pctx context.Context, w protocol.ResponseWriter, r
 	if err != nil {
 		ctx.Error(err)
 	}
-	
+
 	// body
 	ctx.isReadBody = false
 	ctx.postBody = ctx.postBody[0:0]
@@ -180,8 +182,8 @@ func (ctx *ContextBase) Reset(pctx context.Context, w protocol.ResponseWriter, r
 	// cookies
 	ctx.cookies = ctx.cookies[0:0]
 	ctx.readCookies(r.Header().Get(HeaderCookie))
+	ctx.form = emptyMultipartForm
 }
-
 
 func (ctx *ContextBase) Context() context.Context {
 	return ctx.ctx
@@ -217,6 +219,7 @@ func (ctx *ContextBase) Next() {
 
 func (ctx *ContextBase) End() {
 	ctx.index = 0xff
+	ctx.form.RemoveAll()
 }
 
 func (ctx *ContextBase) NewRequest(method, url string, body io.Reader) (protocol.ResponseReader, error) {
@@ -250,12 +253,11 @@ func (ctx *ContextBase) NewRequest(method, url string, body io.Reader) (protocol
 	return NewResponseReaderHttp(resp), err
 }
 
-
 func (ctx *ContextBase) Path() string {
 	return ctx.path
 }
 
-func (ctx *ContextBase) RemoteAddr() string {
+func (ctx *ContextBase) RealIP() string {
 	xforward := ctx.RequestReader.Header().Get(HeaderXForwardedFor)
 	if "" == xforward {
 		return strings.SplitN(ctx.RequestReader.RemoteAddr(), ":", 2)[0]
@@ -292,8 +294,6 @@ func (ctx *ContextBase) Body() []byte {
 	return ctx.postBody
 }
 
-
-
 func (ctx *ContextBase) Params() Params {
 	return &ctx.ParamsArray
 }
@@ -313,7 +313,7 @@ func (ctx *ContextBase) Cookies() []*Cookie {
 func (ctx *ContextBase) GetCookie(name string) string {
 	for _, ctx := range ctx.cookies {
 		if ctx.Name == name {
-			return ctx.Value	
+			return ctx.Value
 		}
 	}
 	return ""
@@ -326,18 +326,49 @@ func (ctx *ContextBase) SetCookie(cookie *SetCookie) {
 }
 
 func (ctx *ContextBase) SetCookieValue(name, value string, maxAge int) {
-	ctx.ResponseWriter.Header().Add("Set-Cookie", fmt.Sprintf("%s=%s; Max-Age=%d", name, value ,maxAge))
-//	ctx.SetCookie(&http.Cookie{Name: name, Value: url.QueryEscape(value), Path: "/", MaxAge: maxAge})
+	ctx.ResponseWriter.Header().Add("Set-Cookie", fmt.Sprintf("%s=%s; Max-Age=%d", name, url.QueryEscape(value), maxAge))
+	//	ctx.SetCookie(&http.Cookie{Name: name, Value: url.QueryEscape(value), Path: "/", MaxAge: maxAge})
 }
 
 func (ctx *ContextBase) GetSession() SessionData {
 	return ctx.app.Session.SessionLoad(ctx)
-} 
+}
+
 func (ctx *ContextBase) SetSession(sess SessionData) {
 	ctx.app.Session.SessionSave(sess)
 }
 
+var emptyMultipartForm = &multipart.Form{
+	Value: make(map[string][]string),
+	File:  make(map[string][]*multipart.FileHeader),
+}
 
+func (ctx *ContextBase) FormValue() map[string][]string {
+	ctx.parseForm()
+	return ctx.form.Value
+}
+
+func (ctx *ContextBase) FormFile() map[string][]*multipart.FileHeader {
+	ctx.parseForm()
+	return ctx.form.File
+}
+
+func (ctx *ContextBase) parseForm() error {
+	if ctx.form != emptyMultipartForm {
+		return nil
+	}
+	_, params, err := mime.ParseMediaType(ctx.GetHeader(HeaderContentType))
+	if err != nil {
+		ctx.Error(err)
+		return err
+	}
+
+	f, err := multipart.NewReader(ctx, params["boundary"]).ReadForm(defaultMaxMemory)
+	if f != nil {
+		ctx.form = f
+	}
+	return err
+}
 
 // Implement request redirection.
 //
@@ -363,7 +394,7 @@ func (ctx *ContextBase) Push(target string, opts *protocol.PushOptions) error {
 	return err
 }
 
-func (ctx *ContextBase) WriteView(path string,i interface{}) error {	
+func (ctx *ContextBase) WriteView(path string, i interface{}) error {
 	if i == nil {
 		i = ctx.keys
 	}
@@ -373,7 +404,7 @@ func (ctx *ContextBase) WriteView(path string,i interface{}) error {
 
 func (ctx *ContextBase) WriteString(i string) (err error) {
 	_, err = ctx.Write(*(*[]byte)(unsafe.Pointer(&i)))
-	return 
+	return
 }
 
 func (ctx *ContextBase) WriteJson(i interface{}) error {
@@ -392,12 +423,9 @@ func (ctx *ContextBase) WriteFile(path string) (err error) {
 	return
 }
 
-
-
 func (ctx *ContextBase) ReadBind(i interface{}) error {
 	return ctx.app.Binder.Bind(ctx, i)
 }
-
 
 func (ctx *ContextBase) WriteRender(i interface{}) error {
 	var r Renderer
@@ -472,13 +500,12 @@ func (ctx *ContextBase) Fatal(args ...interface{}) {
 		ctx.WriteHeader(500)
 		ctx.WriteRender(map[string]string{
 			// "error":	fmt.Sprint(args...),
-			"status":	"500",
-			"x-request-id":	ctx.RequestID(),
+			"status":       "500",
+			"x-request-id": ctx.RequestID(),
 		})
 	}
 	ctx.End()
 }
-
 
 func (ctx *ContextBase) Debugf(format string, args ...interface{}) {
 	ctx.logReset().Debug(fmt.Sprintf(format, args...))
@@ -499,8 +526,8 @@ func (ctx *ContextBase) Fatalf(format string, args ...interface{}) {
 	// 结束Context
 	ctx.WriteHeader(500)
 	ctx.WriteRender(map[string]string{
-		"status":	"500",
-		"x-request-id":	ctx.RequestID(),
+		"status":       "500",
+		"x-request-id": ctx.RequestID(),
 	})
 	ctx.End()
 }
@@ -522,11 +549,9 @@ func (ctx *ContextBase) WithFields(fields Fields) LogOut {
 	return ctx.log.WithFields(fields)
 }
 
-
 func (ctx *ContextBase) App() *App {
 	return ctx.app
 }
-
 
 func (ctx *ContextBase) readCookies(line string) {
 	if len(line) == 0 {
@@ -552,8 +577,6 @@ func (ctx *ContextBase) readCookies(line string) {
 		ctx.cookies = append(ctx.cookies, &Cookie{Name: name, Value: val})
 	}
 }
-
-
 
 func (p *ParamsArray) GetParam(key string) string {
 	for i, str := range p.Keys {
@@ -624,8 +647,6 @@ func (q *QueryUrl) readQuery(query string) (err error) {
 	}
 	return err
 }
-
-
 
 func parseCookieValue(raw string, allowDoubleQuote bool) (string, bool) {
 	// Strip the quotes, if present.

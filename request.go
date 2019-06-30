@@ -1,16 +1,15 @@
 package eudore
 
-
 import (
-	"io"
-	"fmt"
 	"bytes"
-	"strings"
+	"crypto/tls"
+	"fmt"
+	"github.com/eudore/eudore/protocol"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"crypto/tls"
-	"github.com/eudore/eudore/protocol"
+	"strings"
 )
 
 type (
@@ -29,7 +28,7 @@ type (
 	// 将net/http.Request转换成RequestReader。
 	RequestReaderHttp struct {
 		http.Request
-		header	protocol.Header
+		header protocol.Header
 	}
 	// Modify the protocol.RequestReader method and request uri inside the internal redirect.
 	//
@@ -37,7 +36,7 @@ type (
 	RequestReaderRedirect struct {
 		protocol.RequestReader
 		method string
-		uri	string
+		uri    string
 	}
 	RequestReaderSeeker struct {
 		protocol.RequestReader
@@ -49,21 +48,20 @@ type (
 		err error
 	}
 	RequestReaderTest struct {
-		method		string
-		url			*url.URL
-		proto		string
-		header		HeaderMap
-		body		io.Reader
+		method string
+		url    *url.URL
+		proto  string
+		header HeaderMap
+		body   io.Reader
 	}
 )
 
-
-var _ protocol.RequestReader		=	&RequestReaderHttp{}
+var _ protocol.RequestReader = &RequestReaderHttp{}
 
 func NewRequestReaderHttp(r *http.Request) protocol.RequestReader {
 	return &RequestReaderHttp{
-		Request:	*r,
-		header:	HeaderMap(r.Header),
+		Request: *r,
+		header:  HeaderMap(r.Header),
 	}
 }
 
@@ -78,15 +76,15 @@ func (r *RequestReaderHttp) Read(p []byte) (int, error) {
 }
 
 func (r *RequestReaderHttp) Method() string {
-	return r.Request.Method 
-} 
+	return r.Request.Method
+}
 
 func (r *RequestReaderHttp) Proto() string {
 	return r.Request.Proto
 }
 
 func (r *RequestReaderHttp) Host() string {
-	return r.Request.Host	
+	return r.Request.Host
 }
 
 func (r *RequestReaderHttp) RequestURI() string {
@@ -95,7 +93,7 @@ func (r *RequestReaderHttp) RequestURI() string {
 
 func (r *RequestReaderHttp) Header() protocol.Header {
 	return r.header
-} 
+}
 
 func (r *RequestReaderHttp) RemoteAddr() string {
 	return r.Request.RemoteAddr
@@ -109,12 +107,11 @@ func (r *RequestReaderHttp) GetNetHttpRequest() *http.Request {
 	return &r.Request
 }
 
-
-func NewRequestReaderRedirect(r protocol.RequestReader, method, uri string) (protocol.RequestReader) {
+func NewRequestReaderRedirect(r protocol.RequestReader, method, uri string) protocol.RequestReader {
 	return &RequestReaderRedirect{
-		RequestReader:	r,
-		method:			method,
-		uri:			uri,
+		RequestReader: r,
+		method:        method,
+		uri:           uri,
 	}
 }
 
@@ -126,15 +123,15 @@ func (r *RequestReaderRedirect) RemoteAddr() string {
 	return r.uri
 }
 
-func NewRequestReaderSeeker(r protocol.RequestReader) (RequestReadSeeker) {
+func NewRequestReaderSeeker(r protocol.RequestReader) RequestReadSeeker {
 	rs, ok := r.(RequestReadSeeker)
 	if ok {
 		return rs
 	}
 	bts, _ := ioutil.ReadAll(r)
 	return &RequestReaderSeeker{
-		RequestReader:	r,
-		reader:			bytes.NewReader(bts),
+		RequestReader: r,
+		reader:        bytes.NewReader(bts),
 	}
 }
 
@@ -162,11 +159,7 @@ func NewRequestReaderTest(method, addr string, body interface{}) (protocol.Reque
 	}
 	switch t := body.(type) {
 	case string:
-		data, err := ioutil.ReadFile(t)
-		if err != nil {
-			return nil, err
-		}
-		r.body = bytes.NewReader(data)
+		r.body = strings.NewReader(t)
 	case []byte:
 		r.body = bytes.NewReader(t)
 	case io.Reader:
@@ -218,9 +211,8 @@ func (r *RequestReaderTest) TLS() *tls.ConnectionState {
 }
 
 func (r *RequestWriterHttp) Header() protocol.Header {
-	return HeaderMap(r.Request.Header)	
+	return HeaderMap(r.Request.Header)
 }
-
 
 func (r *RequestWriterHttp) Do() (protocol.ResponseReader, error) {
 	if r.err != nil {
@@ -232,7 +224,6 @@ func (r *RequestWriterHttp) Do() (protocol.ResponseReader, error) {
 	}
 	return NewResponseReaderHttp(resp), nil
 }
-
 
 func transbody(body interface{}) (io.Reader, error) {
 	if body == nil {

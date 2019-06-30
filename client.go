@@ -1,9 +1,9 @@
 package eudore
 
 import (
+	"github.com/eudore/eudore/protocol"
 	"io"
 	"net/http"
-	"github.com/eudore/eudore/protocol"
 )
 
 type (
@@ -14,6 +14,7 @@ type (
 		*http.Client
 	}
 )
+
 var (
 	DefultClientHttp = NewClientHttp()
 )
@@ -24,15 +25,15 @@ func NewRequest(method string, url string, body io.Reader) protocol.RequestWrite
 
 func NewClientHttp() Client {
 	return &ClientHttp{
-		Client:	&http.Client{},
+		Client: &http.Client{},
 	}
 }
 
 func (clt *ClientHttp) NewRequest(method string, url string, body io.Reader) protocol.RequestWriter {
-	req, err := http.NewRequest(method ,url ,body)
+	req, err := http.NewRequest(method, url, body)
 	return &RequestWriterHttp{
-		Client:		clt.Client,
-		Request:	req,
-		err:		err,
+		Client:  clt.Client,
+		Request: req,
+		err:     err,
 	}
 }

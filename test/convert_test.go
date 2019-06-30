@@ -2,9 +2,9 @@ package test
 
 import (
 	"fmt"
-	"testing"
-	"github.com/kr/pretty"
 	"github.com/eudore/eudore"
+	"github.com/kr/pretty"
+	"testing"
 )
 
 type (
@@ -16,22 +16,23 @@ type (
 		A string
 		B string
 	}
-	ST3 struct{
-		C 	*ST
+	ST3 struct {
+		C *ST
 	}
 	ST4 struct {
-		C 	*ST2
+		C *ST2
 	}
 	ST5 struct {
-		C 	interface{}
-		D1 	interface{}
-		D2 	interface{}
+		C  interface{}
+		D1 interface{}
+		D2 interface{}
 	}
 )
+
 func TestConvertTo1(*testing.T) {
 	{
 
-		var s ST = ST{A:1}
+		var s ST = ST{A: 1}
 		var s1 ST
 		var m1 = make(map[string]int)
 		eudore.ConvertTo(&s, &s1)
@@ -55,7 +56,7 @@ func TestConvertTo1(*testing.T) {
 
 func TestConvertTo2(*testing.T) {
 	{
-		var s ST = ST{A:1}
+		var s ST = ST{A: 1}
 		var s1 ST2
 		var m1 = make(map[string]string)
 		eudore.ConvertTo(&s, &s1)
@@ -80,8 +81,8 @@ func TestConvertTo2(*testing.T) {
 func TestConvertTo3(*testing.T) {
 	{
 		var m = map[string]interface{}{
-			"C":	map[string]string{
-				"A":	"11",
+			"C": map[string]string{
+				"A": "11",
 			},
 		}
 		var s1 ST3
@@ -93,8 +94,8 @@ func TestConvertTo3(*testing.T) {
 	}
 	{
 		var s ST3 = ST3{
-			C:	&ST{
-				A:	1,
+			C: &ST{
+				A: 1,
 			},
 		}
 		var s1 ST4
@@ -106,15 +107,14 @@ func TestConvertTo3(*testing.T) {
 	}
 }
 
-
 func TestConvertTo4(*testing.T) {
 	{
 		var m = map[string]interface{}{
-			"D1":	map[string]string{
-				"A":	"11",
+			"D1": map[string]string{
+				"A": "11",
 			},
-			"D2":	&ST{
-				A:	2,
+			"D2": &ST{
+				A: 2,
 			},
 		}
 		var s1 ST5
@@ -126,14 +126,14 @@ func TestConvertTo4(*testing.T) {
 	}
 	{
 		var s ST5 = ST5{
-			C:	map[string]string{
-				"A":	"1",
+			C: map[string]string{
+				"A": "1",
 			},
-			D1:	map[string]int{
-				"A":	2,
+			D1: map[string]int{
+				"A": 2,
 			},
-			D2:	&ST{
-				A:	3,
+			D2: &ST{
+				A: 3,
 			},
 		}
 		var s1 ST4

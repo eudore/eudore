@@ -23,43 +23,39 @@ package test
 import (
 	"strings"
 	"testing"
-	
-//	"fmt"
-//	"github.com/kr/pretty"
+	//	"fmt"
+	//	"github.com/kr/pretty"
 )
-
 
 func TestRadix(t *testing.T) {
 	tree := NewRadixTree()
 	tree.Insert("test", 1)
-//	fmt.Printf("%# v\n", pretty.Formatter(tree))
+	//	fmt.Printf("%# v\n", pretty.Formatter(tree))
 	tree.Insert("test22", 1)
-//	fmt.Printf("%# v\n", pretty.Formatter(tree))
+	//	fmt.Printf("%# v\n", pretty.Formatter(tree))
 	tree.Insert("team", 3)
 	tree.Insert("apple", 4)
 	tree.Insert("append", 12)
 	tree.Insert("app", 5)
 	tree.Insert("append", 6)
 	tree.Insert("interface", 7)
-//	fmt.Printf("%# v\n", pretty.Formatter(tree))
+	//	fmt.Printf("%# v\n", pretty.Formatter(tree))
 	t.Log(tree.Lookup("append"))
 }
 
-
 type (
 	radixTree struct {
-		root		radixNode
+		root radixNode
 	}
 	radixNode struct {
-		path		string
-		children	[]*radixNode
-		key			string
-		val			interface{}
+		path     string
+		children []*radixNode
+		key      string
+		val      interface{}
 	}
 )
 
-
-func NewRadixTree() *radixTree{
+func NewRadixTree() *radixTree {
 	return &radixTree{radixNode{}}
 }
 
@@ -69,7 +65,7 @@ func (r *radixNode) InsertNode(path, key string, value interface{}) {
 		// 路径空就设置当前node的值
 		r.key = key
 		r.val = value
-	}else {
+	} else {
 		// 否则新增node
 		r.children = append(r.children, &radixNode{path: path, key: key, val: value})
 	}
@@ -86,11 +82,11 @@ func (r *radixNode) SplitNode(pathKey, edgeKey string) *radixNode {
 			// 直接新增Node，原Node数据仅改变路径为截取后的后段路径
 			newNode.children = append(newNode.children, &radixNode{
 				// 截取路径
-				path:	strings.TrimPrefix(edgeKey, pathKey),
+				path: strings.TrimPrefix(edgeKey, pathKey),
 				// 复制数据
-				key:	r.children[i].key,
-				val:	r.children[i].val,
-				children:	r.children[i].children,
+				key:      r.children[i].key,
+				val:      r.children[i].val,
+				children: r.children[i].children,
 			})
 			// 设置radixNode的child[i]的Node为分叉Node
 			// 原理路径Node的数据移到到了分叉Node的child里面，原Node对象GC释放。
@@ -103,13 +99,13 @@ func (r *radixNode) SplitNode(pathKey, edgeKey string) *radixNode {
 }
 
 func (t *radixTree) Insert(key string, val interface{}) {
-	t.recursiveInsertTree(&t.root, key, key ,val)
+	t.recursiveInsertTree(&t.root, key, key, val)
 }
 
 // 给currentNode递归添加，路径为containKey的Node
 //
 // targetKey和targetValue为新Node数据。
-func (t *radixTree) recursiveInsertTree(currentNode *radixNode,  containKey string, targetKey string, targetValue interface{}) {
+func (t *radixTree) recursiveInsertTree(currentNode *radixNode, containKey string, targetKey string, targetValue interface{}) {
 	for i, _ := range currentNode.children {
 		// 检查当前遍历的Node和插入路径是否有公共路径
 		// subStr是两者的公共路径，find表示是否有
@@ -121,7 +117,7 @@ func (t *radixTree) recursiveInsertTree(currentNode *radixNode,  containKey stri
 				nextTargetKey := strings.TrimPrefix(containKey, currentNode.children[i].path)
 				// 当前node新增子Node可能原本有多个child，所以需要递归添加
 				t.recursiveInsertTree(currentNode.children[i], nextTargetKey, targetKey, targetValue)
-			}else {
+			} else {
 				// 如果公共路径不等于当前node的路径
 				// 则将currentNode.children[i]路径分叉
 				// 分叉后的就拥有了公共路径，然后添加新Node
@@ -139,7 +135,6 @@ func (t *radixTree) recursiveInsertTree(currentNode *radixNode,  containKey stri
 	// 没有相同前缀路径存在，直接添加为child
 	currentNode.InsertNode(containKey, targetKey, targetValue)
 }
-
 
 //Lookup: Find if seachKey exist in current radix tree and return its value
 func (t *radixTree) Lookup(searchKey string) (interface{}, bool) {

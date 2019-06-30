@@ -2,21 +2,21 @@ package eudore
 
 import (
 	"testing"
-	
+
 	// "time"
-	"os"
-	"fmt"
-	"runtime/pprof"
 	"context"
-	"net/http"
+	"fmt"
 	"github.com/eudore/eudore/component/server/eudore"
 	"github.com/eudore/eudore/protocol"
+	"net/http"
+	"os"
+	"runtime/pprof"
 )
 
 func TestStart(t *testing.T) {
 	srv := eudore.Server{}
 	srv.Set("", &eudore.HttpConfig{
-		Addr:	":8088",
+		Addr: ":8088",
 	})
 	srv.Set("", protocol.HandlerFunc(func(_ context.Context, w protocol.ResponseWriter, _ protocol.RequestReader) {
 		w.Write([]byte("start eudore server, this default page."))
@@ -26,11 +26,9 @@ func TestStart(t *testing.T) {
 	t.Log(srv.Start())
 }
 
-
-
 func TestHttp(*testing.T) {
 	srv := http.Server{
-		Addr:	":8088",
+		Addr: ":8088",
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.Write([]byte("start eudore server, this default page."))
 		}),

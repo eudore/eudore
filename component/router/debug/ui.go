@@ -1,8 +1,8 @@
 package debug
 
 var (
-	UIpath		=	``
-	UIString	=	`<!DOCTYPE html>
+	UIpath   = ``
+	UIString = `<!DOCTYPE html>
 <html>
 <head>
 	<title></title>

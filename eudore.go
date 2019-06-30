@@ -5,34 +5,34 @@ Eudore是组合App对象后的一种实例化，用于启动主程序。
 */
 
 import (
-	"os"
-	"fmt"
-	"time"
-	"sync"
-	"sort"
 	"context"
-	"net/http"
+	"fmt"
 	"github.com/eudore/eudore/protocol"
+	"net/http"
+	"os"
+	"sort"
+	"sync"
+	"time"
 )
 
 type (
-	// eudore 
+	// eudore
 	Eudore struct {
 		*App
-		Httprequest		sync.Pool
-		Httpresponse	sync.Pool
-		Httpcontext		sync.Pool
-		inits			map[string]initInfo
-		stop 			chan error
-		cmd				*Command
+		Httprequest  sync.Pool
+		Httpresponse sync.Pool
+		Httpcontext  sync.Pool
+		inits        map[string]initInfo
+		stop         chan error
+		cmd          *Command
 	}
 	// eudore reload funcs.
 	InitFunc func(*Eudore) error
 	// Save reloadhook name, index fn.
 	initInfo struct {
-		name	string
-		index	int
-		fn		InitFunc
+		name  string
+		index int
+		fn    InitFunc
 	}
 )
 
@@ -41,23 +41,23 @@ var defaultEudore *Eudore
 // Create a new Eudore.
 func NewEudore(components ...ComponentConfig) *Eudore {
 	app := &Eudore{
-		App:			NewApp(),
-		inits:			make(map[string]initInfo),
-		Httprequest: sync.Pool {
+		App:   NewApp(),
+		inits: make(map[string]initInfo),
+		Httprequest: sync.Pool{
 			New: func() interface{} {
 				return &RequestReaderHttp{}
 			},
 		},
-		Httpresponse: sync.Pool {
+		Httpresponse: sync.Pool{
 			New: func() interface{} {
 				return &ResponseWriterHttp{}
 			},
 		},
-		stop: 			make(chan error, 10),
-		cmd:			NewCommand("start" , "/var/run/eudore.pid"),
+		stop: make(chan error, 10),
+		cmd:  NewCommand("start", "/var/run/eudore.pid"),
 	}
 	// set eudore context pool
-	app.Httpcontext = sync.Pool {
+	app.Httpcontext = sync.Pool{
 		New: func() interface{} {
 			return NewContextBase(app.App)
 		},
@@ -73,11 +73,11 @@ func NewEudore(components ...ComponentConfig) *Eudore {
 	app.RegisterInit("eudore-config", 0x008, InitConfig)
 	app.RegisterInit("eudore-workdir", 0x009, InitWorkdir)
 	app.RegisterInit("eudore-command", 0x00a, InitCommand)
-	app.RegisterInit("eudore-logger", 0x013 , InitLogger)
-	app.RegisterInit("eudore-server", 0x017 , InitServer)
-	app.RegisterInit("eudore-component-info", 0x54 , InitListComponent)
-	app.RegisterInit("eudore-signal", 0x57 , InitSignal)
-	app.RegisterInit("eudore-server-start", 0xff0 , InitServerStart)
+	app.RegisterInit("eudore-logger", 0x013, InitLogger)
+	app.RegisterInit("eudore-server", 0x017, InitServer)
+	app.RegisterInit("eudore-component-info", 0x54, InitListComponent)
+	app.RegisterInit("eudore-signal", 0x57, InitSignal)
+	app.RegisterInit("eudore-server-start", 0xff0, InitServerStart)
 	app.RegisterInit("eudore-test-stop", 0xfff, InitStop)
 	return app
 }
@@ -103,25 +103,25 @@ func (app *Eudore) Run() (err error) {
 //
 // 加载全部配置，然后启动监听全部服务。
 func (app *Eudore) Start() error {
-	defer func(){
-		if _, ok := app.Logger.(LoggerInitHandler); ok  {
+	defer func() {
+		if _, ok := app.Logger.(LoggerInitHandler); ok {
 			app.RegisterComponent("logger", nil)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}()
 
 	// Reload
-	go func(){
+	go func() {
 		app.Info("eudore start reload all func")
 		app.HandleError(app.Init())
 	}()
-	
+
 	// 阻塞主线程
 	time.Sleep(100 * time.Millisecond)
-	err := <- app.stop
+	err := <-app.stop
 	if err == nil {
 		app.Info("eudore stop success.")
-	}else {
+	} else {
 		app.Error("eudore stop error: ", err)
 	}
 	return err
@@ -139,7 +139,7 @@ func (app *Eudore) Init(names ...string) (err error) {
 	var i int
 	var name string
 	num := len(names)
-/*	defer func() {
+	/*	defer func() {
 		if err1 := recover(); err1 != nil {
 			if err2, ok := err1.(error);ok {
 				err = err2
@@ -149,10 +149,10 @@ func (app *Eudore) Init(names ...string) (err error) {
 		}
 	}()*/
 	for i, name = range names {
-		if err = app.inits[name].fn(app);err != nil {
-			return fmt.Errorf("eudore init %d/%d %s error: %v",i + 1, num, name, err)
+		if err = app.inits[name].fn(app); err != nil {
+			return fmt.Errorf("eudore init %d/%d %s error: %v", i+1, num, name, err)
 		}
-		app.Infof("eudore init %d/%d %s success.", i + 1, num, name)
+		app.Infof("eudore init %d/%d %s success.", i+1, num, name)
 	}
 	app.Info("eudore init all success.")
 	return nil
@@ -207,7 +207,6 @@ func (app *Eudore) getInitNames(names []string) []string {
 	return names
 }
 
-
 // Restart Eudore
 // Invoke ServerManager Restart
 func (app *Eudore) Restart() error {
@@ -227,7 +226,6 @@ func (app *Eudore) Shutdown() error {
 	return app.Server.Shutdown(context.Background())
 }
 
-
 // Register a Reload function, index determines the function loading order, and name is used for a specific load function.
 //
 // 注册一个Reload函数，index决定函数加载顺序，name用于特定加载函数。
@@ -235,7 +233,7 @@ func (app *Eudore) RegisterInit(name string, index int, fn InitFunc) {
 	if name != "" {
 		if fn == nil {
 			delete(app.inits, name)
-		}else {
+		} else {
 			app.inits[name] = initInfo{name, index, fn}
 		}
 	}
@@ -257,7 +255,7 @@ func (*Eudore) RegisterSignal(sig os.Signal, bf bool, fn SignalFunc) {
 // Set Pool new func.
 // Type is context, request and response.
 func (app *Eudore) RegisterPool(name string, fn func() interface{}) {
-	switch name{
+	switch name {
 	case "Httpcontext":
 		app.Httpcontext.New = fn
 	case "Httprequest":
@@ -278,102 +276,93 @@ func (app *Eudore) RegisterComponents(names []string, args []interface{}) error 
 
 
 */
-func (app *Eudore) RegisterComponent(name string,  arg interface{}) (c Component,err error) {
+func (app *Eudore) RegisterComponent(name string, arg interface{}) (c Component, err error) {
 	c, err = app.App.RegisterComponent(name, arg)
 	app.HandleError(err)
-	return 
+	return
 }
 
 // Register a static file Handle.
-func (e *Eudore) RegisterStatic(path , dir string) {
-	e.Router.GetFunc(path, func(ctx Context){
+func (app *Eudore) RegisterStatic(path, dir string) {
+	app.Router.GetFunc(path, func(ctx Context) {
 		ctx.WriteFile(dir + ctx.Path())
 	})
 }
 
 // log out
-func (e *Eudore) Debug(args ...interface{}) {
-	e.logReset().Debug(args...)
+func (app *Eudore) Debug(args ...interface{}) {
+	app.logReset().Debug(args...)
 }
 
-func (e *Eudore) Info(args ...interface{}) {
-	e.logReset().Info(args...)
+func (app *Eudore) Info(args ...interface{}) {
+	app.logReset().Info(args...)
 }
 
-func (e *Eudore) Warning(args ...interface{}) {
-	e.logReset().Warning(args...)
+func (app *Eudore) Warning(args ...interface{}) {
+	app.logReset().Warning(args...)
 }
 
-func (e *Eudore) Error(args ...interface{}) {
-	e.logReset().Error(args...)
+func (app *Eudore) Error(args ...interface{}) {
+	app.logReset().Error(args...)
 }
 
-func (e *Eudore) Debugf(format string, args ...interface{}) {
-	e.logReset().Debug(fmt.Sprintf(format, args...))
+func (app *Eudore) Debugf(format string, args ...interface{}) {
+	app.logReset().Debug(fmt.Sprintf(format, args...))
 }
 
-func (e *Eudore) Infof(format string, args ...interface{}) {
-	e.logReset().Info(fmt.Sprintf(format, args...))
+func (app *Eudore) Infof(format string, args ...interface{}) {
+	app.logReset().Info(fmt.Sprintf(format, args...))
 }
 
-func (e *Eudore) Warningf(format string, args ...interface{}) {
-	e.logReset().Warning(fmt.Sprintf(format, args...))
+func (app *Eudore) Warningf(format string, args ...interface{}) {
+	app.logReset().Warning(fmt.Sprintf(format, args...))
 }
 
-func (e *Eudore) Errorf(format string, args ...interface{}) {
-	e.logReset().Error(fmt.Sprintf(format, args...))
+func (app *Eudore) Errorf(format string, args ...interface{}) {
+	app.logReset().Error(fmt.Sprintf(format, args...))
 }
 
-func (e *Eudore) logReset() LogOut {
+func (app *Eudore) logReset() LogOut {
 	file, line := LogFormatFileLine(0)
 	f := Fields{
-		"file":				file,
-		"line":				line,
+		"file": file,
+		"line": line,
 	}
-	return e.Logger.WithFields(f)
+	return app.Logger.WithFields(f)
 }
 
-
-
-
-func (e *Eudore) HandleError(err error) {
+func (app *Eudore) HandleError(err error) {
 	if err != nil {
 		if err != ErrApplicationStop {
-			e.Error(err)
-			e.stop <- err
+			app.Error(err)
+			app.stop <- err
 			return
 		}
-		e.stop <- nil
+		app.stop <- nil
 	}
 }
 
-func (e *Eudore) Handle(ctx Context) {
-	ctx.SetHandler(e.Router.Match(ctx.Method(), ctx.Path(), ctx))
-	ctx.Next()
-}
-
-func (e *Eudore) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (app *Eudore) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// get
-	request := e.Httprequest.Get().(*RequestReaderHttp)
-	response := e.Httpresponse.Get().(*ResponseWriterHttp)
+	request := app.Httprequest.Get().(*RequestReaderHttp)
+	response := app.Httpresponse.Get().(*ResponseWriterHttp)
 	// init
 	ResetRequestReaderHttp(request, req)
 	ResetResponseWriterHttp(response, w)
-	e.EudoreHTTP(req.Context(), response, request)
+	app.EudoreHTTP(req.Context(), response, request)
 	// clean
-	e.Httprequest.Put(request)
-	e.Httpresponse.Put(response)
+	app.Httprequest.Put(request)
+	app.Httpresponse.Put(response)
 }
 
-
-func (e *Eudore) EudoreHTTP(pctx context.Context,w protocol.ResponseWriter, req protocol.RequestReader) {
+func (app *Eudore) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader) {
 	// init
-	ctx := e.Httpcontext.Get().(Context)
+	ctx := app.Httpcontext.Get().(Context)
 	// handle
 	ctx.Reset(pctx, w, req)
-	ctx.SetHandler(e.Router.Match(ctx.Method(), ctx.Path(), ctx))
+	ctx.SetHandler(app.Match(ctx.Method(), ctx.Path(), ctx))
 	ctx.Next()
 	ctx.End()
 	// release
-	e.Httpcontext.Put(ctx)
+	app.Httpcontext.Put(ctx)
 }

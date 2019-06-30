@@ -1,8 +1,8 @@
 package simple
 
 import (
-	"net"
 	"eudore/component/server/simple"
+	"net"
 	"testing"
 )
 

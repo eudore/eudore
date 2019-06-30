@@ -1,8 +1,8 @@
 package websocket
 
 import (
-	"unsafe"
 	"reflect"
+	"unsafe"
 )
 
 func strToBytes(str string) []byte {

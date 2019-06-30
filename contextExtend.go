@@ -9,7 +9,7 @@ type (
 
 func HandlerContextExtent(i interface{}) HandlerFunc {
 	switch fn := i.(type) {
-	case func(ContextData): 
+	case func(ContextData):
 		return func(ctx Context) {
 			fn(ContextData{ctx})
 		}
@@ -41,14 +41,14 @@ func (ctx *ContextData) GetParamFloat32(key string) float32 {
 	return GetStringDefaultFloat32(ctx.GetParam(key), 0)
 }
 
-func (ctx *ContextData) GetParamDefaultFloat32(key string, f float32)  float32 {
+func (ctx *ContextData) GetParamDefaultFloat32(key string, f float32) float32 {
 	return GetStringDefaultFloat32(ctx.GetParam(key), f)
 }
 func (ctx *ContextData) GetParamFloat64(key string) float64 {
 	return GetStringDefaultFloat64(ctx.GetParam(key), 0)
 }
 
-func (ctx *ContextData) GetParamDefaultFloat64(key string, f float64)  float64 {
+func (ctx *ContextData) GetParamDefaultFloat64(key string, f float64) float64 {
 	return GetStringDefaultFloat64(ctx.GetParam(key), f)
 }
 
@@ -80,14 +80,14 @@ func (ctx *ContextData) GetHeaderFloat32(key string) float32 {
 	return GetStringDefaultFloat32(ctx.GetHeader(key), 0)
 }
 
-func (ctx *ContextData) GetHeaderDefaultFloat32(key string, f float32)  float32 {
+func (ctx *ContextData) GetHeaderDefaultFloat32(key string, f float32) float32 {
 	return GetStringDefaultFloat32(ctx.GetHeader(key), f)
 }
 func (ctx *ContextData) GetHeaderFloat64(key string) float64 {
 	return GetStringDefaultFloat64(ctx.GetHeader(key), 0)
 }
 
-func (ctx *ContextData) GetHeaderDefaultFloat64(key string, f float64)  float64 {
+func (ctx *ContextData) GetHeaderDefaultFloat64(key string, f float64) float64 {
 	return GetStringDefaultFloat64(ctx.GetHeader(key), f)
 }
 
@@ -119,14 +119,14 @@ func (ctx *ContextData) GetQueryFloat32(key string) float32 {
 	return GetStringDefaultFloat32(ctx.GetQuery(key), 0)
 }
 
-func (ctx *ContextData) GetQueryDefaultFloat32(key string, f float32)  float32 {
+func (ctx *ContextData) GetQueryDefaultFloat32(key string, f float32) float32 {
 	return GetStringDefaultFloat32(ctx.GetQuery(key), f)
 }
 func (ctx *ContextData) GetQueryFloat64(key string) float64 {
 	return GetStringDefaultFloat64(ctx.GetQuery(key), 0)
 }
 
-func (ctx *ContextData) GetQueryDefaultFloat64(key string, f float64)  float64 {
+func (ctx *ContextData) GetQueryDefaultFloat64(key string, f float64) float64 {
 	return GetStringDefaultFloat64(ctx.GetQuery(key), f)
 }
 
@@ -158,14 +158,14 @@ func (ctx *ContextData) GetCookieFloat32(key string) float32 {
 	return GetStringDefaultFloat32(ctx.GetCookie(key), 0)
 }
 
-func (ctx *ContextData) GetCookieDefaultFloat32(key string, f float32)  float32 {
+func (ctx *ContextData) GetCookieDefaultFloat32(key string, f float32) float32 {
 	return GetStringDefaultFloat32(ctx.GetCookie(key), f)
 }
 func (ctx *ContextData) GetCookieFloat64(key string) float64 {
 	return GetStringDefaultFloat64(ctx.GetCookie(key), 0)
 }
 
-func (ctx *ContextData) GetCookieDefaultFloat64(key string, f float64)  float64 {
+func (ctx *ContextData) GetCookieDefaultFloat64(key string, f float64) float64 {
 	return GetStringDefaultFloat64(ctx.GetCookie(key), f)
 }
 
@@ -197,14 +197,14 @@ func (ctx *ContextData) GetSessionFloat32(key string) float32 {
 	return GetDefaultFloat32(ctx.GetSession().Get(key), 0)
 }
 
-func (ctx *ContextData) GetSessionDefaultFloat32(key string, f float32)  float32 {
+func (ctx *ContextData) GetSessionDefaultFloat32(key string, f float32) float32 {
 	return GetDefaultFloat32(ctx.GetSession().Get(key), f)
 }
 func (ctx *ContextData) GetSessionFloat64(key string) float64 {
 	return GetDefaultFloat64(ctx.GetSession().Get(key), 0)
 }
 
-func (ctx *ContextData) GetSessionDefaultFloat64(key string, f float64)  float64 {
+func (ctx *ContextData) GetSessionDefaultFloat64(key string, f float64) float64 {
 	return GetDefaultFloat64(ctx.GetSession().Get(key), f)
 }
 

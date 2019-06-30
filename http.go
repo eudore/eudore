@@ -23,24 +23,21 @@ type (
 	}
 )
 
-
-
 func (h HeaderMap) Get(key string) string {
 	return textproto.MIMEHeader(h).Get(key)
 }
 
-func (h HeaderMap) Set(key , value string) {
+func (h HeaderMap) Set(key, value string) {
 	textproto.MIMEHeader(h).Set(key, value)
 }
 
-func (h HeaderMap) Add(key , value string) {
+func (h HeaderMap) Add(key, value string) {
 	textproto.MIMEHeader(h).Add(key, value)
 }
 
 func (h HeaderMap) Del(key string) {
 	textproto.MIMEHeader(h).Del(key)
 }
-
 
 func (h HeaderMap) Range(fn func(string, string)) {
 	for k, v := range h {

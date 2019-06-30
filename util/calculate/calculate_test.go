@@ -1,12 +1,11 @@
 package calculate
 
 import (
-	"os"
-	"testing"
-	"strings"
 	"eudore/util/calculate"
+	"os"
+	"strings"
+	"testing"
 )
-
 
 func TestCalculate(t *testing.T) {
 

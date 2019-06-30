@@ -2,28 +2,28 @@ package test
 
 import (
 	"fmt"
-	"testing"
-	"github.com/kr/pretty"
 	"github.com/eudore/eudore"
+	"github.com/kr/pretty"
+	"testing"
 )
 
 type (
 	Config struct {
-		Keys	map[string]string	`set:"keys"`
-		Modules	map[string]interface{}	`set:"modules"`
-		Handler	map[string]interface{}	`set:"handler"`
+		Keys    map[string]string      `set:"keys"`
+		Modules map[string]interface{} `set:"modules"`
+		Handler map[string]interface{} `set:"handler"`
 	}
-	
+
 	File struct {
-		Dir	string		`set:"dir"`
-		Secury	string		`set:"secury"`
-		Endpoint	[]string	`set:"endpoint"`
+		Dir      string   `set:"dir"`
+		Secury   string   `set:"secury"`
+		Endpoint []string `set:"endpoint"`
 	}
 )
 
 func TestKeys(*testing.T) {
 	c, _ := eudore.NewConfigEudore(&Config{
-		Keys: make(map[string]string),
+		Keys:    make(map[string]string),
 		Modules: make(map[string]interface{}),
 		Handler: make(map[string]interface{}),
 	})

@@ -1,20 +1,21 @@
 package test
 
 import (
+	"bufio"
+	"encoding/json"
+	"fmt"
 	"io"
 	"os"
-	"fmt"
-	"sync"
-	"time"
-	"bufio"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
-	"encoding/json"
 	"text/template"
+	"time"
 )
+
 const (
-	LogDebug	LoggerLevel = iota
+	LogDebug LoggerLevel = iota
 	LogInfo
 	LogWarning
 	LogError
@@ -29,7 +30,6 @@ func TestLogger(*testing.T) {
 	log.(*LoggerStd).writer.Flush()
 }
 
-
 func BenchmarkLogger(b *testing.B) {
 	b.ReportAllocs()
 	log, _ := NewLoggerStd()
@@ -41,7 +41,7 @@ func BenchmarkLogger(b *testing.B) {
 
 type (
 	LoggerLevel int
-	LogOut interface {
+	LogOut      interface {
 		// Debug(...interface{})
 		Info(...interface{})
 		// Warning(...interface{})
@@ -49,7 +49,7 @@ type (
 		// Fatal(...interface{})
 		WithField(string, interface{}) LogOut
 		WithFields(Fields) LogOut
-	}	
+	}
 	Logger interface {
 		LogOut
 		io.Writer
@@ -61,17 +61,17 @@ type (
 		Init() Fields
 	}
 	LoggerStd struct {
-		pool	sync.Pool
-		writer	*bufio.Writer
-		json 		*json.Encoder
-		tmpl 		*template.Template
+		pool   sync.Pool
+		writer *bufio.Writer
+		json   *json.Encoder
+		tmpl   *template.Template
 	}
 	entryStd struct {
-		logger 		*LoggerStd		`json:"-" xml:"-" yaml:"-"`
-		Level		LoggerLevel		`json:"level"`
-		Fields		Fields		`json:"fields,omitempty"`
-		Time		string		`json:"timestamp"`
-		Message		string		`json:"message,omitempty"`
+		logger  *LoggerStd
+		Level   LoggerLevel `json:"level"`
+		Fields  Fields      `json:"fields,omitempty"`
+		Time    string      `json:"timestamp"`
+		Message string      `json:"message,omitempty"`
 	}
 	FieldsMap map[string]interface{}
 )
@@ -80,30 +80,25 @@ func (level LoggerLevel) String() string {
 	return "Info"
 }
 
-
-
-
-func NewLoggerStd() (Logger, error){
+func NewLoggerStd() (Logger, error) {
 	// file, _ := os.OpenFile("/tmp/01.log", os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0666)
 	tmpl := template.New("test").Delims("{", "}").Option("missingkey=zero")
 	tmpl.Parse("[{.Time} {.Fields.file}:{.Fields.line}] {.Level}: {.Message}\n")
 	l := &LoggerStd{
-		pool:   sync.Pool{},
+		pool: sync.Pool{},
 		// writer:	bufio.NewWriter(file),
-		writer:	bufio.NewWriter(os.Stdout),
+		writer: bufio.NewWriter(os.Stdout),
 	}
 	l.json = json.NewEncoder(l.writer)
 	l.tmpl = tmpl
 	l.pool.New = func() interface{} {
 		return &entryStd{
-			logger:		l,
-			Fields:		make(FieldsMap,5),
+			logger: l,
+			Fields: make(FieldsMap, 5),
 		}
 	}
 	return l, nil
 }
-
-
 
 func (l *LoggerStd) newEntry() *entryStd {
 	entry := l.pool.Get().(*entryStd)
@@ -134,10 +129,6 @@ func (l *LoggerStd) HandlerEntry(i interface{}) {
 	l.tmpl.Execute(l.writer, i)
 }
 
-
-
-
-
 func (e *entryStd) Info(args ...interface{}) {
 	e.Level = LogInfo
 	e.Time = time.Now().Format("2006-01-02 15:04:05")
@@ -160,14 +151,6 @@ func (e *entryStd) WithFields(f Fields) LogOut {
 	return e
 }
 
-
-
-
-
-
-
-
-
 func (f FieldsMap) Add(key string, val interface{}) Fields {
 	f[key] = val
 	return f
@@ -181,13 +164,10 @@ func (f FieldsMap) Range(fn func(key string, val interface{})) {
 
 func (f FieldsMap) Init() Fields {
 	if len(f) > 0 {
-		return make(FieldsMap)	
+		return make(FieldsMap)
 	}
 	return f
 }
-
-
-
 
 func LogFormatFileLine(depth int) (string, int) {
 	_, file, line, ok := runtime.Caller(3 + depth)

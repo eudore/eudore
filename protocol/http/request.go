@@ -1,34 +1,33 @@
 package http
 
 import (
-	"io"
-	"net"
-	"sync"
 	"bufio"
 	"bytes"
-	"strconv"
 	"crypto/tls"
-	"net/textproto"
 	"github.com/eudore/eudore/protocol"
+	"io"
+	"net"
+	"net/textproto"
+	"strconv"
+	"sync"
 )
 
 type Request struct {
-	conn		net.Conn
-	reader		*bufio.Reader
-	method		string
-	requestURI	string
-	proto		string
-	header		Header
+	conn       net.Conn
+	reader     *bufio.Reader
+	method     string
+	requestURI string
+	proto      string
+	header     Header
 	//
-	mu			sync.Mutex
-	length		int
-	sawEOF		bool
-	expect		bool
-	isnotkeep	bool
+	mu        sync.Mutex
+	length    int
+	sawEOF    bool
+	expect    bool
+	isnotkeep bool
 }
 
-
-func(r *Request) Reset(conn net.Conn) error {
+func (r *Request) Reset(conn net.Conn) error {
 	r.conn = conn
 	r.reader.Reset(conn)
 	r.header.Reset()
@@ -67,7 +66,7 @@ func(r *Request) Reset(conn net.Conn) error {
 	return err
 }
 
-func(r *Request) Read(p []byte) (int, error) {
+func (r *Request) Read(p []byte) (int, error) {
 	r.mu.Lock()
 	// First judge whether it has been read
 	// 先判断是否已经读取完毕
@@ -88,7 +87,7 @@ func(r *Request) Read(p []byte) (int, error) {
 		// read return EOF
 		// 读取返回EOF
 		r.sawEOF = true
-	}else if err == nil && n > 0 {
+	} else if err == nil && n > 0 {
 		// Reduce the length of unread data
 		// 减少未读数据长度
 		r.length -= n
@@ -103,7 +102,7 @@ func(r *Request) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func(r *Request) Method() string {
+func (r *Request) Method() string {
 	return r.method
 }
 
@@ -168,7 +167,7 @@ func parseRequestLine(line []byte) (method, requestURI, proto string, ok bool) {
 func splitHeader(line []byte) (string, string) {
 	i := bytes.Index(line, colonSpace)
 	if i != -1 {
-		return textproto.CanonicalMIMEHeaderKey(string(line[:i])), string(line[i + 2:])
+		return textproto.CanonicalMIMEHeaderKey(string(line[:i])), string(line[i+2:])
 	}
 	return "", ""
 }

@@ -2,12 +2,12 @@
 package calculate
 
 import (
+	"container/list"
 	"fmt"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
-	"container/list"
 )
 
 const (
