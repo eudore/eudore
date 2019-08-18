@@ -5,111 +5,75 @@ Core是组合App对象后的一种实例化，用于启动主程序。
 */
 
 import (
-	// "fmt"
 	"context"
+
 	"github.com/eudore/eudore/protocol"
-	"net/http"
-	"sync"
 )
 
 type (
+	// Core 定义Core对象，是App对象的一种实例化。
 	Core struct {
 		*App
-		Poolctx  sync.Pool
-		Poolreq  sync.Pool
-		Poolresp sync.Pool
 	}
 )
 
+// NewCore 创建一个Core对象，并使用默认组件初始化。
 func NewCore() *Core {
-	app := &Core{
-		App:     NewApp(),
-		Poolctx: sync.Pool{},
-		Poolreq: sync.Pool{
-			New: func() interface{} {
-				return &RequestReaderHttp{}
-			},
-		},
-		Poolresp: sync.Pool{
-			New: func() interface{} {
-				return &ResponseWriterHttp{}
-			},
-		},
-	}
-
-	app.Poolctx.New = func() interface{} {
-		return NewContextBase(app.App)
-	}
-
-	// 初始化组件
-	app.RegisterComponents(
-		[]string{"logger", "config", "router", "server", "cache", "session", "view"},
-		[]interface{}{nil, nil, nil, nil, nil, nil, nil},
-	)
-	return app
+	return &Core{App: NewApp()}
 }
 
-// 加载配置然后启动Core。
+// Run 加载配置然后启动Core。
 func (app *Core) Run() (err error) {
-	// parse config
-	err = app.Config.Parse()
-	if err != nil {
-		return
+	defer app.Logger.Sync()
+	if initlog, ok := app.Logger.(LoggerInitHandler); ok {
+		app.Logger, _ = NewLoggerStd(nil)
+		initlog.NextHandler(app.Logger)
 	}
-
-	// start serverv
-	ComponentSet(app.Server, "handler", app)
-	if err != nil {
-		return
-	}
+	// start server
+	app.Server.AddHandler(app)
+	defer app.Logger.Sync()
 	return app.Server.Start()
 }
 
-// 监听一个http端口
+// Listen 监听一个http端口
 func (app *Core) Listen(addr string) *Core {
-	ComponentSet(app.Server, "config.listeners.+", &ServerListenConfig{
+	conf := ServerListenConfig{
 		Addr: addr,
-	})
+	}
+	ln, err := conf.Listen()
+	if err != nil {
+		app.Error(err)
+	}
+	app.Server.AddListener(ln)
 	return app
 }
 
-// 监听一个https端口，如果支持默认开启h2
+// ListenTLS 监听一个https端口，如果支持默认开启h2
 func (app *Core) ListenTLS(addr, key, cert string) *Core {
-	ComponentSet(app.Server, "config.listeners.+", &ServerListenConfig{
+	conf := ServerListenConfig{
 		Addr:     addr,
 		Https:    true,
 		Http2:    true,
 		Keyfile:  key,
 		Certfile: cert,
-	})
+	}
+	ln, err := conf.Listen()
+	if err != nil {
+		app.Error(err)
+	}
+	app.Server.AddListener(ln)
 	return app
 }
 
-func (app *Core) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	ctx := app.Poolctx.Get().(Context)
-	request := app.Poolreq.Get().(*RequestReaderHttp)
-	response := app.Poolresp.Get().(*ResponseWriterHttp)
-	// init
-	ResetRequestReaderHttp(request, req)
-	ResetResponseWriterHttp(response, w)
-	// handle
-	ctx.Reset(req.Context(), response, request)
-	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx))
-	ctx.Next()
-	// clean
-	app.Poolreq.Put(request)
-	app.Poolresp.Put(response)
-	app.Poolctx.Put(ctx)
-}
-
+// EudoreHTTP 方法实现protocol.HandlerHttp接口，处理http请求。
 func (app *Core) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader) {
 	// init
-	ctx := app.Poolctx.Get().(Context)
+	ctx := app.ContextPool.Get().(Context)
 	// handle
 	ctx.Reset(pctx, w, req)
 	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx))
 	ctx.Next()
 	ctx.End()
 	// release
-	app.Poolctx.Put(ctx)
+	app.ContextPool.Put(ctx)
 }

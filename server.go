@@ -1,30 +1,18 @@
-/*
-Server
-
-用于启动http服务
-*/
 package eudore
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"errors"
 	"fmt"
-	"io/ioutil"
-	"math/big"
+	"log"
 	"net"
 	"net/http"
-	"os"
-	"os/exec"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/eudore/eudore/protocol"
 )
 
+// 定义ServerState的值。
 const (
 	ServerStateInit ServerState = iota
 	ServerStateRun
@@ -34,94 +22,86 @@ const (
 	EUDORE_GRACEFUL_ADDRS = "EUDORE_GRACEFUL_ADDRS"
 )
 
-var (
-	ErrArgsNotArray        = errors.New("args is noy array.")
-	ErrArgsNotServerConfig = errors.New("args is noy server config.")
-)
-
 type (
+	// ServerState 定义Server的状态。
 	ServerState = int
-	Server      interface {
-		Component
+	// Server 定义启动http服务的对象。
+	Server interface {
+		AddHandler(protocol.HandlerHttp)
+		AddListener(l net.Listener)
 		Start() error
-		Restart() error
 		Close() error
 		Shutdown(ctx context.Context) error
 	}
+	// ServerConfigStd 定义ServerStd使用的配置
+	ServerConfigStd struct {
+		// ReadTimeout is the maximum duration for reading the entire
+		// request, including the body.
+		//
+		// Because ReadTimeout does not let Handlers make per-request
+		// decisions on each request body's acceptable deadline or
+		// upload rate, most users will prefer to use
+		// ReadHeaderTimeout. It is valid to use them both.
+		ReadTimeout time.Duration `set:"readtimeout" description:"Http server read timeout."`
 
-	ServerListenConfig struct {
-		Addr      string `set:"addr" description:"Listen addr."`
-		Https     bool   `set:"https" description:"Is https."`
-		Http2     bool   `set:"http2" description:"Is http2."`
-		Mutual    bool   `set:"mutual" description:"Is mutual tls."`
-		Certfile  string `set:"certfile" description:"Http server cert file."`
-		Keyfile   string `set:"keyfile" description:"Http server key file."`
-		TrustFile string `set:"trustfile" description:"Http client ca file."`
-	}
+		// ReadHeaderTimeout is the amount of time allowed to read
+		// request headers. The connection's read deadline is reset
+		// after reading the headers and the Handler can decide what
+		// is considered too slow for the body.
+		ReadHeaderTimeout time.Duration // Go 1.8
 
-	// 通用Server配置信息。
-	//
-	// 记录一个sever的组件名称、监听地址、是否https、是否http2、https证书、双向https信任证书、超时时间、请求处理对象。
-	ServerGeneralConfig struct {
-		Name         string                `set:"name"`
-		ReadTimeout  time.Duration         `set:"readtimeout" description:"Http server read timeout."`
-		WriteTimeout time.Duration         `set:"writetimeout" description:"Http server write timeout."`
-		Handler      interface{}           `set:"-" json:"-" description:"-"`
-		Listeners    []*ServerListenConfig `set:"listeners"`
+		// WriteTimeout is the maximum duration before timing out
+		// writes of the response. It is reset whenever a new
+		// request's header is read. Like ReadTimeout, it does not
+		// let Handlers make decisions on a per-request basis.
+		WriteTimeout time.Duration `set:"writetimeout" description:"Http server write timeout."`
+
+		// IdleTimeout is the maximum amount of time to wait for the
+		// next request when keep-alives are enabled. If IdleTimeout
+		// is zero, the value of ReadTimeout is used. If both are
+		// zero, ReadHeaderTimeout is used.
+		IdleTimeout time.Duration // Go 1.8
+
+		// MaxHeaderBytes controls the maximum number of bytes the
+		// server will read parsing the request header's keys and
+		// values, including the request line. It does not limit the
+		// size of the request body.
+		// If zero, DefaultMaxHeaderBytes is used.
+		MaxHeaderBytes int
 	}
+	// ServerStd 定义使用net/http启动http server。
 	ServerStd struct {
-		// Servers 	[]*stdServerPort
 		*http.Server
-		Config   *ServerGeneralConfig `set:"config"`
-		Listener net.Listener         `set:"listener"`
-		Errfunc  ErrorFunc            `set:"errfunc"`
-		mu       sync.Mutex           `set:"-"`
-		wg       sync.WaitGroup       `set:"-"`
-		state    ServerState          `set:"-"`
+		handler   protocol.HandlerHttp
+		listeners []net.Listener       `set:"listeners"`
+		Print     func(...interface{}) `set:"print"`
+		mu        sync.Mutex           `set:"-"`
+		wg        sync.WaitGroup       `set:"-"`
+		state     ServerState          `set:"-"`
 	}
-	// stdServerPort struct {
-	// 	Addr		string
-	// 	State		ServerState
-	// }
-	// multi
-	// ServerMulti配置，记录多server信息。
-	ServerMultiConfig struct {
-		Name    string
-		Configs []interface{}
-	}
-	// 用于启动多个server组合。
-	ServerMulti struct {
-		*ServerMultiConfig
-		Servers []Server
-		mu      sync.Mutex
-		wg      sync.WaitGroup
+	// netHttpLog 实现一个函数处理log.Logger的内容，用于捕捉net/http.Server输出的error内容。
+	netHttpLog struct {
+		print func(...interface{})
+		log   *log.Logger
 	}
 )
 
-func NewServer(name string, arg interface{}) (Server, error) {
-	name = ComponentPrefix(name, "server")
-	c, err := NewComponent(name, arg)
-	if err != nil {
-		return nil, err
+// NewServerStd 创建一个标准server。
+func NewServerStd(arg interface{}) Server {
+	httpserver := &http.Server{
+		ReadTimeout:  4 * time.Second,
+		WriteTimeout: 4 * time.Second,
+		IdleTimeout:  60 * time.Second,
+		TLSNextProto: nil,
 	}
-	s, ok := c.(Server)
-	if ok {
-		return s, nil
-	}
-	return nil, fmt.Errorf("Component %s cannot be converted to Server type", name)
-}
-
-func NewServerStd(arg interface{}) (Server, error) {
-	config := &ServerGeneralConfig{}
-	ConvertTo(arg, config)
-
+	ConvertTo(arg, httpserver)
 	return &ServerStd{
-		Config:  config,
-		Errfunc: DefaultErrorHandleFunc,
-		state:   ServerStateInit,
-	}, nil
+		Server: httpserver,
+		state:  ServerStateInit,
+	}
 }
 
+// Start 方法使用全部注册的net.Listener启动服务监听。
 func (srv *ServerStd) Start() error {
 	// update server state
 	srv.mu.Lock()
@@ -131,28 +111,15 @@ func (srv *ServerStd) Start() error {
 	srv.state = ServerStateRun
 	srv.mu.Unlock()
 
-	// set handler
-	h, ok := srv.Config.Handler.(http.Handler)
-	if !ok {
-		return fmt.Errorf("server not set handle")
-	}
-
-	// create server
-	srv.Server = &http.Server{
-		Handler:      h,
-		TLSNextProto: nil,
-		ErrorLog:     NewHttpError(srv.Errfunc).Logger(),
+	// setting server
+	srv.Server.Handler = srv
+	if srv.Print != nil {
+		srv.Server.ErrorLog = newNetHttpLog(srv.Print).Logger()
 	}
 
 	// start server
 	errs := NewErrors()
-	for _, listener := range srv.Config.Listeners {
-		// get listen
-		ln, err := listener.Listen()
-		if err != nil {
-			errs.HandleError(err)
-			continue
-		}
+	for i := range srv.listeners {
 		srv.wg.Add(1)
 		go func(ln net.Listener) {
 			err := srv.Server.Serve(ln)
@@ -160,24 +127,15 @@ func (srv *ServerStd) Start() error {
 				errs.HandleError(err)
 			}
 			srv.wg.Done()
-		}(ln)
+		}(srv.listeners[i])
 	}
 
 	// wait over
 	srv.wg.Wait()
-	return errs.GetError()
+	return errs
 }
 
-func (srv *ServerStd) Restart() error {
-	srv.mu.Lock()
-	defer srv.mu.Unlock()
-	err := StartNewProcess()
-	if err == nil {
-		srv.Shutdown(context.Background())
-	}
-	return err
-}
-
+// Close 方法关闭server。
 func (srv *ServerStd) Close() (err error) {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
@@ -188,6 +146,7 @@ func (srv *ServerStd) Close() (err error) {
 	return nil
 }
 
+// Shutdown 方法关闭server
 func (srv *ServerStd) Shutdown(ctx context.Context) error {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
@@ -197,219 +156,61 @@ func (srv *ServerStd) Shutdown(ctx context.Context) error {
 	return srv.Server.Shutdown(ctx)
 }
 
-func (srv *ServerStd) Set(key string, val interface{}) error {
-	switch v := val.(type) {
-	case ErrorFunc:
-		srv.Errfunc = v
-	case func(http.ResponseWriter, *http.Request):
-		srv.Config.Handler = http.HandlerFunc(v)
-	case http.Handler:
-		srv.Config.Handler = val
-	case *ServerGeneralConfig:
-		srv.Config = v
-	case *ServerListenConfig:
-		srv.Config.Listeners = append(srv.Config.Listeners, v)
+// AddHandler 方法设置server的http处理者。
+func (srv *ServerStd) AddHandler(h protocol.HandlerHttp) {
+	srv.handler = h
+}
+
+// AddListener 方法给server新增一个监听者。
+func (srv *ServerStd) AddListener(l net.Listener) {
+	srv.listeners = append(srv.listeners, l)
+}
+
+// ServeHTTP 实现http.Handler接口，处理net/http Server的请求。
+func (srv *ServerStd) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	request := requestReaderHttpPool.Get().(*RequestReaderHttp)
+	response := responseWriterHttpPool.Get().(*ResponseWriterHttp)
+
+	request.Reset(r)
+	response.Reset(w)
+	srv.handler.EudoreHTTP(r.Context(), response, request)
+
+	requestReaderHttpPool.Put(request)
+	responseWriterHttpPool.Put(response)
+}
+
+// Set 方法允许Server设置输出函数和配置
+func (srv *ServerStd) Set(key string, value interface{}) error {
+	switch val := value.(type) {
+	case func(...interface{}):
+		srv.Print = val
+	case ServerConfigStd, *ServerConfigStd:
+		ConvertTo(value, srv.Server)
 	default:
-		return ErrComponentNoSupportField
+		return ErrSeterNotSupportField
 	}
 	return nil
 }
 
-func (srv *ServerStd) SetErrorFunc(fn ErrorFunc) {
-	srv.Errfunc = fn
+// SetPrint 设置server输出函数。
+func (srv *ServerStd) SetPrint(fn func(...interface{})) {
+	srv.Print = fn
 }
 
-func (srv *ServerStd) SetHandler(i interface{}) error {
-	if _, ok := i.(http.Handler); ok {
-		srv.Config.Handler = i
-		return nil
+// newNetHttpLog 实现将一个日志处理函数适配成log.Logger对象。
+func newNetHttpLog(fn func(...interface{})) *netHttpLog {
+	e := &netHttpLog{
+		print: fn,
 	}
-	return fmt.Errorf("Server config Handler object, not convert net.http.Handler type.")
+	e.log = log.New(e, "", 0)
+	return e
 }
 
-func (*ServerStd) GetName() string {
-	return ComponentServerStdName
+func (e *netHttpLog) Write(p []byte) (n int, err error) {
+	e.print(string(p))
+	return 0, nil
 }
 
-func (*ServerStd) Version() string {
-	return ComponentServerStdVersion
-}
-
-func NewServerMulti(i interface{}) (Server, error) {
-	// check args
-	sc := &ServerMultiConfig{}
-	ConvertTo(i, sc)
-
-	s := &ServerMulti{ServerMultiConfig: sc}
-	s.Servers = make([]Server, len(sc.Configs))
-	var err error
-	// creation servers
-	for i, c := range sc.Configs {
-		name := ComponentGetName(c)
-		if len(name) == 0 {
-			return nil, fmt.Errorf("ServerMulti %dth creation parameter could not get the corresponding component name", i)
-		}
-		s.Servers[i], err = NewServer(name, c)
-		if err != nil {
-			return nil, fmt.Errorf("ServerMulti %dth creation Error: %v", i, err)
-		}
-	}
-	return s, nil
-}
-
-func (s *ServerMulti) Start() (err error) {
-	// startup all server
-	errs := NewErrors()
-	s.wg.Add(len(s.Servers))
-	for _, server := range s.Servers {
-		go func(server Server) {
-			err := server.Start()
-			if err != http.ErrServerClosed && err != nil {
-				errs.HandleError(err)
-			}
-			s.wg.Done()
-		}(server)
-	}
-	s.wg.Wait()
-	return errs.GetError()
-}
-func (srv *ServerMulti) Restart() error {
-	srv.mu.Lock()
-	defer srv.mu.Unlock()
-	err := StartNewProcess()
-	if err == nil {
-		srv.Shutdown(context.Background())
-	}
-	return err
-}
-func (srv *ServerMulti) Close() error {
-	for _, server := range srv.Servers {
-		server.Close()
-	}
-	return nil
-}
-func (srv *ServerMulti) Shutdown(ctx context.Context) error {
-	for _, server := range srv.Servers {
-		server.Shutdown(ctx)
-	}
-	return nil
-}
-
-func (s *ServerMultiConfig) GetName() string {
-	return ComponentServerMultiName
-}
-
-func (s *ServerMultiConfig) Version() string {
-	return ComponentServerMultiVersion
-}
-
-func (sgc *ServerGeneralConfig) GetName() string {
-	return sgc.Name
-}
-
-func (slc *ServerListenConfig) Listen() (net.Listener, error) {
-	// set default port
-	if len(slc.Addr) == 0 {
-		if slc.Https {
-			slc.Addr = ":80"
-		} else {
-			slc.Addr = ":443"
-		}
-	}
-	// get listen
-	ln, err := GlobalListener.Listen(slc.Addr)
-	if err != nil {
-		return nil, err
-	}
-	if !slc.Https {
-		return ln, nil
-	}
-	// set tls
-	config := &tls.Config{
-		NextProtos:   []string{"http/1.1"},
-		Certificates: make([]tls.Certificate, 1),
-	}
-	if slc.Http2 {
-		config.NextProtos = []string{"h2"}
-	}
-
-	config.Certificates[0], err = loadCertificate(slc.Certfile, slc.Keyfile)
-	if err != nil {
-		return nil, err
-	}
-
-	// set mutual tls
-	if slc.Mutual {
-		config.ClientAuth = tls.RequireAndVerifyClientCert
-		pool := x509.NewCertPool()
-		data, err := ioutil.ReadFile(slc.TrustFile)
-		if err != nil {
-			return nil, err
-		}
-		pool.AppendCertsFromPEM(data)
-		config.ClientCAs = pool
-	}
-	return tls.NewListener(ln, config), nil
-}
-
-func loadCertificate(cret, key string) (tls.Certificate, error) {
-	if cret != "" && key != "" {
-		return tls.LoadX509KeyPair(cret, key)
-	}
-
-	ca := &x509.Certificate{
-		SerialNumber: big.NewInt(1653),
-		Subject: pkix.Name{
-			Country:            []string{"China"},
-			Organization:       []string{"eudore"},
-			OrganizationalUnit: []string{"eudore"},
-		},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(10, 0, 0),
-		SubjectKeyId:          []byte{1, 2, 3, 4, 5},
-		BasicConstraintsValid: true,
-		IsCA:        true,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-	}
-	pool := x509.NewCertPool()
-	pool.AddCert(ca)
-
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	caByte, err := x509.CreateCertificate(rand.Reader, ca, ca, &priv.PublicKey, priv)
-
-	return tls.Certificate{
-		Certificate: [][]byte{caByte},
-		PrivateKey:  priv,
-	}, err
-}
-
-// start new process to handle HTTP Connection
-func StartNewProcess() error {
-	// get addrs and socket listen fds
-	addrs, files := GlobalListener.AllListener()
-
-	// set graceful restart env flag
-	envs := []string{}
-	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, EUDORE_GRACEFUL_ADDRS) {
-			envs = append(envs, value)
-		}
-	}
-	envs = append(envs, fmt.Sprintf("%s=%s", EUDORE_GRACEFUL_ADDRS, strings.Join(addrs, ",")))
-
-	// fork new process
-	cmd := exec.Command(os.Args[0], os.Args[1:]...)
-	cmd.Env = envs
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.ExtraFiles = files
-	err := cmd.Start()
-	if err != nil {
-		return fmt.Errorf("failed to forkexec: %v", err)
-	}
-	return nil
+func (e *netHttpLog) Logger() *log.Logger {
+	return e.log
 }

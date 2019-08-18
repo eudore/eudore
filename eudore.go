@@ -7,158 +7,131 @@ Eudore是组合App对象后的一种实例化，用于启动主程序。
 import (
 	"context"
 	"fmt"
-	"github.com/eudore/eudore/protocol"
-	"net/http"
+	"net"
 	"os"
+	"os/signal"
 	"sort"
 	"sync"
-	"time"
+
+	"github.com/eudore/eudore/protocol"
 )
 
 type (
-	// eudore
+	// Eudore 定义Eudore App对象。
 	Eudore struct {
 		*App
-		Httprequest  sync.Pool
-		Httpresponse sync.Pool
-		Httpcontext  sync.Pool
-		inits        map[string]initInfo
-		stop         chan error
-		cmd          *Command
+		cancel      context.CancelFunc
+		err         error
+		mu          sync.Mutex
+		inits       map[string]initInfo
+		handlers    HandlerFuncs
+		listeners   []net.Listener
+		signalChan  chan os.Signal
+		signalFuncs map[os.Signal][]EudoreFunc
 	}
-	// eudore reload funcs.
-	InitFunc func(*Eudore) error
-	// Save reloadhook name, index fn.
+	// EudoreFunc 定义Eudore app处理函数。
+	EudoreFunc func(*Eudore) error
+	// initInfo 保存初始化函数的信息。
 	initInfo struct {
 		name  string
 		index int
-		fn    InitFunc
+		fn    EudoreFunc
 	}
 )
 
-var defaultEudore *Eudore
-
-// Create a new Eudore.
-func NewEudore(components ...ComponentConfig) *Eudore {
+// NewEudore Create a new Eudore.
+func NewEudore(options ...interface{}) *Eudore {
 	app := &Eudore{
-		App:   NewApp(),
-		inits: make(map[string]initInfo),
-		Httprequest: sync.Pool{
-			New: func() interface{} {
-				return &RequestReaderHttp{}
-			},
-		},
-		Httpresponse: sync.Pool{
-			New: func() interface{} {
-				return &ResponseWriterHttp{}
-			},
-		},
-		stop: make(chan error, 10),
-		cmd:  NewCommand("start", "/var/run/eudore.pid"),
+		App:         NewApp(),
+		inits:       make(map[string]initInfo),
+		signalChan:  make(chan os.Signal),
+		signalFuncs: make(map[os.Signal][]EudoreFunc),
 	}
-	// set eudore context pool
-	app.Httpcontext = sync.Pool{
-		New: func() interface{} {
-			return NewContextBase(app.App)
-		},
-	}
+	app.Context, app.cancel = context.WithCancel(app.Context)
+	app.handlers = HandlerFuncs{app.HandleContext}
 
-	// Register eudore components
-	for _, config := range components {
-		app.RegisterComponent(config.Name, config.Config)
-	}
-	app.HandleError(app.InitComponent())
+	// init options
+	for _, i := range options {
+		switch val := i.(type) {
+		case Config:
+			app.Config = val
+		case Logger:
+			app.Logger = val
+		case Server:
+			app.Server = val
+		case Router:
+			app.Router = val
+		case Binder:
+			app.Binder = val
+		case Renderer:
+			app.Renderer = val
+		case PoolGetFunc:
+			app.ContextPool.New = val
+		default:
+			app.Logger.Warningf("eudore app unid option: %v", i)
 
+		}
+	}
 	// Register eudore default reload func
 	app.RegisterInit("eudore-config", 0x008, InitConfig)
 	app.RegisterInit("eudore-workdir", 0x009, InitWorkdir)
-	app.RegisterInit("eudore-command", 0x00a, InitCommand)
-	app.RegisterInit("eudore-logger", 0x013, InitLogger)
-	app.RegisterInit("eudore-server", 0x017, InitServer)
-	app.RegisterInit("eudore-component-info", 0x54, InitListComponent)
 	app.RegisterInit("eudore-signal", 0x57, InitSignal)
 	app.RegisterInit("eudore-server-start", 0xff0, InitServerStart)
-	app.RegisterInit("eudore-test-stop", 0xfff, InitStop)
+	go func(app *Eudore) {
+		for {
+			select {
+			case <-app.Done():
+			case sig := <-app.signalChan:
+				app.HandleSignal(sig)
+			}
+		}
+	}(app)
 	return app
 }
 
-// Get the default eudore, if it is empty, create a new singleton.
+// Run method parse the current command, if the command is 'start', start eudore.
 //
-// 获取默认的eudore，如果为空，创建一个新的单例。
-func DefaultEudore(components ...ComponentConfig) *Eudore {
-	if defaultEudore == nil {
-		defaultEudore = NewEudore(components...)
-	}
-	return defaultEudore
-}
-
-// Parse the current command, if the command is 'start', start eudore.
-//
-// 解析当前命令，如果命令是启动，则启动eudore。
-func (app *Eudore) Run() (err error) {
+// Run 解析当前命令，如果命令是启动，则启动eudore。
+func (app *Eudore) Run() error {
 	return app.Start()
 }
 
-// Load all configurations and then start listening for all services.
-//
-// 加载全部配置，然后启动监听全部服务。
+// Start 方法加载配置，然后启动全部初始化函数，等待App结束。
 func (app *Eudore) Start() error {
-	defer func() {
-		if _, ok := app.Logger.(LoggerInitHandler); ok {
-			app.RegisterComponent("logger", nil)
-		}
-		time.Sleep(100 * time.Millisecond)
-	}()
-
 	// Reload
 	go func() {
-		app.Info("eudore start reload all func")
+		app.Logger.Info("eudore start reload all func")
 		app.HandleError(app.Init())
 	}()
 
-	// 阻塞主线程
-	time.Sleep(100 * time.Millisecond)
-	err := <-app.stop
-	if err == nil {
-		app.Info("eudore stop success.")
-	} else {
-		app.Error("eudore stop error: ", err)
-	}
-	return err
+	<-app.Done()
+	defer app.Logger.Sync()
+	return app.Err()
 }
 
-// Execute the eudore reload function.
+// Init execute the eudore reload function.
 // names are a list of function names that need to be executed; if the list is empty, execute all reload functions.
 //
-// 执行eudore重新加载函数。
+// Init 执行eudore重新加载函数。
 // names是需要执行的函数名称列表；如果列表为空，执行全部重新加载函数。
 func (app *Eudore) Init(names ...string) (err error) {
+	app.mu.Lock()
 	// get names
 	names = app.getInitNames(names)
 	// exec
-	var i int
-	var name string
 	num := len(names)
-	/*	defer func() {
-		if err1 := recover(); err1 != nil {
-			if err2, ok := err1.(error);ok {
-				err = err2
-			}else {
-				err = fmt.Errorf("eudore init %s %d/%d recover error: %v", name, i + 1, num, err1)
-			}
-		}
-	}()*/
-	for i, name = range names {
+	for i, name := range names {
 		if err = app.inits[name].fn(app); err != nil {
 			return fmt.Errorf("eudore init %d/%d %s error: %v", i+1, num, name, err)
 		}
-		app.Infof("eudore init %d/%d %s success.", i+1, num, name)
+		app.Logger.Infof("eudore init %d/%d %s success.", i+1, num, name)
 	}
-	app.Info("eudore init all success.")
+	app.Logger.Info("eudore init all success.")
+	app.mu.Unlock()
 	return nil
 }
 
-// 处理名称并对reloads排序。
+// getInitNames 处理名称并对reloads排序。
 func (app *Eudore) getInitNames(names []string) []string {
 	// get not names
 	notnames := eachstring(names, func(name string) string {
@@ -210,26 +183,33 @@ func (app *Eudore) getInitNames(names []string) []string {
 // Restart Eudore
 // Invoke ServerManager Restart
 func (app *Eudore) Restart() error {
-	app.cmd.Release()
-	return app.Server.Restart()
+	app.mu.Lock()
+	defer app.mu.Unlock()
+	err := StartNewProcess(app.listeners)
+	if err == nil {
+		app.Server.Shutdown(context.Background())
+	}
+	return err
 }
 
-// Eudore Stop immediately
-func (app *Eudore) Stop() error {
-	app.cmd.Release()
+// Close 方法关闭app。
+func (app *Eudore) Close() error {
+	app.mu.Lock()
+	defer app.mu.Unlock()
 	return app.Server.Close()
 }
 
-// Eudore Wait quit.
+// Shutdown 方法正常退出关闭app。
 func (app *Eudore) Shutdown() error {
-	app.cmd.Release()
+	app.mu.Lock()
+	defer app.mu.Unlock()
 	return app.Server.Shutdown(context.Background())
 }
 
-// Register a Reload function, index determines the function loading order, and name is used for a specific load function.
+// RegisterInit method register a Init function, index determines the function loading order, and name is used for a specific load function.
 //
-// 注册一个Reload函数，index决定函数加载顺序，name用于特定加载函数。
-func (app *Eudore) RegisterInit(name string, index int, fn InitFunc) {
+// RegisterInit 注册一个初始化函数，index决定函数加载顺序，name用于特定加载函数。
+func (app *Eudore) RegisterInit(name string, index int, fn EudoreFunc) {
 	if name != "" {
 		if fn == nil {
 			delete(app.inits, name)
@@ -239,90 +219,131 @@ func (app *Eudore) RegisterInit(name string, index int, fn InitFunc) {
 	}
 }
 
-// Send a specific message to eudore to execute the corresponding signal should function.
-//
-// 给eudore发送一个特定信息，用于执行对应信号应该函数。
-func (*Eudore) HandleSignal(sig os.Signal) error {
-	return SignalHandle(sig)
-}
-
-// Register Signal exec func.
-// bf alise befor,if bf is ture add func to funcs first.
-func (*Eudore) RegisterSignal(sig os.Signal, bf bool, fn SignalFunc) {
-	SignalRegister(sig, bf, fn)
-}
-
-// Set Pool new func.
-// Type is context, request and response.
-func (app *Eudore) RegisterPool(name string, fn func() interface{}) {
-	switch name {
-	case "Httpcontext":
-		app.Httpcontext.New = fn
-	case "Httprequest":
-		app.Httprequest.New = fn
-	case "Httpresponse":
-		app.Httpresponse.New = fn
+// HandleSignal 方法执行对应信号应该函数。
+func (app *Eudore) HandleSignal(sig os.Signal) {
+	fns, ok := app.signalFuncs[sig]
+	if ok {
+		for _, fn := range fns {
+			err := fn(app)
+			if err != nil {
+				app.Logger.Error(err)
+			}
+		}
 	}
 }
 
-/*
-func (app *Eudore) RegisterComponents(names []string, args []interface{}) error {
-	errs := NewErrors()
-	for i, name := range names {
-		errs.HandleError(app.RegisterComponent(name, args[i]))
+// RegisterSignal 方法给Eudore app注册一个信号响应函数。
+func (app *Eudore) RegisterSignal(sig os.Signal, fn EudoreFunc) {
+	fns, ok := app.signalFuncs[sig]
+	if !ok {
+		sigs := make([]os.Signal, 0, len(app.signalFuncs))
+		for i := range app.signalFuncs {
+			sigs = append(sigs, i)
+		}
+
+		signal.Stop(app.signalChan)
+		signal.Notify(app.signalChan, sigs...)
 	}
-	return errs.GetError()
+	app.signalFuncs[sig] = append(fns, fn)
 }
 
-
-*/
-func (app *Eudore) RegisterComponent(name string, arg interface{}) (c Component, err error) {
-	c, err = app.App.RegisterComponent(name, arg)
-	app.HandleError(err)
-	return
+// Listen 监听一个http端口
+func (app *Eudore) Listen(addr string) *Eudore {
+	conf := ServerListenConfig{
+		Addr: addr,
+	}
+	ln, err := conf.Listen()
+	if err != nil {
+		app.Error(err)
+	}
+	app.AddListener(ln)
+	return app
 }
 
-// Register a static file Handle.
-func (app *Eudore) RegisterStatic(path, dir string) {
+// ListenTLS 监听一个https端口，如果支持默认开启h2
+func (app *Eudore) ListenTLS(addr, key, cert string) *Eudore {
+	conf := ServerListenConfig{
+		Addr:     addr,
+		Https:    true,
+		Http2:    true,
+		Keyfile:  key,
+		Certfile: cert,
+	}
+	ln, err := conf.Listen()
+	if err != nil {
+		app.Error(err)
+	}
+	app.AddListener(ln)
+	return app
+}
+
+// AddListener 方式给Server添加一个net.Listener,同时会记录net.Listener对象，用于热重启传递fd。
+func (app *Eudore) AddListener(l net.Listener) {
+	app.listeners = append(app.listeners, l)
+	app.Server.AddListener(l)
+}
+
+// AddStatic method register a static file Handle.
+func (app *Eudore) AddStatic(path, dir string) {
 	app.Router.GetFunc(path, func(ctx Context) {
 		ctx.WriteFile(dir + ctx.Path())
 	})
 }
 
-// log out
+// AddGlobalMiddleware 给eudore添加全局中间件，会在Router.Match前执行。
+func (app *Eudore) AddGlobalMiddleware(hs ...HandlerFunc) {
+	app.handlers = CombineHandlerFuncs(app.handlers[0:len(app.handlers)-1], hs)
+	app.handlers = CombineHandlerFuncs(app.handlers, HandlerFuncs{app.HandleContext})
+}
+
+// HandleContext 实现处理请求上下文函数。
+func (app *Eudore) HandleContext(ctx Context) {
+	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx))
+	ctx.Next()
+	ctx.End()
+}
+
+// Debug 方法输出Debug级别日志。
 func (app *Eudore) Debug(args ...interface{}) {
 	app.logReset().Debug(args...)
 }
 
+// Info 方法输出Info级别日志。
 func (app *Eudore) Info(args ...interface{}) {
 	app.logReset().Info(args...)
 }
 
+// Warning 方法输出Warning级别日志。
 func (app *Eudore) Warning(args ...interface{}) {
 	app.logReset().Warning(args...)
 }
 
+// Error 方法输出Error级别日志。
 func (app *Eudore) Error(args ...interface{}) {
 	app.logReset().Error(args...)
 }
 
+// Debugf 方法输出Debug级别日志。
 func (app *Eudore) Debugf(format string, args ...interface{}) {
 	app.logReset().Debug(fmt.Sprintf(format, args...))
 }
 
+// Infof 方法输出Info级别日志。
 func (app *Eudore) Infof(format string, args ...interface{}) {
 	app.logReset().Info(fmt.Sprintf(format, args...))
 }
 
+// Warningf 方法输出Warning级别日志。
 func (app *Eudore) Warningf(format string, args ...interface{}) {
 	app.logReset().Warning(fmt.Sprintf(format, args...))
 }
 
+// Errorf 方法输出Error级别日志。
 func (app *Eudore) Errorf(format string, args ...interface{}) {
 	app.logReset().Error(fmt.Sprintf(format, args...))
 }
 
-func (app *Eudore) logReset() LogOut {
+func (app *Eudore) logReset() Logout {
 	file, line := LogFormatFileLine(0)
 	f := Fields{
 		"file": file,
@@ -331,38 +352,36 @@ func (app *Eudore) logReset() LogOut {
 	return app.Logger.WithFields(f)
 }
 
+// HandleError 定义Eudore App处理一个error，如果err非空则结束app，当err为ErrApplicationStop正常退出。
 func (app *Eudore) HandleError(err error) {
 	if err != nil {
 		if err != ErrApplicationStop {
-			app.Error(err)
-			app.stop <- err
-			return
+			app.err = err
+			app.Logger.Error("eudore stop error: ", err)
+		} else {
+			app.Logger.Info("eudore stop success.")
 		}
-		app.stop <- nil
+		app.cancel()
 	}
 }
 
-func (app *Eudore) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	// get
-	request := app.Httprequest.Get().(*RequestReaderHttp)
-	response := app.Httpresponse.Get().(*ResponseWriterHttp)
-	// init
-	ResetRequestReaderHttp(request, req)
-	ResetResponseWriterHttp(response, w)
-	app.EudoreHTTP(req.Context(), response, request)
-	// clean
-	app.Httprequest.Put(request)
-	app.Httpresponse.Put(response)
+// Err 实现Context.Errr()返回error，如果app.err为空返回app.Context.Err()。
+func (app *Eudore) Err() error {
+	if app.err != nil {
+		return app.err
+	}
+	return app.Context.Err()
 }
 
+// EudoreHTTP 方法处理一个http请求。
 func (app *Eudore) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader) {
 	// init
-	ctx := app.Httpcontext.Get().(Context)
+	ctx := app.ContextPool.Get().(Context)
 	// handle
 	ctx.Reset(pctx, w, req)
-	ctx.SetHandler(app.Match(ctx.Method(), ctx.Path(), ctx))
+	ctx.SetHandler(app.handlers)
 	ctx.Next()
 	ctx.End()
 	// release
-	app.Httpcontext.Put(ctx)
+	app.ContextPool.Put(ctx)
 }

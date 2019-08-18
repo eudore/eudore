@@ -7,7 +7,7 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	show.Inject(app.Group("/eudore/debug"))
+	show.RoutesInject(app.Group("/eudore/debug"))
 	show.RegisterObject("app", app.App)
 
 	app.Listen(":8088")

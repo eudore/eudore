@@ -9,10 +9,12 @@ import (
 	"github.com/eudore/eudore"
 )
 
+// Shell 定义shell远程ip认证
 type Shell struct {
 	List []string
 }
 
+// NewShell 函数处理一个是shell ram处理者，每10秒会自动更新ip数据。
 func NewShell() *Shell {
 	s := &Shell{}
 	go func() {
@@ -23,9 +25,10 @@ func NewShell() *Shell {
 	return s
 }
 
+// RamHandle 实现ram.RamHandler接口。
 func (s *Shell) RamHandle(id int, action string, ctx eudore.Context) (bool, bool) {
 	ctx.SetParam(eudore.ParamRam, "shell")
-	ip := ctx.RemoteAddr()
+	ip := ctx.RealIP()
 	for _, i := range s.List {
 		if ip == i {
 			return true, true
@@ -34,6 +37,7 @@ func (s *Shell) RamHandle(id int, action string, ctx eudore.Context) (bool, bool
 	return false, false
 }
 
+// Update 方法执行linux who命令，获得登录的远程ip。
 func (s *Shell) Update() {
 	var ips []string
 	body, _ := exec.Command("/usr/bin/who").Output()

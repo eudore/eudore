@@ -18,57 +18,50 @@ type Context interface {
 	SetHandler(HandlerFuncs)
 	Next()
 	End()
-	NewRequest(string, string, io.Reader) (protocol.ResponseReader, error)
-	// context
-	Deadline() (time.Time, bool)
-	Done() <-chan struct{}
-	Err() error
-	Value(key interface{}) interface{}
-	SetValue(interface{}, interface{})
 
 	// request info
 	Read([]byte) (int, error)
 	Host() string
 	Method() string
 	Path() string
-	RemoteAddr() string
+	RealIP() string
 	RequestID() string
 	Referer() string
 	ContentType() string
 	Istls() bool
 	Body() []byte
+	ReadBind(interface{}) error
 
-	// param header cookie session
+	// param query header cookie session
 	Params() Params
 	GetParam(string) string
 	SetParam(string, string)
 	AddParam(string, string)
+	Querys() Querys
 	GetQuery(string) string
 	GetHeader(name string) string
 	SetHeader(string, string)
-	Cookies() []*Cookie
+	Cookies() []Cookie
 	GetCookie(name string) string
 	SetCookie(cookie *SetCookie)
 	SetCookieValue(string, string, int)
-	GetSession() SessionData
-	SetSession(SessionData)
-
+	FormValue(string) string
+	FormValues() map[string][]string
+	FormFile(string) *multipart.FileHeader
+	FormFiles() map[string][]*multipart.FileHeader
 
 	// response
 	Write([]byte) (int, error)
 	WriteHeader(int)
 	Redirect(int, string)
 	Push(string, *protocol.PushOptions) error
-	// render writer 
+	// render writer
 	WriteString(string) error
-	WriteView(string, interface{}) error
 	WriteJson(interface{}) error
 	WriteFile(string) error
-	// binder and renderer
-	ReadBind(interface{}) error
 	WriteRender(interface{}) error
 
-	// log LogOut interface
+	// log Logout interface
 	Debug(...interface{})
 	Info(...interface{})
 	Warning(...interface{})
@@ -79,10 +72,8 @@ type Context interface {
 	Warningf(string, ...interface{})
 	Errorf(string, ...interface{})
 	Fatalf(string, ...interface{})
-	WithField(key string, value interface{}) LogOut
-	WithFields(fields Fields) LogOut
-	// app
-	App() *App
+	WithField(key string, value interface{}) Logout
+	WithFields(fields Fields) Logout
 }
 ```
 

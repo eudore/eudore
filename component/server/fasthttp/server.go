@@ -26,7 +26,8 @@ type (
 )
 
 var (
-	poolreq = sync.Pool{
+	_       eudore.Server = (*Server)(nil)
+	poolreq               = sync.Pool{
 		New: func() interface{} {
 			return &Request{
 				read:   bytes.NewReader(nil),
@@ -83,14 +84,6 @@ func (srv *Server) Start() error {
 
 	srv.wg.Wait()
 	return errs.GetError()
-}
-
-func (srv *Server) Restart() error {
-	err := eudore.StartNewProcess()
-	if err == nil {
-		srv.Fasthttp.Shutdown()
-	}
-	return err
 }
 
 func (srv *Server) Close() error {

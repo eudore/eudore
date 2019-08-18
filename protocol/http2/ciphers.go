@@ -7,6 +7,7 @@ package http2
 // A list of the possible cipher suite ids. Taken from
 // https://www.iana.org/assignments/tls-parameters/tls-parameters.txt
 
+// 定义ssl解密套件
 const (
 	cipher_TLS_NULL_WITH_NULL_NULL               uint16 = 0x0000
 	cipher_TLS_RSA_WITH_NULL_MD5                 uint16 = 0x0001

@@ -60,7 +60,7 @@ func modeudore() {
 	tmpfile.Write(content)
 
 	app := eudore.NewCore()
-	app.RegisterComponent("config-eudore", new(conf))
+	app.Config = eudore.NewConfigEudore(new(conf))
 	app.Config.Set("keys.config", "example.json")
 	app.Config.Set("enable", []string{"debug"})
 

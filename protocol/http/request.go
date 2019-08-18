@@ -9,23 +9,28 @@ import (
 	"net"
 	"net/textproto"
 	"strconv"
+	"strings"
 	"sync"
 )
 
-type Request struct {
-	conn       net.Conn
-	reader     *bufio.Reader
-	method     string
-	requestURI string
-	proto      string
-	header     Header
-	//
-	mu        sync.Mutex
-	length    int
-	sawEOF    bool
-	expect    bool
-	isnotkeep bool
-}
+type (
+	Request struct {
+		conn       net.Conn
+		reader     *bufio.Reader
+		method     string
+		requestURI string
+		path       string
+		rawQuery   string
+		proto      string
+		header     Header
+		//
+		mu        sync.Mutex
+		length    int
+		sawEOF    bool
+		expect    bool
+		isnotkeep bool
+	}
+)
 
 func (r *Request) Reset(conn net.Conn) error {
 	r.conn = conn
@@ -63,6 +68,15 @@ func (r *Request) Reset(conn net.Conn) error {
 	r.sawEOF = r.length == 0
 	r.expect = r.header.Get("Expect") == "100-continue"
 	r.isnotkeep = r.header.Get("Connection") != "keep-alive"
+	// 初始化path和uri参数。
+	pos := strings.IndexByte(r.requestURI, '?')
+	if pos == -1 {
+		r.path = r.requestURI
+		r.rawQuery = ""
+	} else {
+		r.path = r.requestURI[:pos]
+		r.rawQuery = r.requestURI[pos+1:]
+	}
 	return err
 }
 
@@ -114,6 +128,12 @@ func (r *Request) RequestURI() string {
 	return r.requestURI
 }
 
+func (r *Request) Path() string {
+	return r.path
+}
+func (r *Request) RawQuery() string {
+	return r.rawQuery
+}
 func (r *Request) Header() protocol.Header {
 	return &r.header
 }

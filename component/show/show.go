@@ -11,26 +11,30 @@ import (
 
 var objs map[string]interface{} = make(map[string]interface{})
 
+// RegisterObject 函数注册显示的对象。
 func RegisterObject(key string, val interface{}) {
 	objs[key] = val
 }
 
+// DeleteObject 函数删除可以显示的对象。
 func DeleteObject(key string) {
 	delete(objs, key)
 }
 
-func Inject(r eudore.RouterMethod) {
+// InjectRoutes 函数注入show使用的路由。
+func RoutesInject(r eudore.RouterMethod) {
 	r = r.Group("/show")
 	r.GetFunc("/", List)
 	r.GetFunc("/*key", Showkey)
 }
 
+// List 函数处理List请求。
 func List(ctx eudore.Context) {
 	keys := make([]string, 0, len(objs))
-	for k, _ := range objs {
+	for k := range objs {
 		keys = append(keys, k)
 	}
-	ctx.WriteRender(keys)
+	ctx.Render(keys)
 }
 
 func getVal(key1, key2 string) interface{} {
@@ -51,6 +55,7 @@ func getVal(key1, key2 string) interface{} {
 	return getVal(key1[0:index], key1[index:len(key1)])
 }
 
+// Showkey 函数显示key的数据。
 func Showkey(ctx eudore.Context) {
 	val := getVal(ctx.GetParam("key"), "")
 	if val == nil {

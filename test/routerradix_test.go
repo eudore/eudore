@@ -30,20 +30,20 @@ func echoRoute(ctx eudore.Context) {
 }
 
 func TestRadixRouter(*testing.T) {
-	tree := &eudore.RouterRadix{}
-	tree.InsertRoute(newNodeData("/api/v1/node/"))
-	tree.InsertRoute(newNodeData("/api/v1/:list/11"))
-	tree.InsertRoute(newNodeData("/api/v1/:list/22"))
-	tree.InsertRoute(newNodeData("/api/v1/:list/:name"))
-	tree.InsertRoute(newNodeData("/api/v1/:list/*name"))
-	tree.InsertRoute(newNodeData("/api/v1/:list version:v1"))
-	tree.InsertRoute(newNodeData("/api/v1/* version:v1"))
-	tree.InsertRoute(newNodeData("/api/v2/* version:v2"))
-	tree.InsertRoute(newNodeData("/api/*"))
-	tree.InsertRoute(newNodeData("/note/get/:name"))
-	tree.InsertRoute(newNodeData("/note/:method/:name"))
-	tree.InsertRoute(newNodeData("/*"))
-	tree.InsertRoute(newNodeData("/"))
+	tree := eudore.NewRouterRadix()
+	tree.RegisterHandler(newNodeData("/api/v1/node/"))
+	tree.RegisterHandler(newNodeData("/api/v1/:list/11"))
+	tree.RegisterHandler(newNodeData("/api/v1/:list/22"))
+	tree.RegisterHandler(newNodeData("/api/v1/:list/:name"))
+	tree.RegisterHandler(newNodeData("/api/v1/:list/*name"))
+	tree.RegisterHandler(newNodeData("/api/v1/:list version:v1"))
+	tree.RegisterHandler(newNodeData("/api/v1/* version:v1"))
+	tree.RegisterHandler(newNodeData("/api/v2/* version:v2"))
+	tree.RegisterHandler(newNodeData("/api/*"))
+	tree.RegisterHandler(newNodeData("/note/get/:name"))
+	tree.RegisterHandler(newNodeData("/note/:method/:name"))
+	tree.RegisterHandler(newNodeData("/*"))
+	tree.RegisterHandler(newNodeData("/"))
 	// fmt.Printf("%# v\n", pretty.Formatter(tree))
 	// t.Log(getSpiltPath("/api/v1/:list/*"))
 	params := &Params{}
@@ -62,43 +62,43 @@ func TestRadixRouter(*testing.T) {
 }
 
 func TestRadixPath1(*testing.T) {
-	tree := &eudore.RouterRadix{}
-	tree.InsertRoute(newNodeData("/"))
+	tree := eudore.NewRouterRadix()
+	tree.RegisterHandler(newNodeData("/"))
 	params := &Params{}
 	// tree.Set("404", eudore.HandlerFunc(echoRoute))
-	tree.Set("404", echoRoute)
-	tree.Set("405", echoRoute)
+	tree.RegisterHandler("404", "", eudore.HandlerFuncs{echoRoute})
+	tree.RegisterHandler("405", "", eudore.HandlerFuncs{echoRoute})
 	tree.Match("GET", "/", params)
 	tree.Match("GET", "/index", params)
 	tree.Match("11", "/", params)
 }
 
 func TestRadixPath2(*testing.T) {
-	tree := &eudore.RouterRadix{}
-	tree.InsertRoute(newNodeData("/authorizations"))
-	tree.InsertRoute(newNodeData("/authorizations/:id"))
+	tree := eudore.NewRouterRadix()
+	tree.RegisterHandler(newNodeData("/authorizations"))
+	tree.RegisterHandler(newNodeData("/authorizations/:id"))
 	params := &Params{}
 	// tree.Set("404", eudore.HandlerFunc(echoRoute))
-	tree.Set("404", echoRoute)
-	tree.Set("405", echoRoute)
+	tree.RegisterHandler("404", "", eudore.HandlerFuncs{echoRoute})
+	tree.RegisterHandler("405", "", eudore.HandlerFuncs{echoRoute})
 	tree.Match("GET", "/authorizations", params)
 	tree.Match("GET", "/authorizations/:id", params)
 	tree.Match("11", "/", params)
 }
 
 func TestFullRouter(*testing.T) {
-	tree := &eudore.RouterFull{}
-	tree.InsertRoute(newNodeData("/"))
-	tree.InsertRoute(newNodeData("/*"))
-	tree.InsertRoute(newNodeData("/:id|^[a-z]*$"))
-	tree.InsertRoute(newNodeData("/:id|min:4"))
-	tree.InsertRoute(newNodeData("/:id|isnum"))
-	tree.InsertRoute(newNodeData("/:id"))
-	tree.InsertRoute(newNodeData("/api/*id|^[0-9]$"))
-	tree.InsertRoute(newNodeData("/1/*id|min:4"))
-	tree.InsertRoute(newNodeData("/1/*id|isnum"))
-	tree.InsertRoute(newNodeData("/1/*id"))
-	tree.InsertRoute(newNodeData("/*id"))
+	tree := eudore.NewRouterFull()
+	tree.RegisterHandler(newNodeData("/"))
+	tree.RegisterHandler(newNodeData("/*"))
+	tree.RegisterHandler(newNodeData("/:id|^[a-z]*$"))
+	tree.RegisterHandler(newNodeData("/:id|min:4"))
+	tree.RegisterHandler(newNodeData("/:id|isnum"))
+	tree.RegisterHandler(newNodeData("/:id"))
+	tree.RegisterHandler(newNodeData("/api/*id|^[0-9]$"))
+	tree.RegisterHandler(newNodeData("/1/*id|min:4"))
+	tree.RegisterHandler(newNodeData("/1/*id|isnum"))
+	tree.RegisterHandler(newNodeData("/1/*id"))
+	tree.RegisterHandler(newNodeData("/*id"))
 	params := &Params{}
 	tree.Match("GET", "/2", params)
 	tree.Match("GET", "/22", params)

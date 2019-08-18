@@ -21,11 +21,11 @@ func (c *MyController) Get() {
 
 func (c *MyController) GetIdById(id int) {
 	c.Debug("id ", id)
-	c.WriteRender(id)
+	c.Render(id)
 }
 
 func (c *MyController) GetInfoByIdName(id int, name string) {
-	c.WriteRender(id)
+	c.Render(id)
 	c.WriteString(name)
 }
 
@@ -45,7 +45,6 @@ func (*MyController) ControllerRoute() map[string]string {
 
 func main() {
 	app := eudore.NewCore()
-	eudore.Set(app.Router, "print", app.Logger.Debug)
 	app.AddController(&MyController{})
 
 	app.Listen(":8088")

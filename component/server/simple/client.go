@@ -7,12 +7,14 @@ import (
 	"time"
 )
 
+// Client 定义http客户端。
 type Client struct {
 	nc     net.Conn
 	rw     *bufio.ReadWriter
-	header Params
+	header Header
 }
 
+// NewRequest 函数发送一个http请求。
 func NewRequest(method, host, url string) error {
 	// 建立连接
 	nc, err := net.DialTimeout("tcp", host, 2*time.Second)
@@ -22,7 +24,7 @@ func NewRequest(method, host, url string) error {
 	// 创建Http Client
 	c := &Client{
 		nc:     nc,
-		header: make(Params),
+		header: make(Header),
 		rw:     bufio.NewReadWriter(bufio.NewReader(nc), bufio.NewWriter(nc)),
 	}
 	// 设置net/http.Server唯一必要Header host

@@ -53,6 +53,8 @@ func (h *Header) Del(key string) {
 
 func (h *Header) Range(fn func(string, string)) {
 	for i, k := range h.Keys {
-		fn(k, h.Vals[i])
+		if k != "" {
+			fn(k, h.Vals[i])
+		}
 	}
 }

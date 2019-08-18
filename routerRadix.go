@@ -15,10 +15,10 @@ const (
 )
 
 type (
-	// Basic function router based on radix tree implementation.
+	// RouterRadix basic function router based on radix tree implementation.
 	//
 	// There are three basic functions: path parameter, wildcard parameter, default parameter, and parameter verification.
-	// 基于基数树实现的基本功能路由器。
+	// RouterRadix基于基数树实现的基本功能路由器。
 	//
 	// 具有路径参数、通配符参数、默认参数三项基本功能。
 	RouterRadix struct {
@@ -61,7 +61,8 @@ type (
 	}
 )
 
-func NewRouterRadix(interface{}) (Router, error) {
+// NewRouterRadix 创建一个Radix路由器。
+func NewRouterRadix() Router {
 	r := &RouterRadix{
 		Print:       func(...interface{}) {},
 		nodefunc404: HandlerFuncs{DefaultRouter404Func},
@@ -84,21 +85,21 @@ func NewRouterRadix(interface{}) (Router, error) {
 		RouterCore:          r,
 		ControllerParseFunc: ControllerBaseParseFunc,
 	}
-	return r, nil
+	return r
 }
 
-// Register the middleware into the middleware tree and append the handler if it exists.
+// RegisterMiddleware register the middleware into the middleware tree and append the handler if it exists.
 //
 // If the method is not empty, the path is empty and the modified path is '/'.
 //
-// 注册中间件到中间件树中，如果存在则追加处理者。
+// RegisterMiddleware注册中间件到中间件树中，如果存在则追加处理者。
 //
 // 如果方法非空，路径为空，修改路径为'/'。
 func (r *RouterRadix) RegisterMiddleware(method, path string, hs HandlerFuncs) {
 	if len(method) != 0 && len(path) == 0 {
 		path = "/"
 	}
-	r.Print("RegisterMiddleware:", method, path, GetHandlerNames(hs))
+	r.Print("RegisterMiddleware:", method, path, GetHandlerFuncsName(hs))
 	if method == MethodAny {
 		if path == "/" {
 			r.middtree.Insert("", hs)
@@ -114,25 +115,32 @@ func (r *RouterRadix) RegisterMiddleware(method, path string, hs HandlerFuncs) {
 	}
 }
 
-// Register a new method request path to the router
+// RegisterHandler register a new method request path to the router
 //
 // The router matches the handlers available to the current path from the middleware tree and adds them to the front of the handler.
 //
-// 给路由器注册一个新的方法请求路径
+// RegisterHandler 给路由器注册一个新的方法请求路径
 //
 // 路由器会从中间件树中匹配当前路径可使用的处理者，并添加到处理者前方。
 func (r *RouterRadix) RegisterHandler(method string, path string, handler HandlerFuncs) {
-	r.Print("RegisterHandler:", method, path, GetHandlerNames(handler))
-	if method == MethodAny {
+	r.Print("RegisterHandler:", method, path, GetHandlerFuncsName(handler))
+	switch method {
+	case "NotFound", "404":
+		r.nodefunc404 = handler
+		r.node404.handlers = CombineHandlerFuncs(handler, r.middtree.val)
+	case "MethodNotAllowed", "405":
+		r.nodefunc405 = handler
+		r.node405.Wchildren.handlers = CombineHandlerFuncs(handler, r.middtree.val)
+	case MethodAny:
 		for _, method := range RouterAllMethod {
 			r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
 		}
-	} else {
+	default:
 		r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
 	}
 }
 
-// Add a new routing node.
+// insertRoute add a new routing node.
 //
 // If the method is not supported, it will not be added. Requesting the path will respond 405.
 //
@@ -146,16 +154,16 @@ func (r *RouterRadix) RegisterHandler(method string, path string, handler Handle
 //
 // 将路径按节点类型切割，每段路径即为一种类型的节点，然后依次向树追加，然后给最后的节点设置数据。
 //
-// 路径切割见getSpiltPath函数，当前未完善，处理正则可能异常。
-func (t *RouterRadix) insertRoute(method, key string, val HandlerFuncs) {
-	var currentNode *radixNode = t.getTree(method)
-	if currentNode == &t.node405 {
+// insertRoute 路径切割见getSpiltPath函数，当前未完善，处理正则可能异常。
+func (r *RouterRadix) insertRoute(method, key string, val HandlerFuncs) {
+	var currentNode *radixNode = r.getTree(method)
+	if currentNode == &r.node405 {
 		return
 	}
 
 	// 创建节点
 	args := strings.Split(key, " ")
-	for _, path := range getSpiltPath(args[0]) {
+	for _, path := range getSplitPath(args[0]) {
 		currentNode = currentNode.InsertNode(path, newRadixNode(path))
 	}
 
@@ -170,58 +178,25 @@ func (t *RouterRadix) insertRoute(method, key string, val HandlerFuncs) {
 // 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
 //
 // 注意：404不支持额外参数，未实现。
-func (t *RouterRadix) Match(method, path string, params Params) HandlerFuncs {
-	if n := t.getTree(method).recursiveLoopup(path, params); n != nil {
+func (r *RouterRadix) Match(method, path string, params Params) HandlerFuncs {
+	if n := r.getTree(method).recursiveLoopup(path, params); n != nil {
 		return n
 	}
 
 	// 处理404
-	t.node404.AddTagsToParams(params)
-	return t.node404.handlers
+	r.node404.AddTagsToParams(params)
+	return r.node404.handlers
 }
 
-// The router Set method can set the handlers for 404 and 405.
-//
-// 路由器Set方法可以设置404和405的处理者。
-func (r *RouterRadix) Set(key string, i interface{}) error {
-	args := strings.Split(key, " ")
-	switch args[0] {
-	case "404":
-		hs := NewHandlerFuncs(i)
-		if hs == nil {
-			return ErrRouterSetNoSupportType
-		}
-
-		r.node404.SetTags(args)
-		r.node404.handlers = append(r.middtree.val, hs...)
-		r.nodefunc404 = hs
-	case "405":
-		hs := NewHandlerFuncs(i)
-		if hs == nil {
-			return ErrRouterSetNoSupportType
-		}
-
-		r.node405.Wchildren.SetTags(args)
-		r.node405.Wchildren.handlers = append(r.middtree.val, hs...)
-		r.nodefunc405 = hs
+// Set 方法允许设置Print属性，设置日志输出信息。
+func (r *RouterRadix) Set(key string, value interface{}) error {
+	switch val := value.(type) {
+	case func(...interface{}):
+		r.Print = val
 	default:
-		return ErrComponentNoSupportField
+		return ErrSeterNotSupportField
 	}
 	return nil
-}
-
-// Returns the component name of the current router.
-//
-// 返回当前路由器的组件名称。
-func (*RouterRadix) GetName() string {
-	return ComponentRouterRadixName
-}
-
-// Returns the component version of the current router.
-//
-// 返回当前路由器的组件版本。
-func (*RouterRadix) Version() string {
-	return ComponentRouterRadixVersion
 }
 
 // Create a 405 response radixNode.
@@ -289,22 +264,27 @@ func (r *radixNode) InsertNode(path string, nextNode *radixNode) *radixNode {
 	nextNode.path = path
 	switch nextNode.kind {
 	case radixNodeKindConst:
-		for i, _ := range r.Cchildren {
+		for i := range r.Cchildren {
 			subStr, find := getSubsetPrefix(path, r.Cchildren[i].path)
 			if find {
 				if subStr == r.Cchildren[i].path {
 					nextTargetKey := strings.TrimPrefix(path, r.Cchildren[i].path)
 					return r.Cchildren[i].InsertNode(nextTargetKey, nextNode)
-				} else {
-					newNode := r.SplitNode(subStr, r.Cchildren[i].path)
-					if newNode == nil {
-						panic("Unexpect error on split node")
-					}
-					return newNode.InsertNode(strings.TrimPrefix(path, subStr), nextNode)
 				}
+				newNode := r.SplitNode(subStr, r.Cchildren[i].path)
+				if newNode == nil {
+					panic("Unexpect error on split node")
+				}
+				return newNode.InsertNode(strings.TrimPrefix(path, subStr), nextNode)
 			}
 		}
 		r.Cchildren = append(r.Cchildren, nextNode)
+		// 常量node按照首字母排序。
+		for i := len(r.Cchildren) - 1; i > 0; i-- {
+			if r.Cchildren[i].path[0] < r.Cchildren[i-1].path[0] {
+				r.Cchildren[i], r.Cchildren[i-1] = r.Cchildren[i-1], r.Cchildren[i]
+			}
+		}
 	case radixNodeKindParam:
 		for _, i := range r.Pchildren {
 			if i.path == path {
@@ -320,11 +300,11 @@ func (r *radixNode) InsertNode(path string, nextNode *radixNode) *radixNode {
 	return nextNode
 }
 
-// Bifurcate the child node whose path is edgeKey, and the fork common prefix path is pathKey.
+// SplitNode bifurcate the child node whose path is edgeKey, and the fork common prefix path is pathKey.
 //
-// 对指定路径为edgeKey的子节点分叉，分叉公共前缀路径为pathKey。
+// SplitNode 对指定路径为edgeKey的子节点分叉，分叉公共前缀路径为pathKey。
 func (r *radixNode) SplitNode(pathKey, edgeKey string) *radixNode {
-	for i, _ := range r.Cchildren {
+	for i := range r.Cchildren {
 		if r.Cchildren[i].path == edgeKey {
 			newNode := &radixNode{path: pathKey}
 			newNode.Cchildren = append(newNode.Cchildren, r.Cchildren[i])
@@ -351,15 +331,15 @@ func (r *radixNode) SetTags(args []string) {
 	r.tags[0] = ParamRoute
 	r.vals[0] = args[0]
 	for i, str := range args[1:] {
-		r.tags[i+1], r.vals[i+1] = split2byte(str, ':')
+		r.tags[i+1], r.vals[i+1] = split2byte(str, '=')
 	}
 }
 
-// Give the current Node tag to Params
+// AddTagsToParams give the current Node tag to Params
 //
-// 将当前Node的tags给予Params
+// AddTagsToParams 将当前Node的tags给予Params
 func (r *radixNode) AddTagsToParams(p Params) {
-	for i, _ := range r.tags {
+	for i := range r.tags {
 		p.AddParam(r.tags[i], r.vals[i])
 	}
 }
@@ -371,50 +351,52 @@ func (r *radixNode) AddTagsToParams(p Params) {
 // 获取对应方法的树。
 //
 // 支持eudore.RouterAllMethod这些方法,弱不支持会返回405处理树。
-func (t *RouterRadix) getTree(method string) *radixNode {
+func (r *RouterRadix) getTree(method string) *radixNode {
 	switch method {
 	case MethodGet:
-		return &t.get
+		return &r.get
 	case MethodPost:
-		return &t.post
+		return &r.post
 	case MethodDelete:
-		return &t.delete
+		return &r.delete
 	case MethodPut:
-		return &t.put
+		return &r.put
 	case MethodHead:
-		return &t.head
+		return &r.head
 	case MethodOptions:
-		return &t.options
+		return &r.options
 	case MethodPatch:
-		return &t.patch
+		return &r.patch
 	default:
-		return &t.node405
+		return &r.node405
 	}
 }
 
 // 按照顺序匹配一个路径。
 //
 // 依次检查常量节点、参数节点、通配符节点，如果有一个匹配就直接返回。
-func (searchNode *radixNode) recursiveLoopup(searchKey string, params Params) HandlerFuncs {
+func (r *radixNode) recursiveLoopup(searchKey string, params Params) HandlerFuncs {
 	// 如果路径为空，当前节点就是需要匹配的节点，直接返回。
-	if len(searchKey) == 0 && searchNode.handlers != nil {
-		searchNode.AddTagsToParams(params)
-		return searchNode.handlers
+	if len(searchKey) == 0 {
+		r.AddTagsToParams(params)
+		return r.handlers
 	}
 
 	// 遍历常量Node匹配，寻找具有相同前缀的那个节点
-	for _, edgeObj := range searchNode.Cchildren {
-		if contrainPrefix(searchKey, edgeObj.path) {
-			nextSearchKey := searchKey[len(edgeObj.path):]
-			if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
-				return n
+	for _, edgeObj := range r.Cchildren {
+		// fmt.Println(edgeObj.path,searchKey )
+		if edgeObj.path[0] >= searchKey[0] {
+			if len(searchKey) >= len(edgeObj.path) && searchKey[:len(edgeObj.path)] == edgeObj.path {
+				nextSearchKey := searchKey[len(edgeObj.path):]
+				if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
+					return n
+				}
 			}
-			// TODO: 待优化测试，只有一个相同前缀，当前应该直接退出遍历
 			break
 		}
 	}
 
-	if len(searchNode.Pchildren) > 0 && len(searchKey) > 0 {
+	if len(r.Pchildren) > 0 && len(searchKey) > 0 {
 		pos := strings.IndexByte(searchKey, '/')
 		if pos == -1 {
 			pos = len(searchKey)
@@ -423,7 +405,7 @@ func (searchNode *radixNode) recursiveLoopup(searchKey string, params Params) Ha
 
 		// Whether the variable Node matches in sequence is satisfied
 		// 遍历参数节点是否后续匹配
-		for _, edgeObj := range searchNode.Pchildren {
+		for _, edgeObj := range r.Pchildren {
 			if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
 				params.AddParam(edgeObj.name, searchKey[:pos])
 				return n
@@ -433,10 +415,10 @@ func (searchNode *radixNode) recursiveLoopup(searchKey string, params Params) Ha
 
 	// If the current Node has a wildcard processing method that directly matches, the result is returned.
 	// 若当前节点有通配符处理方法直接匹配，返回结果。
-	if searchNode.Wchildren != nil {
-		searchNode.Wchildren.AddTagsToParams(params)
-		params.AddParam(searchNode.Wchildren.name, searchKey)
-		return searchNode.Wchildren.handlers
+	if r.Wchildren != nil {
+		r.Wchildren.AddTagsToParams(params)
+		params.AddParam(r.Wchildren.name, searchKey)
+		return r.Wchildren.handlers
 	}
 
 	// can't match, return nil
@@ -446,9 +428,7 @@ func (searchNode *radixNode) recursiveLoopup(searchKey string, params Params) Ha
 
 /*
 The string is cut according to the Node type.
-The current segmentation rule is not detailed enough, and the special characters are mis-segmented.
-将字符串按Node类型切割，当前分割规则不够详细，特殊字符会误分割。
-
+将字符串按Node类型切割
 String path cutting example:
 字符串路径切割例子：
 /				[/]
@@ -458,72 +438,49 @@ String path cutting example:
 /api/get/		[/api/get/]
 /api/get		[/api/get]
 /api/:get		[/api/ :get]
-/api/:get/*			[/api/ :get / *]
-/api/:name/info/*	[/api/ :name /info/ *]
+/api/:get/*		[/api/ :get / *]
+/api/:name/info/*		[/api/ :name /info/ *]
+/api/:name|^\\d+$/info	[/api/ :name|^\d+$ /info]
+/api/*|^0/api\\S+$		[/api/ *|^0 /api\S+$]
+/api/*|^\\$\\d+$		[/api/ *|^\$\d+$]
 */
-func getSpiltPath(key string) []string {
+func getSplitPath(key string) []string {
 	if len(key) < 2 {
 		return []string{"/"}
 	}
 	var strs []string
-	var last bool = false
-	for i, str := range strings.Split(key, "/") {
-		// Filter the '/' in the path
-		// 过滤路径中的'/'
-		if len(str) == 0 {
-			if i == 0 {
-				strs = []string{"/"}
+	var length int = -1
+	var ismatch bool = false
+	var isconst bool = false
+	for i := range key {
+		if ismatch {
+			strs[length] = strs[length] + key[i:i+1]
+			if key[i] == '$' && key[i-1] != '\\' && (i == len(key)-1 || key[i+1] == '/') {
+				ismatch = false
 			}
 			continue
 		}
-		// Supplemental separator
-		// 补充分隔符
-		if last {
-			last = false
-			strs = append(strs, "/")
-		} else {
-			lastappend(strs, '/')
-		}
-		// Handling special prefix paths
-		// 处理特殊前缀路径
-		if lastisbyte(strs, '/') && (str[0] == ':' || str[0] == '*') {
-			strs = append(strs, str)
-			last = true
-			continue
-		}
-		// append constants
-		// 追加常量
-		num := len(strs) - 1
-		strs[num] = strs[num] + str
+		// fmt.Println(last, key[i:i+1])
+		switch key[i] {
+		case '/':
+			if !isconst {
+				length++
+				strs = append(strs, "")
+				isconst = true
 
-	}
-	if key[len(key)-1] == '/' {
-		lastappend(strs, '/')
+			}
+		case ':', '*':
+			isconst = false
+			if key[i-1] == '/' {
+				length++
+				strs = append(strs, "")
+			}
+		case '^':
+			ismatch = true
+		}
+		strs[length] = strs[length] + key[i:i+1]
 	}
 	return strs
-}
-
-// Modify the last string to end with the specified byte.
-//
-// 修改最后一个字符串结尾为指定byte。
-func lastappend(strs []string, b byte) {
-	num := len(strs) - 1
-	laststr := strs[num]
-	if laststr[len(laststr)-1] != b {
-		strs[num] = strs[num] + string(b)
-	}
-}
-
-// Check if the end of the last string is the specified byte.
-//
-// 检测最后一个字符串的结尾是否为指定byte。
-func lastisbyte(strs []string, b byte) bool {
-	num := len(strs) - 1
-	if num < 0 {
-		return false
-	}
-	laststr := strs[num]
-	return laststr[len(laststr)-1] == b
 }
 
 // Get the largest common prefix of the two strings,

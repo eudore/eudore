@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Eudore Circuit Breaker</title>
+	<meta charset="utf-8">
+	<meta name="author" content="eudore">
+	<meta name="viewport" content="width=device-width,user-scalable=no">
+	<meta name="referrer" content="always">
+</head>
+	<div id="state"></div>
+	<div id="routes"></div>
+</body>
+<script type="text/javascript">
+	"use strict";
+	var states = ["closed", "half-open", "open"]
+	var globaldata = {}
+	fetch("list",  {
+		method: 'GET',
+		cache: 'no-cache',
+		headers: {
+			Accept: 'application/json',
+		},
+	}).then(function(response){
+		return response.json()
+	}).then(function(data){
+		var totalSuccesses = 0
+		var totalFailures = 0
+		var closed = 0
+		var halfOpen = 0
+		var open = 0
+		for(var i in data) {
+			var route = data[i]
+			globaldata[route.Id] = route
+			CreateJsonDom({
+				'div': {
+					id: "route-" + route.Id,
+					className: "route",
+					div: {
+						className: "route-line " + route.State,
+						span: [
+							{innerText: i},
+							{innerText: (route.TotalSuccesses.toFixed(2) / (route.TotalSuccesses + route.TotalFailures).toFixed(2) * 100).toFixed(2) + "%"}
+						],
+						svg: {
+							viewBox: "0 0 1024 1024",
+							ns: "http://www.w3.org/2000/svg",
+							innerHTML: '<path d="M513.3 101.9c-190.7 0-348.6 138.8-379.2 320.8H0l160.4 192.5 160.4-192.5H199C228.8 276.4 358.4 166 513.3 166c176.9 0 320.8 143.9 320.8 320.8S690.2 807.7 513.3 807.7c-78 0-148.7-29.1-204.4-75.6l-42.1 50.5c66.8 55.7 152.7 89.3 246.4 89.3 212.6 0 385-172.4 385-385s-172.2-385-384.9-385z" p-id="1482"></path>',
+						},
+					},
+				}
+			}, document.getElementById("routes"))
+			// 统计信息
+			totalSuccesses += route.TotalSuccesses
+			totalFailures += route.TotalFailures
+			if(route.State == "closed") {
+				closed++
+			}else if (route.State == "open") {
+				open++
+			}else {
+				halfOpen++
+			}
+		}
+		globaldata.result = {
+			TotalSuccesses: totalSuccesses,
+			TotalFailures: totalFailures,
+			closed: closed,
+			"half-open": halfOpen,
+			open: open,
+		}
+		CreateJsonDom({
+			p: [
+				{innerText: 'TotalSuccesses: ' + totalSuccesses + " TotalFailures: " + totalFailures},
+				{innerText: "closed: " + closed + " half-open: " + halfOpen + " open: " + open}
+			]
+		}, document.getElementById('state'))
+
+
+	})
+	// 注册click，svg刷新数据，spac展开/隐藏详细信息。
+	document.getElementById("routes").addEventListener("click", function(e){
+		if(e.target.tagName == "svg") {
+			updateRoute(parseInt(e.target.parentElement.parentElement.id.slice(6)))
+		}
+		if(e.target.tagName != "SPAN") {
+			return
+		}
+		var routeDom = e.target.parentElement.parentElement
+		var dom = routeDom.querySelector("table")
+		if(dom != null) {
+			if(dom.style.display == "none") {
+				dom.style.display = "block"
+			}else {
+				dom.style.display = "none"
+			}
+			return
+		}
+
+		var route = globaldata[parseInt(routeDom.id.slice(6))]
+		CreateJsonDom({
+			table: {
+				className: "route-info",
+				tbody: {
+					tr: [
+						{td: [{innerText: 'State'}, {select: {
+							id: "select-" + routeDom.id.slice(6),
+							option: [
+								{innerText: "closed", selected: "selected"},
+								{innerText: "half-open"},
+								{innerText: "open"},
+							]
+						}}]},
+						{td: [{innerText: 'LastTime'}, {innerText: route.LastTime.slice(0, 19).replace("T", " ")}]},
+						{td: [{innerText: 'TotalSuccesses'}, {innerText: route.TotalSuccesses}]},
+						{td: [{innerText: 'TotalFailures'}, {innerText: route.TotalFailures}]},
+						{td: [{innerText: 'ConsecutiveSuccesses'}, {innerText: route.ConsecutiveSuccesses}]},
+						{td: [{innerText: 'ConsecutiveFailures'}, {innerText: route.ConsecutiveFailures}]},
+					],
+				},
+			}
+		}, routeDom)
+		if(route.State!="closed") {
+			var sl = routeDom.querySelector("select")
+			sl.selectedIndex = route.State == "half-open" ? 1 : 2
+		}
+	});
+	// select选择修改，提交修改状态并刷新。
+	document.addEventListener("change",function(e) {
+	 	if(e.target.tagName!="SELECT") {
+	 		return
+	 	}
+	 	var id = e.target.id.slice(7)
+	 	var state = e.target.selectedIndex
+	 	fetch(id + "/state/" + state, {
+			method: 'PUT',
+			cache: 'no-cache',
+	 	}).then(function(response){
+	 		updateRoute(id)
+	 		if(response.status == 200) {
+	 			document.getElementById("route-" + id).querySelector(".route-line").className = "route-line " + states[state]
+	 		}
+		})
+	})
+	// 更新数据
+	function updateRoute(id) {
+		fetch(id,  {
+			method: 'GET',
+			cache: 'no-cache',
+			headers: {
+				Accept: 'application/json',
+			},
+		}).then(function(response){
+			return response.json()
+		}).then(function(route){
+			var routeDom = document.getElementById("route-" + id)
+			// 更新缓存数据
+			globaldata.result.TotalSuccesses = globaldata.result.TotalSuccesses - globaldata[id].TotalSuccesses + route.TotalSuccesses
+			globaldata.result.TotalFailures = globaldata.result.TotalFailures - globaldata[id].TotalFailures + route.TotalFailures
+			globaldata.result[globaldata[id].State]--
+			globaldata.result[route.State]++
+			globaldata[id] = route
+			// 更新统计数据
+			CreateJsonDom({
+				p: [
+					{innerText: 'TotalSuccesses: ' + globaldata.result.TotalSuccesses + " TotalFailures: " + globaldata.result.TotalFailures},
+					{innerText: "closed: " + globaldata.result.closed + " half-open: " + globaldata.result["half-open"] + " open: " + globaldata.result.open}
+				]
+			}, document.getElementById('state'), true)
+			// 更新状态
+			routeDom.querySelector(".route-line").className = "route-line " + route.State
+			// 更新显示百分比
+			routeDom.querySelector("span:nth-of-type(2)").innerText = (route.TotalSuccesses.toFixed(2) / (route.TotalSuccesses + route.TotalFailures).toFixed(2) * 100).toFixed(2) + "%"
+			// 更新信息内容
+			CreateJsonDom({
+				tr: [
+					{td: [{innerText: 'State'}, {select: {
+						id: "select-" + routeDom.id.slice(6),
+						option: [
+							{innerText: "closed", selected: "selected"},
+							{innerText: "half-open"},
+							{innerText: "open"},
+						]
+					}}]},
+					{td: [{innerText: 'LastTime'}, {innerText: route.LastTime.slice(0, 19).replace("T", " ")}]},
+					{td: [{innerText: 'TotalSuccesses'}, {innerText: route.TotalSuccesses}]},
+					{td: [{innerText: 'TotalFailures'}, {innerText: route.TotalFailures}]},
+					{td: [{innerText: 'ConsecutiveSuccesses'}, {innerText: route.ConsecutiveSuccesses}]},
+					{td: [{innerText: 'ConsecutiveFailures'}, {innerText: route.ConsecutiveFailures}]},
+				],
+			}, routeDom.querySelector("tbody"), true)
+			if(route.State!="closed") {
+				var sl = routeDom.querySelector("select")
+				sl.selectedIndex = route.State == "half-open" ? 1 : 2
+			}
+		})
+	}
+	// json to dom
+	function CreateJsonDom(data, parent, clean) {
+		if(parent==null) {
+			return
+		}
+		if(clean) {
+			parent.innerHTML = ""
+		}
+		for(var i in data) {
+			if(data[i] instanceof Array) {
+				for(var j in data[i]) {
+					CreateJsonDom({[i]: data[i][j]}, parent)
+				}
+			}else if(isJson(data[i])) {
+				var dom = document.createElement(i)
+				if(data[i]["ns"]!=null) {
+					dom = document.createElementNS(data[i]["ns"], i)
+				}
+				parent.appendChild(dom)
+				CreateJsonDom(data[i], dom)
+			}else {
+				switch (i) {
+				case 'className':
+					parent.className = data[i]
+					break
+				case 'innerText':
+					parent.innerText = data[i]
+					break;
+				case 'innerHTML':
+					parent.innerHTML = data[i]
+					break;
+				default:
+					parent.setAttribute(i, data[i])
+				}
+			}
+		}
+	}
+	function isJson(obj){
+		var isjson = typeof(obj) == "object" && Object.prototype.toString.call(obj).toLowerCase() == "[object object]" && !obj.length; 
+		return isjson;
+	}
+</script>
+<style type="text/css">
+	body{max-width:960px;margin:auto}
+	#routes>div{margin:5px}
+	.route>div{width:100%}
+	.route-line span:first-child{padding-left:10px;height:40px;line-height:40px;display:inline-block;width:75%}
+	.route-line span:nth-of-type(2){display:inline-block;width:15%}
+	.route-line svg{width:25px;height:25px;vertical-align:middle;fill:currentColor;overflow:hidden}
+	.route-line{border:2px solid;border-radius:7px}
+	.closed{background-color:#ecfaf4;border-color:#49cc90}
+	.half-open{background-color:#fff5ea;border-color:#fca130}
+	.open{background-color:#feebeb;border-color:#f93e3e}
+</style>
+</html>

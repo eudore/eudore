@@ -1,6 +1,4 @@
-// The current library defines a generic http interface.
-//
-// 当前库定义通用http接口。
+// Package protocol 定义通用http接口。
 package protocol
 
 import (
@@ -10,14 +8,17 @@ import (
 )
 
 type (
+	// HandlerConn 接口定义eudore处理net.Conn
 	HandlerConn interface {
 		EudoreConn(context.Context, net.Conn)
 	}
-	Handler interface {
+	// HandlerHttp 接口定义eudore处理http请求
+	HandlerHttp interface {
 		EudoreHTTP(context.Context, ResponseWriter, RequestReader)
 	}
-	HandlerFunc func(context.Context, ResponseWriter, RequestReader)
-	// Header = textproto.MIMEHeader
+	// HandlerFunc 定义http处理函数
+	HandlerHttpFunc func(context.Context, ResponseWriter, RequestReader)
+	// Header 定义http header
 	Header interface {
 		Get(string) string
 		Set(string, string)
@@ -25,11 +26,7 @@ type (
 		Del(string)
 		Range(func(string, string))
 	}
-	// Get the method, version, uri, header, body from the RequestReader according to the http protocol request body. (There is no host in the golang net/http library header)
-	//
-	// Read the remote connection address and TLS information from the net.Conn connection.
-	//
-	// 根据http协议请求体，从RequestReader获取方法、版本、uri、header、body。(golang net/http库header中没有host)
+	// RequestReader 接口根据http协议请求体，从RequestReader获取方法、版本、uri、header、body。(golang net/http库header中没有host)
 	//
 	// 从net.Conn连接读取远程连接地址和TLS信息。
 	RequestReader interface {
@@ -37,6 +34,8 @@ type (
 		Method() string
 		Proto() string
 		RequestURI() string
+		Path() string
+		RawQuery() string
 		Header() Header
 		Read([]byte) (int, error)
 		Host() string
@@ -45,7 +44,7 @@ type (
 		TLS() *tls.ConnectionState
 	}
 
-	// ResponseWriter接口用于写入http请求响应体status、header、body。
+	// ResponseWriter 接口用于写入http请求响应体status、header、body。
 	//
 	// net/http.response实现了flusher、hijacker、pusher接口。
 	ResponseWriter interface {
@@ -79,6 +78,7 @@ type (
 		TLS() *tls.ConnectionState
 		Close() error
 	}
+	// PushOptions 定义http2 push的选项
 	PushOptions struct {
 		// Method specifies the HTTP method for the promised request.
 		// If set, it must be "GET" or "HEAD". Empty means "GET".
@@ -91,7 +91,7 @@ type (
 	}
 )
 
-func (fn HandlerFunc) EudoreHTTP(ctx context.Context, w ResponseWriter, r RequestReader) {
+func (fn HandlerHttpFunc) EudoreHTTP(ctx context.Context, w ResponseWriter, r RequestReader) {
 	fn(ctx, w, r)
 }
 

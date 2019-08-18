@@ -9,7 +9,7 @@ import (
 )
 
 type BaseController struct {
-	eudore.ControllerSession
+	eudore.ControllerBase
 }
 
 func (c *BaseController) Init(ctx eudore.Context) error {
@@ -22,11 +22,11 @@ func (c *BaseController) Get() {
 }
 func (c *BaseController) GetIdById(id int) {
 	c.Debug("id", id)
-	c.WriteRender(id)
+	c.Render(id)
 }
 
 func (c *BaseController) GetInfoByIdName(id int, name string) {
-	c.WriteRender(id)
+	c.Render(id)
 	c.WriteString(name)
 }
 
@@ -44,30 +44,7 @@ func (*BaseController) ControllerRoute() map[string]string {
 	return m
 }
 
-func h1(ctx eudore.Context) {
-	ctx.WriteString("ControllerSession")
-}
-
 func TestMvc1(*testing.T) {
 	app := eudore.NewCore()
-	eudore.Set(app.Router, "debug", app.Logger.Debug)
 	app.AddController(&BaseController{})
-
-	config := &eudore.RouterConfig{
-		Routes: []*eudore.RouterConfig{
-			&eudore.RouterConfig{
-				Method:  "GET",
-				Path:    "/11",
-				Handler: h1,
-			},
-			&eudore.RouterConfig{
-				Method:  "GET",
-				Path:    "/12",
-				Handler: h1,
-			},
-		},
-	}
-	config.Inject(app.Router.Group(""))
-	app.Listen(":8085")
-	app.Run()
 }

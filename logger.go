@@ -1,3 +1,5 @@
+package eudore
+
 /*
 Logger
 
@@ -5,7 +7,6 @@ Logger定义通用日志处理接口
 
 文件: logger.go
 */
-package eudore
 
 import (
 	"bufio"
@@ -48,7 +49,7 @@ type (
 	Fields map[string]interface{}
 	// LoggerHandleFunc		func(io.Writer, Entry)
 	// 日志输出接口
-	LogOut interface {
+	Logout interface {
 		Debug(...interface{})
 		Info(...interface{})
 		Warning(...interface{})
@@ -59,14 +60,14 @@ type (
 		Warningf(string, ...interface{})
 		Errorf(string, ...interface{})
 		Fatalf(string, ...interface{})
-		WithField(key string, value interface{}) LogOut
-		WithFields(fields Fields) LogOut
+		WithField(key string, value interface{}) Logout
+		WithFields(fields Fields) Logout
 	}
 	// 日志处理器定义
 	Logger interface {
-		Component
-		LogOut
-		// HandleEntry(interface{})
+		Logout
+		Sync() error
+		SetLevel(LoggerLevel)
 	}
 
 	// The initial log processor necessary interface to process all logs of the current record using the new log processor.
@@ -81,7 +82,8 @@ type (
 	// 初始日志处理器仅记录日志，再设置日志处理器后，
 	// 会将当前记录的日志交给新日志处理器处理，用于处理程序初始化之前产生的日志。
 	LoggerInit struct {
-		data []*entryInit
+		level LoggerLevel
+		data  []*entryInit
 	}
 	entryInit struct {
 		Level   LoggerLevel `json:"level"`
@@ -94,9 +96,10 @@ type (
 	//
 	// 日志格式默认json，可以指定为模板格式。
 	LoggerStd struct {
-		Config *LoggerStdConfig
+		LoggerStdConfig
 		out    *bufio.Writer
 		pool   sync.Pool
+		mu     sync.Mutex
 		ticker *time.Ticker
 		handle func(interface{})
 	}
@@ -109,13 +112,11 @@ type (
 	}
 	// 标准日志条目
 	entryStd struct {
-		pool       *sync.Pool
-		logger     *LoggerStd
-		checklevel LoggerLevel
-		Time       *LoggerTime `json:"time"`
-		Level      LoggerLevel `json:"level"`
-		Fields     Fields      `json:"fields,omitempty"`
-		Message    string      `json:"message,omitempty"`
+		logger  *LoggerStd
+		Time    *LoggerTime `json:"time"`
+		Level   LoggerLevel `json:"level"`
+		Fields  Fields      `json:"fields,omitempty"`
+		Message string      `json:"message,omitempty"`
 	}
 )
 
@@ -125,19 +126,6 @@ func init() {
 			return &entryStd{}
 		},
 	}
-}
-
-func NewLogger(name string, arg interface{}) (Logger, error) {
-	name = ComponentPrefix(name, "logger")
-	c, err := NewComponent(name, arg)
-	if err != nil {
-		return nil, err
-	}
-	l, ok := c.(Logger)
-	if ok {
-		return l, nil
-	}
-	return nil, fmt.Errorf("Component %s cannot be converted to Logger type", name)
 }
 
 func NewLoggerStd(arg interface{}) (Logger, error) {
@@ -150,8 +138,8 @@ func NewLoggerStd(arg interface{}) (Logger, error) {
 
 	// 创建并初始化日志处理器
 	l := &LoggerStd{
-		Config: config,
-		pool:   sync.Pool{},
+		LoggerStdConfig: *config,
+		pool:            sync.Pool{},
 	}
 	l.initPool()
 	if err := l.initOut(); err != nil {
@@ -165,7 +153,7 @@ func NewLoggerStd(arg interface{}) (Logger, error) {
 	go func() {
 		l.ticker = time.NewTicker(time.Millisecond * 50)
 		for range l.ticker.C {
-			l.out.Flush()
+			l.Sync()
 		}
 	}()
 	return l, nil
@@ -174,25 +162,23 @@ func NewLoggerStd(arg interface{}) (Logger, error) {
 func (l *LoggerStd) initPool() {
 	l.pool.New = func() interface{} {
 		return &entryStd{
-			pool:       &l.pool,
-			logger:     l,
-			checklevel: l.Config.Level,
+			logger: l,
 			Time: &LoggerTime{
-				Format: l.Config.TimeFormat,
+				Format: l.TimeFormat,
 			},
 		}
 	}
 }
 
 func (l *LoggerStd) initOut() error {
-	if len(l.Config.Path) == 0 {
+	if len(l.Path) == 0 {
 		l.out = bufio.NewWriter(os.Stdout)
 	} else {
-		file, err := os.OpenFile(l.Config.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		file, err := os.OpenFile(l.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			return err
 		}
-		if l.Config.Std {
+		if l.Std {
 			l.out = bufio.NewWriter(io.MultiWriter(os.Stdout, file))
 		} else {
 			l.out = bufio.NewWriter(file)
@@ -205,13 +191,15 @@ func (l *LoggerStd) initHandle() error {
 	if l.out == nil {
 		return fmt.Errorf("logger out is nil")
 	}
-	if l.Config.Format == "json" {
+	if l.Format == "json" {
 		handle := json.NewEncoder(l.out)
 		l.handle = func(i interface{}) {
+			l.mu.Lock()
 			handle.Encode(i)
+			l.mu.Unlock()
 		}
 	} else {
-		tmpl, err := template.New("").Parse(l.Config.Format)
+		tmpl, err := template.New("").Parse(l.Format)
 		if err != nil {
 			return err
 		}
@@ -226,18 +214,6 @@ func (l *LoggerStd) Flush() error {
 	return l.out.Flush()
 }
 
-func (l *LoggerStd) Set(key string, val interface{}) error {
-	switch i := val.(type) {
-	// case LoggerHandleFunc:
-	// l.LoggerHandleFunc = i
-	case LoggerLevel:
-		l.Config.Level = i
-	default:
-		return ErrComponentNoSupportField
-	}
-	return nil
-}
-
 func (l *LoggerStd) HandleEntry(e interface{}) {
 	l.handle(e)
 }
@@ -249,11 +225,22 @@ func (l *LoggerStd) newEntry() (entry *entryStd) {
 	return
 }
 
-func (l *LoggerStd) WithField(key string, value interface{}) LogOut {
+func (l *LoggerStd) SetLevel(level LoggerLevel) {
+	l.Level = level
+}
+
+func (l *LoggerStd) Sync() error {
+	l.mu.Lock()
+	err := l.out.Flush()
+	l.mu.Unlock()
+	return err
+}
+
+func (l *LoggerStd) WithField(key string, value interface{}) Logout {
 	return l.newEntry().WithField(key, value)
 }
 
-func (l *LoggerStd) WithFields(fields Fields) LogOut {
+func (l *LoggerStd) WithFields(fields Fields) Logout {
 	return l.newEntry().WithFields(fields)
 }
 
@@ -297,111 +284,102 @@ func (l *LoggerStd) Fatalf(format string, args ...interface{}) {
 	l.newEntry().Fatalf(format, args...)
 }
 
-func (l *LoggerStd) GetName() string {
-	return ComponentLoggerStdName
-}
-
-func (l *LoggerStd) Version() string {
-	return ComponentLoggerStdVersion
-}
-
-func (l *LoggerStdConfig) GetName() string {
-	return ComponentLoggerStdName
-}
-
 func (e *entryStd) Debug(args ...interface{}) {
-	if e.checklevel < 1 {
+	if e.logger.Level < 1 {
 		e.Level = 0
 		e.Message = fmt.Sprintln(args...)
 		e.Message = e.Message[:len(e.Message)-1]
 		e.logger.HandleEntry(e)
 	}
-	e.pool.Put(e)
+	e.logger.pool.Put(e)
 }
 
 func (e *entryStd) Info(args ...interface{}) {
-	if e.checklevel < 2 {
+	if e.logger.Level < 2 {
 		e.Level = 1
 		e.Message = fmt.Sprintln(args...)
 		e.Message = e.Message[:len(e.Message)-1]
 		e.logger.HandleEntry(e)
 	}
-	e.pool.Put(e)
+	e.logger.pool.Put(e)
 }
 
 func (e *entryStd) Warning(args ...interface{}) {
-	if e.checklevel < 3 {
+	if e.logger.Level < 3 {
 		e.Level = 2
-		e.Message = fmt.Sprint(args...)
+		e.Message = fmt.Sprintln(args...)
+		e.Message = e.Message[:len(e.Message)-1]
 		e.logger.HandleEntry(e)
 	}
-	e.pool.Put(e)
+	e.logger.pool.Put(e)
 }
 
 func (e *entryStd) Error(args ...interface{}) {
-	if e.checklevel < 4 {
+	if e.logger.Level < 4 {
 		e.Level = 3
-		e.Message = fmt.Sprint(args...)
+		e.Message = fmt.Sprintln(args...)
+		e.Message = e.Message[:len(e.Message)-1]
 		e.logger.HandleEntry(e)
 	}
-	e.pool.Put(e)
+	e.logger.pool.Put(e)
 }
 
 func (e *entryStd) Fatal(args ...interface{}) {
 	e.Level = 4
-	e.Message = fmt.Sprint(args...)
+	e.Message = fmt.Sprintln(args...)
+	e.Message = e.Message[:len(e.Message)-1]
 	e.logger.HandleEntry(e)
-	e.pool.Put(e)
-	panic(args)
+	e.logger.pool.Put(e)
+	panic(e.Message)
 }
 
 func (e *entryStd) Debugf(format string, args ...interface{}) {
-	if e.checklevel < 1 {
+	if e.logger.Level < 1 {
 		e.Level = 0
 		e.Message = fmt.Sprintf(format, args...)
-		e.Message = e.Message[:len(e.Message)-1]
+		// e.Message = e.Message[:len(e.Message)-1]
 		e.logger.HandleEntry(e)
 	}
-	e.pool.Put(e)
+	e.logger.pool.Put(e)
 }
 
 func (e *entryStd) Infof(format string, args ...interface{}) {
-	if e.checklevel < 2 {
+	if e.logger.Level < 2 {
 		e.Level = 1
 		e.Message = fmt.Sprintf(format, args...)
-		e.Message = e.Message[:len(e.Message)-1]
+		// e.Message = e.Message[:len(e.Message)-1]
 		e.logger.HandleEntry(e)
 	}
-	e.pool.Put(e)
+	e.logger.pool.Put(e)
 }
 
 func (e *entryStd) Warningf(format string, args ...interface{}) {
-	if e.checklevel < 3 {
+	if e.logger.Level < 3 {
 		e.Level = 2
 		e.Message = fmt.Sprintf(format, args...)
 		e.logger.HandleEntry(e)
 	}
-	e.pool.Put(e)
+	e.logger.pool.Put(e)
 }
 
 func (e *entryStd) Errorf(format string, args ...interface{}) {
-	if e.checklevel < 4 {
+	if e.logger.Level < 4 {
 		e.Level = 3
 		e.Message = fmt.Sprintf(format, args...)
 		e.logger.HandleEntry(e)
 	}
-	e.pool.Put(e)
+	e.logger.pool.Put(e)
 }
 
 func (e *entryStd) Fatalf(format string, args ...interface{}) {
 	e.Level = 4
 	e.Message = fmt.Sprintf(format, args...)
 	e.logger.HandleEntry(e)
-	e.pool.Put(e)
-	panic(args)
+	e.logger.pool.Put(e)
+	panic(e.Message)
 }
 
-func (e *entryStd) WithField(key string, value interface{}) LogOut {
+func (e *entryStd) WithField(key string, value interface{}) Logout {
 	if e.Fields == nil {
 		e.Fields = make(Fields, 3)
 	}
@@ -416,13 +394,13 @@ func (e *entryStd) WithField(key string, value interface{}) LogOut {
 	return e
 }
 
-func (e *entryStd) WithFields(fields Fields) LogOut {
+func (e *entryStd) WithFields(fields Fields) Logout {
 	e.Fields = fields
 	return e
 }
 
-func NewLoggerInit(interface{}) (Logger, error) {
-	return &LoggerInit{}, nil
+func NewLoggerInit() Logger {
+	return &LoggerInit{}
 }
 
 func (l *LoggerInit) newEntry() *entryInit {
@@ -430,10 +408,6 @@ func (l *LoggerInit) newEntry() *entryInit {
 	entry.Time = time.Now()
 	l.data = append(l.data, entry)
 	return entry
-}
-
-func (l *LoggerInit) HandleEntry(e interface{}) {
-	// Do nothing because of LoggerInit not handler entry.
 }
 
 func (l *LoggerInit) NextHandler(logger Logger) {
@@ -454,11 +428,21 @@ func (l *LoggerInit) NextHandler(logger Logger) {
 	l.data = l.data[0:0]
 }
 
-func (l *LoggerInit) WithField(key string, value interface{}) LogOut {
+func (l *LoggerInit) SetLevel(level LoggerLevel) {
+	l.level = level
+}
+
+func (l *LoggerInit) Sync() error {
+	log, _ := NewLoggerStd(nil)
+	l.NextHandler(log)
+	return log.Sync()
+}
+
+func (l *LoggerInit) WithField(key string, value interface{}) Logout {
 	return l.newEntry().WithField(key, value)
 }
 
-func (l *LoggerInit) WithFields(fields Fields) LogOut {
+func (l *LoggerInit) WithFields(fields Fields) Logout {
 	return l.newEntry().WithFields(fields)
 }
 
@@ -502,37 +486,34 @@ func (l *LoggerInit) Fatalf(format string, args ...interface{}) {
 	l.newEntry().Fatalf(format, args...)
 }
 
-func (l *LoggerInit) GetName() string {
-	return ComponentLoggerInitName
-}
-
-func (l *LoggerInit) Version() string {
-	return ComponentLoggerInitVersion
-}
-
 func (e *entryInit) Debug(args ...interface{}) {
 	e.Level = 0
-	e.Message = fmt.Sprint(args...)
+	e.Message = fmt.Sprintln(args...)
+	e.Message = e.Message[:len(e.Message)-1]
 }
 
 func (e *entryInit) Info(args ...interface{}) {
 	e.Level = 1
-	e.Message = fmt.Sprint(args...)
+	e.Message = fmt.Sprintln(args...)
+	e.Message = e.Message[:len(e.Message)-1]
 }
 
 func (e *entryInit) Warning(args ...interface{}) {
 	e.Level = 2
-	e.Message = fmt.Sprint(args...)
+	e.Message = fmt.Sprintln(args...)
+	e.Message = e.Message[:len(e.Message)-1]
 }
 
 func (e *entryInit) Error(args ...interface{}) {
 	e.Level = 3
-	e.Message = fmt.Sprint(args...)
+	e.Message = fmt.Sprintln(args...)
+	e.Message = e.Message[:len(e.Message)-1]
 }
 
 func (e *entryInit) Fatal(args ...interface{}) {
 	e.Level = 4
-	e.Message = fmt.Sprint(args...)
+	e.Message = fmt.Sprintln(args...)
+	e.Message = e.Message[:len(e.Message)-1]
 }
 
 func (e *entryInit) Debugf(format string, args ...interface{}) {
@@ -560,7 +541,7 @@ func (e *entryInit) Fatalf(format string, args ...interface{}) {
 	e.Message = fmt.Sprintf(format, args...)
 }
 
-func (e *entryInit) WithField(key string, value interface{}) LogOut {
+func (e *entryInit) WithField(key string, value interface{}) Logout {
 	if e.Fields == nil {
 		e.Fields = make(Fields)
 	}
@@ -568,7 +549,7 @@ func (e *entryInit) WithField(key string, value interface{}) LogOut {
 	return e
 }
 
-func (e *entryInit) WithFields(fields Fields) LogOut {
+func (e *entryInit) WithFields(fields Fields) Logout {
 	e.Fields = fields
 	return e
 }
@@ -606,6 +587,19 @@ func (t *LoggerTime) String() string {
 func (t *LoggerTime) MarshalText() (text []byte, err error) {
 	text = []byte(t.String())
 	return
+}
+
+func NewLoggerPrintFunc(log Logger) func(...interface{}) {
+	return func(args ...interface{}) {
+		if len(args) == 1 {
+			err, ok := args[0].(error)
+			if ok {
+				log.Error(err)
+				return
+			}
+		}
+		log.Info(args...)
+	}
 }
 
 func LogFormatFileLine(depth int) (string, int) {

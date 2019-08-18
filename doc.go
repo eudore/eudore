@@ -1,4 +1,8 @@
+// Package eudore golang http framework.
+//
+
 /*
-eudore doc
+Package eudore golang http framework.
+s
 */
 package eudore
