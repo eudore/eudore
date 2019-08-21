@@ -89,6 +89,7 @@ func init() {
 	expvar.Publish("goarch", expvar.Func(getGOARCH))
 }
 
+// Expvar 方法实现expvar处理。
 func Expvar(ctx eudore.Context) {
 	ctx.SetHeader("Content-Type", "application/json; charset=utf-8")
 	ctx.WriteHeader(200)

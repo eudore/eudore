@@ -187,7 +187,7 @@ func TestConvertStruct(*testing.T) {
 		},
 	}
 	var b = &B1{}
-	eudore.ConvertStruct(b, c)
+	eudore.ConvertTo(b, c)
 	fmt.Printf("struct: %# v\n", pretty.Formatter(b))
 
 	var a []int //= make([]int, 3)

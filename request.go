@@ -6,47 +6,12 @@ import (
 	"fmt"
 	"github.com/eudore/eudore/protocol"
 	"io"
-	"io/ioutil"
-	"net/http"
 	"net/url"
 	"strings"
 )
 
 type (
-	RequestReadSeeker interface {
-		protocol.RequestReader
-		io.Seeker
-	}
-	// Convert protocol.RequestReader to the net.http.Request object interface.
-	//
-	// 将RequestReader转换成net.http.Request对象接口。
-	RequestConvertNetHttp interface {
-		GetNetHttpRequest() *http.Request
-	}
-	// Convert net.http.Request to protocol.RequestReader.
-	//
-	// 将net/http.Request转换成RequestReader。
-	RequestReaderHttp struct {
-		http.Request
-		header protocol.Header
-	}
-	// Modify the protocol.RequestReader method and request uri inside the internal redirect.
-	//
-	// 内部重定向内修改RequestReader的方法和请求uri。
-	RequestReaderRedirect struct {
-		protocol.RequestReader
-		method string
-		uri    string
-	}
-	RequestReaderSeeker struct {
-		protocol.RequestReader
-		reader *bytes.Reader
-	}
-	RequestWriterHttp struct {
-		*http.Client
-		*http.Request
-		err error
-	}
+	// RequestReaderTest 实现protocol.RequestReader接口，用于执行测试请求。
 	RequestReaderTest struct {
 		method string
 		url    *url.URL
@@ -56,93 +21,7 @@ type (
 	}
 )
 
-var _ protocol.RequestReader = &RequestReaderHttp{}
-
-func NewRequestReaderHttp(r *http.Request) protocol.RequestReader {
-	return &RequestReaderHttp{
-		Request: *r,
-		header:  HeaderMap(r.Header),
-	}
-}
-
-func ResetRequestReaderHttp(r *RequestReaderHttp, req *http.Request) protocol.RequestReader {
-	r.Request = *req
-	r.header = HeaderMap(req.Header)
-	return r
-}
-
-func (r *RequestReaderHttp) Read(p []byte) (int, error) {
-	return r.Request.Body.Read(p)
-}
-
-func (r *RequestReaderHttp) Method() string {
-	return r.Request.Method
-}
-
-func (r *RequestReaderHttp) Proto() string {
-	return r.Request.Proto
-}
-
-func (r *RequestReaderHttp) Host() string {
-	return r.Request.Host
-}
-
-func (r *RequestReaderHttp) RequestURI() string {
-	return r.Request.RequestURI
-}
-
-func (r *RequestReaderHttp) Header() protocol.Header {
-	return r.header
-}
-
-func (r *RequestReaderHttp) RemoteAddr() string {
-	return r.Request.RemoteAddr
-}
-
-func (r *RequestReaderHttp) TLS() *tls.ConnectionState {
-	return r.Request.TLS
-}
-
-func (r *RequestReaderHttp) GetNetHttpRequest() *http.Request {
-	return &r.Request
-}
-
-func NewRequestReaderRedirect(r protocol.RequestReader, method, uri string) protocol.RequestReader {
-	return &RequestReaderRedirect{
-		RequestReader: r,
-		method:        method,
-		uri:           uri,
-	}
-}
-
-func (r *RequestReaderRedirect) Method() string {
-	return r.method
-}
-
-func (r *RequestReaderRedirect) RemoteAddr() string {
-	return r.uri
-}
-
-func NewRequestReaderSeeker(r protocol.RequestReader) RequestReadSeeker {
-	rs, ok := r.(RequestReadSeeker)
-	if ok {
-		return rs
-	}
-	bts, _ := ioutil.ReadAll(r)
-	return &RequestReaderSeeker{
-		RequestReader: r,
-		reader:        bytes.NewReader(bts),
-	}
-}
-
-func (r *RequestReaderSeeker) Read(p []byte) (int, error) {
-	return r.reader.Read(p)
-}
-
-func (r *RequestReaderSeeker) Seek(offset int64, whence int) (int64, error) {
-	return r.reader.Seek(offset, whence)
-}
-
+// NewRequestReaderTest 函数创建一个测试http请求。
 func NewRequestReaderTest(method, addr string, body interface{}) (protocol.RequestReader, error) {
 	r := &RequestReaderTest{
 		method: method,
@@ -170,35 +49,52 @@ func NewRequestReaderTest(method, addr string, body interface{}) (protocol.Reque
 	return r, nil
 }
 
+// Method 方法返回请求方法。
 func (r *RequestReaderTest) Method() string {
 	return r.method
 }
 
+// Proto 方法返回http协议版本，使用"HTTP/1.0"。
 func (r *RequestReaderTest) Proto() string {
-	return "HTTP/1.1"
+	return "HTTP/1.0"
 }
 
+// RequestURI 方法返回http请求的完整uri。
 func (r *RequestReaderTest) RequestURI() string {
 	return r.url.EscapedPath()
 }
 
+// Path 方法返回http请求的方法。
+func (r *RequestReaderTest) Path() string {
+	return r.url.Path
+}
+
+// RawQuery 方法返回http请求的uri参数。
+func (r *RequestReaderTest) RawQuery() string {
+	return r.url.RawQuery
+}
+
+// Header 方法返回http请求的header
 func (r *RequestReaderTest) Header() protocol.Header {
 	return r.header
 }
 
+// Read 方法实现io.Reader接口，用于读取body内容。
 func (r *RequestReaderTest) Read(p []byte) (int, error) {
 	return r.body.Read(p)
 }
 
+// Host 方法返回请求Host。
 func (r *RequestReaderTest) Host() string {
 	return r.url.Host
 }
 
-// conn data
+// RemoteAddr 方法返回远程连接地址，使用默认值"192.0.2.1:1234"。
 func (r *RequestReaderTest) RemoteAddr() string {
 	return "192.0.2.1:1234"
 }
 
+// TLS 方法返回tls状态，如果请求url协议是http返回空，否在返回tls1.2版本完成握手的状态。
 func (r *RequestReaderTest) TLS() *tls.ConnectionState {
 	if r.url.Scheme == "http" {
 		return nil
@@ -208,21 +104,6 @@ func (r *RequestReaderTest) TLS() *tls.ConnectionState {
 		HandshakeComplete: true,
 		ServerName:        r.Host(),
 	}
-}
-
-func (r *RequestWriterHttp) Header() protocol.Header {
-	return HeaderMap(r.Request.Header)
-}
-
-func (r *RequestWriterHttp) Do() (protocol.ResponseReader, error) {
-	if r.err != nil {
-		return nil, r.err
-	}
-	resp, err := r.Client.Do(r.Request)
-	if err != nil {
-		return nil, err
-	}
-	return NewResponseReaderHttp(resp), nil
 }
 
 func transbody(body interface{}) (io.Reader, error) {
@@ -240,50 +121,3 @@ func transbody(body interface{}) (io.Reader, error) {
 		return nil, fmt.Errorf("unknown type used for body: %+v", body)
 	}
 }
-
-// func (r *RequestWriterHttp)
-
-/*
-// Body makes the request use obj as the body. Optional.
-// If obj is a string, try to read a file of that name.
-// If obj is a []byte, send it directly.
-// If obj is an io.Reader, use it directly.
-// If obj is a runtime.Object, marshal it correctly, and set Content-Type header.
-// If obj is a runtime.Object and nil, do nothing.
-// Otherwise, set an error.
-func (r *Request) Body(obj interface{}) *Request {
-	if r.err != nil {
-		return r
-	}
-	switch t := obj.(type) {
-	case string:
-		data, err := ioutil.ReadFile(t)
-		if err != nil {
-			r.err = err
-			return r
-		}
-		glogBody("Request Body", data)
-		r.body = bytes.NewReader(data)
-	case []byte:
-		glogBody("Request Body", t)
-		r.body = bytes.NewReader(t)
-	case io.Reader:
-		r.body = t
-	case runtime.Object:
-		// callers may pass typed interface pointers, therefore we must check nil with reflection
-		if reflect.ValueOf(t).IsNil() {
-			return r
-		}
-		data, err := runtime.Encode(r.serializers.Encoder, t)
-		if err != nil {
-			r.err = err
-			return r
-		}
-		glogBody("Request Body", data)
-		r.body = bytes.NewReader(data)
-		r.SetHeader("Content-Type", r.content.ContentType)
-	default:
-		r.err = fmt.Errorf("unknown type used for body: %+v", obj)
-	}
-	return r
-}*/

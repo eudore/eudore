@@ -5,8 +5,7 @@ package main
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/middleware/logger"
-	"github.com/eudore/eudore/middleware/recover"
+	"github.com/eudore/eudore/middleware"
 )
 
 // eudore core
@@ -15,13 +14,13 @@ func main() {
 	app := eudore.NewCore()
 	// 全局级请求处理中间件
 	app.AddMiddleware("ANY", "",
-		logger.NewLogger(),
+		middleware.NewLoggerFunc(),
 	)
 
 	// 创建子路由器
-	apiv1 := app.Group("/api/v1 version:v1")
+	apiv1 := app.Group("/api/v1 version=v1")
 	// 路由级请求处理中间件
-	apiv1.AddMiddleware("ANY", "", recover.RecoverFunc)
+	apiv1.AddMiddleware("ANY", "", middleware.NewRecoverFunc())
 	{
 		// Api级请求处理中间件, 常量优先于通配符
 		apiv1.AnyFunc("/*", handlepre1, handleparam)

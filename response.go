@@ -2,35 +2,17 @@ package eudore
 
 import (
 	"bytes"
-	"crypto/tls"
+	"context"
 	"fmt"
-	"github.com/eudore/eudore/protocol"
-	"io"
 	"net"
 	"net/http"
+	"strings"
+
+	"github.com/eudore/eudore/protocol"
 )
 
 type (
-	// Encapsulate the net/http.Response response message and convert it to the ResponseReader interface.
-	//
-	// 封装net/http.Response响应报文，转换成ResponseReader接口
-	ResponseReaderHttp struct {
-		io.ReadCloser
-		Data   *http.Response
-		header protocol.Header
-	}
-	ResponseReaderHttpWithWiter struct {
-		ResponseReaderHttp
-		io.Writer
-	}
-	// net/http.ResponseWriter接口封装
-	ResponseWriterHttp struct {
-		http.ResponseWriter
-		header protocol.Header
-		code   int
-		size   int
-	}
-	// ResponseWriterTest is an implementation of http.ResponseWriter that
+	// ResponseWriterTest is an implementation of protocol.ResponseWriter that
 	// records its mutations for later inspection in tests.
 	ResponseWriterTest struct {
 		// Code is the HTTP response code set by WriteHeader.
@@ -62,109 +44,7 @@ type (
 	}
 )
 
-var _ protocol.ResponseWriter = &ResponseWriterHttp{}
-
-func NewResponseWriterHttp(w http.ResponseWriter) protocol.ResponseWriter {
-	return &ResponseWriterHttp{
-		ResponseWriter: w,
-		header:         HeaderMap(w.Header()),
-	}
-}
-
-func ResetResponseWriterHttp(hw *ResponseWriterHttp, w http.ResponseWriter) protocol.ResponseWriter {
-	hw.ResponseWriter = w
-	hw.header = HeaderMap(w.Header())
-	hw.code = http.StatusOK
-	hw.size = 0
-	return hw
-}
-
-func (w *ResponseWriterHttp) Header() protocol.Header {
-	return w.header
-}
-
-func (w *ResponseWriterHttp) Write(data []byte) (int, error) {
-	n, err := w.ResponseWriter.Write(data)
-	w.size = w.size + n
-	return n, err
-}
-
-func (w *ResponseWriterHttp) WriteHeader(codeCode int) {
-	w.code = codeCode
-	w.ResponseWriter.WriteHeader(w.code)
-}
-
-func (w *ResponseWriterHttp) Flush() {
-	w.ResponseWriter.(http.Flusher).Flush()
-}
-
-func (w *ResponseWriterHttp) Hijack() (conn net.Conn, err error) {
-	if hj, ok := w.ResponseWriter.(http.Hijacker); ok {
-		conn, _, err = hj.Hijack()
-		return
-	}
-	err = fmt.Errorf("http.Hijacker interface is not supported")
-	return
-}
-
-// 如果ResponseWriterHttp实现http.Push接口，则Push资源。
-func (w *ResponseWriterHttp) Push(target string, opts *protocol.PushOptions) error {
-	if pusher, ok := w.ResponseWriter.(http.Pusher); ok {
-		// TODO: add con
-		return pusher.Push(target, &http.PushOptions{})
-	}
-	return nil
-}
-
-func (w *ResponseWriterHttp) Size() int {
-	return w.size
-}
-
-func (w *ResponseWriterHttp) Status() int {
-	return w.code
-}
-
-func NewResponseReaderHttp(resp *http.Response) protocol.ResponseReader {
-	var r = ResponseReaderHttp{
-		ReadCloser: resp.Body,
-		Data:       resp,
-		header:     HeaderMap(resp.Header),
-	}
-
-	w, ok := resp.Body.(io.Writer)
-	if ok {
-		return &ResponseReaderHttpWithWiter{
-			ResponseReaderHttp: r,
-			Writer:             w,
-		}
-	}
-	return &r
-}
-
-func (r *ResponseReaderHttpWithWiter) Write(p []byte) (n int, err error) {
-	return r.Writer.Write(p)
-}
-
-func (r *ResponseReaderHttp) Proto() string {
-	return r.Data.Proto
-}
-
-func (r *ResponseReaderHttp) Statue() int {
-	return r.Data.StatusCode
-}
-
-func (r *ResponseReaderHttp) Code() string {
-	return r.Data.Status
-}
-
-func (r *ResponseReaderHttp) Header() protocol.Header {
-	return r.header
-}
-
-func (r *ResponseReaderHttp) TLS() *tls.ConnectionState {
-	return r.Data.TLS
-}
-
+// NewResponseWriterTest 方法返回一个测试使用的响应写入对象*ResponseWriterTest。
 func NewResponseWriterTest() *ResponseWriterTest {
 	return &ResponseWriterTest{
 		HeaderMap: make(HeaderMap),
@@ -266,15 +146,52 @@ func (rw *ResponseWriterTest) Flush() {
 	rw.Flushed = true
 }
 
+// Hijack 方法返回劫持的连接，该方法始终返回空连接和不支持该方法的错误。
 func (rw *ResponseWriterTest) Hijack() (net.Conn, error) {
-	return nil, nil
+	return nil, fmt.Errorf("ResponseWriterTest no support hijack")
 }
+
+// Push 方法实现http2 push操作，改方法始终为空操作。
 func (rw *ResponseWriterTest) Push(string, *protocol.PushOptions) error {
 	return nil
 }
+
+// Size 方法返回写入的body的长度。
 func (rw *ResponseWriterTest) Size() int {
 	return 0
 }
+
+// Status 方法返回响应状态码。
 func (rw *ResponseWriterTest) Status() int {
 	return rw.Code
+}
+
+func (rw *ResponseWriterTest) CheckHeader() *ResponseWriterTest {
+	return rw
+}
+
+func (rw *ResponseWriterTest) CheckStatus(status ...int) *ResponseWriterTest {
+	for _, i := range status {
+		if i == rw.Code {
+			fmt.Printf("response status succeeds. status is %d", rw.Code)
+			return rw
+		}
+	}
+	fmt.Printf("response status is invalid %d,check status: %v", rw.Code, status)
+	return rw
+}
+
+func (rw *ResponseWriterTest) Show() {
+	fmt.Println("status:", rw.Code)
+	for k, v := range rw.HeaderMap {
+		fmt.Printf("%s: %s\n", k, strings.Join(v, ", "))
+	}
+	fmt.Println(rw.Body.String())
+}
+
+func TestAppRequest(handler protocol.HandlerHttp, method, path string, body interface{}) *ResponseWriterTest {
+	req, _ := NewRequestReaderTest(method, path, body)
+	resp := NewResponseWriterTest()
+	handler.EudoreHTTP(context.Background(), resp, req)
+	return resp
 }

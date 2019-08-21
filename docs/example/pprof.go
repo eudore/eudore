@@ -7,7 +7,7 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	pprof.Inject(app.Group("/eudore/debug"))
+	pprof.RoutesInject(app.Group("/eudore/debug"))
 
 	app.Listen(":8088")
 	app.Run()

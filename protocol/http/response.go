@@ -184,6 +184,7 @@ func (w *Response) finalFlush() (err error) {
 
 func (w *Response) Hijack() (net.Conn, error) {
 	w.ishjack = true
+	w.request.conn.SetDeadline(time.Time{})
 	return &CancelConn{w.request.conn, w.cancel}, nil
 }
 

@@ -1,9 +1,6 @@
 package eudore
 
-/*
-定义各种常量
-*/
-
+// 定义eudore定义各种常量。
 const (
 	// Response statue
 	StatusContinue           = 100 // RFC 7231, 6.2.1
@@ -76,23 +73,23 @@ const (
 	// Header
 	HeaderAccept          = "Accept"
 	HeaderAcceptEncoding  = "Accept-Encoding"
-	HeaderContentType     = "Content-Type"
-	HeaderContentRange    = "Content-Range"
-	HeaderContentLength   = "Content-Length"
+	HeaderAuthorization   = "Authorization"
+	HeaderConnection      = "Connection"
 	HeaderContentEncoding = "Content-Encoding"
+	HeaderContentLength   = "Content-Length"
+	HeaderContentRange    = "Content-Range"
+	HeaderContentType     = "Content-Type"
+	HeaderCookie          = "Cookie"
 	HeaderHost            = "Host"
+	HeaderLocation        = "Location"
 	HeaderMethod          = "Method"
 	HeaderReferer         = "Referer"
-	HeaderCookie          = "Cookie"
-	HeaderAuthorization   = "Authorization"
-	HeaderLocation        = "Location"
 	HeaderUpgrade         = "Upgrade"
-	HeaderConnection      = "Connection"
+	HeaderUserAgent       = "User-Agent"
 	HeaderVary            = "Vary"
 	HeaderXForwardedFor   = "X-Forwarded-For"
-	HeaderUserAgent       = "User-Agent"
-	HeaderXRequestID      = "X-Request-ID"
 	HeaderXParentID       = "X-Parent-ID"
+	HeaderXRequestID      = "X-Request-ID"
 
 	// Mime
 	MimeCharsetUtf8                = "charset=utf-8"
@@ -122,6 +119,7 @@ const (
 	ParamRam      = "ram"
 	ParamTemplate = "template"
 	ParamRoute    = "route"
+	ParamDeny     = "deny"
 	// Param value
 	ValueJwt     = "jwt"
 	ValueSession = "session"

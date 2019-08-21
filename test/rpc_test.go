@@ -19,8 +19,8 @@ type (
 
 func TestRpc(t *testing.T) {
 	app := eudore.NewCore()
-	app.PostFunc("/get", eudore.HandlerRpc(hanele1))
-	app.PostFunc("/2", eudore.HandlerRpc(hanele2))
+	app.PostFunc("/get", hanele1)
+	app.PostFunc("/2", eudore.NewRpcHandlerFunc(hanele2))
 
 	req, _ := eudore.NewRequestReaderTest("POST", "/get", `{"Name": "han1"}`)
 	req.Header().Add(eudore.HeaderContentType, eudore.MimeApplicationJson)
@@ -36,10 +36,10 @@ func TestRpc(t *testing.T) {
 
 }
 
-func hanele1(ctx eudore.Context, req map[string]string) (resp map[string]string, err error) {
+func hanele1(ctx eudore.Context, req map[string]interface{}) (resp map[string]interface{}, err error) {
 	eudore.Json(req)
 	fmt.Println("hanele1", ctx.Path())
-	resp = map[string]string{
+	resp = map[string]interface{}{
 		"name": "hanele1",
 	}
 	// resp["name"] = "hanele1"

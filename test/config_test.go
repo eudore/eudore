@@ -22,7 +22,7 @@ type (
 )
 
 func TestKeys(*testing.T) {
-	c, _ := eudore.NewConfigEudore(&Config{
+	c := eudore.NewConfigEudore(&Config{
 		Keys:    make(map[string]string),
 		Modules: make(map[string]interface{}),
 		Handler: make(map[string]interface{}),

@@ -20,7 +20,8 @@ import (
 	"github.com/eudore/eudore"
 )
 
-func Inject(r eudore.RouterMethod) {
+// InjectRoutes 函数实现注入pprof路由。
+func RoutesInject(r eudore.RouterMethod) {
 	r = r.Group("/pprof")
 	r.AnyFunc("/*name", Index)
 	r.AnyFunc("/cmdline", Cmdline)
@@ -151,8 +152,8 @@ func Symbol(ctx eudore.Context) {
 }
 
 // Handler returns an HTTP handler that serves the named profile.
-func Handler(name string) eudore.Handler {
-	return handler(name)
+func Handler(name string) eudore.HandlerFunc {
+	return handler(name).Handle
 }
 
 type handler string

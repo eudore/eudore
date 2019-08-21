@@ -93,8 +93,28 @@ eudore http使用一个[]byte作为缓冲，会记录未发送的缓冲数据，
 
 http反向代理的原理就是请求转发，处理者接收请求然后发送目标。
 
-转发时需要移除跳对跳Header，并写入正确的header,如果遇到Upgrade返回101之后就进行双向io.Cpoy进行tcp代理
+转发时需要移除跳对跳Header，并写入正确的header,如果遇到Upgrade返回101之后就进行双向io.Cpoy进行tcp隧道代理。
 
+在rfc里面定义了端对端 and 跳对跳header，端对端主要是指客户端和服务端之间传输的header，跳对跳是针对有http proxy的情况，从一个代理到达下一个代理就一跳。
+
+如果一个请求是这样的，client -> proxy -> proxy -> server，端就是client到server，跳就三跳。
+
+在跳对跳header里面，保存者两个http服务间的，连接信息、传输信息，在每一个跳之间都有自己的连接信息和传输信息，所以转发时需要移除跳对跳Header。
+
+端对端Header的协议header和body就正常的转发就好了。
+
+简单实现：
+
+没有处理err，没有处理跳对跳Header，没有处理101。
+
+```golang
+func(w http.ResponseWriter, r *http.Request) {
+	r2, _ := http.NewRequest(r.Method, r.URL.Path, r.Body)
+	w2, _ := http.DefaultClient.Do(r2)
+	defer w2.Body.Close()
+	io.Copy(w, w2.Body)
+}
+```
 
 ## http跨域请求
 

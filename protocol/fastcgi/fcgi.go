@@ -61,10 +61,10 @@ const (
 )
 
 type Fastcgi struct {
-	h protocol.Handler
+	h protocol.HandlerHttp
 }
 
-func NewServer(h protocol.Handler) *Fastcgi {
+func NewServer(h protocol.HandlerHttp) *Fastcgi {
 	return &Fastcgi{h}
 }
 
@@ -77,7 +77,7 @@ func (f *Fastcgi) EudoreConn(ctx context.Context, rw net.Conn) {
 // to reply to them.
 // If l is nil, Serve accepts connections from os.Stdin.
 // If handler is nil, http.DefaultServeMux is used.
-func Serve(l net.Listener, handler protocol.Handler) error {
+func Serve(l net.Listener, handler protocol.HandlerHttp) error {
 	if l == nil {
 		var err error
 		l, err = net.FileListener(os.Stdin)

@@ -3,77 +3,34 @@ package eudore
 import (
 	"errors"
 	"fmt"
-	"log"
 )
 
-const (
-	StatueRouter = 610
-	StatusLogger = 611
-	StatusCache  = 612
-)
-
+// 定义默认错误
 var (
-	ErrRouterSetNoSupportType  = errors.New("router set type is nosupport")
-	ErrComponentNoSupportField = errors.New("component no support field")
-	ErrServerNotSetRuntimeInfo = errors.New("server not set runtime info")
-	ErrApplicationStop         = errors.New("stop application")
-	ErrHandlerInvalidRange     = errors.New("invalid range")
-	ErrContextHandlerEnd       = errors.New("context handler end")
+	// ErrApplicationStop 在app正常退出时返回。
+	ErrApplicationStop = errors.New("stop application")
+	// ErrHandlerInvalidRange 在http使用range分开请求文件出现错误时返回。
+	ErrHandlerInvalidRange = errors.New("invalid range")
 )
 
 type (
-	ErrorFunc    func(error)
-	ErrorHandler interface {
-		HandleError(err error)
-	}
+	// Errors 实现多个error组合。
 	Errors struct {
 		errs []error
 	}
+	// ErrorCode 实现具有错误信息和错误码的error。
+	ErrorCode struct {
+		code    int
+		message string
+	}
 )
 
-type ErrorHttp struct {
-	code    int
-	message string
-}
-
-func NewError(c int, str string) *ErrorHttp {
-	return &ErrorHttp{code: c, message: str}
-}
-
-func (e *ErrorHttp) Error() string {
-	return e.message
-}
-
-func (e *ErrorHttp) Code() int {
-	return e.code
-}
-
-type HttpError struct {
-	handle ErrorFunc
-	log    *log.Logger
-}
-
-func NewHttpError(fn ErrorFunc) *HttpError {
-	e := &HttpError{
-		handle: fn,
-	}
-	e.log = log.New(e, "", 0)
-	return e
-}
-
-func (e *HttpError) Write(p []byte) (n int, err error) {
-	e.handle(fmt.Errorf(string(p)))
-	return 0, nil
-}
-
-func (e *HttpError) Logger() *log.Logger {
-	return e.log
-}
-
+// NewErrors 创建Errors对象。
 func NewErrors() *Errors {
 	return &Errors{}
 }
 
+// HandleError 实现处理多个错误，如果非空则保存错误。
 func (e *Errors) HandleError(errs ...error) {
 	for _, err := range errs {
 		if err != nil {
@@ -82,13 +39,19 @@ func (e *Errors) HandleError(errs ...error) {
 	}
 }
 
-func (e Errors) Error() string {
-	if len(e.errs) == 0 {
+// Error 方法实现error接口，返回错误描述。
+func (e *Errors) Error() string {
+	switch len(e.errs) {
+	case 0:
 		return ""
+	case 1:
+		return e.errs[0].Error()
+	default:
+		return fmt.Sprint(e.errs)
 	}
-	return fmt.Sprint(e.errs)
 }
 
+// GetError 方法返回错误，如果没有保存的错误则返回空。
 func (e *Errors) GetError() error {
 	if len(e.errs) == 0 {
 		return nil
@@ -96,9 +59,17 @@ func (e *Errors) GetError() error {
 	return e
 }
 
-// The default error handler, outputting an error to std.out.
-//
-// 默认错误处理函数，输出错误到std.out。
-func DefaultErrorHandleFunc(e error) {
-	fmt.Println(e)
+// NewErrorCode 创建一个ErrorCode对象。
+func NewErrorCode(c int, str string) *ErrorCode {
+	return &ErrorCode{code: c, message: str}
+}
+
+// Error 方法实现error接口，返回错误信息。
+func (e *ErrorCode) Error() string {
+	return e.message
+}
+
+// Code 方法返回错误状态码。
+func (e *ErrorCode) Code() int {
+	return e.code
 }

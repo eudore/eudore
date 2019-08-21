@@ -6,10 +6,6 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	// session数据保存到cache中
-	app.RegisterComponent("session-cache", &eudore.SessionCacheConfig{
-		Cache: app.Cache,
-	})
 
 	app.GetFunc("/set", func(ctx eudore.Context) {
 		// 读取会话

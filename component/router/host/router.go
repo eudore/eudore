@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// 基于Host匹配进行路由。
+// RouterHost 使用Host匹配进行路由。
 type RouterHost struct {
 	eudore.RouterMethod
 	Default eudore.Router
@@ -13,10 +13,16 @@ type RouterHost struct {
 	Routers []eudore.Router
 }
 
+var _ eudore.Router = (*RouterHost)(nil)
+
 func init() {
 	eudore.RegisterComponent(eudore.ComponentRouterHostName, func(arg interface{}) (eudore.Component, error) {
 		return NewRouterHost(arg)
 	})
+}
+
+func InitAddHost(ctx eudore.Context) {
+	ctx.AddParam("host", ctx.Host())
 }
 
 func NewRouterHost(interface{}) (eudore.Router, error) {
@@ -61,7 +67,7 @@ func (r *RouterHost) RegisterHandler(method string, path string, handler eudore.
 }
 
 func (r *RouterHost) Match(method, path string, params eudore.Params) eudore.HandlerFuncs {
-	return r.getRouter(path).Match(method, path, params)
+	return r.getRouter(params.GetParam("host")).Match(method, path, params)
 }
 
 func (r *RouterHost) GetName() string {

@@ -36,9 +36,17 @@ Sec-WebSocket-Protocol是支持的子协议。
 
 Sec-WebSocket-Version是ws版本，一般都是13.
 
+### golang upgrade 
+
+在golang标准库实现ws协议握手时，需要使用http.Hijacker接口，该接口的作用是劫持连接，这样就直接获得了tcp连接，在Hijack后，net/http就会忽略这个连接。
+
+在Hijack获得tcp连接后，可以使用开始读取到的请求信息来完整握手，不论握手结果如何，都是直接写tcp连接写入http格式的响应，告诉客户端握手结果。
+
+通常握手成功后就会for循环操作ws连接。
+
 ## 消息帧
 
-websocket协议是分帧传输，目前标准有继续帧、二进制帧、文本帧、ping帧、pong帧、close帧六种。
+websocket协议是二进制分帧传输，目前标准有继续帧、二进制帧、文本帧、ping帧、pong帧、close帧六种。
 
 基本来源于rfc5.2章。
 
@@ -79,6 +87,7 @@ Payload length为数据长度，有三种含义，0-125是数据长度，126表�
 
 最后是Payload Data，就是桢的数据，前面都是固定的header结构和长度，Payload的长度在header中可以解析到，一个完整的桢就是header+payload，通过长度来实现桢边界分割。
 
+**ws桢的结构基本就是标志位、掩码数据、长度、数据四块**，标志位一般都可以忽略，掩码在需要解析数据时使用，剩下就是数据长度和数据了，桢固定结构位置读取到了数据长度，就然后知道了数据的结束位置，不会tcp粘包。
 
 [rfc6455]: https://tools.ietf.org/html/rfc6455
 [rfc6455cn]: ../resource/pdf/rfc-6455-websocket-protocol-in-chinese.pdf

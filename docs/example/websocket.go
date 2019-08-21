@@ -10,14 +10,13 @@ eudore.UpgradeHttp获取net.Conn链接并写入建立请求响应，然后wsutil
 
 import (
 	"github.com/eudore/eudore"
-	_ "github.com/eudore/eudore/component/router/init"
 	"github.com/gobwas/ws/wsutil"
 )
 
 func main() {
 	app := eudore.NewCore()
-	app.RegisterComponent(eudore.ComponentRouterInitName, eudore.HandlerFunc(func(ctx eudore.Context) {
-		conn, err := eudore.UpgradeHttp(ctx)
+	app.AnyFunc("/*", eudore.HandlerFunc(func(ctx eudore.Context) {
+		conn, err := eudore.HandlerUpgradeHttp(ctx)
 		if err != nil {
 			ctx.Fatal(err)
 			return

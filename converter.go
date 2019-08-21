@@ -26,12 +26,19 @@ const (
 	defaultConvertTag = "set"
 )
 
+// 定义convert中的错误
 var (
-	ErrInputDataNil  = errors.New("input value is nil.")
-	ErrSourceDataNil = errors.New("source data is nil.")
+	ErrInputDataNil         = errors.New("input value is nil.")
+	ErrSourceDataNil        = errors.New("source data is nil.")
+	ErrSeterNotSupportField = errors.New("seter not support set field.")
 )
 
-// Set the properties of an object.
+// Seter 定义对象set属性的方法。
+type Seter interface {
+	Set(string, interface{}) error
+}
+
+// Set the properties of an object. If the target implements the Seter interface, call the Set method.
 //
 // The path will be split using '.' and then look for the path in turn.
 //
@@ -51,7 +58,7 @@ var (
 //
 // If the target type passed in is an array, map, or struct, the json deserializes the set object.
 //
-// 设置一个对象的属性。
+// 设置一个对象的属性,如果目标实现Seter接口，调用Set方法。
 //
 // 路径将使用'.'分割，然后依次寻找路径。
 //
@@ -73,6 +80,13 @@ var (
 func Set(i interface{}, key string, val interface{}) (interface{}, error) {
 	if i == nil {
 		return i, fmt.Errorf("input value is nil.")
+	}
+	seter, ok := i.(Seter)
+	if ok {
+		err := seter.Set(key, val)
+		if err == nil || err != ErrSeterNotSupportField {
+			return i, err
+		}
 	}
 	// 将对象转换成可取地址的reflect.Value。
 	newValue := reflect.New(reflect.TypeOf(i)).Elem()
@@ -241,7 +255,7 @@ func setStruct(iType reflect.Type, iValue reflect.Value, key []string, val inter
 	return setValue(typeField.Type, structField, key[1:], val)
 }
 
-// A more path to get an attribute from an object.
+// Get method A more path to get an attribute from an object.
 //
 // The path will be split using '.' and then look for the path in turn.
 //
@@ -366,7 +380,7 @@ func getInterface(iType reflect.Type, iValue reflect.Value, key []string) interf
 	return iValue.Elem().Interface()
 }
 
-// 将一个结构体转换成map[string]interface{}
+// ConvertMapString 将一个结构体转换成map[string]interface{}
 //
 // 其他map转map[string]interface{}未测试。
 func ConvertMapString(i interface{}) map[string]interface{} {
@@ -433,7 +447,7 @@ func convertMapstrngMapToMapString(iType reflect.Type, iValue reflect.Value, val
 	}
 }
 
-// 将一个结构体转换成map[interface{}]interface{}
+// ConvertMap 将一个结构体转换成map[interface{}]interface{}
 //
 // 其他map转map[interface{}]interface{}未测试。
 func ConvertMap(i interface{}) map[interface{}]interface{} {
@@ -492,6 +506,7 @@ func convertMapMapToMap(iType reflect.Type, iValue reflect.Value, val map[interf
 	}
 }
 
+// ConvertTo 将一个对象属性复制给另外一个对象。
 func ConvertTo(source interface{}, target interface{}) error {
 	if source == nil || target == nil {
 		return ErrInputDataNil
@@ -500,7 +515,7 @@ func ConvertTo(source interface{}, target interface{}) error {
 }
 
 func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) error {
-	var kind int = 0
+	var kind int
 
 	// 检测目标类型并解除引用和初始化空对象
 	switch tType.Kind() {
@@ -513,9 +528,8 @@ func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tVa
 		// 如果目标类型无法解引用，直接转换
 		if tValue.Elem().Kind() == reflect.Invalid {
 			return setWithValue(sType, sValue, tType, tValue)
-		} else {
-			return convertTo(sType, sValue, tValue.Elem().Type(), tValue.Elem())
 		}
+		return convertTo(sType, sValue, tValue.Elem().Type(), tValue.Elem())
 	case reflect.Map:
 		if tValue.IsNil() {
 			tValue.Set(reflect.MakeMap(tType))
@@ -546,7 +560,7 @@ func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tVa
 	}
 
 	// fmt.Println(kind, sType.Kind(), tType.Kind())
-	// 更具数据类型执行转换
+	// 根据数据类型执行转换
 	switch kind {
 	case 0x11:
 		convertToMapToMap(sType, sValue, tType, tValue)

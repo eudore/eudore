@@ -17,17 +17,17 @@ const (
 )
 
 type (
-	// Routing data check function
+	// RouterCheckFunc defines the routing data check function
 	//
-	// 路由数据校验函数
+	// RouterCheckFunc 定义路由数据校验函数
 	RouterCheckFunc func(string) bool
 	// RouterFindFunc func() []string
 
-	// Routing data validation function creation function
+	// RouterNewCheckFunc defines the creation function of the routing data check function
 	//
 	// Construct a check function by specifying a string
 	//
-	// 路由数据校验函数的创建函数
+	// RouterNewCheckFunc 定义路由数据校验函数的创建函数
 	//
 	// 通过指定字符串构造出一个校验函数
 	RouterNewCheckFunc func(string) RouterCheckFunc
@@ -80,9 +80,9 @@ type (
 	}
 )
 
-func NewRouterFull(interface{}) (Router, error) {
+// NewRouterFull 函数创建一个Full路由器。
+func NewRouterFull() Router {
 	r := &RouterFull{
-
 		Print:       func(...interface{}) {},
 		nodefunc404: HandlerFuncs{DefaultRouter404Func},
 		nodefunc405: HandlerFuncs{DefaultRouter405Func},
@@ -104,19 +104,19 @@ func NewRouterFull(interface{}) (Router, error) {
 		RouterCore:          r,
 		ControllerParseFunc: ControllerBaseParseFunc,
 	}
-	return r, nil
+	return r
 }
 
-// Register the middleware into the middleware tree and append the handler if it exists.
+// RegisterMiddleware method register the middleware into the middleware tree and append the handler if it exists.
 //
-// 注册中间件到中间件树中，如果存在则追加处理者。
+// RegisterMiddleware 注册中间件到中间件树中，如果存在则追加处理者。
 func (r *RouterFull) RegisterMiddleware(method, path string, hs HandlerFuncs) {
 	// Correct the data: If the method is not empty, the path is empty and the modified path is '/'.
 	// 修正数据：如果方法非空，路径为空，修改路径为'/'。
 	if len(method) != 0 && len(path) == 0 {
 		path = "/"
 	}
-	r.Print("RegisterMiddleware:", method, path, GetHandlerNames(hs))
+	r.Print("RegisterMiddleware:", method, path, GetHandlerFuncsName(hs))
 	if method == MethodAny {
 		if path == "/" {
 			r.middtree.Insert("", hs)
@@ -132,20 +132,27 @@ func (r *RouterFull) RegisterMiddleware(method, path string, hs HandlerFuncs) {
 	}
 }
 
-// Register a new method request path to the router
+// RegisterHandler method register a new method request path to the router
 //
 // The router matches the handlers available to the current path from the middleware tree and adds them to the front of the handler.
 //
-// 给路由器注册一个新的方法请求路径
+// RegisterHandler 给路由器注册一个新的方法请求路径
 //
 // 路由器会从中间件树中匹配当前路径可使用的处理者，并添加到处理者前方。
 func (r *RouterFull) RegisterHandler(method string, path string, handler HandlerFuncs) {
-	r.Print("RegisterHandler:", method, path, GetHandlerNames(handler))
-	if method == MethodAny {
+	r.Print("RegisterHandler:", method, path, GetHandlerFuncsName(handler))
+	switch method {
+	case "NotFound", "404":
+		r.nodefunc404 = handler
+		r.node404.handlers = CombineHandlerFuncs(handler, r.middtree.val)
+	case "MethodNotAllowed", "405":
+		r.nodefunc405 = handler
+		r.node405.Wchildren.handlers = CombineHandlerFuncs(handler, r.middtree.val)
+	case MethodAny:
 		for _, method := range RouterAllMethod {
 			r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
 		}
-	} else {
+	default:
 		r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
 	}
 }
@@ -157,15 +164,15 @@ func (r *RouterFull) RegisterHandler(method string, path string, handler Handler
 // 添加一个新的路由Node。
 //
 // 如果方法不支持则不会添加，请求改路径会响应405
-func (t *RouterFull) insertRoute(method, key string, val HandlerFuncs) {
-	var currentNode *fullNode = t.getTree(method)
-	if currentNode == &t.node405 {
+func (r *RouterFull) insertRoute(method, key string, val HandlerFuncs) {
+	var currentNode *fullNode = r.getTree(method)
+	if currentNode == &r.node405 {
 		return
 	}
 
 	// 创建节点
 	args := strings.Split(key, " ")
-	for _, path := range getSpiltPath(args[0]) {
+	for _, path := range getSplitPath(args[0]) {
 		currentNode = currentNode.InsertNode(path, newFullNode(path))
 	}
 
@@ -180,56 +187,25 @@ func (t *RouterFull) insertRoute(method, key string, val HandlerFuncs) {
 // 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
 //
 // 注意：404不支持额外参数，未实现。
-func (t *RouterFull) Match(method, path string, params Params) HandlerFuncs {
-	if n := t.getTree(method).recursiveLoopup(path, params); n != nil {
+func (r *RouterFull) Match(method, path string, params Params) HandlerFuncs {
+	if n := r.getTree(method).recursiveLoopup(path, params); n != nil {
 		return n
 	}
 
 	// 处理404
-	t.node404.AddTagsToParams(params)
-	return t.node404.handlers
+	r.node404.AddTagsToParams(params)
+	return r.node404.handlers
 }
 
-// The router Set method can set the handlers for 404 and 405.
-//
-// 路由器Set方法可以设置404和405的处理者。
-func (r *RouterFull) Set(key string, i interface{}) error {
-	args := strings.Split(key, " ")
-	switch args[0] {
-	case "404":
-		hs := NewHandlerFuncs(i)
-		if hs == nil {
-			return ErrRouterSetNoSupportType
-		}
-		r.node404.SetTags(args)
-		r.node404.handlers = append(r.middtree.val, hs...)
-		r.nodefunc404 = hs
-	case "405":
-		hs := NewHandlerFuncs(i)
-		if hs == nil {
-			return ErrRouterSetNoSupportType
-		}
-		r.node405.Wchildren.SetTags(args)
-		r.node405.Wchildren.handlers = append(r.middtree.val, hs...)
-		r.nodefunc405 = hs
+// Set 方法允许设置Print属性，设置日志输出信息。
+func (r *RouterFull) Set(key string, value interface{}) error {
+	switch val := value.(type) {
+	case func(...interface{}):
+		r.Print = val
 	default:
-		return ErrComponentNoSupportField
+		return ErrSeterNotSupportField
 	}
 	return nil
-}
-
-// Returns the component name of the current router.
-//
-// 返回当前路由器的组件名称。
-func (*RouterFull) GetName() string {
-	return ComponentRouterFullName
-}
-
-// Returns the component version of the current router.
-//
-// 返回当前路由器的组件版本。
-func (*RouterFull) Version() string {
-	return ComponentRouterFullVersion
 }
 
 // Create a 405 response radixNode.
@@ -316,21 +292,21 @@ func loadCheckFunc(path string) (string, RouterCheckFunc) {
 	// no ':' is a fixed function, return directly
 	// 没有':'为固定函数，直接返回
 	if len(arg) == 0 {
-		return name, ConfigLoadRouterCheckFunc(fname)
+		return name, GlobalRouterCheckFunc[fname]
 	}
 
 	// There is a ':' variable function to create a checksum function
 	// 有':'为变量函数，创建校验函数
-	fn := ConfigLoadRouterNewCheckFunc(f2name)(arg)
+	fn := GlobalRouterNewCheckFunc[f2name](arg)
 	// save the newly created checksum function
 	// 保存新建的校验函数
-	ConfigSaveRouterCheckFunc(fname, fn)
+	GlobalRouterCheckFunc[fname] = fn
 	return name, fn
 }
 
-// Add a child node to the node.
+// InsertNode add a child node to the node.
 //
-// 给节点添加一个子节点。
+// InsertNode 给节点添加一个子节点。
 func (r *fullNode) InsertNode(path string, nextNode *fullNode) *fullNode {
 	if len(path) == 0 {
 		return r
@@ -338,22 +314,27 @@ func (r *fullNode) InsertNode(path string, nextNode *fullNode) *fullNode {
 	nextNode.path = path
 	switch nextNode.kind {
 	case radixNodeKindConst:
-		for i, _ := range r.Cchildren {
+		for i := range r.Cchildren {
 			subStr, find := getSubsetPrefix(path, r.Cchildren[i].path)
 			if find {
 				if subStr == r.Cchildren[i].path {
 					nextTargetKey := strings.TrimPrefix(path, r.Cchildren[i].path)
 					return r.Cchildren[i].InsertNode(nextTargetKey, nextNode)
-				} else {
-					newNode := r.SplitNode(subStr, r.Cchildren[i].path)
-					if newNode == nil {
-						panic("Unexpect error on split node")
-					}
-					return newNode.InsertNode(strings.TrimPrefix(path, subStr), nextNode)
 				}
+				newNode := r.SplitNode(subStr, r.Cchildren[i].path)
+				if newNode == nil {
+					panic("Unexpect error on split node")
+				}
+				return newNode.InsertNode(strings.TrimPrefix(path, subStr), nextNode)
 			}
 		}
 		r.Cchildren = append(r.Cchildren, nextNode)
+		// 常量node按照首字母排序。
+		for i := len(r.Cchildren) - 1; i > 0; i-- {
+			if r.Cchildren[i].path[0] < r.Cchildren[i-1].path[0] {
+				r.Cchildren[i], r.Cchildren[i-1] = r.Cchildren[i-1], r.Cchildren[i]
+			}
+		}
 	case fullNodeKindParam:
 		// parameter node
 		// 参数节点
@@ -400,7 +381,7 @@ func (r *fullNode) InsertNode(path string, nextNode *fullNode) *fullNode {
 //
 // 对指定路径为edgeKey的子节点分叉，分叉公共前缀路径为pathKey
 func (r *fullNode) SplitNode(pathKey, edgeKey string) *fullNode {
-	for i, _ := range r.Cchildren {
+	for i := range r.Cchildren {
 		if r.Cchildren[i].path == edgeKey {
 			newNode := &fullNode{path: pathKey}
 			newNode.Cchildren = append(newNode.Cchildren, r.Cchildren[i])
@@ -427,15 +408,15 @@ func (r *fullNode) SetTags(args []string) {
 	r.tags[0] = ParamRoute
 	r.vals[0] = args[0]
 	for i, str := range args[1:] {
-		r.tags[i+1], r.vals[i+1] = split2byte(str, ':')
+		r.tags[i+1], r.vals[i+1] = split2byte(str, '=')
 	}
 }
 
-// Give the current Node tag to Params
+// AddTagsToParams give the current Node tag to Params
 //
-// 将当前Node的tags给予Params
+// AddTagsToParams 将当前Node的tags给予Params
 func (r *fullNode) AddTagsToParams(p Params) {
-	for i, _ := range r.tags {
+	for i := range r.tags {
 		p.AddParam(r.tags[i], r.vals[i])
 	}
 }
@@ -447,24 +428,24 @@ func (r *fullNode) AddTagsToParams(p Params) {
 // 获取对应方法的树。
 //
 // 支持eudore.RouterAllMethod这些方法,弱不支持会返回405处理树。
-func (t *RouterFull) getTree(method string) *fullNode {
+func (r *RouterFull) getTree(method string) *fullNode {
 	switch method {
 	case MethodGet:
-		return &t.get
+		return &r.get
 	case MethodPost:
-		return &t.post
+		return &r.post
 	case MethodDelete:
-		return &t.delete
+		return &r.delete
 	case MethodPut:
-		return &t.put
+		return &r.put
 	case MethodHead:
-		return &t.head
+		return &r.head
 	case MethodOptions:
-		return &t.options
+		return &r.options
 	case MethodPatch:
-		return &t.patch
+		return &r.patch
 	default:
-		return &t.node405
+		return &r.node405
 	}
 }
 
@@ -475,43 +456,44 @@ func (t *RouterFull) getTree(method string) *fullNode {
 // 给当前节点递归添加一个路径为containKey的常量Node
 //
 // targetKey和targetValue为新Node数据。
-func (currentNode *fullNode) recursiveInsertTree(containKey string, targetNode *fullNode) *fullNode {
-	for i, _ := range currentNode.Cchildren {
-		subStr, find := getSubsetPrefix(containKey, currentNode.Cchildren[i].path)
+func (r *fullNode) recursiveInsertTree(containKey string, targetNode *fullNode) *fullNode {
+	for i := range r.Cchildren {
+		subStr, find := getSubsetPrefix(containKey, r.Cchildren[i].path)
 		if find {
-			if subStr == currentNode.Cchildren[i].path {
-				nextTargetKey := strings.TrimPrefix(containKey, currentNode.Cchildren[i].path)
-				return currentNode.Cchildren[i].recursiveInsertTree(nextTargetKey, targetNode)
-			} else {
-				newNode := currentNode.SplitNode(subStr, currentNode.Cchildren[i].path)
-				if newNode == nil {
-					panic("Unexpect error on split node")
-				}
-
-				return newNode.InsertNode(strings.TrimPrefix(containKey, subStr), targetNode)
+			if subStr == r.Cchildren[i].path {
+				nextTargetKey := strings.TrimPrefix(containKey, r.Cchildren[i].path)
+				return r.Cchildren[i].recursiveInsertTree(nextTargetKey, targetNode)
 			}
+			newNode := r.SplitNode(subStr, r.Cchildren[i].path)
+			if newNode == nil {
+				panic("Unexpect error on split node")
+			}
+
+			return newNode.InsertNode(strings.TrimPrefix(containKey, subStr), targetNode)
 		}
 	}
 
-	return currentNode.InsertNode(containKey, targetNode)
+	return r.InsertNode(containKey, targetNode)
 }
 
-func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) HandlerFuncs {
+func (r *fullNode) recursiveLoopup(searchKey string, params Params) HandlerFuncs {
 
 	// constant match, return data
 	// 常量匹配，返回数据
-	if len(searchKey) == 0 && searchNode.handlers != nil {
-		searchNode.AddTagsToParams(params)
-		return searchNode.handlers
+	if len(searchKey) == 0 {
+		r.AddTagsToParams(params)
+		return r.handlers
 	}
 
 	// Traverse constant Node match
 	// 遍历常量Node匹配
-	for _, edgeObj := range searchNode.Cchildren {
-		if contrainPrefix(searchKey, edgeObj.path) {
-			nextSearchKey := searchKey[len(edgeObj.path):]
-			if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
-				return n
+	for _, edgeObj := range r.Cchildren {
+		if edgeObj.path[0] >= searchKey[0] {
+			if len(searchKey) >= len(edgeObj.path) && searchKey[:len(edgeObj.path)] == edgeObj.path {
+				nextSearchKey := searchKey[len(edgeObj.path):]
+				if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
+					return n
+				}
 			}
 			break
 		}
@@ -521,7 +503,7 @@ func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) Han
 	// Check if there is a parameter match
 	// 参数匹配
 	// 检测是否存在参数匹配
-	if searchNode.pnum != 0 && len(searchKey) > 0 {
+	if r.pnum != 0 && len(searchKey) > 0 {
 		pos := strings.IndexByte(searchKey, '/')
 		if pos == -1 {
 			pos = len(searchKey)
@@ -530,7 +512,7 @@ func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) Han
 
 		// check parameter matching
 		// 校验参数匹配
-		for _, edgeObj := range searchNode.Rchildren {
+		for _, edgeObj := range r.Rchildren {
 			if edgeObj.check(currentKey) {
 				if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
 					params.AddParam(edgeObj.name, currentKey)
@@ -541,7 +523,7 @@ func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) Han
 
 		// 参数匹配
 		// 变量Node依次匹配是否满足
-		for _, edgeObj := range searchNode.Pchildren {
+		for _, edgeObj := range r.Pchildren {
 			if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
 				params.AddParam(edgeObj.name, currentKey)
 				return n
@@ -553,7 +535,7 @@ func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) Han
 	// If the current Node has a wildcard processing method that directly matches, the result is returned.
 	// 通配符校验匹配
 	// 若当前Node有通配符处理方法直接匹配，返回结果。
-	for _, edgeObj := range searchNode.Vchildren {
+	for _, edgeObj := range r.Vchildren {
 		if edgeObj.check(searchKey) {
 			edgeObj.AddTagsToParams(params)
 			params.AddParam(edgeObj.name, searchKey)
@@ -563,10 +545,10 @@ func (searchNode *fullNode) recursiveLoopup(searchKey string, params Params) Han
 
 	// If the current Node has a wildcard processing method that directly matches, the result is returned.
 	// 若当前Node有通配符处理方法直接匹配，返回结果。
-	if searchNode.Wchildren != nil {
-		searchNode.Wchildren.AddTagsToParams(params)
-		params.AddParam(searchNode.Wchildren.name, searchKey)
-		return searchNode.Wchildren.handlers
+	if r.Wchildren != nil {
+		r.Wchildren.AddTagsToParams(params)
+		params.AddParam(r.Wchildren.name, searchKey)
+		return r.Wchildren.handlers
 	}
 
 	// can't match, return nil

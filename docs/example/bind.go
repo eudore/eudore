@@ -39,7 +39,7 @@ func main() {
 // 上传文件信息
 func putFile(ctx eudore.Context) {
 	var info putFileInfo
-	ctx.ReadBind(&info)
+	ctx.Bind(&info)
 	fmt.Println(info)
 }
 
@@ -47,7 +47,7 @@ func putFile(ctx eudore.Context) {
 func postFile(ctx eudore.Context) {
 	// 读取表达文件
 	var file postFileRequest
-	ctx.ReadBind(&file)
+	ctx.Bind(&file)
 
 	// 创建接入文件，没有检查目录存在
 	newfile, err := os.Create("/tmp/eudore/" + ctx.GetParam("path"))

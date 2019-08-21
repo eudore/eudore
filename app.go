@@ -1,3 +1,5 @@
+package eudore
+
 /*
 Application
 
@@ -5,110 +7,47 @@ Application
 
 文件：app.go core.go eudore.go
 */
-package eudore
 
 import (
-	"fmt"
+	"context"
+	"sync"
 )
 
 type (
-	// sync.Pool对象使用的构造函数。
+	// PoolGetFunc 定义sync.Pool对象使用的构造函数。
 	PoolGetFunc func() interface{}
 	// The App combines the main functional interfaces, and the instantiation operations such as startup require additional packaging.
 	//
-	// App组合主要功能接口，启动等实例化操作需要额外封装。
+	// App 组合主要功能接口，启动等实例化操作需要额外封装。
+	//
+	// App初始化顺序请按照，Logger-Init、Config、Logger、...
 	App struct {
+		context.Context
 		Config `set:"config"`
 		Logger `set:"logger"`
 		Server `set:"server"`
 		Router `set:"router"`
-		Cache
-		Session
-		Client
-		View
 		Binder
 		Renderer
+		ContextPool sync.Pool
 	}
 )
 
+// NewApp 函数创建一个App对象。
 func NewApp() *App {
-	return &App{
-		Binder: BinderDefault,
+	app := &App{
+		Context:  context.Background(),
+		Config:   NewConfigMap(nil),
+		Logger:   NewLoggerInit(),
+		Server:   NewServerStd(nil),
+		Router:   NewRouterRadix(),
+		Binder:   BinderDefault,
+		Renderer: RenderDefault,
 	}
-}
-
-// Load components in bulk, using null values.
-//
-// 批量加载组件，使用的参数都是空值。
-func (app *App) RegisterComponents(names []string, args []interface{}) error {
-	var err error
-	errs := NewErrors()
-	for i, name := range names {
-		_, err = app.RegisterComponent(name, args[i])
-		errs.HandleError(err)
+	app.ContextPool.New = func() interface{} {
+		return NewContextBase(app)
 	}
-	return errs.GetError()
-}
-
-// Load a component and assign it to app.
-//
-// 加载一个组件，并赋值给app。
-func (app *App) RegisterComponent(name string, arg interface{}) (Component, error) {
-	c, err := NewComponent(name, arg)
-	if err != nil {
-		app.Error(err)
-		return nil, err
-	}
-	switch c.(type) {
-	case Config:
-		app.Config = c.(Config)
-	case Logger:
-		li, ok := app.Logger.(LoggerInitHandler)
-		app.Logger = c.(Logger)
-		if ok {
-			li.NextHandler(app.Logger)
-		}
-	case Server:
-		app.Server = c.(Server)
-	case Router:
-		app.Router = c.(Router)
-	case Cache:
-		app.Cache = c.(Cache)
-	case Session:
-		app.Session = c.(Session)
-	case View:
-		app.View = c.(View)
-	default:
-		err := fmt.Errorf("app undefined component: %s", name)
-		app.Error(err)
-		return nil, err
-	}
-	return c, nil
-}
-
-func (app *App) GetAllComponent() ([]string, []Component) {
-	var names []string = []string{"config", "logger", "server", "router", "cache", "session", "view"}
-	return names, []Component{
-		app.Config,
-		app.Logger,
-		app.Server,
-		app.Router,
-		app.Cache,
-		app.Session,
-		// app.Client,
-		app.View,
-	}
-}
-
-func (app *App) InitComponent() error {
-	names, components := app.GetAllComponent()
-	for i, name := range names {
-		if components[i] == nil {
-			_, err := app.RegisterComponent(name, nil)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	Set(app.Router, "print", NewLoggerPrintFunc(app.Logger))
+	Set(app.Server, "print", NewLoggerPrintFunc(app.Logger))
+	return app
 }

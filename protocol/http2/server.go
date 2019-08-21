@@ -83,7 +83,7 @@ var (
 	testHookOnPanic       func(sc *serverConn, panicVal interface{}) (rePanic bool)
 )
 
-func NewServer(h protocol.Handler) *Server {
+func NewServer(h protocol.HandlerHttp) *Server {
 	srv := new(Server)
 	srv.handler = h
 	srv.state = &serverInternalState{activeConns: make(map[*serverConn]struct{})}
@@ -92,7 +92,7 @@ func NewServer(h protocol.Handler) *Server {
 
 // Server is an HTTP/2 server.
 type Server struct {
-	handler        protocol.Handler
+	handler        protocol.HandlerHttp
 	MaxHeaderBytes time.Duration
 	ReadTimeout    time.Duration
 	WriteTimeout   time.Duration
@@ -334,6 +334,22 @@ func (s *Server) EudoreConn(ctx context.Context, c net.Conn) {
 	sc.serve()
 }
 
+// SetIdleTimeout 设置http连接处理的IdleTimeout时间。
+func (s *Server) SetIdleTimeout(t time.Duration) {
+	s.IdleTimeout = t
+}
+
+// SetReadTimeout 设置http连接处理的ReadTimeout时间。
+func (s *Server) SetReadTimeout(t time.Duration) {
+	s.ReadTimeout = t
+
+}
+
+// SetWriteTimeout 设置http连接处理的WriteTimeout时间。
+func (s *Server) SetWriteTimeout(t time.Duration) {
+	s.WriteTimeout = t
+}
+
 func (sc *serverConn) rejectConn(err ErrCode, debug string) {
 	sc.vlogf("http2: server rejecting conn: %v, %s", err, debug)
 	// ignoring errors. hanging up anyway.
@@ -347,7 +363,7 @@ type serverConn struct {
 	srv              *Server
 	conn             net.Conn
 	bw               *bufferedWriter // writing to conn
-	handler          protocol.Handler
+	handler          protocol.HandlerHttp
 	baseCtx          context.Context
 	framer           *Framer
 	doneServing      chan struct{}          // closed when serverConn.serve ends
@@ -1905,6 +1921,15 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 		trailer:    trailer,
 	}
 
+	pos := strings.IndexByte(requestURI, '?')
+	if pos == -1 {
+		req.path = requestURI
+		req.rawquery = ""
+	} else {
+		req.path = requestURI[:pos]
+		req.rawquery = requestURI[pos+1:]
+	}
+
 	rws := responseWriterStatePool.Get().(*responseWriterState)
 	bwSave := rws.bw
 	*rws = responseWriterState{} // zero all the fields
@@ -1920,7 +1945,7 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 }
 
 // Run on its own goroutine.
-func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, handler protocol.Handler) {
+func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, handler protocol.HandlerHttp) {
 	didPanic := true
 	defer func() {
 		rw.rws.stream.cancelCtx()
@@ -1945,7 +1970,7 @@ func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, handler
 	didPanic = false
 }
 
-var handleHeaderListTooLong = protocol.HandlerFunc(handleHeaderListTooLongFunc)
+var handleHeaderListTooLong = protocol.HandlerHttpFunc(handleHeaderListTooLongFunc)
 
 func handleHeaderListTooLongFunc(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
 	// 10.5.1 Limits on Header Block Size:
@@ -2142,6 +2167,8 @@ type (
 		ctx        context.Context
 		method     string
 		uri        string
+		path       string
+		rawquery   string
 		remoteAddr string
 		header     Header
 		proto      string
@@ -2162,6 +2189,13 @@ func (r *requestReader) Proto() string {
 
 func (r *requestReader) RequestURI() string {
 	return r.uri
+}
+
+func (r *requestReader) Path() string {
+	return r.path
+}
+func (r *requestReader) RawQuery() string {
+	return r.rawquery
 }
 
 func (r *requestReader) Header() protocol.Header {
@@ -2834,7 +2868,7 @@ func checkValidHTTP2RequestProtocolHeaders(h protocol.Header) error {
 	return nil
 }
 
-func new400Handler(err error) protocol.HandlerFunc {
+func new400Handler(err error) protocol.HandlerHttpFunc {
 	return func(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")

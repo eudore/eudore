@@ -11,6 +11,8 @@ type RouterInit struct {
 	hs eudore.HandlerFuncs
 }
 
+var _ eudore.Router = (*RouterInit)(nil)
+
 func init() {
 	eudore.RegisterComponent(eudore.ComponentRouterInitName, func(arg interface{}) (eudore.Component, error) {
 		return NewRouterInit(arg)

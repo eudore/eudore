@@ -1,3 +1,5 @@
+package eudore
+
 /*
 Router
 
@@ -5,7 +7,6 @@ Router对象用于定义请求的路由
 
 文件：router.go routerRadix.go routerFull.go
 */
-package eudore
 
 import (
 	"fmt"
@@ -27,49 +28,38 @@ const (
 )
 
 type (
-	// The route is directly registered by default. Other methods can be directly registered using the RouterRegister interface.
+	// RouterMethod the route is directly registered by default. Other methods can be directly registered using the RouterRegister interface.
 	//
-	// 路由默认直接注册的方法，其他方法可以使用RouterRegister接口直接注册。
+	// RouterMethod 路由默认直接注册的方法，其他方法可以使用RouterRegister接口直接注册。
 	RouterMethod interface {
 		Group(string) RouterMethod
-		AddHandler(string, string, ...HandlerFunc) RouterMethod
+		AddHandler(string, string, ...interface{}) RouterMethod
 		AddMiddleware(string, string, ...HandlerFunc) RouterMethod
 		AddController(...Controller) RouterMethod
-		Any(string, ...Handler)
-		AnyFunc(string, ...HandlerFunc)
-		Delete(string, ...Handler)
-		DeleteFunc(string, ...HandlerFunc)
-		Get(string, ...Handler)
-		GetFunc(string, ...HandlerFunc)
-		Head(string, ...Handler)
-		HeadFunc(string, ...HandlerFunc)
-		Options(string, ...Handler)
-		OptionsFunc(string, ...HandlerFunc)
-		Patch(string, ...Handler)
-		PatchFunc(string, ...HandlerFunc)
-		Post(string, ...Handler)
-		PostFunc(string, ...HandlerFunc)
-		Put(string, ...Handler)
-		PutFunc(string, ...HandlerFunc)
+		AnyFunc(string, ...interface{})
+		GetFunc(string, ...interface{})
+		PostFunc(string, ...interface{})
+		PutFunc(string, ...interface{})
+		DeleteFunc(string, ...interface{})
+		HeadFunc(string, ...interface{})
+		PatchFunc(string, ...interface{})
+		OptionsFunc(string, ...interface{})
 	}
-	// The router core interface, performs routing, middleware registration, and matches a request and returns to the handler.
+	// RouterCore interface, performs routing, middleware registration, and matches a request and returns to the handler.
 	//
-	// 路由器核心接口，执行路由、中间件的注册和匹配一个请求并返回处理者。
+	// RouterCore接口，执行路由、中间件的注册和匹配一个请求并返回处理者。
 	RouterCore interface {
 		RegisterMiddleware(string, string, HandlerFuncs)
 		RegisterHandler(string, string, HandlerFuncs)
 		Match(string, string, Params) HandlerFuncs
 	}
-	// Router interface, you need to set the component, router method, router core three interfaces.
-	//
-	// 路由器接口，需要设置组件、路由器方法、路由器核心三个接口。
+	// Router 接口，需要实现路由器方法、路由器核心两个接口。
 	Router interface {
-		Component
 		RouterCore
 		RouterMethod
 	}
 
-	// 默认路由器方法注册实现
+	// RouterMethodStd 默认路由器方法注册实现
 	RouterMethodStd struct {
 		RouterCore
 		ControllerParseFunc
@@ -88,16 +78,19 @@ type (
 		key      string
 		val      HandlerFuncs
 	}
-	// Storage router configuration for constructing routers.
+	// RoutesInjecter 定义路由注入接口，允许调用路由器方法注入自身路由信息。
+	RoutesInjecter interface {
+		RoutesInject(RouterMethod)
+	}
+	// RouterConfig storage router configuration for constructing routers.
 	//
-	// 存储路由器配置，用于构造路由器。
+	// RouterConfig 存储路由器配置，用于构造路由器。
 	RouterConfig struct {
-		// Type		string
-		Path       string
-		Method     string
-		Handler    interface{}
-		Middleware interface{}
-		Routes     []*RouterConfig
+		Path       string          `json:",omitempty"`
+		Method     string          `json:",omitempty"`
+		Handler    HandlerFuncs    `json:",omitempty"`
+		Middleware HandlerFuncs    `json:",omitempty"`
+		Routes     []*RouterConfig `json:",omitempty"`
 	}
 )
 
@@ -109,50 +102,7 @@ var (
 	RouterAllMethod              = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions}
 )
 
-// new router
-func NewRouter(name string, arg interface{}) (Router, error) {
-	name = ComponentPrefix(name, "router")
-	c, err := NewComponent(name, arg)
-	if err != nil {
-		return nil, err
-	}
-	r, ok := c.(Router)
-	if ok {
-		return r, nil
-	}
-	return nil, fmt.Errorf("Component %s cannot be converted to Router type", name)
-}
-
-func NewRouterMust(name string, arg interface{}) Router {
-	r, err := NewRouter(name, arg)
-	if err != nil {
-		panic(err)
-	}
-	return r
-}
-
-// Create a router component of the same type based on the router.
-//
-// 根据路由器创建一个类型相同的路由器组件。
-func NewRouterClone(r Router) Router {
-	return NewRouterMust(r.GetName(), nil)
-}
-
-// 将路由配置注入到路由中。
-func (config *RouterConfig) Inject(r RouterMethod) {
-	// handler
-	r.AddHandler(config.Method, config.Path, NewHandlerFuncs(config.Handler)...)
-
-	// middleware
-	r.AddMiddleware(config.Method, config.Path, NewHandlerFuncs(config.Middleware)...)
-
-	// routes
-	r = r.Group(config.Path)
-	for _, i := range config.Routes {
-		i.Inject(r)
-	}
-}
-
+// DefaultRouter405Func 函数定义默认405处理
 func DefaultRouter405Func(ctx Context) {
 	const page405 string = "405 method not allowed\n"
 	ctx.Response().Header().Add("Allow", "HEAD, GET, POST, PUT, DELETE, PATCH")
@@ -160,27 +110,34 @@ func DefaultRouter405Func(ctx Context) {
 	ctx.WriteString(page405)
 }
 
+// DefaultRouter404Func 函数定义默认404处理
 func DefaultRouter404Func(ctx Context) {
 	const page404 string = "404 page not found\n"
 	ctx.WriteHeader(404)
 	ctx.WriteString(page404)
 }
 
+// RoutesInject 方法将路由配置注入到路由中。
+func (config *RouterConfig) RoutesInject(r RouterMethod) {
+	// handler
+	r.AddHandler(config.Method, config.Path, config.Handler)
+
+	// middleware
+	r.AddMiddleware(config.Method, config.Path, config.Middleware...)
+
+	// routes
+	r = r.Group(config.Path)
+	for _, i := range config.Routes {
+		i.RoutesInject(r)
+	}
+}
+
+// Group 返回一个组路由方法。
 func (m *RouterMethodStd) Group(path string) RouterMethod {
 	// 将路径前缀和路径参数分割出来
 	args := strings.Split(path, " ")
 	prefix := args[0]
 	tags := path[len(prefix):]
-
-	// 如果路径是'/*'或'/'结尾，则移除后缀。
-	// '/*'为路由结尾，不可为路由前缀
-	// '/'不可为路由前缀，会导致出现'//'
-	if len(prefix) > 0 && prefix[len(prefix)-1] == '*' {
-		prefix = prefix[:len(prefix)-1]
-	}
-	if len(prefix) > 0 && prefix[len(prefix)-1] == '/' {
-		prefix = prefix[:len(prefix)-1]
-	}
 
 	// 构建新的路由方法配置器
 	return &RouterMethodStd{
@@ -191,26 +148,42 @@ func (m *RouterMethodStd) Group(path string) RouterMethod {
 	}
 }
 
-func (m *RouterMethodStd) AddHandler(method, path string, hs ...HandlerFunc) RouterMethod {
-	if len(hs) > 0 {
-		m.registerHandlers(method, path, hs)
+func (m *RouterMethodStd) registerHandlers(method, path string, hs ...interface{}) {
+	handler := NewHandlerFuncs(hs)
+	if len(handler) > 0 {
+		m.RouterCore.RegisterHandler(method, m.prefix+path+m.tags, handler)
 	}
+}
+
+// AddHandler 添加一个新路由。
+//
+// 方法和RegisterHandler方法的区别在于AddHandler方法不会继承Group的路径和参数信息，AddMiddleware相同。
+func (m *RouterMethodStd) AddHandler(method, path string, hs ...interface{}) RouterMethod {
+	m.registerHandlers(method, path, hs)
 	return m
 }
 
+// AddMiddleware 给路由器添加一个中间件函数。
 func (m *RouterMethodStd) AddMiddleware(method, path string, hs ...HandlerFunc) RouterMethod {
 	if len(hs) > 0 {
-		m.RegisterMiddleware(method, m.prefix+path, hs)
+		m.RegisterMiddleware(method, m.prefix+path+m.tags, hs)
 	}
 	return m
 }
 
+// AddController 方式使用内置的控制器解析函数解析控制器获得路由配置。
+//
+// 如果控制器实现了RoutesInjecter接口，调用控制器自身注入路由。
 func (m *RouterMethodStd) AddController(cs ...Controller) RouterMethod {
 	for _, c := range cs {
-		// controllerRegister(m, c)
+		if rj, ok := c.(RoutesInjecter); ok {
+			rj.RoutesInject(m)
+			continue
+		}
+
 		config, err := m.ControllerParseFunc(c)
 		if err == nil {
-			config.Inject(m)
+			config.RoutesInject(m)
 		} else {
 			fmt.Println(err)
 		}
@@ -218,89 +191,52 @@ func (m *RouterMethodStd) AddController(cs ...Controller) RouterMethod {
 	return m
 }
 
-func (m *RouterMethodStd) registerHandlers(method, path string, hs HandlerFuncs) {
-	m.RouterCore.RegisterHandler(method, m.prefix+path+m.tags, hs)
-}
-
-// Router Register handler
-func (m *RouterMethodStd) Any(path string, h ...Handler) {
-	m.registerHandlers(MethodAny, path, handlesToFunc(h))
-}
-
-func (m *RouterMethodStd) Get(path string, h ...Handler) {
-	m.registerHandlers(MethodGet, path, handlesToFunc(h))
-}
-
-func (m *RouterMethodStd) Post(path string, h ...Handler) {
-	m.registerHandlers(MethodPost, path, handlesToFunc(h))
-}
-
-func (m *RouterMethodStd) Put(path string, h ...Handler) {
-	m.registerHandlers(MethodPut, path, handlesToFunc(h))
-}
-
-func (m *RouterMethodStd) Delete(path string, h ...Handler) {
-	m.registerHandlers(MethodDelete, path, handlesToFunc(h))
-}
-
-func (m *RouterMethodStd) Head(path string, h ...Handler) {
-	m.registerHandlers(MethodHead, path, handlesToFunc(h))
-}
-
-func (m *RouterMethodStd) Patch(path string, h ...Handler) {
-	m.registerHandlers(MethodPatch, path, handlesToFunc(h))
-}
-
-func (m *RouterMethodStd) Options(path string, h ...Handler) {
-	m.registerHandlers(MethodOptions, path, handlesToFunc(h))
-}
-
-func handlesToFunc(hs []Handler) HandlerFuncs {
-	h := make(HandlerFuncs, len(hs))
-	for i, _ := range hs {
-		h[i] = hs[i].Handle
-	}
-	return h
-}
-
-// RouterRegister handle func
-func (m *RouterMethodStd) AnyFunc(path string, h ...HandlerFunc) {
+// AnyFunc 方法实现注册一个Any方法的http请求处理函数。
+func (m *RouterMethodStd) AnyFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodAny, path, h)
 }
 
-func (m *RouterMethodStd) GetFunc(path string, h ...HandlerFunc) {
+// GetFunc 方法实现注册一个Get方法的http请求处理函数。
+func (m *RouterMethodStd) GetFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodGet, path, h)
 }
 
-func (m *RouterMethodStd) PostFunc(path string, h ...HandlerFunc) {
+// PostFunc 方法实现注册一个Post方法的http请求处理函数。
+func (m *RouterMethodStd) PostFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodPost, path, h)
 }
 
-func (m *RouterMethodStd) PutFunc(path string, h ...HandlerFunc) {
+// PutFunc 方法实现注册一个Put方法的http请求处理函数。
+func (m *RouterMethodStd) PutFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodPut, path, h)
 }
 
-func (m *RouterMethodStd) DeleteFunc(path string, h ...HandlerFunc) {
+// DeleteFunc 方法实现注册一个Delete方法的http请求处理函数。
+func (m *RouterMethodStd) DeleteFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodDelete, path, h)
 }
 
-func (m *RouterMethodStd) HeadFunc(path string, h ...HandlerFunc) {
+// HeadFunc 方法实现注册一个Head方法的http请求处理函数。
+func (m *RouterMethodStd) HeadFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodHead, path, h)
 }
 
-func (m *RouterMethodStd) PatchFunc(path string, h ...HandlerFunc) {
+// PatchFunc 方法实现注册一个Patch方法的http请求处理函数。
+func (m *RouterMethodStd) PatchFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodPatch, path, h)
 }
 
-func (m *RouterMethodStd) OptionsFunc(path string, h ...HandlerFunc) {
+// OptionsFunc 方法实现注册一个Options方法的http请求处理函数。
+func (m *RouterMethodStd) OptionsFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodOptions, path, h)
 }
 
+// Insert 方法实现middNode添加一个子节点。
 func (t *middNode) Insert(key string, val HandlerFuncs) {
 	t.recursiveInsertTree(key, key, val)
 }
 
-//Lookup: Find if seachKey exist in current radix tree and return its value
+// Lookup Find if seachKey exist in current radix tree and return its value
 func (t *middNode) Lookup(searchKey string) HandlerFuncs {
 	searchKey = strings.Split(searchKey, " ")[0]
 	if searchKey[len(searchKey)-1] == '*' {
@@ -309,30 +245,30 @@ func (t *middNode) Lookup(searchKey string) HandlerFuncs {
 	return t.recursiveLoopup(searchKey)
 }
 
-// 新增Node
-func (r *middNode) InsertNode(path, key string, value HandlerFuncs) {
+// InsertNode 新增Node
+func (t *middNode) InsertNode(path, key string, value HandlerFuncs) {
 	if len(path) == 0 {
 		// 路径空就设置当前node的值
-		r.key = key
-		r.val = CombineHandlerFuncs(r.val, value)
+		t.key = key
+		t.val = CombineHandlerFuncs(t.val, value)
 	} else {
 		// 否则新增node
-		r.children = append(r.children, &middNode{path: path, key: key, val: value})
+		t.children = append(t.children, &middNode{path: path, key: key, val: value})
 	}
 }
 
-// 对指定路径为edgeKey的Node分叉，公共前缀路径为pathKey
-func (r *middNode) SplitNode(pathKey, edgeKey string) *middNode {
-	for i, _ := range r.children {
-		if r.children[i].path == edgeKey {
+// SplitNode 对指定路径为edgeKey的Node分叉，公共前缀路径为pathKey
+func (t *middNode) SplitNode(pathKey, edgeKey string) *middNode {
+	for i := range t.children {
+		if t.children[i].path == edgeKey {
 			newNode := &middNode{path: pathKey}
 			newNode.children = append(newNode.children, &middNode{
 				path:     strings.TrimPrefix(edgeKey, pathKey),
-				key:      r.children[i].key,
-				val:      r.children[i].val,
-				children: r.children[i].children,
+				key:      t.children[i].key,
+				val:      t.children[i].val,
+				children: t.children[i].children,
 			})
-			r.children[i] = newNode
+			t.children[i] = newNode
 			return newNode
 		}
 	}
@@ -340,15 +276,15 @@ func (r *middNode) SplitNode(pathKey, edgeKey string) *middNode {
 }
 
 // 给currentNode递归添加，路径为containKey的Node。
-func (currentNode *middNode) recursiveInsertTree(containKey string, targetKey string, targetValue HandlerFuncs) {
-	for i, _ := range currentNode.children {
-		subStr, find := getSubsetPrefix(containKey, currentNode.children[i].path)
+func (t *middNode) recursiveInsertTree(containKey string, targetKey string, targetValue HandlerFuncs) {
+	for i := range t.children {
+		subStr, find := getSubsetPrefix(containKey, t.children[i].path)
 		if find {
-			if subStr == currentNode.children[i].path {
-				nextTargetKey := strings.TrimPrefix(containKey, currentNode.children[i].path)
-				currentNode.children[i].recursiveInsertTree(nextTargetKey, targetKey, targetValue)
+			if subStr == t.children[i].path {
+				nextTargetKey := strings.TrimPrefix(containKey, t.children[i].path)
+				t.children[i].recursiveInsertTree(nextTargetKey, targetKey, targetValue)
 			} else {
-				newNode := currentNode.SplitNode(subStr, currentNode.children[i].path)
+				newNode := t.SplitNode(subStr, t.children[i].path)
 				if newNode == nil {
 					panic("Unexpect error on split node")
 				}
@@ -358,25 +294,25 @@ func (currentNode *middNode) recursiveInsertTree(containKey string, targetKey st
 			return
 		}
 	}
-	currentNode.InsertNode(containKey, targetKey, targetValue)
+	t.InsertNode(containKey, targetKey, targetValue)
 }
 
 // 递归获得searchNode路径为searchKey的Node数据。
-func (searchNode *middNode) recursiveLoopup(searchKey string) HandlerFuncs {
+func (t *middNode) recursiveLoopup(searchKey string) HandlerFuncs {
 	if len(searchKey) == 0 {
-		return searchNode.val
+		return t.val
 	}
 
-	for _, edgeObj := range searchNode.children {
+	for _, edgeObj := range t.children {
 		// 寻找相同前缀node
 		if contrainPrefix(searchKey, edgeObj.path) {
 			nextSearchKey := strings.TrimPrefix(searchKey, edgeObj.path)
-			return append(searchNode.val, edgeObj.recursiveLoopup(nextSearchKey)...)
+			return append(t.val, edgeObj.recursiveLoopup(nextSearchKey)...)
 		}
 	}
 
-	if len(searchNode.key) == 0 || searchNode.key[len(searchNode.key)-1] == '/' {
-		return searchNode.val
+	if len(t.key) == 0 || t.key[len(t.key)-1] == '/' {
+		return t.val
 	}
 
 	return nil

@@ -13,39 +13,53 @@ import (
 
 type (
 	Server struct {
+		ReadTimeout   time.Duration
+		WriteTimeout  time.Duration
+		IdleTimeout   time.Duration
 		ctx           context.Context
-		Handler       protocol.Handler
 		mu            sync.Mutex
 		listeners     []net.Listener
 		proto         string
 		nextHandle    protocol.HandlerConn
 		defaultHandle protocol.HandlerConn
-		Errfunc       func(error) `set:"errfunc"`
+		Print         func(...interface{}) `set:"print"`
+	}
+	SetTimeouter interface {
+		SetIdleTimeout(time.Duration)
+		SetReadTimeout(time.Duration)
+		SetWriteTimeout(time.Duration)
+	}
+	SetPrinter interface {
+		SetPrint(func(...interface{}))
 	}
 )
 
 var NextProtoTLS = "h2"
 
+func NewServer() *Server {
+	return &Server{
+		ReadTimeout:   60 * time.Second,
+		WriteTimeout:  60 * time.Second,
+		IdleTimeout:   60 * time.Second,
+		ctx:           context.Background(),
+		defaultHandle: &http.HttpHandler{},
+	}
+}
+
 // 监听一个tcp连接，并启动服务。
-func (srv *Server) ListenAndServe(addr string, handle protocol.Handler) error {
+func (srv *Server) ListenAndServe(addr string, handle protocol.HandlerHttp) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
-	}
-	if handle != nil {
-		srv.Handler = handle
 	}
 	return srv.Serve(ln)
 }
 
 // 监听一个tcp连接，并启动服务。
-func (srv *Server) ListenAndServeTls(addr, certFile, keyFile string, handle protocol.Handler) error {
+func (srv *Server) ListenAndServeTls(addr, certFile, keyFile string, handle protocol.HandlerHttp) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
-	}
-	if handle != nil {
-		srv.Handler = handle
 	}
 	config := &tls.Config{
 		Certificates:             make([]tls.Certificate, 1),
@@ -72,10 +86,6 @@ func (srv *Server) Serve(ln net.Listener) error {
 		}
 	}
 	srv.listeners = append(srv.listeners, ln)
-	if srv.defaultHandle == nil {
-		srv.defaultHandle = &http.HttpHandler{}
-	}
-	srv.ctx = context.Background()
 	srv.mu.Unlock()
 	for {
 		// 读取连接
@@ -110,7 +120,7 @@ func (srv *Server) newConnServe(c net.Conn) {
 			// 	return
 			// }
 			// c.server.logf("http: TLS handshake error from %s: %v", c.rwc.RemoteAddr(), err)
-			srv.Errfunc(fmt.Errorf("TLS handshake error from %s: %v\n", c.RemoteAddr(), err))
+			srv.Print(fmt.Errorf("TLS handshake error from %s: %v\n", c.RemoteAddr(), err))
 			return
 		}
 
@@ -151,15 +161,33 @@ func (srv *Server) Shutdown(ctx context.Context) error {
 
 func (srv *Server) SetHandler(h protocol.HandlerConn) {
 	srv.defaultHandle = h
+	srv.SetHandlerTimeouter(h)
+	srv.SetHandlerPrinter(h)
 }
 
 func (srv *Server) SetNextHandler(proto string, h protocol.HandlerConn) error {
 	switch proto {
 	case "h2":
 		srv.proto, srv.nextHandle = proto, h
+		srv.SetHandlerTimeouter(h)
+		srv.SetHandlerPrinter(h)
 		return nil
 	}
 	return fmt.Errorf("tls nosuppered npn proto.")
+}
+
+func (srv *Server) SetHandlerTimeouter(h protocol.HandlerConn) {
+	if timer, ok := h.(SetTimeouter); ok {
+		timer.SetIdleTimeout(srv.IdleTimeout)
+		timer.SetReadTimeout(srv.ReadTimeout)
+		timer.SetWriteTimeout(srv.WriteTimeout)
+	}
+}
+
+func (srv *Server) SetHandlerPrinter(h protocol.HandlerConn) {
+	if printer, ok := h.(SetPrinter); ok {
+		printer.SetPrint(srv.Print)
+	}
 }
 
 // validNPN reports whether the proto is not a blacklisted Next

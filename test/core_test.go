@@ -11,7 +11,7 @@ func TestCore(*testing.T) {
 	app.AnyFunc("/", func(ctx eudore.Context) {
 		ctx.WriteString("hello eudore core")
 	})
-	time.AfterFunc(5*time.Second, func() {
+	time.AfterFunc(3*time.Second, func() {
 		app.Server.Close()
 	})
 	app.Listen(":8082")

@@ -1,6 +1,6 @@
 package test
 
-import (
+/*import (
 	"context"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/middleware/logger"
@@ -43,3 +43,4 @@ func TestSession(t *testing.T) {
 	// wait logger flush
 	time.Sleep(time.Second)
 }
+*/

@@ -8,22 +8,34 @@ import (
 )
 
 type (
+	// ControllerParseFunc 函数定义解析控制器获得路由配置的方法。
 	ControllerParseFunc func(Controller) (*RouterConfig, error)
-	Controller          interface {
+	// Controller 定义控制器必要的接口。
+	Controller interface {
 		Init(Context) error
 		Release() error
 	}
+	// ControllerRoute 定义获得路由和方法映射的接口。
 	ControllerRoute interface {
 		ControllerRoute() map[string]string
 	}
+	// ControllerBase 实现基本控制器。
 	ControllerBase struct {
 		Context
 	}
+	// ControllerData 实现基于ContextData的控制器。
 	ControllerData struct {
 		ContextData
 	}
 )
 
+// ControllerBaseParseFunc 定义基本的控制器实现函数，控制器需要实现ControllerRoute接口，提供路由信息。
+//
+// 控制器函数是首字母大小词为路由方法，如果不是Get、Post、Put、Delete、Patch、Options方法外，则使用Any方法。
+//
+// GetId() 定义一个基本的控制器方法。
+//
+// GetIdByIdName(id int, name string)，By后面是使用的Context Param，会使用ctx.GetParam("id")来初始化id的值，name相同。
 func ControllerBaseParseFunc(controller Controller) (*RouterConfig, error) {
 	iType := reflect.TypeOf(controller)
 	pool := &sync.Pool{
@@ -38,6 +50,7 @@ func ControllerBaseParseFunc(controller Controller) (*RouterConfig, error) {
 		return nil, fmt.Errorf("%s not suppert ControllerBaseParseFunc, not ControllerRoute", iType.Name())
 	}
 
+	fnname := iType.Elem().PkgPath() + "." + iType.Elem().Name() + "."
 	// 生成路由器配置信息。
 	var configs = make([]*RouterConfig, 0, len(controllerRoute.ControllerRoute()))
 	for name, path := range controllerRoute.ControllerRoute() {
@@ -51,15 +64,19 @@ func ControllerBaseParseFunc(controller Controller) (*RouterConfig, error) {
 			continue
 		}
 
+		h := convertHandler(pool, controller, m.Index)
+		SetHandlerFuncName(h, fnname+name)
+
 		configs = append(configs, &RouterConfig{
 			Method:  strings.ToUpper(method),
 			Path:    path,
-			Handler: convertHandler(pool, controller, m.Index),
+			Handler: HandlerFuncs{h},
 		})
 	}
 	return &RouterConfig{Routes: configs}, nil
 }
 
+// convertHandler 实现返回一个HandlerFunc对象，用于执行一个控制器方法。
 func convertHandler(pool *sync.Pool, controller Controller, index int) HandlerFunc {
 	iType := reflect.TypeOf(controller)
 	fType := iType.Method(index)
@@ -99,7 +116,7 @@ func checkAllowMethod(method string) bool {
 }
 
 func splitName(name string) (strs []string) {
-	var head int = 0
+	var head int
 	for i, c := range name {
 		if 0x40 < c && c < 0x5B && i != 0 {
 			strs = append(strs, name[head:i])
@@ -120,7 +137,7 @@ func getFirstUp(name string) string {
 }
 
 func getFuncArgs(name string) (strs []string) {
-	var head int = 0
+	var head int
 	var isBy bool
 	for i, c := range name {
 		if 0x40 < c && c < 0x5B && i != 0 {
@@ -137,23 +154,26 @@ func getFuncArgs(name string) (strs []string) {
 		strs = append(strs, strings.ToLower(name[head:len(name)]))
 	}
 	return
-
 }
 
+// Init 实现控制器初始方法。
 func (c *ControllerBase) Init(ctx Context) error {
 	c.Context = ctx
 	return nil
 }
 
+// Release 实现控制器释放方法。
 func (c *ControllerBase) Release() error {
 	return nil
 }
 
+// Init 实现控制器初始方法。
 func (c *ControllerData) Init(ctx Context) error {
 	c.ContextData.Context = ctx
 	return nil
 }
 
+// Release 实现控制器释放方法。
 func (c *ControllerData) Release() error {
 	return nil
 }

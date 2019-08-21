@@ -1,19 +1,73 @@
 # Eudore
 
-本框架为个人学习研究的重框架，每周最多同步更新一次，未稳定前不欢迎issue、pr、using，可查看http及go web框架[相关文档](docs)，交流q群373278915。
+[![Go Report Card](https://goreportcard.com/badge/github.com/eudore/eudore)](https://goreportcard.com/report/github.com/eudore/eudore)
+[![GoDoc](https://godoc.org/github.com/eudore/eudore?status.svg)](https://godoc.org/github.com/eudore/eudore)
+
+eudore是一个高扩展、高效的http框架及[http文档库](docs)。
+
+反馈和交流[q群373278915](//shang.qq.com/wpa/qunwpa?idkey=869ec8f1272b4757771c3e406349f1128cfa3bd9ca668937dda8dfb223261a60)。
 
 ## Features
 
-- 核心全部接口化,支持重写Application、Context、Request、Response、Router、Middleware、Logger、Server、Config、Cache、Session、View、Bind、Render、Controller。
-- 对象语义明确，框架源码简单易懂，无注释部分变动可能较大。
+- 易扩展：主要设计目标，核心全部解耦，接口即可逻辑。
+- 简单：对象语义明确，框架代码量少复杂度低，无依赖库。
+- 易用：支持各种Appcation和Context扩展添加功能。
+- 高性能：各部分在同类库中没有明显性能问题。
+- 两项创新：[新Radix路由实现](https://github.com/eudore/erouter)和处理函数扩展机制
 
-## List
+## 学习指南
 
-功能列表，在未稳定前不会编写演示
+包含http相关、go web相关以及eudore相关文档。
+
+没介绍的部分未完善，其他不完善部分请反馈。
+
+|  编号 | 标题  | 介绍  |
+| ------------ | ------------ | ------------ |
+| 1  | http协议和技术  |  |
+| 1.1 | [http协议](docs/webname/proto_http_zh.md) |  |
+| 1.2 | [https协议](docs/webname/proto_https_zh.md) |  |
+| 1.3 | [http2协议](docs/webname/proto_http2_zh.md) |  |
+| 1.4 | [webscoket协议](docs//webname/proto_websocket_zh.md) |  |
+| 1.5 | [CORS跨域资源共享](docs/webname/http_cors_zh.md) |  |
+| 1.6 | [http协议简单实现](component/server/simple/) | 简单实现的一个http服务端和客户端 |
+| 1.7 | [http协议实现细节](docs/webname/http_detail_zh.md) | 记录自己实现http服务端遇到的一些细节问题 |
+| 1.8 | [cookie实现原理](docs/webname/http_cookie_zh.md) | cookie原理简述和操作 |
+| 1.10 | [post请求](docs/webname/http_postdata_zh.md) | post发送的数据解析 |
+|    |  |  |
+| 2  |  net/http库 |   |
+| 2.1  |  [net/http Server主流程分析](docs/ideas/readNetHttpServer_zh.md) | net/http启动Server处理一个请求  |
+| 2.2  |  [x/net/http2 Server主流程分析] |
+| 2.3  |  [github.com/gobwas/ws 解析websocket协议] | |
+| 3  | golang http框架内容  |   |
+| 3.1  |  [golang基于context的web范式](docs/ideas/baseContextWeb_zh.md)  |  golang中http框架主要内容的分析和总结 |
+| 3.2  |  [Web框架简化实现](docs/ideas/microWeb.go) | 一个非常简单的http框架雏形  |
+| 3.3  |  [golf分析](docs/ideas/readDineverGolf_zh.md) |  golf框架源码符合前面的总结 |
+|   |   |   |
+| 4  | [eudore相关内容](docs/frame/README.md)  | eudore设计文档目录页 |
+| 4.1 | [Application](docs/frame/application_zh.md) | 
+| 4.2 | [Context](docs/frame/context_zh.md) | |
+| 4.5 | [Router](docs/frame/router_zh.md) | |eudore运行对象主体  |
+| 4.6 | [Middleware](middleware_zh.md) | |
+| 4.8 | [Server] | |
+| 4.14 | [Controller](docs/controller_zh.md) | |
+|   |   |   |
+| 5 | eudore问题和场景  |   |
+|   | jwt使用  |   |
+| | 实现鉴权 | | 
+| | api熔断器及后台| |
+| | 渲染状态资源sri值 | |
+| | 分析静态文件自动push | |
+| | 类似Rpc编写处理请求 |  |
+| | [后台启动程序](component/command) |  |
+| | [代码更新自动编译重启](component/notify) | |
+
+## 功能列表及演示
+
+[eudore例子](docs/example)，暂时缺省的文档请看[godoc](https://godoc.org/github.com/eudore/eudore)和源码。
 
 - Application
 - [x] 程序启动流程自定义实现，内置两种
-- [x] server异步启动
+- [x] 信号处理
 - Context
 - [x] Context与server完全解耦
 - [x] [根据Content-type自动序列化数据](docs/example/bind.go)
@@ -44,8 +98,8 @@
 - [x] [严格路由匹配顺序](docs/example/core.go#L26-L28)
 - [x] RESTful风格基于方法的路由注册匹配
 - [x] 基于Host进行路由注册匹配
-- [x] 路由器注册初始化时请求处理
 - [x] [组路由注册支持](docs/example/core.go#L22-L29)
+- [x] 匹配前全局中间件
 - [x] [全局中间件注册](docs/example/core.go#L17-L19)
 - [x] [组级中间件注册](docs/example/core.go#L24)
 - [x] [api级中间件注册](docs/example/core.go#L27)
@@ -60,10 +114,6 @@
 - Logger
 - [x] 初始化期间日志处理
 - [x] 日志条目属性支持
-- [x] 自定义模板格式化
-- [ ] 日志写入到es
-- View
-- [ ] 多模板库接入
 - Mvc
 - [x] [mvc支持](docs/example/mvc.go)
 - [x] [控制器函数输入参数](docs/example/mvc.go#L27-L30)
@@ -80,217 +130,20 @@
 - [x] api模拟工具
 - [x] [更新代码自动重启](component/notify)
 - Session
-- [x] [Session实现](docs/example/session.go)
+- [ ] [Session实现](docs/example/session.go)
 - Middleware
+- [x] [熔断器及管理后台](docs/example/breaker.go)
+- [x] RAM资源访问管理
+- [x] BasicAuth
+- [x] CORS跨域资源共享
 - [x] gzip压缩
 - [x] 限流
-- [x] 黑名单
 - [x] 异常捕捉
+- [ ] 请求超时
 - [x] 访问日志
 
-## issue
+## 许可
 
-setting 基于配置初始化对象未实现
+MIT
 
-fasthttp不支持多端口和hijack
-
-组件debug日志
-
-websocket未完善
-
-client未完善
-
-## Component
-
-| 组件名称 | 介绍 | 定义库 |
-| ------------ | ------------ | ------------ |
-| router-radix | 使用基数树实现标准功能路由器 | 内置 |
-| router-full | 使用基数树实现完整功能路由器 | 内置 |
-| router-init | 初始时使用的路由处理 | github.com/eudore/eudore/component/router/init |
-| router-host | 匹配host路由到不同路由器处理 |  未更新、github.com/eudore/eudore/component/router/host |
-| logger-init | 初始化日志处理，保存日志由设置的日志对象处理 | 内置 |
-| logger-std | 基础日志库实现 | 内置 |
-| logger-elastic | 将日志直接输出到es中 | 未更新、github.com/eudore/eudore/component/eslogger |
-| server-std | 使用net/http封装标准库Server | 内置 |
-| server-eudore  | 使用protocol库封装Server | github.com/eudore/eudore/component/server/eudore |
-| server-fasthttp | 使用fasthttp启动服务 | github.com/eudore/eudore/component/server/fasthttp |
-| cache-map | 使用Sync.Map实现的缓存 | 内置 |
-| cache-group | 使用前缀匹配的多缓存组合 | 内置 |
-| config-map | 使用map[string]interface{}存储配置 | 内置 |
-| config-eudore | 使用反射来操作结构体和map自由嵌套的配置对象 | 内置 |
-| view-std | 使用标准库html/template渲染模板 | 内置、未测试 |
-
-## Example
-
-**Example部分未更新**
-
-- [Application](#application)
-- [Server](#Server)
-- [Logger](#logger)
-- [Router and Middleware](#router-and-middleware)
-- [Middleware]
-	- [Ram]
-- [Context]
-	- [Bind]
-	- [Param]
-	- [Header]
-	- [Cookie]
-
-	- [Render]
-	- [View]
-	- [Push]
-	- [Redirect]
-
-	- [Logger]
-
-
-## Application
-
-Application默认有两种实现Core和Eudore，Core只有启动函数，Eudore多一些辅助函数封装。
-
-```golang
-func main() {
-	// 运行core
-	core := eudore.NewCore()
-	go core.Run()
-
-	// 运行eudore
-	e := eudore.NewEudore()
-	e.Run()
-}
-```
-
-
-## Server
-
-Server是eudore用于启动http服务的顶级接口对象之一。
-
-```golang
-func main() {
-	e := eudore.NewEudore()
-	// 直接设置Server对象
-	e.Server, _ = eudore.NewServer("server-std", nil)
-
-	// 加载Server组件，设置一个启动端口，设置超时时间
-	e.RegisterComponent("server", &eudore.ServerConfigGeneral{
-		Addr:	"8088",
-		ReadTimeout:	12 * time.Second,
-		WriteTimeout:	4 * time.Second,
-	})
-
-	// 启动多个端口
-	// 端口8085：设置证书、开启https http2、关闭双向htttps
-	e.RegisterComponent("server-multi", &eudore.ServerMultiConfig{
-		Configs:	[]interface{}{
-			&eudore.ServerConfigGeneral{
-				Name:	"server",
-				Addr:	"8085",
-				Https:	true,
-				Http2:	true,
-				Mutual:	false,
-				Certfile:	"/etc/...",
-				Keyfile:	"/etc/...",
-			},
-			&eudore.ServerConfigGeneral{
-				Name:	"server",
-				Addr:	"8086",
-			},
-		},
-	})
-	e.Run()
-}
-```
-
-## Logger
-
-NewEudore创建App时，会创建logger-init日志组件，实现LoggerInitHandler接口，改组件会将日志条目存储起来，直到加载下一个日志组件时，使用新日志组件处理所有存储的日子条目。
-
-logger-std的Std用于输出标准输出；若Path为空会强制Std为true；Format会使用存储的LoggerFormatFunc函数，若无法匹配会使用text/template模板格式化日志。
-
-```golang
-func main() {
-	e := eudore.NewEudore()
-	e.Debug("init 1")
-	e.Get("/get", get)
-	e.Post("/post", post)
-	e.RegisterComponent("logger-std", &eudore.LoggerStdConfig{
-		Std:	true,
-		Path:	"access.log",
-		Level:	"debug",
-//		Format:	"json",
-		Format:	`[{{.Timestamp.Format "Jan 02, 2006 15:04:05 UTC"}}] {{.Level}}: {{.Message}}`,
-	})
-	e.Debug("init 2")
-	e.Run()
-}
-```
-
-## Router and Middleware
-
-router-std路由器支持组路由、组级中间件、路径参数、通配符参数、默认参数。
-
-router-full路由器支持组路由、组级中间件、路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
-
-可实现Router接口重写路由器。
-
-`curl -XGET http://localhost:8088/api/v1/`
-
-`curl -XGET http://localhost:8088/api/v1/get/eudore`
-
-`curl -XGET http://localhost:8088/api/v1/set/eudore`
-
-
-```golang
-package main
-
-import (
-	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/middleware/logger"
-	"github.com/eudore/eudore/middleware/recover"
-)
-
-// eudore core
-func main() {
-	// 创建App
-	app := eudore.NewCore()
-	app.RegisterComponent("logger-std", &eudore.LoggerStdConfig{
-		Std:	true,
-		Level:	eudore.LogDebug,
-		Format:	"json",
-	})
-	// 全局级请求处理中间件
-	app.AddMiddleware(
-		logger.NewLogger(eudore.GetRandomString).Handle,
-	)
-
-	// 创建子路由器
-	// apiv1 := eudore.NewRouterClone(app.Router)
-	apiv1 := app.Group("/api/v1 version:v1")
-	// 路由级请求处理中间件
-	apiv1.AddMiddleware(recover.RecoverFunc)
-	{
-		apiv1.GetFunc("/get/:name", handleget)
-		// Api级请求处理中间件
-		apiv1.AnyFunc("/*", handlepre1, handleparam)
-	}
-	// 默认路由
-	app.AnyFunc("/*path", func(ctx eudore.Context){
-		ctx.WriteString(ctx.Method() + " " + ctx.Path())
-		ctx.WriteString("\nstar param: " + " " + ctx.GetParam("path"))
-	})
-	// 启动server
-	app.Listen(":8088")
-	app.Run()
-}
-
-func handleget(ctx eudore.Context) {
-	ctx.Debug("Get: " + ctx.GetParam("name"))
-	ctx.WriteString("Get: " + ctx.GetParam("name"))
-}
-func handlepre1(ctx eudore.Context) {
-	ctx.WriteString("\nhandlepre1\n")
-}
-func handleparam(ctx eudore.Context) {
-	ctx.WriteString(ctx.GetParam("*"))
-}
-```
+框架使用无限制且不负责，文档转载需声明出处。

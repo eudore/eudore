@@ -1,5 +1,4 @@
-// Simple implementation of the http protocol as a learning sample.
-//
+// Package simple implementation of the http protocol as a learning sample.
 package simple
 
 import (
@@ -15,14 +14,17 @@ import (
 )
 
 type (
+	// Server 定义http服务。
 	Server struct {
 		ctx     context.Context
 		Handler func(*Response, *Request)
 	}
+	// conn 定义http连接。
 	conn struct {
 		server *Server
 		rwc    net.Conn
 	}
+	// Request 定义http请求
 	Request struct {
 		method     string
 		requestURI string
@@ -31,6 +33,7 @@ type (
 		reader     io.Reader
 		conn       net.Conn
 	}
+	// Response 定义http响应
 	Response struct {
 		request *Request
 		iswrite bool
@@ -38,17 +41,19 @@ type (
 		header  Header
 		writer  *bufio.ReadWriter
 	}
+	// Header 定义http请求。
 	Header map[string][]string
-	Params = Header
 )
 
+// TimeFormat 是Date header格式化时间。
 const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
 
+// Status 定义状态的描述。
 var Status = map[int]string{
 	200: "OK",
 }
 
-// 监听一个tcp连接，并启动服务。
+// ListenAndServe 方法监听一个tcp连接，并启动服务。
 func (srv *Server) ListenAndServe(addr string, handle func(*Response, *Request)) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -60,7 +65,7 @@ func (srv *Server) ListenAndServe(addr string, handle func(*Response, *Request))
 	return srv.Serve(ln)
 }
 
-// 服务处理监听
+// Serve 方法服务处理监听
 func (srv *Server) Serve(l net.Listener) error {
 	for {
 		// 读取连接
@@ -76,9 +81,9 @@ func (srv *Server) Serve(l net.Listener) error {
 	return nil
 }
 
-// Encapsulate an http connection object
+// newConn Encapsulate an http connection object
 //
-// 封装一个http连接对象
+// newConn 封装一个http连接对象
 func (srv *Server) newConn(rwc net.Conn) *conn {
 	return &conn{
 		server: srv,
@@ -86,9 +91,9 @@ func (srv *Server) newConn(rwc net.Conn) *conn {
 	}
 }
 
-// Handling http connections
+// serve Handling http connections
 //
-// 处理http连接
+// serve 处理http连接
 func (c *conn) serve(ctx context.Context) {
 	defer c.rwc.Close()
 	var ok bool
@@ -154,6 +159,7 @@ func (c *conn) serve(ctx context.Context) {
 	}
 }
 
+// Close 方法关闭http连接
 func (c *conn) Close() error {
 	return c.rwc.Close()
 }
@@ -177,37 +183,52 @@ func split2(str string, s string) (string, string) {
 	return "", ""
 }
 
+// Method 方法获取请求的http方法。
 func (r *Request) Method() string {
 	return r.method
 }
+
+// Proto 方法获取http协议版本。
 func (r *Request) Proto() string {
 	return r.proto
 }
+
+// RequestURI 方法获取http请求uri。
 func (r *Request) RequestURI() string {
 	return r.requestURI
 }
+
+// Header 方法返回请求header。
 func (r *Request) Header() Header {
 	return r.header
 }
+
+// Read 方法读取http请求内容。
 func (r *Request) Read(b []byte) (int, error) {
 	return r.reader.Read(b)
 }
+
+// Host 方法获得请求Host。
 func (r *Request) Host() string {
 	return r.header.Get("Host")
 }
 
-// conn data
+// RemoteAddr 方法获取远程连接地址。
 func (r *Request) RemoteAddr() string {
 	return r.conn.RemoteAddr().String()
 }
+
+// TLS 方法获取TLS状态，未实现，应该net.Conn短语*tls.Conn，然后获得。
 func (r *Request) TLS() *tls.ConnectionState {
 	return nil
 }
 
+// Header 方法返回响应Header。
 func (w *Response) Header() Header {
 	return w.header
 }
 
+// Write 方法实现写入响应内容。
 func (w *Response) Write(b []byte) (int, error) {
 	// If it is the first time to write to the body, write the response line and headers before this.
 	// 如果是第一次写入body，在此之前写入响应行和headers。
@@ -233,22 +254,27 @@ func (w *Response) Write(b []byte) (int, error) {
 	return w.writer.Write(b)
 }
 
+// WriteHeader 方法设置响应状态码。
 func (w *Response) WriteHeader(codeCode int) {
 	w.status = codeCode
 }
 
+// Flush 实现Flush内容。
 func (w *Response) Flush() {
 	w.writer.Flush()
 }
 
+// Hijack 方法实现获取连接对象。
 func (w *Response) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return w.request.conn, w.writer, nil
 }
 
+// Status 方法获取设置的状态码
 func (w *Response) Status() int {
 	return w.status
 }
 
+// Get 方法获得header的值
 func (h Header) Get(key string) string {
 	val, ok := h[key]
 	if ok {
@@ -257,6 +283,7 @@ func (h Header) Get(key string) string {
 	return ""
 }
 
+// Add 方法添加一个Header。
 func (h Header) Add(key, val string) {
 	h[key] = append(h[key], val)
 }

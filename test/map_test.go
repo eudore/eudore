@@ -22,7 +22,7 @@ var (
 )
 
 func init() {
-	n = 30
+	n = 12
 	m := make(map[int]int)
 	data = make([]int, n)
 	for i := 0; i < n; i++ {
@@ -31,7 +31,7 @@ func init() {
 	}
 }
 
-func BenchmarkMap(b *testing.B) {
+func BenchmarkMapMalloc(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		// 创建header
@@ -47,7 +47,44 @@ func BenchmarkMap(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkMap(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		// 创建header
+		m := make(map[int]int)
+		for _, n := range data {
+			m[n] = n
+		}
+		// 查找
+		for _, n := range data {
+			if _, ok := m[n]; ok {
+				continue
+			}
+		}
+	}
+}
+
 func BenchmarkArray(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		// 创建header
+		var m []int
+		for _, n := range data {
+			m = append(m, n)
+		}
+		// 查找
+		for _, n := range data {
+			for _, nn := range data {
+				if nn == n {
+					break
+				}
+			}
+		}
+	}
+}
+
+func BenchmarkArrayPool(b *testing.B) {
 	b.ReportAllocs()
 	m := make([]int, n+2)
 	for i := 0; i < b.N; i++ {
