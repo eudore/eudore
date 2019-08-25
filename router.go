@@ -5,7 +5,7 @@ Router
 
 Router对象用于定义请求的路由
 
-文件：router.go routerRadix.go routerFull.go
+文件：router.go routerradix.go routerfull.go
 */
 
 import (

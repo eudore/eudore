@@ -16,10 +16,13 @@ import (
 )
 
 type (
+	// ServerConfig 定义Server超时配置。
 	ServerConfig struct {
 		ReadTimeout  interface{} `set:"readtimeout" description:"Http server read timeout."`
 		WriteTimeout interface{} `set:"writetimeout" description:"Http server write timeout."`
+		IdleTimeout  interface{} `set:"idletimeout"`
 	}
+	// Server 定义eudore
 	Server struct {
 		http      *server.Server
 		listeners []net.Listener
@@ -32,6 +35,7 @@ type (
 
 var _ eudore.Server = (*Server)(nil)
 
+// NewServer 创建Server
 func NewServer(arg interface{}) *Server {
 	httpsrc := server.NewServer()
 	if read, err := getTime(eudore.Get(arg, "ReadTimeout")); err == nil {
@@ -51,6 +55,7 @@ func NewServer(arg interface{}) *Server {
 	}
 }
 
+// Start 启动Server
 func (srv *Server) Start() error {
 	if len(srv.listeners) == 0 {
 		return errors.New("eudore server not found listen")
@@ -85,22 +90,27 @@ func (srv *Server) Start() error {
 	return eudore.ErrApplicationStop
 }
 
+// Close 方法关闭Server。
 func (srv *Server) Close() error {
 	return srv.Shutdown(context.Background())
 }
 
+// Shutdown 方法关闭Server。
 func (srv *Server) Shutdown(ctx context.Context) (err error) {
 	return srv.http.Shutdown(ctx)
 }
 
+// AddHandler 方法设置http清楚处理。
 func (srv *Server) AddHandler(h protocol.HandlerHttp) {
 	srv.handler = h
 }
 
+// AddListener 方法增加一个监听。
 func (srv *Server) AddListener(l net.Listener) {
 	srv.listeners = append(srv.listeners, l)
 }
 
+// Set 方法允许设置输出函数和配置。
 func (srv *Server) Set(key string, value interface{}) error {
 	switch val := value.(type) {
 	case func(...interface{}):
@@ -113,6 +123,7 @@ func (srv *Server) Set(key string, value interface{}) error {
 	return nil
 }
 
+// getTime 获得时间。
 func getTime(i interface{}) (time.Duration, error) {
 	if t, ok := i.(string); ok {
 		return time.ParseDuration(t)

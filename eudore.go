@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/eudore/eudore/protocol"
 )
@@ -67,22 +68,32 @@ func NewEudore(options ...interface{}) *Eudore {
 			app.Renderer = val
 		case PoolGetFunc:
 			app.ContextPool.New = val
+		case error:
+			app.HandleError(val)
 		default:
 			app.Logger.Warningf("eudore app unid option: %v", i)
 
 		}
 	}
+	Set(app.Router, "print", NewLoggerPrintFunc(app.Logger))
+	Set(app.Server, "print", NewLoggerPrintFunc(app.Logger))
+
 	// Register eudore default reload func
 	app.RegisterInit("eudore-config", 0x008, InitConfig)
 	app.RegisterInit("eudore-workdir", 0x009, InitWorkdir)
 	app.RegisterInit("eudore-signal", 0x57, InitSignal)
 	app.RegisterInit("eudore-server-start", 0xff0, InitServerStart)
 	go func(app *Eudore) {
+		ticker := time.NewTicker(time.Millisecond * 40)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-app.Done():
+				return
 			case sig := <-app.signalChan:
 				app.HandleSignal(sig)
+			case <-ticker.C:
+				app.Logger.Sync()
 			}
 		}
 	}(app)
@@ -104,8 +115,8 @@ func (app *Eudore) Start() error {
 		app.HandleError(app.Init())
 	}()
 
-	<-app.Done()
 	defer app.Logger.Sync()
+	<-app.Done()
 	return app.Err()
 }
 

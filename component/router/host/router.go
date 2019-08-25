@@ -2,6 +2,7 @@ package host
 
 import (
 	"github.com/eudore/eudore"
+	"path"
 	"strings"
 )
 
@@ -15,20 +16,18 @@ type RouterHost struct {
 
 var _ eudore.Router = (*RouterHost)(nil)
 
-func init() {
-	eudore.RegisterComponent(eudore.ComponentRouterHostName, func(arg interface{}) (eudore.Component, error) {
-		return NewRouterHost(arg)
-	})
-}
-
+// InitAddHost 定义添加host参数的全局中间件函数，需要使用Eudore，Core无法使用该功能。
 func InitAddHost(ctx eudore.Context) {
 	ctx.AddParam("host", ctx.Host())
 }
 
-func NewRouterHost(interface{}) (eudore.Router, error) {
-	r := &RouterHost{}
+// NewRouterHost 函数创建一个默认的hst路由。
+func NewRouterHost() *RouterHost {
+	r := &RouterHost{
+		Default: eudore.NewRouterRadix(),
+	}
 	r.RouterMethod = &eudore.RouterMethodStd{RouterCore: r}
-	return r, nil
+	return r
 }
 
 func (r *RouterHost) getRouter(path string) eudore.Router {
@@ -46,34 +45,42 @@ func (r *RouterHost) getRouter(path string) eudore.Router {
 
 func (r *RouterHost) matchRouter(host string) eudore.Router {
 	for i, h := range r.Hosts {
-		if eudore.MatchStar(host, h) {
+		if b, _ := path.Match(h, host); b {
 			return r.Routers[i]
 		}
 	}
 	return r.Default
 }
 
+// RegisterHost 给Host路由器注册域名的子路由器。
+//
+// 如果host为空字符串，设置为默认子路由器。
 func (r *RouterHost) RegisterHost(host string, router eudore.Router) {
+	if host == "" {
+		r.Default = router
+		return
+	}
+	for i, h := range r.Hosts {
+		if h == host {
+			r.Routers[i] = router
+			return
+		}
+	}
 	r.Hosts = append(r.Hosts, host)
 	r.Routers = append(r.Routers, router)
 }
 
+// RegisterMiddleware 方法根据host选择路由器然后注册中间件。
 func (r *RouterHost) RegisterMiddleware(method string, path string, handler eudore.HandlerFuncs) {
 	r.getRouter(path).RegisterMiddleware(method, path, handler)
 }
 
+// RegisterHandler 方法根据host选择路由器然后注册路由。
 func (r *RouterHost) RegisterHandler(method string, path string, handler eudore.HandlerFuncs) {
 	r.getRouter(path).RegisterHandler(method, path, handler)
 }
 
+// Match 方法根据host选择路由器然后匹配请求。
 func (r *RouterHost) Match(method, path string, params eudore.Params) eudore.HandlerFuncs {
-	return r.getRouter(params.GetParam("host")).Match(method, path, params)
-}
-
-func (r *RouterHost) GetName() string {
-	return eudore.ComponentRouterHostName
-}
-
-func (r *RouterHost) Version() string {
-	return eudore.ComponentRouterHostVersion
+	return r.matchRouter(params.GetParam("host")).Match(method, path, params)
 }

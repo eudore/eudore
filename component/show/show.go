@@ -1,12 +1,11 @@
 package show
 
 import (
+	"fmt"
 	"github.com/eudore/eudore"
+	"github.com/kr/pretty"
 	"reflect"
 	"strings"
-
-	"fmt"
-	"github.com/kr/pretty"
 )
 
 var objs map[string]interface{} = make(map[string]interface{})
@@ -21,7 +20,7 @@ func DeleteObject(key string) {
 	delete(objs, key)
 }
 
-// InjectRoutes 函数注入show使用的路由。
+// RoutesInject 函数注入show使用的路由。
 func RoutesInject(r eudore.RouterMethod) {
 	r = r.Group("/show")
 	r.GetFunc("/", List)

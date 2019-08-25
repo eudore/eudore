@@ -45,7 +45,7 @@ type (
 	}
 	// Route 定义单词路由的熔断数据。
 	Route struct {
-		mu                   sync.Mutex `json:"-"`
+		mu                   sync.Mutex
 		Id                   int
 		Name                 string
 		State                State

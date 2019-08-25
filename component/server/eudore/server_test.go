@@ -1,29 +1,28 @@
 package eudore
 
 import (
-	"testing"
-
-	// "time"
 	"context"
 	"fmt"
-	"github.com/eudore/eudore/component/server/eudore"
-	"github.com/eudore/eudore/protocol"
+	"net"
 	"net/http"
 	"os"
 	"runtime/pprof"
+	"testing"
+
+	"github.com/eudore/eudore/component/server/eudore"
+	"github.com/eudore/eudore/protocol"
 )
 
 func TestStart(t *testing.T) {
-	srv := eudore.Server{}
-	srv.Set("", &eudore.HttpConfig{
-		Addr: ":8088",
-	})
-	srv.Set("", protocol.HandlerFunc(func(_ context.Context, w protocol.ResponseWriter, _ protocol.RequestReader) {
-		w.Write([]byte("start eudore server, this default page."))
-	}))
+	srv := eudore.NewServer(nil)
+	ln, err := net.Listen("tcp", ":8084")
+	if err != nil {
+		panic(err)
+	}
+	srv.AddListener(ln)
 	// startCPUProfile()
 	// time.AfterFunc(30* time.Second,stopCPUProfile)
-	t.Log(srv.Start())
+	srv.Start()
 }
 
 func TestHttp(*testing.T) {

@@ -20,9 +20,10 @@ import (
 	"github.com/eudore/eudore"
 )
 
-// InjectRoutes 函数实现注入pprof路由。
+// RoutesInject 函数实现注入pprof路由。
 func RoutesInject(r eudore.RouterMethod) {
 	r = r.Group("/pprof")
+	r.AnyFunc("/", Index)
 	r.AnyFunc("/*name", Index)
 	r.AnyFunc("/cmdline", Cmdline)
 	r.AnyFunc("/profile", Profile)

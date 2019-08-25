@@ -2,10 +2,12 @@ package eudore
 
 /*
 Core是组合App对象后的一种实例化，用于启动主程序。
+Core的特点是简单。
 */
 
 import (
 	"context"
+	"time"
 
 	"github.com/eudore/eudore/protocol"
 )
@@ -24,14 +26,20 @@ func NewCore() *Core {
 
 // Run 加载配置然后启动Core。
 func (app *Core) Run() (err error) {
+	go func() {
+		ticker := time.NewTicker(time.Millisecond * 40)
+		for range ticker.C {
+			app.Logger.Sync()
+		}
+	}()
+
 	defer app.Logger.Sync()
 	if initlog, ok := app.Logger.(LoggerInitHandler); ok {
 		app.Logger, _ = NewLoggerStd(nil)
 		initlog.NextHandler(app.Logger)
 	}
-	// start server
+
 	app.Server.AddHandler(app)
-	defer app.Logger.Sync()
 	return app.Server.Start()
 }
 

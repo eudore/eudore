@@ -3,7 +3,6 @@ package fasthttp
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/protocol"
 	"github.com/valyala/fasthttp"
@@ -12,16 +11,13 @@ import (
 )
 
 type (
+	// Server 定义适配fasthttp.Server
 	Server struct {
-		Config   *ServerConfig    `set:"config"`
-		Fasthttp *fasthttp.Server `set:"fasthttp"`
-		handler  protocol.Handler
-		pool     sync.Pool
-		wg       sync.WaitGroup
-	}
-	ServerConfig struct {
-		Handler interface{}                  `set:"handler" json:"-"`
-		Http    []*eudore.ServerListenConfig `set:"http"`
+		Config    interface{} `set:"config"`
+		srvs      []*fasthttp.Server
+		handler   protocol.HandlerHttp
+		listeners []net.Listener `set:"listeners"`
+		wg        sync.WaitGroup
 	}
 )
 
@@ -44,40 +40,24 @@ var (
 	}
 )
 
-func init() {
-	eudore.RegisterComponent(eudore.ComponentServerFasthttpName, func(arg interface{}) (eudore.Component, error) {
-		return NewServer(arg)
-	})
-}
-
-func NewServer(arg interface{}) (*Server, error) {
-	config, ok := arg.(*ServerConfig)
-	if !ok {
-		config = &ServerConfig{}
-	}
+// NewServer 创建一个Server，参数为fasthttp的配置。
+func NewServer(arg interface{}) *Server {
 	return &Server{
-		Config:   config,
-		Fasthttp: &fasthttp.Server{},
-	}, nil
+		Config: arg,
+	}
 }
 
+// Start 启动fasthttp。
 func (srv *Server) Start() error {
-	// 初始化数据
-	if h, ok := srv.Config.Handler.(protocol.Handler); ok {
-		srv.handler = h
-	}
-	srv.Fasthttp.Handler = srv.HandlerFasthttp
-	// 启动fasthttp
 	errs := eudore.NewErrors()
-	for _, http := range srv.Config.Http {
-		ln, err := http.Listen()
-		if err != nil {
-			errs.HandleError(err)
-			continue
-		}
+	for _, ln := range srv.listeners {
 		srv.wg.Add(1)
 		go func(ln net.Listener) {
-			errs.HandleError(srv.Fasthttp.Serve(ln))
+			http := &fasthttp.Server{}
+			eudore.ConvertTo(srv.Config, http)
+			http.Handler = srv.HandlerFasthttp
+			srv.srvs = append(srv.srvs, http)
+			errs.HandleError(http.Serve(ln))
 			srv.wg.Done()
 		}(ln)
 	}
@@ -86,36 +66,37 @@ func (srv *Server) Start() error {
 	return errs.GetError()
 }
 
+// Close 方法关闭Server。
 func (srv *Server) Close() error {
-	return srv.Fasthttp.Shutdown()
+	return srv.Shutdown(nil)
 }
 
+// Shutdown 方法关闭Server。
 func (srv *Server) Shutdown(context.Context) error {
-	return srv.Fasthttp.Shutdown()
+	errs := eudore.NewErrors()
+	for _, srv := range srv.srvs {
+		errs.HandleError(srv.Shutdown())
+	}
+	return errs
 }
 
+// AddHandler 方法设置http处理者。
+func (srv *Server) AddHandler(h protocol.HandlerHttp) {
+	srv.handler = h
+}
+
+// AddListener 添加一个监听。
+func (srv *Server) AddListener(l net.Listener) {
+	srv.listeners = append(srv.listeners, l)
+}
+
+// HandlerFasthttp 实现fasthttp.Handler。
 func (srv *Server) HandlerFasthttp(ctx *fasthttp.RequestCtx) {
 	req := poolreq.Get().(*Request)
 	resp := poolresp.Get().(*Response)
 	req.Reset(ctx)
 	resp.Reset(ctx)
-	fmt.Println("---")
 	srv.handler.EudoreHTTP(ctx, resp, req)
 	poolreq.Put(req)
 	poolresp.Put(resp)
-}
-
-func (srv *Server) Set(key string, val interface{}) (err error) {
-	_, err = eudore.Set(srv, key, val)
-	return
-}
-
-func (*ServerConfig) GetName() string {
-	return eudore.ComponentServerFasthttpName
-}
-func (*Server) GetName() string {
-	return eudore.ComponentServerFasthttpName
-}
-func (*Server) Version() string {
-	return eudore.ComponentServerFasthttpVersion
 }

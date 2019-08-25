@@ -271,6 +271,9 @@ func setStruct(iType reflect.Type, iValue reflect.Value, key []string, val inter
 //
 // 如果匹配失败直接返回空值。
 func Get(i interface{}, key string) interface{} {
+	if i == nil {
+		return nil
+	}
 	return getValue(reflect.TypeOf(i), reflect.ValueOf(i), strings.Split(key, "."))
 }
 

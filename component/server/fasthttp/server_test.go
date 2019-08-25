@@ -9,23 +9,31 @@ import (
 	"github.com/eudore/eudore/protocol"
 )
 
-func TestStart(t *testing.T) {
-	srv, _ := fasthttp.NewServer(nil)
-	eudore.Set(srv, "config.http.+.addr", ":8084")
-	srv.Set("config.handler", protocol.HandlerFunc(func(_ context.Context, w protocol.ResponseWriter, _ protocol.RequestReader) {
-		w.Write([]byte("start fasthttp server, this default page."))
-	}))
-	t.Log(srv.Start())
+type Handler struct {
+	int
 }
 
-func TestEudore(t *testing.T) {
+func (h *Handler) EudoreHTTP(_ context.Context, w protocol.ResponseWriter, _ protocol.RequestReader) {
+	w.Write([]byte("start fasthttp server, this default page."))
+}
+
+func TestStart(*testing.T) {
+	srv := fasthttp.NewServer(nil)
+	ln, err := eudore.ListenWithFD(":8084")
+	if err != nil {
+		panic(err)
+	}
+	srv.AddListener(ln)
+	srv.AddHandler(&Handler{})
+	srv.Start()
+}
+
+func TestEudore(*testing.T) {
 	app := eudore.NewCore()
+	app.Server = fasthttp.NewServer(nil)
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteString("start fasthttp server, this default page.")
 	})
-	srv, _ := fasthttp.NewServer(nil)
-	eudore.Set(srv, "config.http.+.addr", ":8084")
-	// eudore.Set(srv, "config.http.+.addr", ":8085")
-	srv.Set("config.handler", app)
-	t.Log(srv.Start())
+	app.Listen(":8084")
+	app.Run()
 }

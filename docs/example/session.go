@@ -2,24 +2,36 @@ package main
 
 import (
 	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/component/session"
 )
 
 func main() {
-	app := eudore.NewCore()
+	// 创建session，并注册转换函数。
+	provider := session.NewSessionMap()
+	eudore.RegisterHandlerFunc(func(fn func(session.ContextSession)) eudore.HandlerFunc {
+		return func(ctx eudore.Context) {
+			fn(session.ContextSession{
+				Context: ctx,
+				Session: provider,
+			})
+		}
+	})
 
-	app.GetFunc("/set", func(ctx eudore.Context) {
+	app := eudore.NewCore()
+	app.GetFunc("/set", func(ctx session.ContextSession) {
 		// 读取会话
-		sess := ctx.GetSession()
-		sess.Set("key1", 1)
+		data := ctx.GetSession()
+		data["key1"] = 22
+		ctx.Debugf("session set key1 value: %v", data["key1"])
 
 		// 保存会话数据
-		ctx.SetSession(sess)
+		ctx.SetSession(data)
 	})
-	app.GetFunc("/get", func(ctx eudore.Context) {
-		sess := ctx.GetSession()
-		ctx.Debugf("session get key1 value: %v", sess.Get("key1"))
+	app.GetFunc("/get", func(ctx session.ContextSession) {
+		data := ctx.GetSession()
+		ctx.Debugf("session get key1 value: %v", data["key1"])
 	})
 
-	app.Listen(":8088")
+	app.Listen(":8085")
 	app.Run()
 }

@@ -6,7 +6,7 @@ import (
 )
 
 // NewLoggerFunc 函数创建一个请求日志记录中间件。
-func NewLoggerFunc() eudore.HandlerFunc {
+func NewLoggerFunc(app *eudore.App) eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
 		now := time.Now()
 		f := eudore.Fields{
@@ -43,9 +43,9 @@ func NewLoggerFunc() eudore.HandlerFunc {
 			f["location"] = ctx.Response().Header().Get(eudore.HeaderLocation)
 		}
 		if status < 400 {
-			ctx.WithFields(f).Info()
+			app.Logger.WithFields(f).Info()
 		} else {
-			ctx.WithFields(f).Error()
+			app.Logger.WithFields(f).Error()
 		}
 	}
 }

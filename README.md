@@ -47,9 +47,9 @@ eudore是一个高扩展、高效的http框架及[http文档库](docs)。
 | 4.1 | [Application](docs/frame/application_zh.md) | 
 | 4.2 | [Context](docs/frame/context_zh.md) | |
 | 4.5 | [Router](docs/frame/router_zh.md) | |eudore运行对象主体  |
-| 4.6 | [Middleware](middleware_zh.md) | |
+| 4.6 | [Middleware](docs/frame/middleware_zh.md) | |
 | 4.8 | [Server] | |
-| 4.14 | [Controller](docs/controller_zh.md) | |
+| 4.14 | [Controller](docs/frame/controller_zh.md) | |
 |   |   |   |
 | 5 | eudore问题和场景  |   |
 |   | jwt使用  |   |
@@ -130,7 +130,7 @@ eudore是一个高扩展、高效的http框架及[http文档库](docs)。
 - [x] api模拟工具
 - [x] [更新代码自动重启](component/notify)
 - Session
-- [ ] [Session实现](docs/example/session.go)
+- [x] [Session实现](docs/example/session.go)
 - Middleware
 - [x] [熔断器及管理后台](docs/example/breaker.go)
 - [x] RAM资源访问管理

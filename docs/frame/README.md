@@ -6,7 +6,7 @@ eudore最初目标是一个库完成web开放，除了了db部分 目前主站�
 
 **高性能和易用是再持续修改中实现**，路由库最初参考bone实现，后来在wangsir关于radix相关资料提点下以及echo使用的benchmarj例子测试结果太惨下重新实现，  httprouter代码复杂度太高难以看懂，在使用2小时补充radiz算法代码基础后 自己独立实现了erouter库的思路，完成新了路由匹配，解决了httprouter的没有匹配优先级问题，由于实现思路简单，简单扩展出带正则的路由实现routetfull，后续完成一些细节优化后性能达到httprouter匹配api的90%。  再次学习使用benxkm和ppeof性能之后优化中间件机制 思考旧机制问题后子路由功能使用gin一样的执行机制，且一直都算属于最优解。处理函数扩展机制也属于长时间思考偶尔出现的灵感，然后benckmark测githubapi，发现性能下降不到1%  然后正式加入，ctx和app两个都可以用户乱组合实现对象扩展，例如ContextData这样加入类型转换这样，大幅增加易用性，并解决了Context实际是接口还是结构体的选择问题。
 
-log部分受logrus和zap影响，个人习惯logrus这样filed那样，简单好用， zap的字符串拼接给予了进一步压缩性能空间 ，以前运行扩uber的zap性能benckmark测试 ，通过logrus对比发现性能还不错，json拼接实现优化log还在优化中。
+log部分受logrus和zap影响，个人习惯logrus这样filed那样，简单好用，zap的字符串拼接给予了进一步压缩性能空间 ，以前运行扩uber的zap性能benckmark测试 ，通过logrus对比发现性能还不错，使用json拼接实现log优化。
 
 由于出现ctx处理函数扩展，把cache virw session这样非必要移除了ctx，如果需要使用可以使用扩展ctx或数即可，简单且更方便。
 
@@ -24,13 +24,13 @@ eudore最大的特点是解耦，除Application以外其他对象均为接口，
 | 名称 | 作用 | 定义 |
 | ------------ | ------------ | ------------ |
 | [Application](application_zh.md) | 运行对象主体 | app.go core.go eudore.go |
-| [Context](context_zh.md) | 请求处理上下文 | context.go contextExtend.go |
+| [Context](context_zh.md) | 请求处理上下文 | context.go contextextend.go |
 | Request | Http请求数据 | protocol/protocol.go request.go |
 | Response | http响应写入 | protocol/protocol.go response.go |
-| [Router](router_zh.md) | 请求路由选择 | router.go routerRadix.go routerFull.go |
+| [Router](router_zh.md) | 请求路由选择 | router.go routerradix.go routerfull.go |
 | [Handler](handler_zh.md) | 请求处理函数 ||  handler.go |
 | [Middleware](middleware_zh.md) | 多Handler组合运行 | handler.go |
-| Logger | App和Ctx日志输出 | logger.go |
+| Logger | App和Ctx日志输出 | logger.go loggerstd.go |
 | Server | http Server启动 | server.go |
 | [Config](config_zh.md) | 配置数据管理 | config.go |
 | [Controller](controller_zh.md) | 解析执行控制器 | controller.go |

@@ -28,7 +28,7 @@ type (
 	// Server 定义启动http服务的对象。
 	Server interface {
 		AddHandler(protocol.HandlerHttp)
-		AddListener(l net.Listener)
+		AddListener(net.Listener)
 		Start() error
 		Close() error
 		Shutdown(ctx context.Context) error
