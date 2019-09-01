@@ -2,13 +2,12 @@ package main
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/pprof"
+	"github.com/eudore/eudore/middleware"
 )
 
 func main() {
 	app := eudore.NewCore()
-	pprof.RoutesInject(app.Group("/eudore/debug"))
-
+	app.AddMiddleware(eudore.MethodAny, "", middleware.NewLoggerFunc(app.App))
 	app.Listen(":8088")
 	app.Run()
 }

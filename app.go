@@ -41,7 +41,7 @@ func NewApp() *App {
 		Logger:   NewLoggerInit(),
 		Server:   NewServerStd(nil),
 		Router:   NewRouterRadix(),
-		Binder:   BinderDefault,
+		Binder:   BindDefault,
 		Renderer: RenderDefault,
 	}
 	app.ContextPool.New = func() interface{} {

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -163,31 +164,22 @@ func ConfigReadHttp(path string) ([]byte, error) {
 
 // InitSignal 函数定义初始化系统信号。
 func InitSignal(app *Eudore) error {
+	if runtime.GOOS == "windows" || GetStringBool(os.Getenv(ENV_EUDORE_DISABLE_SIGNAL)) {
+		return nil
+	}
+
 	// Register signal
-	// signal 9
-	app.RegisterSignal(syscall.SIGKILL, func(app *Eudore) error {
-		app.WithField("signal", 9).Info("eudore received SIGKILL, eudore stop HTTP server.")
-		return app.Close()
+	app.RegisterSignal(syscall.Signal(0x2), func(app *Eudore) error {
+		app.WithField("signal", 2).Info("eudore received SIGINT, eudore shutting down HTTP server.")
+		return app.Shutdown()
 	})
-	// signal 12
-	app.RegisterSignal(syscall.SIGUSR2, func(app *Eudore) error {
+	app.RegisterSignal(syscall.Signal(0xc), func(app *Eudore) error {
 		app.WithField("signal", 12).Info("eudore received SIGUSR2, eudore restarting HTTP server.")
-		err := app.Restart()
-		if err != nil {
-			app.Error("eudore reload error: ", err)
-		} else {
-			app.Info("eudore restart success.")
-		}
-		return err
+		return app.Restart()
 	})
-	// signal 15
-	app.RegisterSignal(syscall.SIGTERM, func(app *Eudore) error {
+	app.RegisterSignal(syscall.Signal(0xf), func(app *Eudore) error {
 		app.WithField("signal", 15).Info("eudore received SIGTERM, eudore shutting down HTTP server.")
-		err := app.Shutdown()
-		if err != nil {
-			app.Error("eudore shutdown error: ", err)
-		}
-		return err
+		return app.Shutdown()
 	})
 
 	return nil
@@ -208,49 +200,31 @@ func InitWorkdir(app *Eudore) error {
 	return nil
 }
 
-/*
-// InitLogger 初始化日志组件。
-func InitLogger(app *Eudore) error {
+// InitLoggerStd 初始化日志组件。
+func InitLoggerStd(app *Eudore) error {
+	initlog, ok := app.Logger.(LoggerInitHandler)
+	if !ok {
+		return nil
+	}
+
+	// 创建LoggerStd
 	key := GetDefaultString(app.Config.Get("keys.logger"), "component.logger")
-	c := app.Config.Get(key)
-	if c != nil {
-		_, err := app.RegisterComponent("", c)
-		if err != nil {
-			return err
-		}
-		ComponentSet(app.Router, "print", app.Logger.Debug)
-		Set(app.Server, "print", app.Logger.Debug)
-	}
-	return nil
-}
-
-// InitServer 初始化服务组件。
-func InitServer(app *Eudore) error {
-	key := GetDefaultString(app.Config.Get("keys.server"), "component.server")
-	c := app.Config.Get(key)
-	if c != nil {
-		_, err := app.RegisterComponent("", c)
-		if err != nil {
-			return err
-		}
-		Set(app.Server, "print", app.Logger.Debug)
-	}
-	return nil
-}*/
-
-// InitServerStart 函数启动Eudore Server。
-func InitServerStart(app *Eudore) error {
-	if app.Server == nil {
-		err := fmt.Errorf("Eudore can't start the service, the server is empty.")
-		app.Error(err)
+	log, err := NewLoggerStd(app.Config.Get(key))
+	if err != nil {
 		return err
 	}
 
-	if initlog, ok := app.Logger.(LoggerInitHandler); ok {
-		app.Logger, _ = NewLoggerStd(nil)
-		initlog.NextHandler(app.Logger)
-	}
+	// 设置Logger
+	app.Logger = log
+	initlog.NextHandler(app.Logger)
+	Set(app.Router, "print", NewLoggerPrintFunc(app.Logger))
+	Set(app.Server, "print", NewLoggerPrintFunc(app.Logger))
+	return nil
+}
 
+// InitStart 函数启动Eudore Server。
+func InitStart(app *Eudore) error {
+	// 监听全部配置
 	lns, err := newServerListens(app.Config.Get("listeners"))
 	if err != nil {
 		return err
@@ -261,26 +235,19 @@ func InitServerStart(app *Eudore) error {
 			app.Error(err)
 			continue
 		}
-		app.Logger.Infof("listen %s %s", ln.Addr().Network(), ln.Addr().String())
 		app.AddListener(ln)
 	}
 
+	// 更新context func，设置server处理者。
 	if fn, ok := app.Config.Get("keys.context").(PoolGetFunc); ok {
 		app.ContextPool.New = fn
 	}
-
 	app.Server.AddHandler(app)
 
-	/*	ComponentSet(app.Server, "errfunc", func(err error) {
-		fields := make(Fields)
-		file, line := LogFormatFileLine(-1)
-		fields["component"] = app.Server.GetName()
-		fields["file"] = file
-		fields["line"] = line
-		app.Logger.WithFields(fields).Errorf("server error: %v", err)
-	})*/
+	// 启动server。
 	go func() {
-		app.HandleError(app.Server.Start())
+		err := app.Server.Start()
+		app.HandleError(err)
 	}()
 	return nil
 }

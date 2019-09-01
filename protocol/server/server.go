@@ -120,7 +120,7 @@ func (srv *Server) newConnServe(c net.Conn) {
 			// 	return
 			// }
 			// c.server.logf("http: TLS handshake error from %s: %v", c.rwc.RemoteAddr(), err)
-			srv.Print(fmt.Errorf("TLS handshake error from %s: %v\n", c.RemoteAddr(), err))
+			srv.Print(fmt.Errorf("TLS handshake error from %s: %v", c.RemoteAddr(), err))
 			return
 		}
 

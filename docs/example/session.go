@@ -3,11 +3,15 @@ package main
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/session"
+	// _ "github.com/go-sql-driver/mysql"
+	// _ "github.com/lib/pq"
 )
 
 func main() {
 	// 创建session，并注册转换函数。
 	provider := session.NewSessionMap()
+	// provider := session.NewStoreSql("mysql","root:@/jass?parseTime=true")
+	// provider := session.NewStoreSql("postgres", "host=localhost port=5432 user=jass password=abc dbname=jass sslmode=disable")
 	eudore.RegisterHandlerFunc(func(fn func(session.ContextSession)) eudore.HandlerFunc {
 		return func(ctx eudore.Context) {
 			fn(session.ContextSession{

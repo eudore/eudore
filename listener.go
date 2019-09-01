@@ -1,6 +1,6 @@
 package eudore
 
-// 实现端口监听和热重启习惯内容。
+// 实现端口监听和热重启相关内容。
 
 import (
 	"crypto/rand"
@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -125,7 +124,7 @@ func getServerListen(i reflect.Value) (serverListener, error) {
 	if sl.Addr != "" {
 		return sl, nil
 	}
-	return nil, errors.New("not convet to serverListener")
+	return nil, ErrNotToServerListener
 }
 
 // Listen 方法使ServerListenConfig实现serverListener接口，用于使用对象创建监听。
@@ -193,9 +192,9 @@ func loadCertificate(cret, key string) (tls.Certificate, error) {
 		NotAfter:              time.Now().AddDate(10, 0, 0),
 		SubjectKeyId:          []byte{1, 2, 3, 4, 5},
 		BasicConstraintsValid: true,
-		IsCA:                  true,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		IsCA:        true,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 	}
 	pool := x509.NewCertPool()
 	pool.AddCert(ca)
@@ -218,7 +217,7 @@ func (l *serverListenFile) File() (*os.File, error) {
 	if ok {
 		return f.File()
 	}
-	return nil, errors.New("Listener is not implements ServerListenFiler.")
+	return nil, ErrListenerNotImplementsServerListenFiler
 }
 
 // GetAllListener 函数获取多个net.Listener的监听地址和fd。
@@ -260,7 +259,7 @@ func StartNewProcess(lns []net.Listener) error {
 	cmd.ExtraFiles = files
 	err := cmd.Start()
 	if err != nil {
-		return fmt.Errorf("failed to forkexec: %v", err)
+		return fmt.Errorf(ErrFormatStartNewProcessError, err)
 	}
 	return nil
 }

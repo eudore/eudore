@@ -49,7 +49,7 @@ func newHandlerFuncs(iValue reflect.Value) HandlerFuncs {
 	case reflect.Interface:
 		return newHandlerFuncs(iValue.Elem())
 	}
-	panic(fmt.Errorf("The NewHandlerFuncs parameter is of the wrong type and must be an slice or a function. The current type is %s.", iValue.Type().String()))
+	panic(fmt.Errorf(ErrFormatNewHandlerFuncsTypeNotFunc, iValue.Type().String()))
 }
 
 // NewHandlerFunc 函数使用一个函数参数转换成请求上下文处理函数。
@@ -59,7 +59,7 @@ func newHandlerFuncs(iValue reflect.Value) HandlerFuncs {
 // 例如: func(func(...)) HanderFunc
 func NewHandlerFunc(i interface{}) HandlerFunc {
 	if reflect.TypeOf(i).Kind() != reflect.Func {
-		panic("NewHandlerFunc input parameter must be a function.")
+		panic(ErrNewHandlerFuncParamNotFunc)
 	}
 	switch val := i.(type) {
 	case func(Context):
@@ -74,20 +74,20 @@ func NewHandlerFunc(i interface{}) HandlerFunc {
 			return h
 		}
 	}
-	panic(fmt.Errorf("The NewHandlerFunc parameter type is %s, which is an unregistered handler type.", reflect.TypeOf(i).String()))
+	panic(fmt.Errorf(ErrFormatNewHandlerFuncsUnregisterType, reflect.TypeOf(i).String()))
 }
 
 // RegisterHandlerFunc 函数注册一个请求上下文处理转换函数，参数必须是一个函数，该函数的参数必须是一个函数，返回值必须是返回一个HandlerFunc对象。
 func RegisterHandlerFunc(fn interface{}) {
 	iType := reflect.TypeOf(fn)
 	if iType.Kind() != reflect.Func {
-		panic("The parameter type of RegisterNewHandler must be a function.")
+		panic(ErrRegisterNewHandlerParamNotFunc)
 	}
 	if iType.NumIn() != 1 || iType.In(0).Kind() != reflect.Func {
-		panic(fmt.Errorf("The '%s' input parameter is illegal and should be one.", iType.String()))
+		panic(fmt.Errorf(ErrFormatRegisterHandlerFuncInputParamError, iType.String()))
 	}
 	if iType.NumOut() != 1 || iType.Out(0) != typeHandlerFunc {
-		panic(fmt.Errorf("The '%s' output parameter is illegal and should be a HandlerFunc object.", iType.String()))
+		panic(fmt.Errorf(ErrFormatRegisterHandlerFuncOutputParamError, iType.String()))
 
 	}
 	contextNewFunc[iType.In(0)] = reflect.ValueOf(fn)
@@ -136,24 +136,6 @@ func CombineHandlerFuncs(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	return hs
 }
 
-// GetHandlerFuncsName 函数返回多个请求处理函数的名称。
-func GetHandlerFuncsName(hs HandlerFuncs) []string {
-	names := make([]string, len(hs))
-	for i, h := range hs {
-		names[i] = GetHandlerFuncName(h)
-	}
-	return names
-}
-
-// GetHandlerFuncName 函数返回一个HandlerFunc的名称。
-func GetHandlerFuncName(i HandlerFunc) string {
-	name, ok := contextFuncName[reflect.ValueOf(i)]
-	if ok {
-		return name
-	}
-	return runtime.FuncForPC(reflect.ValueOf(i).Pointer()).Name()
-}
-
 // SetHandlerFuncName 实在一个请求上下文处理函数的名称。
 func SetHandlerFuncName(i HandlerFunc, name string) {
 	contextFuncName[reflect.ValueOf(i)] = name
@@ -161,7 +143,11 @@ func SetHandlerFuncName(i HandlerFunc, name string) {
 
 // String 实现fmt.Stringer接口，实现输出函数名称。
 func (h HandlerFunc) String() string {
-	return GetHandlerFuncName(h)
+	name, ok := contextFuncName[reflect.ValueOf(h)]
+	if ok {
+		return name
+	}
+	return runtime.FuncForPC(reflect.ValueOf(h).Pointer()).Name()
 }
 
 // MarshalText 实现encoding.TextMarshaler接口。
@@ -169,8 +155,8 @@ func (h HandlerFunc) MarshalText() ([]byte, error) {
 	return []byte(h.String()), nil
 }
 
-// ListExtendHandlerFun 函数返回注册的扩展执行函数一定类型名称。
-func ListExtendHandlerFun() []string {
+// ListExtendHandlerFunc 函数返回注册的扩展执行函数一定类型名称。
+func ListExtendHandlerFunc() []string {
 	strs := make([]string, 0, len(contextNewFunc))
 	for i := range contextNewFunc {
 		strs = append(strs, i.String())
@@ -200,10 +186,9 @@ func NewContextErrorHanderFunc(fn func(Context) error) HandlerFunc {
 func NewContextRenderErrorHanderFunc(fn func(Context) (interface{}, error)) HandlerFunc {
 	return func(ctx Context) {
 		data, err := fn(ctx)
-		if err != nil {
-			ctx.Fatal(err)
+		if err == nil && ctx.Response().Size() == 0 {
+			err = ctx.Render(data)
 		}
-		err = ctx.Render(data)
 		if err != nil {
 			ctx.Fatal(err)
 		}
@@ -222,14 +207,11 @@ func NewRpcMapHandlerFunc(fn func(Context, map[string]interface{}) (map[string]i
 			return
 		}
 		resp, err := fn(ctx, req)
-		if err != nil {
-			ctx.Fatal(err)
-			return
+		if err == nil && ctx.Response().Size() == 0 {
+			err = ctx.Render(resp)
 		}
-		err = ctx.Render(resp)
 		if err != nil {
 			ctx.Fatal(err)
-			return
 		}
 	}
 }

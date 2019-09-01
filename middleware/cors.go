@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"github.com/eudore/eudore"
+	"strings"
 )
 
 type (
@@ -67,9 +68,31 @@ func (cors *Cors) Handle(ctx eudore.Context) {
 // validateOrigin 方法检查origin是否合法。
 func (cors *Cors) validateOrigin(origin string) bool {
 	for _, i := range cors.origins {
-		if eudore.MatchStar(origin, i) {
+		if matchStar(origin, i) {
 			return true
 		}
 	}
 	return false
+}
+
+// matchStar 模式匹配对象，允许使用带'*'的模式。
+func matchStar(obj, patten string) bool {
+	ps := strings.Split(patten, "*")
+	if len(ps) < 2 {
+		return patten == obj
+	}
+	if !strings.HasPrefix(obj, ps[0]) {
+		return false
+	}
+	for _, i := range ps {
+		if i == "" {
+			continue
+		}
+		pos := strings.Index(obj, i)
+		if pos == -1 {
+			return false
+		}
+		obj = obj[pos+len(i):]
+	}
+	return true
 }

@@ -79,10 +79,11 @@ func NewEudore(options ...interface{}) *Eudore {
 	Set(app.Server, "print", NewLoggerPrintFunc(app.Logger))
 
 	// Register eudore default reload func
-	app.RegisterInit("eudore-config", 0x008, InitConfig)
-	app.RegisterInit("eudore-workdir", 0x009, InitWorkdir)
-	app.RegisterInit("eudore-signal", 0x57, InitSignal)
-	app.RegisterInit("eudore-server-start", 0xff0, InitServerStart)
+	app.RegisterInit("eudore-config", 0x003, InitConfig)
+	app.RegisterInit("eudore-workdir", 0x006, InitWorkdir)
+	app.RegisterInit("eudore-logger", 0x009, InitLoggerStd)
+	app.RegisterInit("eudore-signal", 0x00c, InitSignal)
+	app.RegisterInit("eudore-start", 0xff0, InitStart)
 	go func(app *Eudore) {
 		ticker := time.NewTicker(time.Millisecond * 40)
 		defer ticker.Stop()
@@ -109,15 +110,24 @@ func (app *Eudore) Run() error {
 
 // Start 方法加载配置，然后启动全部初始化函数，等待App结束。
 func (app *Eudore) Start() error {
-	// Reload
-	go func() {
-		app.Logger.Info("eudore start reload all func")
-		app.HandleError(app.Init())
-	}()
-
-	defer app.Logger.Sync()
+	go app.InitAll()
 	<-app.Done()
+
+	time.Sleep(200 * time.Millisecond)
+	app.Logger.Sync()
+	time.Sleep(50 * time.Millisecond)
 	return app.Err()
+}
+
+// InitAll 方法调用全部初始化函数。
+func (app *Eudore) InitAll() error {
+	app.Logger.Info("eudore start init all func")
+	err := app.Init()
+	app.HandleError(err)
+	if err == nil {
+		app.Logger.Info("eudore init all success.")
+	}
+	return err
 }
 
 // Init execute the eudore reload function.
@@ -127,18 +137,22 @@ func (app *Eudore) Start() error {
 // names是需要执行的函数名称列表；如果列表为空，执行全部重新加载函数。
 func (app *Eudore) Init(names ...string) (err error) {
 	app.mu.Lock()
-	// get names
+	defer app.mu.Unlock()
+	// get names and exec
 	names = app.getInitNames(names)
-	// exec
 	num := len(names)
 	for i, name := range names {
-		if err = app.inits[name].fn(app); err != nil {
-			return fmt.Errorf("eudore init %d/%d %s error: %v", i+1, num, name, err)
+		err = app.inits[name].fn(app)
+		if err != nil {
+			if err == ErrEudoreIgnoreInit {
+
+				app.Logger.Errorf("eudore init %d/%d %s ignore the remaining init function.", i+1, num, name)
+				return nil
+			}
+			return fmt.Errorf("eudore init error: %v", err)
 		}
 		app.Logger.Infof("eudore init %d/%d %s success.", i+1, num, name)
 	}
-	app.Logger.Info("eudore init all success.")
-	app.mu.Unlock()
 	return nil
 }
 
@@ -198,7 +212,9 @@ func (app *Eudore) Restart() error {
 	defer app.mu.Unlock()
 	err := StartNewProcess(app.listeners)
 	if err == nil {
+		app.Logger.Info("eudore restart success.")
 		app.Server.Shutdown(context.Background())
+		app.HandleError(ErrApplicationStop)
 	}
 	return err
 }
@@ -207,6 +223,7 @@ func (app *Eudore) Restart() error {
 func (app *Eudore) Close() error {
 	app.mu.Lock()
 	defer app.mu.Unlock()
+	defer app.HandleError(ErrApplicationStop)
 	return app.Server.Close()
 }
 
@@ -214,6 +231,7 @@ func (app *Eudore) Close() error {
 func (app *Eudore) Shutdown() error {
 	app.mu.Lock()
 	defer app.mu.Unlock()
+	defer app.HandleError(ErrApplicationStop)
 	return app.Server.Shutdown(context.Background())
 }
 
@@ -246,6 +264,7 @@ func (app *Eudore) HandleSignal(sig os.Signal) {
 // RegisterSignal 方法给Eudore app注册一个信号响应函数。
 func (app *Eudore) RegisterSignal(sig os.Signal, fn EudoreFunc) {
 	fns, ok := app.signalFuncs[sig]
+	app.signalFuncs[sig] = append(fns, fn)
 	if !ok {
 		sigs := make([]os.Signal, 0, len(app.signalFuncs))
 		for i := range app.signalFuncs {
@@ -255,24 +274,44 @@ func (app *Eudore) RegisterSignal(sig os.Signal, fn EudoreFunc) {
 		signal.Stop(app.signalChan)
 		signal.Notify(app.signalChan, sigs...)
 	}
-	app.signalFuncs[sig] = append(fns, fn)
+}
+
+// HandleError 定义Eudore App处理一个error，如果err非空则结束app，当err为ErrApplicationStop正常退出。
+func (app *Eudore) HandleError(err error) {
+	if err != nil && app.err == nil {
+		if err != ErrApplicationStop {
+			app.err = err
+			app.Logger.Errorf("eudore stop error: %s", err.Error())
+		} else {
+			app.Logger.Info("eudore stop success.")
+		}
+		app.cancel()
+	}
+}
+
+// Err 实现Context.Errr()返回error，如果app.err为空返回app.Context.Err()。
+func (app *Eudore) Err() error {
+	if app.err != nil {
+		return app.err
+	}
+	return app.Context.Err()
 }
 
 // Listen 监听一个http端口
-func (app *Eudore) Listen(addr string) *Eudore {
+func (app *Eudore) Listen(addr string) {
 	conf := ServerListenConfig{
 		Addr: addr,
 	}
 	ln, err := conf.Listen()
 	if err != nil {
 		app.Error(err)
+		return
 	}
 	app.AddListener(ln)
-	return app
 }
 
 // ListenTLS 监听一个https端口，如果支持默认开启h2
-func (app *Eudore) ListenTLS(addr, key, cert string) *Eudore {
+func (app *Eudore) ListenTLS(addr, key, cert string) {
 	conf := ServerListenConfig{
 		Addr:     addr,
 		Https:    true,
@@ -283,15 +322,16 @@ func (app *Eudore) ListenTLS(addr, key, cert string) *Eudore {
 	ln, err := conf.Listen()
 	if err != nil {
 		app.Error(err)
+		return
 	}
 	app.AddListener(ln)
-	return app
 }
 
 // AddListener 方式给Server添加一个net.Listener,同时会记录net.Listener对象，用于热重启传递fd。
-func (app *Eudore) AddListener(l net.Listener) {
-	app.listeners = append(app.listeners, l)
-	app.Server.AddListener(l)
+func (app *Eudore) AddListener(ln net.Listener) {
+	app.Logger.Infof("listen %s %s", ln.Addr().Network(), ln.Addr().String())
+	app.listeners = append(app.listeners, ln)
+	app.Server.AddListener(ln)
 }
 
 // AddStatic method register a static file Handle.
@@ -312,6 +352,19 @@ func (app *Eudore) HandleContext(ctx Context) {
 	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx))
 	ctx.Next()
 	ctx.End()
+}
+
+// EudoreHTTP 方法处理一个http请求。
+func (app *Eudore) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader) {
+	// init
+	ctx := app.ContextPool.Get().(Context)
+	// handle
+	ctx.Reset(pctx, w, req)
+	ctx.SetHandler(app.handlers)
+	ctx.Next()
+	ctx.End()
+	// release
+	app.ContextPool.Put(ctx)
 }
 
 // Debug 方法输出Debug级别日志。
@@ -361,38 +414,4 @@ func (app *Eudore) logReset() Logout {
 		"line": line,
 	}
 	return app.Logger.WithFields(f)
-}
-
-// HandleError 定义Eudore App处理一个error，如果err非空则结束app，当err为ErrApplicationStop正常退出。
-func (app *Eudore) HandleError(err error) {
-	if err != nil {
-		if err != ErrApplicationStop {
-			app.err = err
-			app.Logger.Error("eudore stop error: ", err)
-		} else {
-			app.Logger.Info("eudore stop success.")
-		}
-		app.cancel()
-	}
-}
-
-// Err 实现Context.Errr()返回error，如果app.err为空返回app.Context.Err()。
-func (app *Eudore) Err() error {
-	if app.err != nil {
-		return app.err
-	}
-	return app.Context.Err()
-}
-
-// EudoreHTTP 方法处理一个http请求。
-func (app *Eudore) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader) {
-	// init
-	ctx := app.ContextPool.Get().(Context)
-	// handle
-	ctx.Reset(pctx, w, req)
-	ctx.SetHandler(app.handlers)
-	ctx.Next()
-	ctx.End()
-	// release
-	app.ContextPool.Put(ctx)
 }

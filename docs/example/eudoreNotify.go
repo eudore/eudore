@@ -11,6 +11,7 @@ func main() {
 		ctx.WriteString("server notify")
 	})
 
+	// 设置编译命令、启动命令、监听目录
 	app.Config.Set("component.notify.buildcmd", "go build -o server coreNotify.go")
 	app.Config.Set("component.notify.startcmd", "./server")
 	app.Config.Set("component.notify.watchdir", ".")

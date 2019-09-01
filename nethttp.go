@@ -3,7 +3,6 @@ package eudore
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"net"
 	"net/http"
 	"net/textproto"
@@ -160,14 +159,12 @@ func (w *ResponseWriterHttp) Hijack() (conn net.Conn, err error) {
 		conn, _, err = hj.Hijack()
 		return
 	}
-	err = fmt.Errorf("http.Hijacker interface is not supported")
-	return
+	return nil, ErrResponseWriterHttpNotHijacker
 }
 
 // Push 方法实现http Psuh，如果ResponseWriterHttp实现http.Push接口，则Push资源。
 func (w *ResponseWriterHttp) Push(target string, opts *protocol.PushOptions) error {
 	if pusher, ok := w.ResponseWriter.(http.Pusher); ok {
-		// TODO: add con
 		return pusher.Push(target, &http.PushOptions{})
 	}
 	return nil

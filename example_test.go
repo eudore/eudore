@@ -11,7 +11,7 @@ func ExampleNewCore() {
 	app := eudore.NewCore()
 	// 全局级请求处理中间件
 	app.AddMiddleware("ANY", "",
-		middleware.NewLoggerFunc(),
+		middleware.NewLoggerFunc(app.App),
 	)
 
 	// 创建子路由器

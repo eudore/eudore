@@ -56,7 +56,8 @@ eudore最大的特点是解耦，除Application以外其他对象均为接口，
 ## 发展方向
 
 日期：2019年8月16日 logger重写提升效率、更新或整理老旧扩展部分、文档完善
+日期：2019年9月1日 view封装、session完善、httptest、文档完善
 
 ## 各类简写
 
-Core、Eudore等app对象变量名称统一为app，Context及衍生对象变量名称统一为ctx。
+Core、Eudore等app对象变量名称统一为app，Context及衍生对象变量名称统一为ctx,基础控制器命名为ControllerXxxx，应用控制器为XxxxController。

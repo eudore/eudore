@@ -1,0 +1,33 @@
+# example
+
+- [Application]
+	- [Core](core.go)
+	- [Core notify](coreNotify.go)
+	- [Eudore](eudore.go)
+	- [Eudore global middleware](eudoreGlobalMiddleware.go)
+	- [Eudore signal](eudoreSignal.go)
+	- [Eudore static](eudoreStatic.go)
+	- [Eudore notify](eudoreNotify)
+	- [Eudore daemon](eudoreDaemon.go)
+	- [Eudore command](eudoreCommand.go)
+- [Server]
+	- [https](serverHttps.go)
+	- [fasthttp](serverFasthttp.go)
+	- [eudore server](serverEudore.go)
+- [Logger]
+	- [LoggerInit]
+	- [LoggerStd]
+- [Router]
+	- [Group and Middleware](routerGroupAndMiddleware.go)
+	- [RouterRaidx](routerRadix.go)
+	- [RouterFull](routerFull.go)
+	- [RouterHost](routerHost.go)
+- [Controller]
+	- [ControllerBase](controllerBase.go)
+	- [ControllerSingleton](controllerSingleton.go)
+	- [Controller extend]
+- [Middlewar]
+	- [Breaker](middlewareBreaker.go)
+	- [Logger]
+	- [Gzip]
+	- [Cors]

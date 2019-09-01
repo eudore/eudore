@@ -32,21 +32,8 @@ func NewRequestReaderTest(method, addr string, body interface{}) (protocol.Reque
 		return nil, err
 	}
 	r.url = u
-	if body == nil {
-		r.body = nil
-		return r, nil
-	}
-	switch t := body.(type) {
-	case string:
-		r.body = strings.NewReader(t)
-	case []byte:
-		r.body = bytes.NewReader(t)
-	case io.Reader:
-		r.body = t
-	default:
-		return nil, fmt.Errorf("unknown type used for body: %+v", body)
-	}
-	return r, nil
+	r.body, err = transbody(body)
+	return r, err
 }
 
 // Method 方法返回请求方法。
@@ -118,6 +105,6 @@ func transbody(body interface{}) (io.Reader, error) {
 	case io.Reader:
 		return t, nil
 	default:
-		return nil, fmt.Errorf("unknown type used for body: %+v", body)
+		return nil, fmt.Errorf(ErrFormatUnknownTypeBody, body)
 	}
 }

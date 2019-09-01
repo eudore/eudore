@@ -5,7 +5,6 @@ import (
 	"crypto/sha1"
 	"crypto/sha512"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -107,7 +106,6 @@ var (
 	}
 	cachePushFile = make(map[string][]string)
 	cacheFileType = make(map[string]string)
-	errNoOverlap  = errors.New("invalid range: failed to overlap")
 )
 
 // GetParam 方法返回一个参数的值。
@@ -537,7 +535,7 @@ func HandlerContent(ctx Context, content io.ReadSeeker, modtime time.Time, sendS
 	if sendSize >= 0 {
 		ranges, err := parseRange(ctx.GetHeader("Range"), sendSize)
 		if err != nil {
-			if err == errNoOverlap {
+			if err == ErrHandlerInvalidRange {
 				ctx.SetHeader(HeaderContentRange, fmt.Sprintf("bytes */%d", sendSize))
 			}
 			HandlerError(ctx, err.Error(), StatusRequestedRangeNotSatisfiable)
@@ -900,7 +898,7 @@ func parseRange(s string, size int64) ([]httpRange, error) {
 	}
 	if noOverlap && len(ranges) == 0 {
 		// The specified ranges did not overlap with the content.
-		return nil, errNoOverlap
+		return nil, ErrHandlerInvalidRange
 	}
 	return ranges, nil
 }
@@ -1066,13 +1064,13 @@ func HandlerProxy(addr string) HandlerFunc {
 func handleUpgradeResponse(ctx Context, resp *http.Response) error {
 	backConn, ok := resp.Body.(io.ReadWriteCloser)
 	if !ok {
-		return errors.New("ResponseReader not suppert io.Writer")
+		return ErrHandlerProxyBackNotWriter
 	}
 	defer backConn.Close()
 
 	conn, err := ctx.Response().Hijack()
 	if err != nil {
-		return err
+		return fmt.Errorf(ErrFormatHandlerProxyConnHijack, err)
 	}
 	defer conn.Close()
 

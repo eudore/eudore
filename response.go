@@ -148,7 +148,7 @@ func (rw *ResponseWriterTest) Flush() {
 
 // Hijack 方法返回劫持的连接，该方法始终返回空连接和不支持该方法的错误。
 func (rw *ResponseWriterTest) Hijack() (net.Conn, error) {
-	return nil, fmt.Errorf("ResponseWriterTest no support hijack")
+	return nil, ErrResponseWriterTestNotSupportHijack
 }
 
 // Push 方法实现http2 push操作，改方法始终为空操作。

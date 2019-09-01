@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	radixNodeKindConst uint8 = iota
+	radixNodeKindConst uint8 = 1 << iota
 	radixNodeKindParam
 	radixNodeKindWildcard
+	radixNodeKindAnyMethod
 )
 
 type (
@@ -82,8 +83,7 @@ func NewRouterRadix() Router {
 		middtree: &middNode{},
 	}
 	r.RouterMethod = &RouterMethodStd{
-		RouterCore:          r,
-		ControllerParseFunc: ControllerBaseParseFunc,
+		RouterCore: r,
 	}
 	return r
 }
@@ -99,7 +99,7 @@ func (r *RouterRadix) RegisterMiddleware(method, path string, hs HandlerFuncs) {
 	if len(method) != 0 && len(path) == 0 {
 		path = "/"
 	}
-	r.Print("RegisterMiddleware:", method, path, GetHandlerFuncsName(hs))
+	r.Print("RegisterMiddleware:", method, path, hs)
 	if method == MethodAny {
 		if path == "/" {
 			r.middtree.Insert("", hs)
@@ -123,7 +123,7 @@ func (r *RouterRadix) RegisterMiddleware(method, path string, hs HandlerFuncs) {
 //
 // 路由器会从中间件树中匹配当前路径可使用的处理者，并添加到处理者前方。
 func (r *RouterRadix) RegisterHandler(method string, path string, handler HandlerFuncs) {
-	r.Print("RegisterHandler:", method, path, GetHandlerFuncsName(handler))
+	r.Print("RegisterHandler:", method, path, handler)
 	switch method {
 	case "NotFound", "404":
 		r.nodefunc404 = handler
@@ -133,10 +133,10 @@ func (r *RouterRadix) RegisterHandler(method string, path string, handler Handle
 		r.node405.Wchildren.handlers = CombineHandlerFuncs(handler, r.middtree.val)
 	case MethodAny:
 		for _, method := range RouterAllMethod {
-			r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
+			r.insertRoute(method, path, true, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
 		}
 	default:
-		r.insertRoute(method, path, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
+		r.insertRoute(method, path, false, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
 	}
 }
 
@@ -155,7 +155,7 @@ func (r *RouterRadix) RegisterHandler(method string, path string, handler Handle
 // 将路径按节点类型切割，每段路径即为一种类型的节点，然后依次向树追加，然后给最后的节点设置数据。
 //
 // insertRoute 路径切割见getSpiltPath函数，当前未完善，处理正则可能异常。
-func (r *RouterRadix) insertRoute(method, key string, val HandlerFuncs) {
+func (r *RouterRadix) insertRoute(method, key string, isany bool, val HandlerFuncs) {
 	var currentNode *radixNode = r.getTree(method)
 	if currentNode == &r.node405 {
 		return
@@ -165,6 +165,13 @@ func (r *RouterRadix) insertRoute(method, key string, val HandlerFuncs) {
 	args := strings.Split(key, " ")
 	for _, path := range getSplitPath(args[0]) {
 		currentNode = currentNode.InsertNode(path, newRadixNode(path))
+	}
+
+	if isany {
+		if currentNode.kind&radixNodeKindAnyMethod != radixNodeKindAnyMethod && currentNode.handlers != nil {
+			return
+		}
+		currentNode.kind |= radixNodeKindAnyMethod
 	}
 
 	currentNode.handlers = val
@@ -377,38 +384,39 @@ func (r *RouterRadix) getTree(method string) *radixNode {
 // 依次检查常量节点、参数节点、通配符节点，如果有一个匹配就直接返回。
 func (r *radixNode) recursiveLoopup(searchKey string, params Params) HandlerFuncs {
 	// 如果路径为空，当前节点就是需要匹配的节点，直接返回。
-	if len(searchKey) == 0 {
+	if len(searchKey) == 0 && r.handlers != nil {
 		r.AddTagsToParams(params)
 		return r.handlers
 	}
 
-	// 遍历常量Node匹配，寻找具有相同前缀的那个节点
-	for _, edgeObj := range r.Cchildren {
-		// fmt.Println(edgeObj.path,searchKey )
-		if edgeObj.path[0] >= searchKey[0] {
-			if len(searchKey) >= len(edgeObj.path) && searchKey[:len(edgeObj.path)] == edgeObj.path {
-				nextSearchKey := searchKey[len(edgeObj.path):]
+	if len(searchKey) > 0 {
+		// 遍历常量Node匹配，寻找具有相同前缀的那个节点
+		for _, edgeObj := range r.Cchildren {
+			if edgeObj.path[0] >= searchKey[0] {
+				if len(searchKey) >= len(edgeObj.path) && searchKey[:len(edgeObj.path)] == edgeObj.path {
+					nextSearchKey := searchKey[len(edgeObj.path):]
+					if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
+						return n
+					}
+				}
+				break
+			}
+		}
+
+		if len(r.Pchildren) > 0 {
+			pos := strings.IndexByte(searchKey, '/')
+			if pos == -1 {
+				pos = len(searchKey)
+			}
+			nextSearchKey := searchKey[pos:]
+
+			// Whether the variable Node matches in sequence is satisfied
+			// 遍历参数节点是否后续匹配
+			for _, edgeObj := range r.Pchildren {
 				if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
+					params.AddParam(edgeObj.name, searchKey[:pos])
 					return n
 				}
-			}
-			break
-		}
-	}
-
-	if len(r.Pchildren) > 0 && len(searchKey) > 0 {
-		pos := strings.IndexByte(searchKey, '/')
-		if pos == -1 {
-			pos = len(searchKey)
-		}
-		nextSearchKey := searchKey[pos:]
-
-		// Whether the variable Node matches in sequence is satisfied
-		// 遍历参数节点是否后续匹配
-		for _, edgeObj := range r.Pchildren {
-			if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
-				params.AddParam(edgeObj.name, searchKey[:pos])
-				return n
 			}
 		}
 	}

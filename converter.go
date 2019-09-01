@@ -14,7 +14,6 @@ func ConvertTo(source interface{}, target interface{}) error
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -24,13 +23,6 @@ import (
 
 const (
 	defaultConvertTag = "set"
-)
-
-// 定义convert中的错误
-var (
-	ErrInputDataNil         = errors.New("input value is nil.")
-	ErrSourceDataNil        = errors.New("source data is nil.")
-	ErrSeterNotSupportField = errors.New("seter not support set field.")
 )
 
 // Seter 定义对象set属性的方法。
@@ -79,7 +71,7 @@ type Seter interface {
 // 如果传入的目标类型是数组、map、结构体，会使用json反序列化设置对象。
 func Set(i interface{}, key string, val interface{}) (interface{}, error) {
 	if i == nil {
-		return i, fmt.Errorf("input value is nil.")
+		return i, ErrConverterInputDataNil
 	}
 	seter, ok := i.(Seter)
 	if ok {
@@ -98,7 +90,6 @@ func Set(i interface{}, key string, val interface{}) (interface{}, error) {
 
 // 递归设置一个目标的路径为key属性的值为val
 func setValue(iType reflect.Type, iValue reflect.Value, key []string, val interface{}) error {
-	// fmt.Println("setValue:", iType, key, val)
 	// 不同类型调用不同的方法设置
 	switch iType.Kind() {
 	case reflect.Ptr:
@@ -112,7 +103,7 @@ func setValue(iType reflect.Type, iValue reflect.Value, key []string, val interf
 	case reflect.Interface:
 		return setInterface(iType, iValue, key, val)
 	}
-	return fmt.Errorf("not setValue type is %s, key: %v,val: %s", iType.Kind(), key, val)
+	return fmt.Errorf(ErrFormatConverterSetTypeError, iType.Kind(), key, val)
 }
 
 // 设置指针情况
@@ -218,7 +209,6 @@ func setSlice(iType reflect.Type, iValue reflect.Value, key []string, val interf
 		} else {
 			iValue.Index(index).Set(newValue)
 		}
-
 	}
 	return
 }
@@ -238,7 +228,7 @@ func setStruct(iType reflect.Type, iValue reflect.Value, key []string, val inter
 	var index int = getStructFieldOfTag(iType, key[0], defaultConvertTag)
 	// 未找到直接返回错误。
 	if index == -1 {
-		return errors.New("struct not field " + key[0])
+		return fmt.Errorf(ErrFormatConverterSetStructNotField, key[0])
 	}
 
 	// 获取结构体的属性
@@ -248,7 +238,7 @@ func setStruct(iType reflect.Type, iValue reflect.Value, key []string, val inter
 	// 设置属性的值
 	if len(key) == 1 {
 		if !structField.CanSet() {
-			return fmt.Errorf("struct %s field %s not set, use pointer type. ", iValue.Type().String(), key[0])
+			return fmt.Errorf(ErrFormatConverterNotCanset, key[0], iValue.Type().String())
 		}
 		return setWithInterface(typeField.Type, structField, val)
 	}
@@ -511,8 +501,11 @@ func convertMapMapToMap(iType reflect.Type, iValue reflect.Value, val map[interf
 
 // ConvertTo 将一个对象属性复制给另外一个对象。
 func ConvertTo(source interface{}, target interface{}) error {
-	if source == nil || target == nil {
-		return ErrInputDataNil
+	if source == nil {
+		return ErrConverterInputDataNil
+	}
+	if target == nil {
+		return ErrConverterTargetDataNil
 	}
 	return convertTo(reflect.TypeOf(source), reflect.ValueOf(source), reflect.TypeOf(target), reflect.ValueOf(target))
 }
@@ -545,17 +538,17 @@ func convertTo(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tVa
 	switch sType.Kind() {
 	case reflect.Ptr:
 		if sValue.IsNil() {
-			return ErrSourceDataNil
+			return ErrConverterInputDataNil
 		}
 		return convertTo(sValue.Elem().Type(), sValue.Elem(), tType, tValue)
 	case reflect.Interface:
 		if sValue.Elem().Kind() == reflect.Invalid {
-			return ErrSourceDataNil
+			return ErrConverterInputDataNil
 		}
 		return convertTo(sValue.Elem().Type(), sValue.Elem(), tType, tValue)
 	case reflect.Map:
 		if sValue.IsNil() {
-			return ErrSourceDataNil
+			return ErrConverterInputDataNil
 		}
 		kind = kind | 0x10
 	case reflect.Struct:
@@ -644,7 +637,7 @@ func getStructFieldOfTag(iType reflect.Type, name, tag string) int {
 func checkValueNil(iValue reflect.Value) bool {
 	switch iValue.Type().Kind() {
 	case reflect.Bool:
-		return iValue.Bool() == false
+		return iValue.Bool()
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return iValue.Int() == 0
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
@@ -670,8 +663,6 @@ func getValueString(iType reflect.Type, iValue reflect.Value) string {
 		}
 	case reflect.Interface, reflect.Ptr:
 		return getValueString(iType.Elem(), iValue.Elem())
-	// case reflect.Invalid, reflect.Chan, reflect.Func:
-	// 	return ""
 	case reflect.String:
 		return iValue.String()
 	default:
@@ -764,7 +755,7 @@ func setWithString(iTypeKind reflect.Kind, iValue reflect.Value, val string) err
 		}
 		return setWithString(iValue.Elem().Kind(), iValue.Elem(), val)
 	default:
-		return errors.New("Unknown type " + iTypeKind.String())
+		return fmt.Errorf(ErrFormatConverterSetStringUnknownType, iTypeKind.String())
 	}
 	return nil
 }

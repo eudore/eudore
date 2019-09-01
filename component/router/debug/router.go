@@ -41,8 +41,7 @@ func NewRouterDebug() eudore.Router {
 		router:     r2,
 	}
 	r.RouterMethod = &eudore.RouterMethodStd{
-		RouterCore:          r,
-		ControllerParseFunc: eudore.ControllerBaseParseFunc,
+		RouterCore: r,
 	}
 	r.GetFunc("/eudore/debug/router/data", r.getData)
 	r.GetFunc("/eudore/debug/router/ui", func(ctx eudore.Context) {

@@ -7,6 +7,7 @@ import (
 
 // NewLoggerFunc 函数创建一个请求日志记录中间件。
 func NewLoggerFunc(app *eudore.App) eudore.HandlerFunc {
+	var params = []string{"action", "ram", "route", "controller"}
 	return func(ctx eudore.Context) {
 		now := time.Now()
 		f := eudore.Fields{
@@ -21,24 +22,14 @@ func NewLoggerFunc(app *eudore.App) eudore.HandlerFunc {
 		f["status"] = status
 		f["time"] = time.Now().Sub(now).String()
 		f["size"] = ctx.Response().Size()
+		existsAddParam(ctx, f, params)
 		if requestId := ctx.GetHeader(eudore.HeaderXRequestID); len(requestId) > 0 {
 			f["x-request-id"] = requestId
 		}
 		if parentId := ctx.GetHeader(eudore.HeaderXParentID); len(parentId) > 0 {
 			f["x-parent-id"] = parentId
 		}
-		if action := ctx.GetParam(eudore.ParamAction); len(action) > 0 {
-			f["action"] = action
-		}
-		if ram := ctx.GetParam(eudore.ParamRam); len(ram) > 0 {
-			f["ram"] = ram
-		}
-		if route := ctx.GetParam(eudore.ParamRoute); len(route) > 0 {
-			f["route"] = route
-		}
-		// if routes := ctx.Params()[eudore.ParamRoutes]; len(routes) > 0 {
-		// 	f["routes"] = strings.Join(routes, " ")
-		// }
+
 		if 300 < status && status < 400 && status != 304 {
 			f["location"] = ctx.Response().Header().Get(eudore.HeaderLocation)
 		}
@@ -46,6 +37,15 @@ func NewLoggerFunc(app *eudore.App) eudore.HandlerFunc {
 			app.Logger.WithFields(f).Info()
 		} else {
 			app.Logger.WithFields(f).Error()
+		}
+	}
+}
+
+func existsAddParam(ctx eudore.Context, field eudore.Fields, names []string) {
+	for _, name := range names {
+		val := ctx.GetParam(name)
+		if val != "" {
+			field[name] = val
 		}
 	}
 }

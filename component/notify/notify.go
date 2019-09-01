@@ -18,16 +18,24 @@ const (
 	NOTIFY_ENVIRON_KEY = "EUDORE_IS_NOTIFY"
 )
 
+var notifyArgs = []string{
+	fmt.Sprintf("%s=%d", eudore.ENV_EUDORE_IS_NOTIFY, 1),
+	fmt.Sprintf("%s=%d", eudore.ENV_EUDORE_DISABLE_PIDFILE, 1),
+	fmt.Sprintf("%s=%d", eudore.ENV_EUDORE_DISABLE_SIGNAL, 1),
+}
+
 // Init 函数是eudpre.ReloadFunc, Eudore初始化内容。
+//
+// 	app.RegisterInit("eudore-notify", 0x00e, notify.Init)
 func Init(app *eudore.Eudore) error {
-	NewNotify(app.App).Run()
-	return nil
+	return NewNotify(app.App).Run()
 }
 
 // Notify 定义监听重启对象。
 type Notify struct {
-	eudore.Logger
+	app      *eudore.App
 	cmd      *exec.Cmd
+	watcher  *fsnotify.Watcher
 	buildCmd []string
 	startCmd []string
 	watchDir []string
@@ -45,95 +53,106 @@ func NewNotify(app *eudore.App) *Notify {
 		watchDir = getArgs(app.Config.Get("component.notify.watchdir"))
 	)
 
-	if len(buildCmd) == 0 || len(watchDir) == 0 {
-		app.Info("notify config is empty.")
+	if len(buildCmd) == 0 {
+		app.Info("notify build command is empty.")
 		return nil
 	}
 
 	if len(startCmd) == 0 {
 		startCmd = os.Args
 	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		panic(err)
+	}
+
 	return &Notify{
+		app:      app,
+		watcher:  watcher,
 		buildCmd: buildCmd,
 		startCmd: startCmd,
 		watchDir: watchDir,
-		Logger:   app.Logger,
 	}
 }
 
 // Run 方法启动Notify。
 //
 // 调用App.Logger
-func (n *Notify) Run() {
-	if os.Getenv(NOTIFY_ENVIRON_KEY) != "" || n == nil {
-		return
-	}
-	n.buildAndStart()
-
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		n.Error(err)
-	}
-	defer watcher.Close()
-
-	// 添加函数
-	addfn := func(path string) {
-		n.Debug("notify add watch dir " + path)
-		err = watcher.Add(path)
-		if err != nil {
-			n.Error(err)
-		}
+func (n *Notify) Run() error {
+	if eudore.GetStringBool(os.Getenv(eudore.ENV_EUDORE_IS_NOTIFY)) || n == nil {
+		return nil
 	}
 	for _, i := range n.watchDir {
-		// 递归目录处理
-		if i[len(i)-1] == '/' {
-			listDir(i, addfn)
-		}
-		addfn(i)
+		n.WatchAll(i)
 	}
 
-	var timer = time.AfterFunc(1000*time.Hour, n.buildAndStart)
-	defer timer.Stop()
+	n.buildAndRestart()
 
-	defer os.Exit(0)
-	for {
-		select {
-		case event, ok := <-watcher.Events:
-			if !ok {
-				break
-			}
+	go func(n *Notify) {
+		var timer = time.AfterFunc(1000*time.Hour, n.buildAndRestart)
+		defer timer.Stop()
+		defer n.cmd.Process.Kill()
 
-			// 监听go文件写入
-			if event.Name[len(event.Name)-3:] == ".go" && event.Op&fsnotify.Write == fsnotify.Write {
-				n.Debug("modified file:", event.Name)
+		for {
+			select {
+			case event, ok := <-n.watcher.Events:
+				if !ok {
+					break
+				}
 
-				// 等待0.1秒执行更新，防止短时间大量触发
-				timer.Reset(100 * time.Millisecond)
+				// 监听go文件写入
+				if event.Name[len(event.Name)-3:] == ".go" && event.Op&fsnotify.Write == fsnotify.Write {
+					n.app.Debug("modified file:", event.Name)
+
+					// 等待0.1秒执行更新，防止短时间大量触发
+					timer.Reset(100 * time.Millisecond)
+				}
+			case err, ok := <-n.watcher.Errors:
+				if !ok {
+					break
+				}
+				n.app.Error("notify watcher error:", err)
+			case <-n.app.Done():
+				return
 			}
-		case err, ok := <-watcher.Errors:
-			if !ok {
-				break
-			}
-			n.Error("notify watcher error:", err)
 		}
+	}(n)
+
+	return eudore.ErrEudoreIgnoreInit
+}
+
+func (n *Notify) WatchAll(path string) {
+	// 递归目录处理
+	if path[len(path)-1] == '/' {
+		listDir(path, n.watch)
+	}
+	n.watch(path)
+}
+
+func (n *Notify) watch(path string) {
+	n.app.Debug("notify add watch dir " + path)
+	err := n.watcher.Add(path)
+	if err != nil {
+		n.app.Error(err)
 	}
 }
 
-func (n *Notify) buildAndStart() {
+func (n *Notify) buildAndRestart() {
 	// 执行编译命令
 	body, err := exec.Command(n.buildCmd[0], n.buildCmd[1:]...).CombinedOutput()
 	if err != nil {
 		fmt.Printf("notify build error: \n%s", body)
-		n.Errorf("notify build error: %s", body)
+		n.app.Errorf("notify build error: %s", body)
 	} else {
-		n.Info("notify build success, restart process...")
+		n.app.Info("notify build success, restart process...")
 		time.Sleep(10 * time.Millisecond)
 		// 重启子进程
-		n.start()
+		n.restart()
 	}
 }
 
-func (n *Notify) start() {
+func (n *Notify) restart() {
 	// 关闭旧进程
 	if n.cmd != nil {
 		n.cmd.Process.Kill()
@@ -145,10 +164,10 @@ func (n *Notify) start() {
 	n.cmd.Stdin = os.Stdin
 	n.cmd.Stdout = os.Stdout
 	n.cmd.Stderr = os.Stderr
-	n.cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", NOTIFY_ENVIRON_KEY, 1), "EUDORE_NOTPID=1")
+	n.cmd.Env = append(os.Environ(), notifyArgs...)
 	err := n.cmd.Start()
 	if err != nil {
-		n.Error("notify start error:", err)
+		n.app.Error("notify start error:", err)
 	}
 }
 

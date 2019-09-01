@@ -18,14 +18,6 @@ import (
 	"syscall"
 )
 
-// The name of the environment variable used when the program starts in the background, which is used to indicate whether the fork is started in the background.
-//
-// 程序后台启动时使用的环境变量名，用于表示是否fork来后台启动。
-const (
-	DAEMON_ENVIRON_KEY = "EUDORE_IS_DEAMON"
-	DAEMON_NOTPID      = "EUDORE_NOTPID"
-)
-
 // Command is a command parser that performs the corresponding behavior based on the current command.
 //
 // Command 对象是一个命令解析器，根据当前命令执行对应行为。
@@ -40,7 +32,7 @@ type Command struct {
 func InitCommand(app *eudore.Eudore) error {
 	cmd := eudore.GetDefaultString(app.Config.Get("command"), "start")
 	pid := eudore.GetDefaultString(app.Config.Get("pidfile"), "/var/run/eudore.pid")
-	app.Logger.Infof("current command is %s, pidfile in %s.", cmd, pid)
+	app.Logger.Infof("current command is %s, pidfile in %s, process pid is %d.", cmd, pid, os.Getpid())
 	return NewCommand(app, cmd, pid).Run()
 }
 
@@ -89,14 +81,14 @@ func (c *Command) Run() (err error) {
 		fmt.Printf("%s is true.\n", c.cmd)
 	}
 	if c.cmd == "daemon" {
-		if os.Getenv(DAEMON_ENVIRON_KEY) == "" {
-			os.Exit(0)
+		if os.Getenv(eudore.ENV_EUDORE_IS_DEAMON) == "" {
+			return eudore.ErrApplicationStop
 		}
 		return
 	}
 	// 非启动命令结束程序
 	if c.cmd != "start" {
-		os.Exit(0)
+		return eudore.ErrApplicationStop
 	}
 	return
 }
@@ -110,6 +102,7 @@ func (c *Command) Start() error {
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
+
 	// 写入pid
 	return c.writepid()
 }
@@ -118,12 +111,12 @@ func (c *Command) Start() error {
 //
 // Daemon 函数后台启动进程。若不是后台启动，则创建一个后台进程。
 func (c *Command) Daemon() error {
-	if os.Getenv(DAEMON_ENVIRON_KEY) != "" {
+	if eudore.GetStringBool(os.Getenv(eudore.ENV_EUDORE_IS_DEAMON)) {
 		return c.Start()
 	}
 
 	cmd := exec.Command(os.Args[0], os.Args[1:]...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", DAEMON_ENVIRON_KEY, 1))
+	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", eudore.ENV_EUDORE_IS_DEAMON, 1))
 	return cmd.Start()
 }
 
@@ -134,24 +127,24 @@ func (c *Command) Status() error {
 
 // Stop 函数调用系统命令，想进程发送信号syscall.SIGTERM。
 func (c *Command) Stop() error {
-	return c.ExecSignal(syscall.SIGTERM)
+	return c.ExecSignal(syscall.Signal(0x0f))
 }
 
 // Reload 函数调用系统命令，想进程发送信号syscall.SIGUSR1。
 func (c *Command) Reload() error {
-	return c.ExecSignal(syscall.SIGUSR1)
+	return c.ExecSignal(syscall.Signal(0x0a))
 }
 
 // Restart 函数调用系统命令，想进程发送信号syscall.SIGUSR2。
 func (c *Command) Restart() error {
-	return c.ExecSignal(syscall.SIGUSR2)
+	return c.ExecSignal(syscall.Signal(0x0c))
 }
 
 // ExecSignal 函数向pidfile内的进程发送指定命令
 func (c *Command) ExecSignal(sig os.Signal) error {
 	pid, err := c.readpid()
 	if err != nil {
-		return fmt.Errorf("read pidfile %s error: %v", c.pidfile, err)
+		return err
 	}
 
 	process, err := os.FindProcess(pid)
@@ -159,7 +152,12 @@ func (c *Command) ExecSignal(sig os.Signal) error {
 		return fmt.Errorf("find process %d error: %v", pid, err)
 	}
 
-	return process.Signal(sig)
+	err = process.Signal(sig)
+	if err != nil {
+		os.Remove(c.pidfile)
+		return err
+	}
+	return nil
 }
 
 // Read the value in the pid file.
@@ -170,6 +168,7 @@ func (c *Command) readpid() (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer file.Close()
 	id, err := ioutil.ReadAll(file)
 	if err != nil {
 		return 0, err
@@ -181,22 +180,26 @@ func (c *Command) readpid() (int, error) {
 //
 // 打开并锁定pid文件，写入pid的值。
 func (c *Command) writepid() (err error) {
-	if os.Getenv(DAEMON_NOTPID) != "" {
+	if eudore.GetStringBool(os.Getenv(eudore.ENV_EUDORE_DISABLE_PIDFILE)) {
 		return nil
 	}
+
 	c.file, err = os.OpenFile(c.pidfile, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
 		return
 	}
+
+	// lock file
 	err = syscall.Flock(int(c.file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if err != nil {
 		c.file.Close()
 		return
 	}
-	byteSlice := []byte(fmt.Sprintf("%d", os.Getpid()))
-	_, err = c.file.Write(byteSlice)
+
+	// write pid
+	body := []byte(fmt.Sprintf("%d", os.Getpid()))
+	_, err = c.file.Write(body)
 	if err != nil {
-		c.file.Close()
 		return
 	}
 	c.Release()
@@ -217,12 +220,12 @@ func (c *Command) Release() {
 
 // Daemon 函数直接后台启动程序。
 func Daemon() {
-	if os.Getenv(DAEMON_ENVIRON_KEY) != "" {
+	if eudore.GetStringBool(os.Getenv(eudore.ENV_EUDORE_IS_DEAMON)) {
 		return
 	}
 
 	cmd := exec.Command(os.Args[0], os.Args[1:]...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", DAEMON_ENVIRON_KEY, 1))
+	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", eudore.ENV_EUDORE_IS_DEAMON, 1))
 	cmd.Start()
 	os.Exit(0)
 }

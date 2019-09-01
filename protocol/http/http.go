@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"github.com/eudore/eudore/protocol"
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -57,9 +58,12 @@ func (h *HttpHandler) EudoreConn(pctx context.Context, c net.Conn) {
 	resp := rwPool.Get().(*Response)
 	for {
 		c.SetReadDeadline(time.Now().Add(h.ReadTimeout))
-		if err := resp.request.Reset(c); err != nil { // && err != io.EOF
+		err := resp.request.Reset(c)
+		if err != nil {
 			// handler error
-			h.Print(err)
+			if isNotCommonNetReadError(err) {
+				h.Print("eudore http request read error: ", err)
+			}
 			break
 		}
 		resp.Reset(c)
@@ -79,6 +83,20 @@ func (h *HttpHandler) EudoreConn(pctx context.Context, c net.Conn) {
 	}
 	c.Close()
 	rwPool.Put(resp)
+}
+
+// isNotCommonNetReadError 函数检查net读取错误是否未非通用错误。
+func isNotCommonNetReadError(err error) bool {
+	if err == io.EOF {
+		return false
+	}
+	if neterr, ok := err.(net.Error); ok && neterr.Timeout() {
+		return false
+	}
+	if oe, ok := err.(*net.OpError); ok && oe.Op == "read" {
+		return false
+	}
+	return true
 }
 
 // SetIdleTimeout 设置http连接处理的IdleTimeout时间。

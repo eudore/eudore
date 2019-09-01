@@ -9,22 +9,7 @@ Router对象用于定义请求的路由
 */
 
 import (
-	"fmt"
 	"strings"
-)
-
-// 默认http请求方法
-const (
-	MethodAny     = "ANY"
-	MethodGet     = "GET"
-	MethodPost    = "POST"
-	MethodPut     = "PUT"
-	MethodDelete  = "DELETE"
-	MethodHead    = "HEAD"
-	MethodPatch   = "PATCH"
-	MethodOptions = "OPTIONS"
-	MethodConnect = "CONNECT"
-	MethodTrace   = "TRACE"
 )
 
 type (
@@ -62,7 +47,6 @@ type (
 	// RouterMethodStd 默认路由器方法注册实现
 	RouterMethodStd struct {
 		RouterCore
-		ControllerParseFunc
 		prefix string
 		tags   string
 	}
@@ -141,10 +125,9 @@ func (m *RouterMethodStd) Group(path string) RouterMethod {
 
 	// 构建新的路由方法配置器
 	return &RouterMethodStd{
-		RouterCore:          m.RouterCore,
-		ControllerParseFunc: m.ControllerParseFunc,
-		prefix:              m.prefix + prefix,
-		tags:                tags + m.tags,
+		RouterCore: m.RouterCore,
+		prefix:     m.prefix + prefix,
+		tags:       tags + m.tags,
 	}
 }
 
@@ -176,16 +159,9 @@ func (m *RouterMethodStd) AddMiddleware(method, path string, hs ...HandlerFunc) 
 // 如果控制器实现了RoutesInjecter接口，调用控制器自身注入路由。
 func (m *RouterMethodStd) AddController(cs ...Controller) RouterMethod {
 	for _, c := range cs {
-		if rj, ok := c.(RoutesInjecter); ok {
-			rj.RoutesInject(m)
-			continue
-		}
-
-		config, err := m.ControllerParseFunc(c)
-		if err == nil {
-			config.RoutesInject(m)
-		} else {
-			fmt.Println(err)
+		err := c.Inject(c, m)
+		if err != nil {
+			panic(err)
 		}
 	}
 	return m

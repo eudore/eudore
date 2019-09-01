@@ -2,7 +2,6 @@ package eudore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -58,7 +57,7 @@ func NewServer(arg interface{}) *Server {
 // Start 启动Server
 func (srv *Server) Start() error {
 	if len(srv.listeners) == 0 {
-		return errors.New("eudore server not found listen")
+		return eudore.ErrServerNotAddListener
 	}
 	srv.mu.Lock()
 
@@ -84,10 +83,7 @@ func (srv *Server) Start() error {
 	// 等待结束
 	srv.mu.Unlock()
 	srv.wg.Wait()
-	if errs.GetError() != nil {
-		return errs
-	}
-	return eudore.ErrApplicationStop
+	return errs.GetError()
 }
 
 // Close 方法关闭Server。

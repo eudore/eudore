@@ -181,9 +181,10 @@ func (log *LoggerStd) WithFields(fields Fields) Logout {
 func (entry *entryStd) Debug(args ...interface{}) {
 	if entry.logger.Level < 1 {
 		entry.level = 0
-		entry.message = fmt.Sprint(args...)
+		entry.message = fmt.Sprintln(args...)
+		entry.message = entry.message[:len(entry.message)-1]
 		entry.logger.mu.Lock()
-		entry.WriteTo(entry.logger.out)
+		entry.writeTo(entry.logger.out)
 		entry.logger.mu.Unlock()
 		entry.logger.pool.Put(entry)
 	}
@@ -193,9 +194,10 @@ func (entry *entryStd) Debug(args ...interface{}) {
 func (entry *entryStd) Info(args ...interface{}) {
 	if entry.logger.Level < 2 {
 		entry.level = 1
-		entry.message = fmt.Sprint(args...)
+		entry.message = fmt.Sprintln(args...)
+		entry.message = entry.message[:len(entry.message)-1]
 		entry.logger.mu.Lock()
-		entry.WriteTo(entry.logger.out)
+		entry.writeTo(entry.logger.out)
 		entry.logger.mu.Unlock()
 		entry.logger.pool.Put(entry)
 	}
@@ -205,9 +207,10 @@ func (entry *entryStd) Info(args ...interface{}) {
 func (entry *entryStd) Warning(args ...interface{}) {
 	if entry.logger.Level < 3 {
 		entry.level = 2
-		entry.message = fmt.Sprint(args...)
+		entry.message = fmt.Sprintln(args...)
+		entry.message = entry.message[:len(entry.message)-1]
 		entry.logger.mu.Lock()
-		entry.WriteTo(entry.logger.out)
+		entry.writeTo(entry.logger.out)
 		entry.logger.mu.Unlock()
 		entry.logger.pool.Put(entry)
 	}
@@ -217,9 +220,10 @@ func (entry *entryStd) Warning(args ...interface{}) {
 func (entry *entryStd) Error(args ...interface{}) {
 	if entry.logger.Level < 4 {
 		entry.level = 3
-		entry.message = fmt.Sprint(args...)
+		entry.message = fmt.Sprintln(args...)
+		entry.message = entry.message[:len(entry.message)-1]
 		entry.logger.mu.Lock()
-		entry.WriteTo(entry.logger.out)
+		entry.writeTo(entry.logger.out)
 		entry.logger.mu.Unlock()
 		entry.logger.pool.Put(entry)
 	}
@@ -228,9 +232,10 @@ func (entry *entryStd) Error(args ...interface{}) {
 // Fatal 方法条目输出Fatal级别日志。
 func (entry *entryStd) Fatal(args ...interface{}) {
 	entry.level = 4
-	entry.message = fmt.Sprint(args...)
+	entry.message = fmt.Sprintln(args...)
+	entry.message = entry.message[:len(entry.message)-1]
 	entry.logger.mu.Lock()
-	entry.WriteTo(entry.logger.out)
+	entry.writeTo(entry.logger.out)
 	entry.logger.mu.Unlock()
 	panic(entry.message)
 }
@@ -241,7 +246,7 @@ func (entry *entryStd) Debugf(format string, args ...interface{}) {
 		entry.level = 0
 		entry.message = fmt.Sprintf(format, args...)
 		entry.logger.mu.Lock()
-		entry.WriteTo(entry.logger.out)
+		entry.writeTo(entry.logger.out)
 		entry.logger.mu.Unlock()
 		entry.logger.pool.Put(entry)
 	}
@@ -253,7 +258,7 @@ func (entry *entryStd) Infof(format string, args ...interface{}) {
 		entry.level = 1
 		entry.message = fmt.Sprintf(format, args...)
 		entry.logger.mu.Lock()
-		entry.WriteTo(entry.logger.out)
+		entry.writeTo(entry.logger.out)
 		entry.logger.mu.Unlock()
 		entry.logger.pool.Put(entry)
 	}
@@ -265,7 +270,7 @@ func (entry *entryStd) Warningf(format string, args ...interface{}) {
 		entry.level = 2
 		entry.message = fmt.Sprintf(format, args...)
 		entry.logger.mu.Lock()
-		entry.WriteTo(entry.logger.out)
+		entry.writeTo(entry.logger.out)
 		entry.logger.mu.Unlock()
 		entry.logger.pool.Put(entry)
 	}
@@ -277,7 +282,7 @@ func (entry *entryStd) Errorf(format string, args ...interface{}) {
 		entry.level = 3
 		entry.message = fmt.Sprintf(format, args...)
 		entry.logger.mu.Lock()
-		entry.WriteTo(entry.logger.out)
+		entry.writeTo(entry.logger.out)
 		entry.logger.mu.Unlock()
 		entry.logger.pool.Put(entry)
 	}
@@ -288,7 +293,7 @@ func (entry *entryStd) Fatalf(format string, args ...interface{}) {
 	entry.level = 4
 	entry.message = fmt.Sprintf(format, args...)
 	entry.logger.mu.Lock()
-	entry.WriteTo(entry.logger.out)
+	entry.writeTo(entry.logger.out)
 	entry.logger.mu.Unlock()
 	panic(entry.message)
 }
@@ -322,11 +327,11 @@ func (entry *entryStd) WithField(key string, value interface{}) Logout {
 func (entry *entryStd) WriteValue(value interface{}) {
 	iType := reflect.TypeOf(value)
 	iValue := reflect.ValueOf(value)
-	entry.WriteReflect(iType, iValue)
+	entry.writeReflect(iType, iValue)
 }
 
-// WriteReflect 方法写入值。
-func (entry *entryStd) WriteReflect(iType reflect.Type, iValue reflect.Value) {
+// writeReflect 方法写入值。
+func (entry *entryStd) writeReflect(iType reflect.Type, iValue reflect.Value) {
 	// 检查接口
 	switch val := iValue.Interface().(type) {
 	case json.Marshaler:
@@ -335,7 +340,7 @@ func (entry *entryStd) WriteReflect(iType reflect.Type, iValue reflect.Value) {
 			panic(err)
 		}
 		entry.data = append(entry.data, '"')
-		entry.WriteBytes(body)
+		entry.writeBytes(body)
 		entry.data = append(entry.data, '"')
 		return
 	case encoding.TextMarshaler:
@@ -344,12 +349,12 @@ func (entry *entryStd) WriteReflect(iType reflect.Type, iValue reflect.Value) {
 			panic(err)
 		}
 		entry.data = append(entry.data, '"')
-		entry.WriteBytes(body)
+		entry.writeBytes(body)
 		entry.data = append(entry.data, '"')
 		return
 	case fmt.Stringer:
 		entry.data = append(entry.data, '"')
-		entry.WriteString(val.String())
+		entry.writeString(val.String())
 		entry.data = append(entry.data, '"')
 		return
 	}
@@ -374,7 +379,7 @@ func (entry *entryStd) WriteReflect(iType reflect.Type, iValue reflect.Value) {
 		entry.data = append(entry.data, '"')
 	case reflect.String:
 		entry.data = append(entry.data, '"')
-		entry.WriteString(iValue.String())
+		entry.writeString(iValue.String())
 		entry.data = append(entry.data, '"')
 	case reflect.Array, reflect.Slice:
 		entry.data = append(entry.data, '[')
@@ -398,7 +403,7 @@ func (entry *entryStd) WriteReflect(iType reflect.Type, iValue reflect.Value) {
 			if iValue.Field(i).CanInterface() {
 				entry.WriteValue(iType.Field(i).Name)
 				entry.data = append(entry.data, ':')
-				entry.WriteReflect(iType.Field(i).Type, iValue.Field(i))
+				entry.writeReflect(iType.Field(i).Type, iValue.Field(i))
 				entry.data = append(entry.data, ',')
 			}
 		}
@@ -413,8 +418,8 @@ func (entry *entryStd) WriteReflect(iType reflect.Type, iValue reflect.Value) {
 	}
 }
 
-// WriteString 方法安全写入字符串。
-func (entry *entryStd) WriteString(s string) {
+// writeString 方法安全写入字符串。
+func (entry *entryStd) writeString(s string) {
 	for i := 0; i < len(s); {
 		if entry.tryAddRuneSelf(s[i]) {
 			i++
@@ -430,8 +435,8 @@ func (entry *entryStd) WriteString(s string) {
 	}
 }
 
-// WriteBytes 方法安全写入[]byte的字符串数据。
-func (entry *entryStd) WriteBytes(s []byte) {
+// writeBytes 方法安全写入[]byte的字符串数据。
+func (entry *entryStd) writeBytes(s []byte) {
 	for i := 0; i < len(s); {
 		if entry.tryAddRuneSelf(s[i]) {
 			i++
@@ -486,8 +491,8 @@ func (entry *entryStd) tryAddRuneError(r rune, size int) bool {
 	return false
 }
 
-// WriteTo 将数据写入到输出。
-func (entry *entryStd) WriteTo(w io.Writer) {
+// writeTo 将数据写入到输出。
+func (entry *entryStd) writeTo(w io.Writer) {
 	w.Write(part1)
 	timestr := time.Now().Format(entry.logger.TimeFormat)
 	w.Write(*(*[]byte)(unsafe.Pointer(&timestr)))

@@ -2,6 +2,16 @@ package eudore
 
 // 定义eudore定义各种常量。
 const (
+	// Eudore environ
+	// ENV_EUDORE_IS_NOTIFY 表示使用使用了Notify组件。
+	ENV_EUDORE_IS_NOTIFY = "EUDORE_IS_NOTIFY"
+	// ENV_EUDORE_IS_DEAMON 用于表示是否fork来后台启动。
+	ENV_EUDORE_IS_DEAMON = "EUDORE_IS_DEAMON"
+	// ENV_EUDORE_DISABLE_PIDFILE 用于Command组件不写入pidfile，Notify组件启动的子程序不写入pidfile。
+	ENV_EUDORE_DISABLE_PIDFILE = "EUDORE_DISABLE_PIDFILE"
+	// ENV_EUDORE_DISABLE_SIGNAL 用于InitSignal不启用，Notify组件启动的子程序不注册信号。
+	ENV_EUDORE_DISABLE_SIGNAL = "EUDORE_DISABLE_SIGNAL"
+
 	// Response statue
 	StatusContinue           = 100 // RFC 7231, 6.2.1
 	StatusSwitchingProtocols = 101 // RFC 7231, 6.2.2
@@ -91,6 +101,18 @@ const (
 	HeaderXParentID       = "X-Parent-ID"
 	HeaderXRequestID      = "X-Request-ID"
 
+	// 默认http请求方法
+	MethodAny     = "ANY"
+	MethodGet     = "GET"
+	MethodPost    = "POST"
+	MethodPut     = "PUT"
+	MethodDelete  = "DELETE"
+	MethodHead    = "HEAD"
+	MethodPatch   = "PATCH"
+	MethodOptions = "OPTIONS"
+	MethodConnect = "CONNECT"
+	MethodTrace   = "TRACE"
+
 	// Mime
 	MimeCharsetUtf8                = "charset=utf-8"
 	MimeText                       = "text/*"
@@ -120,7 +142,4 @@ const (
 	ParamTemplate = "template"
 	ParamRoute    = "route"
 	ParamDeny     = "deny"
-	// Param value
-	ValueJwt     = "jwt"
-	ValueSession = "session"
 )

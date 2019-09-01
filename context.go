@@ -9,8 +9,10 @@ Context定义一个请求上下文
 */
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime"
 	"mime/multipart"
@@ -113,8 +115,8 @@ type (
 		app *App
 		log Logger
 	}
-	// EntryContext 实现Context使用的Logout对象。
-	EntryContext struct {
+	// entryContext 实现Context使用的Logout对象。
+	entryContext struct {
 		Logout
 		Context Context
 	}
@@ -247,9 +249,17 @@ func (ctx *ContextBase) Body() []byte {
 	return ctx.postBody
 }
 
+// getReader 如果调用过Body方法，返回Body封装的io.Reader可重复获得。
+func (ctx *ContextBase) getReader() io.Reader {
+	if ctx.isReadBody {
+		return bytes.NewReader(ctx.postBody)
+	}
+	return ctx
+}
+
 // BindWith 使用指定Binder解析请求body并绑定数据。
 func (ctx *ContextBase) BindWith(i interface{}, r Binder) (err error) {
-	err = r.Bind(ctx, i)
+	err = r(ctx, ctx.getReader(), i)
 	if err != nil {
 		ctx.logReset(0).WithField("caller", "Context.ReadBind").Error(err)
 	}
@@ -258,7 +268,7 @@ func (ctx *ContextBase) BindWith(i interface{}, r Binder) (err error) {
 
 // Bind 使用app.Binder解析请求body并绑定数据。
 func (ctx *ContextBase) Bind(i interface{}) (err error) {
-	err = ctx.app.Binder.Bind(ctx, i)
+	err = ctx.app.Binder(ctx, ctx.getReader(), i)
 	if err != nil {
 		ctx.logReset(0).WithField("caller", "Context.ReadBind").Error(err)
 	}
@@ -557,41 +567,47 @@ func (ctx *ContextBase) logReset(depth int) Logout {
 	return ctx.log.WithFields(fields)
 }
 
+// WithField 方法增加一个日志属性，返回一个新的Logout。
 func (ctx *ContextBase) WithField(key string, value interface{}) Logout {
-	return &EntryContext{
+	return &entryContext{
 		Logout:  ctx.logReset(0).WithField(key, value),
 		Context: ctx,
 	}
 }
 
+// WithFields 方法增加多个日志属性，返回一个新的Logout。
 func (ctx *ContextBase) WithFields(fields Fields) Logout {
 	file, line := LogFormatFileLine(0)
 	fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
 	fields["file"] = file
 	fields["line"] = line
-	return &EntryContext{
+	return &entryContext{
 		Logout:  ctx.log.WithFields(fields),
 		Context: ctx,
 	}
 }
 
-func (e *EntryContext) Fatal(args ...interface{}) {
+// Fatal 方法重写Context的Fatal方法，不执行panic，http返回500和请求id。
+func (e *entryContext) Fatal(args ...interface{}) {
 	e.Logout.Error(args...)
 	contextFatal(e.Context)
 
 }
 
-func (e *EntryContext) Fatalf(format string, args ...interface{}) {
+// Fatalf 方法重写Context的Fatalf方法，不执行panic，http返回500和请求id。
+func (e *entryContext) Fatalf(format string, args ...interface{}) {
 	e.Logout.Errorf(format, args...)
 	contextFatal(e.Context)
 }
 
-func (e *EntryContext) WithField(key string, value interface{}) Logout {
+// WithField 方法增加一个日志属性。
+func (e *entryContext) WithField(key string, value interface{}) Logout {
 	e.Logout = e.Logout.WithField(key, value)
 	return e
 }
 
-func (e *EntryContext) WithFields(fields Fields) Logout {
+// WithFields 方法增加多个日志属性。
+func (e *entryContext) WithFields(fields Fields) Logout {
 	e.Logout = e.Logout.WithFields(fields)
 	return e
 }

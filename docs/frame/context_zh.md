@@ -1,6 +1,9 @@
 # Context
 
-Context是一次请求的上下文环境，接口大概分类为：context设置、请求数据读取、上下文数据、响应写入、数据解析、日志输出这四类。
+Context是请求上下文定义了主要方法，额外方法需要扩展，已有方法修改可以使用接口重写实现。
+请求对象使用Context的Request和SetRequest方法读写。
+
+Context主要分为请求上下文数据、请求、参数、响应、日志输出五部分。
 
 Context的生命周期就是一个请求开始到结束，里面记录整个请求的数据。
 
@@ -30,7 +33,8 @@ type Context interface {
 	ContentType() string
 	Istls() bool
 	Body() []byte
-	ReadBind(interface{}) error
+	Bind(interface{}) error
+	BindWith(interface{}, Binder) error
 
 	// param query header cookie session
 	Params() Params
@@ -55,11 +59,12 @@ type Context interface {
 	WriteHeader(int)
 	Redirect(int, string)
 	Push(string, *protocol.PushOptions) error
+	Render(interface{}) error
+	RenderWith(interface{}, Renderer) error
 	// render writer
 	WriteString(string) error
 	WriteJson(interface{}) error
 	WriteFile(string) error
-	WriteRender(interface{}) error
 
 	// log Logout interface
 	Debug(...interface{})
@@ -77,9 +82,27 @@ type Context interface {
 }
 ```
 
-## 接口详解
+## 请求上下文部分数据
 
-### context设置
+该部分主要是读写一些基本数据和中间件机制操作。
+
+```golang
+// context.go
+type Context interface {
+	// context
+	Reset(context.Context, protocol.ResponseWriter, protocol.RequestReader)
+	Context() context.Context
+	Request() protocol.RequestReader
+	Response() protocol.ResponseWriter
+	SetRequest(protocol.RequestReader)
+	SetResponse(protocol.ResponseWriter)
+	SetHandler(HandlerFuncs)
+	Next()
+	End()
+	...
+}
+
+```
 
 `Reset(context.Context, protocol.ResponseWriter, protocol.RequestReader)`
 
@@ -117,11 +140,28 @@ fmt.Println("后执行")
 
 同时结束Conext的生命周期
 
-`NewRequest(string, string, io.Reader) (protocol.ResponseReader, error)`
+## 请求信息
 
-使用客户端发起一次http请求。
+请求部分主要是请求行、部分header、body的读取，header使用`ctx.Request().Header()`读取，`io.Reader`接口直接读取body的数据，Body方法读取全部内容，其他方法见方法名称。
 
-### 请求信息
+```golang
+type Context interface {
+	// request info
+	Read([]byte) (int, error)
+	Host() string
+	Method() string
+	Path() string
+	RealIP() string
+	RequestID() string
+	Referer() string
+	ContentType() string
+	Istls() bool
+	Body() []byte
+	Bind(interface{}) error
+	BindWith(interface{}, Binder) error
+	...
+}
+```
 
 `Read([]byte) (int, error)`
 
@@ -139,7 +179,7 @@ fmt.Println("后执行")
 
 获取请求的路径
 
-`RemoteAddr() string`
+`RealIP() string`
 
 获取请求远程真实ip地址，http连接的地址通过RequestReader.RemoteAddr()方法获取。
 
@@ -163,22 +203,54 @@ fmt.Println("后执行")
 
 获取请求Body
 
-### 上下文数据
+`Bind(interface{}) error`
 
-#### Params
+调用Binder对象解析请求，并给对象绑定数据，根据请求Context-Type Header来决定Bind方法。
+
+`BindWith(interface{}, Binder) error`
+
+使用指定的Binder解析请求。
+
+## 参数
+
+参数部分是对param query header cookie form五部分读写，Params是Context的参数都是字符串类型，query是http uri参数，header分为请求header和响应header，cookie和header类似，form是对form请求解析的数据读取。
+
+```golang
+type Context interface {
+	// param query header cookie form
+	Params() Params
+	GetParam(string) string
+	SetParam(string, string)
+	AddParam(string, string)
+	Querys() Querys
+	GetQuery(string) string
+	GetHeader(name string) string
+	SetHeader(string, string)
+	Cookies() []Cookie
+	GetCookie(name string) string
+	SetCookie(cookie *SetCookie)
+	SetCookieValue(string, string, int)
+	FormValue(string) string
+	FormValues() map[string][]string
+	FormFile(string) *multipart.FileHeader
+	FormFiles() map[string][]*multipart.FileHeader
+	...
+}
+```
+### Params
 
 `Params() Params`
 `GetParam(string) string`
 `SetParam(string, string)`
 `AddParam(string, string)`
 
-#### Query
+### Query
 
 `GetQuery(string) string`
 
 获得请求uri中的参数，可以使用RequestReader.RequestURI()获得请求行中的uri。
 
-#### Header
+### Header
 
 `GetHeader(name string) string`
 
@@ -192,7 +264,7 @@ fmt.Println("后执行")
 
 相对于ctx.Response().Header().Set()
 
-#### Cookie
+### Cookie
 
 `Cookies() []*Cookie`
 
@@ -210,17 +282,33 @@ fmt.Println("后执行")
 
 设置响应Cookie
 
-#### Session
+### Form
 
-`GetSession() SessionData`
+	FormValue(string) string
+	FormValues() map[string][]string
+	FormFile(string) *multipart.FileHeader
+	FormFiles() map[string][]*multipart.FileHeader
 
-获取请求的会话数据
+## 响应
 
-`SetSession(SessionData)`
+响应部分Write和WriteHeader是主要部分，其他方法就是封装写入不同的类型，header可以使用ctx.SetHeader和ctx.Response().Header()来操作。
 
-给请求设置会话数据
-
-### 写入响应
+```golang
+type Context interface {
+	// response
+	Write([]byte) (int, error)
+	WriteHeader(int)
+	Redirect(int, string)
+	Push(string, *protocol.PushOptions) error
+	Render(interface{}) error
+	RenderWith(interface{}, Renderer) error
+	// render writer
+	WriteString(string) error
+	WriteJson(interface{}) error
+	WriteFile(string) error
+	...
+}
+```
 
 `Write([]byte) (int, error)`
 
@@ -258,40 +346,36 @@ h2 Push资源,调用ResponseWriter.Push()。
 
 写入文件内容
 
-### 数据解析
-
-`ReadBind(interface{}) error`
-
-调用Binder对象解析请求，并给对象绑定数据，根据请求Context-Type Header来决定Bind方法。
-
-`WriteRender(interface{}) error`
+`Render(interface{}) error`
 
 调用Renderer渲染数据成对于格式，根据请求Accept Header来决定Render方法。
 
-### 日志输出
+`RenderWith(interface{}, Renderer) error`
 
-实现请求上下文日志输出，封装Logger对象的处理，可以附件ctx的Field。
+使用指定Renderer处理数据渲染。
+
+### 日志
+
+日志和Logout接口相同，定义输出日志信息，默认Context会输出调用文件行和请求id信息。
 
 ```golang
-Debug(...interface{})
-Info(...interface{})
-Warning(...interface{})
-Error(...interface{})
-Fatal(...interface{})
-Debugf(string, ...interface{})
-Infof(string, ...interface{})
-Warningf(string, ...interface{})
-Errorf(string, ...interface{})
-Fatalf(string, ...interface{})
-WithField(key string, value interface{}) LogOut
-WithFields(fields Fields) LogOut
+type Context interface {
+	// log Logout interface
+	Debug(...interface{})
+	Info(...interface{})
+	Warning(...interface{})
+	Error(...interface{})
+	Fatal(...interface{})
+	Debugf(string, ...interface{})
+	Infof(string, ...interface{})
+	Warningf(string, ...interface{})
+	Errorf(string, ...interface{})
+	Fatalf(string, ...interface{})
+	WithField(key string, value interface{}) Logout
+	WithFields(fields Fields) Logout
+	...
+}
 ```
-
-### App
-
-`App() *App`
-
-获得请求对象的App，**用途未知，可能移除**，推荐传入App然后闭包返回eudore.HanderFunc对象，
 
 ## 其他
 

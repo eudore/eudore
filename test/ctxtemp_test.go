@@ -1,6 +1,5 @@
 package test
 
-/*
 import (
 	"github.com/eudore/eudore"
 	"html/template"
@@ -24,7 +23,10 @@ func TestCacheMap(*testing.T) {
 		return "func1: " + a
 	}
 
-	t, _ := template.New("webpage").Funcs(funcs).Parse(tpl)
+	t, err := template.New("webpage").Funcs(funcs).Parse(tpl)
+	if err != nil {
+		panic(err)
+	}
 	t.AddParseTree("ss", template.Must(template.New("ss").Parse(`ss: {{.}}{{template "T1"}}`)).Tree)
 
 	eudore.RegisterHandlerFunc(func(fn func(ctx eudore.Context, tmp *template.Template)) eudore.HandlerFunc {
@@ -34,14 +36,14 @@ func TestCacheMap(*testing.T) {
 	})
 
 	app := eudore.NewCore()
-	app.GetFunc("/ template:webpage", ContextTemplatre)
-	app.GetFunc("/get template:ss", ContextTemplatre)
-	app.GetFunc("/render template:/tmp/05.tmp", render)
-	// eudore.TestAppRequest(app, "GET", "/", nil).Show()
-	// eudore.TestAppRequest(app, "GET", "/get", nil).Show()
+	app.GetFunc("/ template=webpage", ContextTemplatre)
+	app.GetFunc("/get template=ss", ContextTemplatre)
+	app.GetFunc("/render template=/tmp/05.tmp", render)
+	eudore.TestAppRequest(app, "GET", "/", nil).Show()
+	eudore.TestAppRequest(app, "GET", "/get", nil).Show()
 	eudore.TestAppRequest(app, "GET", "/render", nil).Show()
-	app.Listen(":8084")
-	app.Run()
+	// app.Listen(":8084")
+	// app.Run()
 }
 
 func ContextTemplatre(ctx eudore.Context, tmp *template.Template) {
@@ -69,6 +71,5 @@ func render(ctx eudore.Context) {
 			"My blog",
 		},
 	}
-	ctx.WriteRender(data)
+	ctx.Render(data)
 }
-*/

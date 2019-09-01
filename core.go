@@ -26,12 +26,12 @@ func NewCore() *Core {
 
 // Run 加载配置然后启动Core。
 func (app *Core) Run() (err error) {
-	go func() {
+	go func(app *App) {
 		ticker := time.NewTicker(time.Millisecond * 40)
 		for range ticker.C {
 			app.Logger.Sync()
 		}
-	}()
+	}(app.App)
 
 	defer app.Logger.Sync()
 	if initlog, ok := app.Logger.(LoggerInitHandler); ok {
@@ -44,20 +44,21 @@ func (app *Core) Run() (err error) {
 }
 
 // Listen 监听一个http端口
-func (app *Core) Listen(addr string) *Core {
+func (app *Core) Listen(addr string) {
 	conf := ServerListenConfig{
 		Addr: addr,
 	}
 	ln, err := conf.Listen()
 	if err != nil {
 		app.Error(err)
+		return
 	}
+	app.Logger.Infof("listen %s %s", ln.Addr().Network(), ln.Addr().String())
 	app.Server.AddListener(ln)
-	return app
 }
 
 // ListenTLS 监听一个https端口，如果支持默认开启h2
-func (app *Core) ListenTLS(addr, key, cert string) *Core {
+func (app *Core) ListenTLS(addr, key, cert string) {
 	conf := ServerListenConfig{
 		Addr:     addr,
 		Https:    true,
@@ -68,9 +69,10 @@ func (app *Core) ListenTLS(addr, key, cert string) *Core {
 	ln, err := conf.Listen()
 	if err != nil {
 		app.Error(err)
+		return
 	}
+	app.Logger.Infof("listen %s %s", ln.Addr().Network(), ln.Addr().String())
 	app.Server.AddListener(ln)
-	return app
 }
 
 // EudoreHTTP 方法实现protocol.HandlerHttp接口，处理http请求。

@@ -2,7 +2,6 @@ package eudore
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -24,7 +23,7 @@ const (
 
 type (
 	// ServerState 定义Server的状态。
-	ServerState = int
+	ServerState int
 	// Server 定义启动http服务的对象。
 	Server interface {
 		AddHandler(protocol.HandlerHttp)
@@ -103,16 +102,22 @@ func NewServerStd(arg interface{}) Server {
 
 // Start 方法使用全部注册的net.Listener启动服务监听。
 func (srv *ServerStd) Start() error {
+	if len(srv.listeners) == 0 {
+		return ErrServerNotAddListener
+	}
 	// update server state
 	srv.mu.Lock()
 	if srv.state != ServerStateInit {
-		return fmt.Errorf("server state exception")
+		return ErrServerStdStateException
 	}
 	srv.state = ServerStateRun
 	srv.mu.Unlock()
 
 	// setting server
 	srv.Server.Handler = srv
+	if h, ok := srv.handler.(http.Handler); ok {
+		srv.Server.Handler = h
+	}
 	if srv.Print != nil {
 		srv.Server.ErrorLog = newNetHttpLog(srv.Print).Logger()
 	}
@@ -132,7 +137,7 @@ func (srv *ServerStd) Start() error {
 
 	// wait over
 	srv.wg.Wait()
-	return errs
+	return errs.GetError()
 }
 
 // Close 方法关闭server。
@@ -157,6 +162,8 @@ func (srv *ServerStd) Shutdown(ctx context.Context) error {
 }
 
 // AddHandler 方法设置server的http处理者。
+//
+// 如果处理者同时实现了http.Handler接口，会使用处理者的http.Handler的接口。
 func (srv *ServerStd) AddHandler(h protocol.HandlerHttp) {
 	srv.handler = h
 }
