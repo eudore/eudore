@@ -11,11 +11,11 @@ ok  	command-line-arguments	7.238s
 */
 
 import (
-	"context"
-	"net/http/httptest"
+	// "net/http/httptest"
 	"testing"
 
 	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/component/httptest"
 	// "github.com/astaxie/beego"
 	// "github.com/kataras/iris"
 	// "github.com/kataras/iris/mvc"
@@ -36,12 +36,11 @@ func BenchmarkMvc(b *testing.B) {
 	// app.Listen(":8084")
 	// app.Run()
 
-	req, _ := eudore.NewRequestReaderTest("GET", "/base1/", nil)
-	resp := eudore.NewResponseWriterTest()
+	client := httptest.NewClient(app)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		app.EudoreHTTP(context.Background(), resp, req)
+		client.NewRequest("GET", "/base1/").Do()
 	}
 }
 
@@ -53,12 +52,11 @@ func BenchmarkRestful(b *testing.B) {
 	base1.GetFunc("/index", eudore.HandlerEmpty)
 	base1.GetFunc("/content", eudore.HandlerEmpty)
 
-	req, _ := eudore.NewRequestReaderTest("GET", "/base1/", nil)
-	resp := eudore.NewResponseWriterTest()
+	client := httptest.NewClient(app)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		app.EudoreHTTP(context.Background(), resp, req)
+		client.NewRequest("GET", "/base1/").Do()
 	}
 }
 

@@ -19,32 +19,33 @@ func init() {
 	gob.Register(map[interface{}]interface{}{})
 }
 
+// ErrDataNotFound 定义Store未获得数据的error。
 var ErrDataNotFound = errors.New("data not found")
 
 type (
 	// Session 定义会话管理对象。
 	Session interface {
-		GetSessionId(eudore.Context) string
+		GetSessionID(eudore.Context) string
 		SessionLoad(eudore.Context) (map[string]interface{}, error)
 		SessionSave(eudore.Context, map[string]interface{}) error
 		SessionFlush(eudore.Context) error
 	}
-	// SessionStore 定义存储对象接口。
-	SessionStore interface {
+	// Store 定义存储对象接口。
+	Store interface {
 		Insert(string) error
 		Delete(string) error
 		Update(string, map[string]interface{}) error
 		Select(string) (map[string]interface{}, error)
 		Clean(time.Time) error
 	}
-	// SessionStd 定义默认使用的Session。
-	SessionStd struct {
-		SessionStore
+	// sessionStd 定义默认使用的Session。
+	sessionStd struct {
+		Store
 		Maxage  int
 		KeyFunc func(eudore.Context) string `set:"keyfunc"`
 		SetFunc func(eudore.Context, string, int)
 	}
-	// StoreMap 使用sync.Map实现的SessionStore。
+	// StoreMap 使用sync.Map实现的Store。
 	StoreMap struct {
 		data sync.Map
 	}
@@ -61,14 +62,19 @@ type (
 
 // NewSessionMap 创建一个SessionMap，使用sync.Map保存数据。
 func NewSessionMap() Session {
-	return NewSessionStd(&StoreMap{})
+	return NewsessionStd(NewStoreMap())
 }
 
-// NewSessionStd 创建一个使用Store为存储的Session对象。
-func NewSessionStd(store SessionStore) Session {
-	return &SessionStd{
-		SessionStore: store,
-		Maxage:       3600,
+// NewStoreMap 函数创建一个map存储。
+func NewStoreMap() Store {
+	return &StoreMap{}
+}
+
+// NewsessionStd 创建一个使用Store为存储的Session对象。
+func NewsessionStd(store Store) Session {
+	session := &sessionStd{
+		Store:  store,
+		Maxage: 3600,
 		KeyFunc: func(ctx eudore.Context) string {
 			return ctx.GetCookie("sessionid")
 		},
@@ -76,35 +82,38 @@ func NewSessionStd(store SessionStore) Session {
 			ctx.SetCookieValue("sessionid", key, age)
 		},
 	}
+	go session.Clean()
+	return session
 }
 
-func (session *SessionStd) Clean() {
+// Clean 方法执行清理存储过期内容。
+func (session *sessionStd) Clean() {
 	ticker := time.NewTicker(time.Second * 30)
 	for range ticker.C {
-		session.SessionStore.Clean(time.Now().Add(time.Duration(-1*session.Maxage) * time.Second))
+		session.Store.Clean(time.Now().Add(time.Duration(-1*session.Maxage) * time.Second))
 	}
 }
 
-// GetSessionId 方法获取请求上下文的sessionid。
-func (session *SessionStd) GetSessionId(ctx eudore.Context) string {
+// GetSessionID 方法获取请求上下文的sessionid。
+func (session *sessionStd) GetSessionID(ctx eudore.Context) string {
 	key := session.KeyFunc(ctx)
 	if key == "" {
-		return newSessionId()
+		return newSessionID()
 	}
 	return key
 }
 
 // SessionLoad 方法实现加载一个会话数据，
-func (session *SessionStd) SessionLoad(ctx eudore.Context) (map[string]interface{}, error) {
-	key := session.GetSessionId(ctx)
-	data, err := session.SessionStore.Select(key)
+func (session *sessionStd) SessionLoad(ctx eudore.Context) (map[string]interface{}, error) {
+	key := session.GetSessionID(ctx)
+	data, err := session.Store.Select(key)
 	if err == nil {
 		return data, nil
 	}
 	if err != ErrDataNotFound {
 		return nil, err
 	}
-	err = session.SessionStore.Insert(key)
+	err = session.Store.Insert(key)
 	if err != nil {
 		return nil, err
 	}
@@ -113,18 +122,18 @@ func (session *SessionStd) SessionLoad(ctx eudore.Context) (map[string]interface
 }
 
 // SessionSave 方法实现将一个会话数据保存。
-func (session *SessionStd) SessionSave(ctx eudore.Context, data map[string]interface{}) error {
-	session.SetFunc(ctx, session.GetSessionId(ctx), session.Maxage)
-	return session.SessionStore.Update(session.GetSessionId(ctx), data)
+func (session *sessionStd) SessionSave(ctx eudore.Context, data map[string]interface{}) error {
+	session.SetFunc(ctx, session.GetSessionID(ctx), session.Maxage)
+	return session.Store.Update(session.GetSessionID(ctx), data)
 }
 
 // SessionFlush 方法实现使用一个sessionid删除一个会话数据。
-func (session *SessionStd) SessionFlush(ctx eudore.Context) error {
-	session.SetFunc(ctx, session.GetSessionId(ctx), -1)
-	return session.SessionStore.Delete(session.GetSessionId(ctx))
+func (session *sessionStd) SessionFlush(ctx eudore.Context) error {
+	session.SetFunc(ctx, session.GetSessionID(ctx), -1)
+	return session.Store.Delete(session.GetSessionID(ctx))
 }
 
-func newSessionId() string {
+func newSessionID() string {
 	nano := time.Now().UnixNano()
 	rand.Seed(nano)
 	rndNum := rand.Int63()
@@ -164,6 +173,7 @@ func (store *StoreMap) Select(key string) (map[string]interface{}, error) {
 	return nil, ErrDataNotFound
 }
 
+// Clean 方法清理map过期数据。
 func (store *StoreMap) Clean(expires time.Time) error {
 	store.data.Range(func(key, value interface{}) bool {
 		val, ok := value.(storeMapKey)

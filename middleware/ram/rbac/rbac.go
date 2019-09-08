@@ -51,7 +51,7 @@ func (r *Rbac) BindRoles(id int, rolesname []string) {
 
 // RamHandle 方法实现ram.RamHandler接口。
 func (r *Rbac) RamHandle(id int, name string, ctx eudore.Context) (bool, bool) {
-	ctx.SetParam(eudore.ParamRam, "rbac")
+	ctx.SetParam(eudore.ParamRAM, "rbac")
 	for _, i := range r.Binds[id] {
 		if ok := i.Match(name); ok {
 			return true, true

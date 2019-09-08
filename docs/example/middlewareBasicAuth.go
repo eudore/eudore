@@ -8,7 +8,7 @@ import (
 func main() {
 	app := eudore.NewCore()
 	// map保存用户密码
-	app.AddMiddleware(eudore.MethodAny, "", middleware.NewBasicAuthFunc("", map[string]string{
+	app.AddMiddleware(middleware.NewBasicAuthFunc("", map[string]string{
 		"user": "pw",
 	}))
 

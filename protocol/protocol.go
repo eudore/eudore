@@ -12,12 +12,12 @@ type (
 	HandlerConn interface {
 		EudoreConn(context.Context, net.Conn)
 	}
-	// HandlerHttp 接口定义eudore处理http请求
-	HandlerHttp interface {
+	// HandlerHTTP 接口定义eudore处理http请求
+	HandlerHTTP interface {
 		EudoreHTTP(context.Context, ResponseWriter, RequestReader)
 	}
-	// HandlerFunc 定义http处理函数
-	HandlerHttpFunc func(context.Context, ResponseWriter, RequestReader)
+	// HandlerHTTPFunc 定义http处理函数
+	HandlerHTTPFunc func(context.Context, ResponseWriter, RequestReader)
 	// Header 定义http header
 	Header interface {
 		Get(string) string
@@ -61,23 +61,6 @@ type (
 		Size() int
 		Status() int
 	}
-
-	RequestWriter interface {
-		Header() Header
-		Do() (ResponseReader, error)
-	}
-	// ResponseReader is used to read the http protocol response message information.
-	//
-	// ResponseReader用于读取http协议响应报文信息。
-	ResponseReader interface {
-		Proto() string
-		Statue() int
-		Code() string
-		Header() Header
-		Read([]byte) (int, error)
-		TLS() *tls.ConnectionState
-		Close() error
-	}
 	// PushOptions 定义http2 push的选项
 	PushOptions struct {
 		// Method specifies the HTTP method for the promised request.
@@ -91,10 +74,7 @@ type (
 	}
 )
 
-func (fn HandlerHttpFunc) EudoreHTTP(ctx context.Context, w ResponseWriter, r RequestReader) {
+// EudoreHTTP 方法使HandlerHTTPFunc函数实现HandlerHttp接口
+func (fn HandlerHTTPFunc) EudoreHTTP(ctx context.Context, w ResponseWriter, r RequestReader) {
 	fn(ctx, w, r)
 }
-
-var (
-	HeaderTransferEncoding = "Transfer-Encoding"
-)

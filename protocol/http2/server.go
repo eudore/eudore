@@ -83,7 +83,7 @@ var (
 	testHookOnPanic       func(sc *serverConn, panicVal interface{}) (rePanic bool)
 )
 
-func NewServer(h protocol.HandlerHttp) *Server {
+func NewServer(h protocol.HandlerHTTP) *Server {
 	srv := new(Server)
 	srv.handler = h
 	srv.state = &serverInternalState{activeConns: make(map[*serverConn]struct{})}
@@ -92,7 +92,7 @@ func NewServer(h protocol.HandlerHttp) *Server {
 
 // Server is an HTTP/2 server.
 type Server struct {
-	handler        protocol.HandlerHttp
+	handler        protocol.HandlerHTTP
 	MaxHeaderBytes time.Duration
 	ReadTimeout    time.Duration
 	WriteTimeout   time.Duration
@@ -363,7 +363,7 @@ type serverConn struct {
 	srv              *Server
 	conn             net.Conn
 	bw               *bufferedWriter // writing to conn
-	handler          protocol.HandlerHttp
+	handler          protocol.HandlerHTTP
 	baseCtx          context.Context
 	framer           *Framer
 	doneServing      chan struct{}          // closed when serverConn.serve ends
@@ -1945,7 +1945,7 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 }
 
 // Run on its own goroutine.
-func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, handler protocol.HandlerHttp) {
+func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, handler protocol.HandlerHTTP) {
 	didPanic := true
 	defer func() {
 		rw.rws.stream.cancelCtx()
@@ -1970,7 +1970,7 @@ func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, handler
 	didPanic = false
 }
 
-var handleHeaderListTooLong = protocol.HandlerHttpFunc(handleHeaderListTooLongFunc)
+var handleHeaderListTooLong = protocol.HandlerHTTPFunc(handleHeaderListTooLongFunc)
 
 func handleHeaderListTooLongFunc(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
 	// 10.5.1 Limits on Header Block Size:
@@ -2868,7 +2868,7 @@ func checkValidHTTP2RequestProtocolHeaders(h protocol.Header) error {
 	return nil
 }
 
-func new400Handler(err error) protocol.HandlerHttpFunc {
+func new400Handler(err error) protocol.HandlerHTTPFunc {
 	return func(ctx context.Context, w protocol.ResponseWriter, r protocol.RequestReader) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")

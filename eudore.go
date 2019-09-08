@@ -210,7 +210,7 @@ func (app *Eudore) getInitNames(names []string) []string {
 func (app *Eudore) Restart() error {
 	app.mu.Lock()
 	defer app.mu.Unlock()
-	err := StartNewProcess(app.listeners)
+	err := startNewProcess(app.listeners)
 	if err == nil {
 		app.Logger.Info("eudore restart success.")
 		app.Server.Shutdown(context.Background())
@@ -314,8 +314,8 @@ func (app *Eudore) Listen(addr string) {
 func (app *Eudore) ListenTLS(addr, key, cert string) {
 	conf := ServerListenConfig{
 		Addr:     addr,
-		Https:    true,
-		Http2:    true,
+		HTTPS:    true,
+		HTTP2:    true,
 		Keyfile:  key,
 		Certfile: cert,
 	}
@@ -408,7 +408,7 @@ func (app *Eudore) Errorf(format string, args ...interface{}) {
 }
 
 func (app *Eudore) logReset() Logout {
-	file, line := LogFormatFileLine(0)
+	file, line := logFormatFileLine(0)
 	f := Fields{
 		"file": file,
 		"line": line,

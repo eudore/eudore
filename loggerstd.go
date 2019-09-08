@@ -63,13 +63,13 @@ type (
 // NewLoggerStd 创建一个标准日志处理器。
 func NewLoggerStd(arg interface{}) (*LoggerStd, error) {
 	// 解析配置
-	config := &LoggerStdConfig{
+	config := LoggerStdConfig{
 		TimeFormat: "2006-01-02 15:04:05",
 	}
-	ConvertTo(arg, config)
+	ConvertTo(arg, &config)
 
 	log := &LoggerStd{
-		LoggerStdConfig: *config,
+		LoggerStdConfig: config,
 	}
 	log.pool.New = func() interface{} {
 		return &entryStd{

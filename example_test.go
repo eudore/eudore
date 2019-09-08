@@ -10,14 +10,12 @@ func ExampleNewCore() {
 	// 创建App
 	app := eudore.NewCore()
 	// 全局级请求处理中间件
-	app.AddMiddleware("ANY", "",
-		middleware.NewLoggerFunc(app.App),
-	)
+	app.AddMiddleware(middleware.NewLoggerFunc(app.App))
 
 	// 创建子路由器
 	apiv1 := app.Group("/api/v1 version=v1")
 	// 路由级请求处理中间件
-	apiv1.AddMiddleware("ANY", "", middleware.NewRecoverFunc())
+	apiv1.AddMiddleware(middleware.NewRecoverFunc())
 	{
 		// Api级请求处理中间件, 常量优先于通配符
 		apiv1.AnyFunc("/*", handlepre1, handleparam)

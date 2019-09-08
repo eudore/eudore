@@ -3,7 +3,7 @@
 func InitMidd(app *eudore.Eudore) error {
 	cb := breaker.NewCircuitBreaker()
 	cb.InjectRoutes(app.Group("/eudore/debug/breaker"))
-	app.AddMiddleware(eudore.MethodAny, "",
+	app.AddMiddleware(
 		// add logger middleware
 		middleware.NewLoggerFunc(),
 		// 熔断器

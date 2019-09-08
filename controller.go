@@ -31,10 +31,15 @@ type (
 	// ControllerSingleton 实现单例控制器。
 	ControllerSingleton struct{}
 	// ControllerView 基于ControllerBase额外增加了控制器自动渲染数据。
+	//
+	// 如果实现interface{GetViewTemplate(string, string) string}接口，使用该接口方法来生成模板文件路径。
+	//
+	// 如果Data不为空且未写入数据，会调用Render渲染数据。
+	//
+	// 如果渲染出html需要app.Renderer支持。
 	ControllerView struct {
-		Context
-		Data    map[string]interface{}
-		TplName string
+		ContextData
+		Data map[string]interface{}
 	}
 )
 
@@ -258,13 +263,64 @@ func convertBaseHandler(controller Controller, index int, pool *sync.Pool) Handl
 	}
 }
 
+// defaultGetViewTemplate 通过控制器名称和方法名称获得模板路径。
+//
+// 格式: views/controller/%s/%s.html
+//
+// MyUserController Index => views/controller/my/user/index.html
+func defaultGetViewTemplate(cname string, method string) string {
+	if strings.HasSuffix(cname, "Controller") {
+		cname = strings.TrimSuffix(cname, "Controller")
+	}
+	names := splitName(cname)
+	for i := range names {
+		names[i] = strings.ToLower(names[i])
+	}
+	return fmt.Sprintf("views/controller/%s/%s.html", strings.Join(names, "/"), strings.ToLower(method))
+}
+
+// ControllerViewInject 实现View控制器注入，实现基本于Base控制器注入相同。
+//
+// View控制器注入会添加template参数为默认模板。
+//
+// 模板分析默认使用defaultGetViewTemplate函数，如果实现interface{GetViewTemplate(string, string) string}接口，使用改接口方法来生成模板文件路径。
 func ControllerViewInject(controller Controller, router RouterMethod) error {
 	pType := reflect.TypeOf(controller)
 	iType := reflect.TypeOf(controller).Elem()
+	iValue := reflect.ValueOf(controller).Elem()
+
+	// 获取控制器可导出非空属性
+	var keys []int
+	var vals []reflect.Value
+	for i := 0; i < iValue.NumField(); i++ {
+		field := iValue.Field(i)
+		switch field.Kind() {
+		case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.Array:
+			if !field.IsNil() && field.CanSet() {
+				keys = append(keys, i)
+				vals = append(vals, iValue.Field(i))
+			}
+		}
+	}
+
+	// 设置控制器Pool
 	pool := &sync.Pool{
 		New: func() interface{} {
-			return reflect.New(iType).Interface()
+			iValue := reflect.New(iType)
+			for i, key := range keys {
+				iValue.Elem().Field(key).Set(vals[i])
+			}
+			return iValue.Interface()
 		},
+	}
+
+	// 获取模板文件分析函数
+	vfn := defaultGetViewTemplate
+	v, ok := controller.(interface {
+		GetViewTemplate(string, string) string
+	})
+	if ok {
+		vfn = v.GetViewTemplate
 	}
 
 	// 添加控制器组。
@@ -282,9 +338,8 @@ func ControllerViewInject(controller Controller, router RouterMethod) error {
 
 		h := convertBaseHandler(controller, m.Index, pool)
 		SetHandlerFuncName(h, fmt.Sprintf("%s.%s", cpkg, method))
-
-		tpl := fmt.Sprintf("controller/%s/%s.tpl", cname, strings.ToLower(method))
-		router.AddHandler(getRouteMethod(method), path+fmt.Sprintf(" controllername=%s controllermethod=%s defaultTpl=%s", cpkg, method, tpl), h)
+		params := fmt.Sprintf(" controllername=%s controllermethod=%s template=%s", cpkg, method, vfn(cname, method))
+		router.AddHandler(getRouteMethod(method), path+params, h)
 	}
 	return nil
 }
@@ -441,6 +496,7 @@ func checkControllerMethod(iType reflect.Type, method string) bool {
 	return ok
 }
 
+// splitName 方法基于路径首字符大写切割
 func splitName(name string) (strs []string) {
 	var head int
 	for i, c := range name {
@@ -454,81 +510,78 @@ func splitName(name string) (strs []string) {
 }
 
 // Init 实现控制器初始方法。
-func (c *ControllerBase) Init(ctx Context) error {
-	c.Context = ctx
+func (base *ControllerBase) Init(ctx Context) error {
+	base.Context = ctx
 	return nil
 }
 
 // Release 实现控制器释放方法。
-func (c *ControllerBase) Release() error {
+func (base *ControllerBase) Release() error {
 	return nil
 }
 
 // Inject 方法实现控制器注入到路由器的方法，ControllerBase控制器调用ControllerBaseInject方法注入。
-func (c *ControllerBase) Inject(controller Controller, router RouterMethod) error {
+func (base *ControllerBase) Inject(controller Controller, router RouterMethod) error {
 	return ControllerBaseInject(controller, router)
 }
 
-// ControllerRoute 方法返回默认路由详细。
-func (c *ControllerBase) ControllerRoute() map[string]string {
+// ControllerRoute 方法返回默认路由信息。
+func (base *ControllerBase) ControllerRoute() map[string]string {
 	return nil
 }
 
 // Init 实现控制器初始方法。
-func (c *ControllerData) Init(ctx Context) error {
-	c.ContextData.Context = ctx
+func (data *ControllerData) Init(ctx Context) error {
+	data.ContextData.Context = ctx
 	return nil
 }
 
 // Release 实现控制器释放方法。
-func (c *ControllerData) Release() error {
+func (data *ControllerData) Release() error {
 	return nil
 }
 
 // Inject 方法实现控制器注入到路由器的方法，ControllerData控制器调用ControllerBaseInject方法注入。
-func (c *ControllerData) Inject(controller Controller, router RouterMethod) error {
+func (data *ControllerData) Inject(controller Controller, router RouterMethod) error {
 	return ControllerBaseInject(controller, router)
 }
 
-// ControllerRoute 方法返回默认路由详细。
-func (c *ControllerData) ControllerRoute() map[string]string {
+// ControllerRoute 方法返回默认路由信息。
+func (data *ControllerData) ControllerRoute() map[string]string {
 	return nil
 }
 
 // Init 实现控制器初始方法,单例控制器初始化不执行任何内容。
-func (c *ControllerSingleton) Init(ctx Context) error {
+func (singleton *ControllerSingleton) Init(ctx Context) error {
 	return nil
 }
 
 // Release 实现控制器释放方法,单例控制器释放不执行任何内容。
-func (c *ControllerSingleton) Release() error {
+func (singleton *ControllerSingleton) Release() error {
 	return nil
 }
 
 // Inject 方法实现控制器注入到路由器的方法，ControllerSingleton控制器调用ControllerSingletonInject方法注入。
-func (c *ControllerSingleton) Inject(controller Controller, router RouterMethod) error {
+func (singleton *ControllerSingleton) Inject(controller Controller, router RouterMethod) error {
 	return ControllerSingletonInject(controller, router)
 }
 
-// ControllerRoute 方法返回默认路由详细。
-func (c *ControllerSingleton) ControllerRoute() map[string]string {
+// ControllerRoute 方法返回默认路由信息。
+func (singleton *ControllerSingleton) ControllerRoute() map[string]string {
 	return nil
 }
 
 // Init 实现控制器初始方法。
-func (c *ControllerView) Init(ctx Context) error {
-	c.Context = ctx
-	c.Data = make(map[string]interface{})
-	c.TplName = ""
+func (view *ControllerView) Init(ctx Context) error {
+	view.Context = ctx
+	view.Data = make(map[string]interface{})
 	return nil
 }
 
 // Release 实现控制器释放方法。
-func (c *ControllerView) Release() error {
-	if c.Response().Size() == 0 && len(c.Data) != 0 {
-		if c.TplName == "" {
-			c.TplName = c.GetParam("defaultTpl")
-		}
+func (view *ControllerView) Release() error {
+	if view.Response().Size() == 0 && len(view.Data) != 0 {
+		return view.Render(view.Data)
 	}
 	return nil
 }
@@ -536,11 +589,21 @@ func (c *ControllerView) Release() error {
 // Inject 方法实现控制器注入到路由器的方法，ControllerView控制器调用ControllerViewInject方法注入。
 //
 // ControllerView控制器在Release时，如果未写入数据会自动写入数据。
-func (c *ControllerView) Inject(controller Controller, router RouterMethod) error {
+func (view *ControllerView) Inject(controller Controller, router RouterMethod) error {
 	return ControllerViewInject(controller, router)
 }
 
-// ControllerRoute 方法返回默认路由详细。
-func (c *ControllerView) ControllerRoute() map[string]string {
+// ControllerRoute 方法返回默认路由信息。
+func (view *ControllerView) ControllerRoute() map[string]string {
 	return nil
+}
+
+// GetViewTemplate 方法实现获取默认模板文件路径。
+func (view *ControllerView) GetViewTemplate(cname string, method string) string {
+	return defaultGetViewTemplate(cname, method)
+}
+
+// SetTemplate 方法设置模板文件路径。
+func (view *ControllerView) SetTemplate(path string) {
+	view.SetParam("template", path)
 }

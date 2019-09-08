@@ -15,6 +15,7 @@ func ConvertTo(source interface{}, target interface{}) error
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -225,7 +226,7 @@ func getArrayIndex(key string) int {
 // 处理结构体设置属性
 func setStruct(iType reflect.Type, iValue reflect.Value, key []string, val interface{}) error {
 	// 查找属性是结构体的第几个属性。
-	var index int = getStructFieldOfTag(iType, key[0], defaultConvertTag)
+	var index = getStructFieldOfTag(iType, key[0], defaultConvertTag)
 	// 未找到直接返回错误。
 	if index == -1 {
 		return fmt.Errorf(ErrFormatConverterSetStructNotField, key[0])
@@ -300,7 +301,7 @@ func getPtr(iType reflect.Type, iValue reflect.Value, key []string) interface{} 
 // 处理结构体对象的读取
 func getStruct(iType reflect.Type, iValue reflect.Value, key []string) interface{} {
 	// 查找key对应的属性索引，不存在返回-1。
-	var index int = getStructFieldOfTag(iType, key[0], defaultConvertTag)
+	var index = getStructFieldOfTag(iType, key[0], defaultConvertTag)
 	if index == -1 {
 		return nil
 	}
@@ -595,7 +596,7 @@ func convertToMapToStruct(sType reflect.Type, sValue reflect.Value, tType reflec
 
 func convertToStructToStruct(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) {
 	for i := 0; i < sType.NumField(); i++ {
-		if checkValueNil(sValue.Field(i)) {
+		if checkValueIsZero(sValue.Field(i)) {
 			continue
 		}
 		index := getStructFieldOfTag(tType, sType.Field(i).Name, defaultConvertTag)
@@ -609,7 +610,7 @@ func convertToStructToStruct(sType reflect.Type, sValue reflect.Value, tType ref
 
 func convertToStructToMap(sType reflect.Type, sValue reflect.Value, tType reflect.Type, tValue reflect.Value) {
 	for i := 0; i < sType.NumField(); i++ {
-		if checkValueNil(sValue.Field(i)) {
+		if checkValueIsZero(sValue.Field(i)) {
 			continue
 		}
 		mapvalue := reflect.New(tType.Elem()).Elem()
@@ -633,25 +634,44 @@ func getStructFieldOfTag(iType reflect.Type, name, tag string) int {
 	return -1
 }
 
-// 检测一个值是否为空
-func checkValueNil(iValue reflect.Value) bool {
+// checkValueIsZero 函数检测一个值是否为空。
+func checkValueIsZero(iValue reflect.Value) bool {
 	switch iValue.Type().Kind() {
 	case reflect.Bool:
-		return iValue.Bool()
+		return !iValue.Bool()
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return iValue.Int() == 0
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 		return iValue.Uint() == 0
 	case reflect.Float32, reflect.Float64:
-		return iValue.Float() == 0
+		return math.Float64bits(iValue.Float()) == 0
 	case reflect.Complex64, reflect.Complex128:
-		return iValue.Complex() == 0
-	case reflect.Func, reflect.Ptr, reflect.Interface:
+		c := iValue.Complex()
+		return math.Float64bits(real(c)) == 0 && math.Float64bits(imag(c)) == 0
+	case reflect.Array:
+		for i := 0; i < iValue.Len(); i++ {
+			if !checkValueIsZero(iValue.Index(i)) {
+				return false
+			}
+		}
+		return true
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
 		return iValue.IsNil()
-	case reflect.Array, reflect.Chan, reflect.Map, reflect.Slice, reflect.String:
+	case reflect.String:
 		return iValue.Len() == 0
+	case reflect.Struct:
+		for i := 0; i < iValue.NumField(); i++ {
+			if !checkValueIsZero(iValue.Field(i)) {
+				return false
+			}
+		}
+		return true
+	// 无效作为空值返回，忽略后续处理。
+	case reflect.Invalid:
+		return true
+	default:
+		panic(fmt.Errorf(ErrFormatConverterCheckZeroUnknownType, iValue.Type().Kind().String()))
 	}
-	return true
 }
 
 func getValueString(iType reflect.Type, iValue reflect.Value) string {

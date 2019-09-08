@@ -98,7 +98,7 @@ func (p *Pbac) Handle(ctx eudore.Context) {
 
 // RamHandle 方法实现ram.RamHandler接口，匹配一个请求。
 func (p *Pbac) RamHandle(id int, action string, ctx eudore.Context) (bool, bool) {
-	ctx.SetParam(eudore.ParamRam, "pbac")
+	ctx.SetParam(eudore.ParamRAM, "pbac")
 	param := NewEudoreParams(action, ctx)
 	bs, ok := p.Binds[id]
 	if ok {

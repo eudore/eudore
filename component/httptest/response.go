@@ -1,8 +1,7 @@
-package eudore
+package httptest
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,6 +14,9 @@ type (
 	// ResponseWriterTest is an implementation of protocol.ResponseWriter that
 	// records its mutations for later inspection in tests.
 	ResponseWriterTest struct {
+		client  *Client
+		Request *RequestReaderTest
+
 		// Code is the HTTP response code set by WriteHeader.
 		//
 		// Note that if a Handler never calls WriteHeader or Write,
@@ -45,8 +47,10 @@ type (
 )
 
 // NewResponseWriterTest 方法返回一个测试使用的响应写入对象*ResponseWriterTest。
-func NewResponseWriterTest() *ResponseWriterTest {
+func NewResponseWriterTest(client *Client, req *RequestReaderTest) *ResponseWriterTest {
 	return &ResponseWriterTest{
+		client:    client,
+		Request:   req,
 		HeaderMap: make(HeaderMap),
 		Body:      new(bytes.Buffer),
 		Code:      200,
@@ -92,8 +96,6 @@ func (rw *ResponseWriterTest) writeHeader(b []byte, str string) {
 		}
 		m.Set("Content-Type", http.DetectContentType(b))
 	}
-
-	rw.WriteHeader(200)
 }
 
 // Write always succeeds and writes to rw.Body, if not nil.
@@ -158,7 +160,7 @@ func (rw *ResponseWriterTest) Push(string, *protocol.PushOptions) error {
 
 // Size 方法返回写入的body的长度。
 func (rw *ResponseWriterTest) Size() int {
-	return 0
+	return rw.Body.Len()
 }
 
 // Status 方法返回响应状态码。
@@ -166,32 +168,80 @@ func (rw *ResponseWriterTest) Status() int {
 	return rw.Code
 }
 
-func (rw *ResponseWriterTest) CheckHeader() *ResponseWriterTest {
-	return rw
+func (rw *ResponseWriterTest) Errorf(format string, args ...interface{}) {
+	err := fmt.Errorf(format, args...)
+	err = fmt.Errorf("httptest request %s %s of file location %s:%d, error: %v", rw.Request.Method(), rw.Request.RequestURI(), rw.Request.File, rw.Request.Line, err)
+	rw.client.Errs = append(rw.client.Errs, err)
 }
 
+// CheckStatus 方法检查
 func (rw *ResponseWriterTest) CheckStatus(status ...int) *ResponseWriterTest {
 	for _, i := range status {
 		if i == rw.Code {
-			fmt.Printf("response status succeeds. status is %d", rw.Code)
+			// fmt.Printf("response status succeeds. status is %d", rw.Code)
 			return rw
 		}
 	}
-	fmt.Printf("response status is invalid %d,check status: %v", rw.Code, status)
+	rw.Errorf("CheckStatus response status is invalid %d,check status: %v", rw.Code, status)
 	return rw
 }
 
-func (rw *ResponseWriterTest) Show() {
-	fmt.Println("status:", rw.Code)
-	for k, v := range rw.HeaderMap {
-		fmt.Printf("%s: %s\n", k, strings.Join(v, ", "))
+func (rw *ResponseWriterTest) CheckHeader(h ...string) *ResponseWriterTest {
+	for i := 0; i < len(h)/2; i++ {
+		if rw.HeaderMap.Get(h[i]) != h[i+1] {
+			rw.Errorf("CheckHeader response header %s value is %s,not is %s", h[i], rw.HeaderMap.Get(h[i]), h[i+1])
+		}
 	}
-	fmt.Println(rw.Body.String())
+	return rw
 }
 
-func TestAppRequest(handler protocol.HandlerHttp, method, path string, body interface{}) *ResponseWriterTest {
-	req, _ := NewRequestReaderTest(method, path, body)
-	resp := NewResponseWriterTest()
-	handler.EudoreHTTP(context.Background(), resp, req)
-	return resp
+func (rw *ResponseWriterTest) CheckBodyContainString(strs ...string) *ResponseWriterTest {
+	body := rw.Body.String()
+	for _, str := range strs {
+		if !strings.Contains(body, str) {
+			rw.Errorf("CheckBodyContainString response body not contains string: %s", str)
+		}
+	}
+	return rw
+}
+
+func (rw *ResponseWriterTest) CheckBodyString(s string) *ResponseWriterTest {
+	if s != rw.Body.String() {
+		rw.Errorf("CheckBodyString response body size %d not is check string", rw.Body.Len())
+	}
+	return rw
+}
+func (rw *ResponseWriterTest) CheckBodyJson(data interface{}) *ResponseWriterTest {
+
+	return rw
+}
+
+func (rw *ResponseWriterTest) Out() *ResponseWriterTest {
+	var b bytes.Buffer
+	b.WriteString(fmt.Sprintf("httptest request %s %s status: %d", rw.Request.Method(), rw.Request.RequestURI(), rw.Code))
+	for k, v := range rw.HeaderMap {
+		b.WriteString(fmt.Sprintf("\n%s: %s", k, v))
+	}
+	b.WriteString("\n\n" + rw.Body.String())
+	rw.client.Println(b.String())
+	return rw
+}
+
+func (rw *ResponseWriterTest) OutStatus() *ResponseWriterTest {
+	rw.client.Printf("httptest request %s %s status: %d", rw.Request.Method(), rw.Request.RequestURI(), rw.Code)
+	return rw
+}
+func (rw *ResponseWriterTest) OutHeader() *ResponseWriterTest {
+	var b bytes.Buffer
+	b.WriteString(fmt.Sprintf("httptest request %s %s status: %d", rw.Request.Method(), rw.Request.RequestURI(), rw.Code))
+	for k, v := range rw.HeaderMap {
+		b.WriteString(fmt.Sprintf("\n%s: %s", k, v))
+	}
+	rw.client.Println(b.String())
+	return rw
+}
+
+func (rw *ResponseWriterTest) OutBody() *ResponseWriterTest {
+	rw.client.Printf("httptest request %s %s body: %s", rw.Request.Method(), rw.Request.RequestURI(), rw.Body.String())
+	return rw
 }

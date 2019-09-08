@@ -9,8 +9,8 @@ bind根据请求中Content-Type Header来决定bind解析数据的方法，常�
 */
 
 import (
-	"fmt"
 	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/component/httptest"
 )
 
 type (
@@ -24,16 +24,19 @@ type (
 
 func main() {
 	app := eudore.NewCore()
-	app.PutFunc("/file/data/:path", putFile)
+	// 上传文件信息
+	app.PutFunc("/file/data/:path", func(ctx eudore.Context) {
+		var info putFileInfo
+		ctx.Bind(&info)
+		ctx.RenderWith(&info, eudore.RenderIndentJSON)
+	})
 
-	// 启动server
+	client := httptest.NewClient(app)
+	client.NewRequest("PUT", "/file/data/2").WithHeaderValue("Content-Type", "application/json").WithBodyString(`{"name": "eudore","type": "file", "size":720,"lastModified":1257894000}`).Do().CheckStatus(200).Out()
+	for client.Next() {
+		app.Error(client.Error())
+	}
+
 	app.Listen(":8088")
 	app.Run()
-}
-
-// 上传文件信息
-func putFile(ctx eudore.Context) {
-	var info putFileInfo
-	ctx.Bind(&info)
-	fmt.Println(info)
 }

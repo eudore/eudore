@@ -78,7 +78,7 @@ type (
 		RenderWith(interface{}, Renderer) error
 		// render writer
 		WriteString(string) error
-		WriteJson(interface{}) error
+		WriteJSON(interface{}) error
 		WriteFile(string) error
 
 		// log Logout interface
@@ -101,7 +101,7 @@ type (
 		protocol.RequestReader
 		protocol.ResponseWriter
 		ParamsArray
-		QueryUrl
+		QueryURL
 		// run handler
 		index   int
 		handler HandlerFuncs
@@ -143,7 +143,7 @@ func (ctx *ContextBase) Reset(pctx context.Context, w protocol.ResponseWriter, r
 	ctx.log = ctx.app.Logger
 
 	// query
-	err := ctx.QueryUrl.readQuery(r.RawQuery())
+	err := ctx.QueryURL.readQuery(r.RawQuery())
 	if err != nil {
 		ctx.log.WithField("caller", "Context.Reset").WithField("check", "request uri raw: "+r.RawQuery()).Error(err)
 	}
@@ -282,12 +282,12 @@ func (ctx *ContextBase) Params() Params {
 
 // Querys 方法返回http请求的全部uri参数。
 func (ctx *ContextBase) Querys() Querys {
-	return &ctx.QueryUrl
+	return &ctx.QueryURL
 }
 
 // GetQuery 方法获得一个uri参数的值。
 func (ctx *ContextBase) GetQuery(key string) string {
-	return ctx.QueryUrl.Get(key)
+	return ctx.QueryURL.Get(key)
 }
 
 // GetHeader 获取一个请求header，相当于ctx.Request().Header().Get(name)。
@@ -452,9 +452,9 @@ func (ctx *ContextBase) WriteString(i string) (err error) {
 	return
 }
 
-// WriteJson 使用Json返回数据。
-func (ctx *ContextBase) WriteJson(i interface{}) error {
-	return ctx.writeRenderWith(i, RendererJson)
+// WriteJSON 使用Json返回数据。
+func (ctx *ContextBase) WriteJSON(i interface{}) error {
+	return ctx.writeRenderWith(i, RenderJSON)
 }
 
 // WriteFile 使用HandlerFile处理一个静态文件。
@@ -477,9 +477,9 @@ func (ctx *ContextBase) RenderWith(i interface{}, r Renderer) error {
 }
 
 func (ctx *ContextBase) writeRenderWith(i interface{}, r Renderer) error {
-	err := r.Render(ctx, i)
+	err := r(ctx, i)
 	if err != nil {
-		ctx.logReset(1).WithField("caller", "Context.Render Context.Render Context.WriteJson").Error(err)
+		ctx.logReset(1).WithField("caller", "Context.Render Context.Render Context.WriteJSON").Error(err)
 	}
 	return err
 }
@@ -560,7 +560,7 @@ func (ctx *ContextBase) Fatalf(format string, args ...interface{}) {
 
 func (ctx *ContextBase) logReset(depth int) Logout {
 	fields := make(Fields)
-	file, line := LogFormatFileLine(depth)
+	file, line := logFormatFileLine(depth)
 	fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
 	fields["file"] = file
 	fields["line"] = line
@@ -577,7 +577,7 @@ func (ctx *ContextBase) WithField(key string, value interface{}) Logout {
 
 // WithFields 方法增加多个日志属性，返回一个新的Logout。
 func (ctx *ContextBase) WithFields(fields Fields) Logout {
-	file, line := LogFormatFileLine(0)
+	file, line := logFormatFileLine(0)
 	fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
 	fields["file"] = file
 	fields["line"] = line

@@ -50,8 +50,8 @@ type (
 		Keys []string
 		Vals []string
 	}
-	// QueryUrl 实现uri参数解析。
-	QueryUrl struct {
+	// QueryURL 实现uri参数解析。
+	QueryURL struct {
 		Keys []string
 		Vals []string
 	}
@@ -96,7 +96,7 @@ var (
 	ErrHandshakeBadSecVersion   = NewErrorCode(StatusBadRequest, "handshake error: bad Sec-Websocket-Version header")
 	ErrHandshakeUpgradeRequired = NewErrorCode(StatusUpgradeRequired, "handshake error: bad Sec-Websocket-Version header")
 	sriRegexpScript, _          = regexp.Compile(`\s*<script.*src=([\"\'])(\S*\.js)([\"\']).*></script>`)
-	sriRegexpCss, _             = regexp.Compile(`\s*<link.*href=([\"\'])(\S*\.css)([\"\']).*>`)
+	sriRegexpCSS, _             = regexp.Compile(`\s*<link.*href=([\"\'])(\S*\.css)([\"\']).*>`)
 	sriRegexpImg, _             = regexp.Compile(`\s*<img.*src=([\"\'])(\S*)([\"\']).*>`)
 	sriRegexpIntegrity, _       = regexp.Compile(`.*\s+integrity=[\"\'](\S*)[\"\'].*`)
 	sriHashPool                 = sync.Pool{
@@ -136,7 +136,7 @@ func (p *ParamsArray) SetParam(key string, val string) {
 }
 
 // Get 方法获得一个uri参数的值。
-func (q *QueryUrl) Get(key string) string {
+func (q *QueryURL) Get(key string) string {
 	for i, k := range q.Keys {
 		if k == key {
 			return q.Vals[i]
@@ -146,7 +146,7 @@ func (q *QueryUrl) Get(key string) string {
 }
 
 // Set 方法设置一个uri参数的值。
-func (q *QueryUrl) Set(key string, val string) {
+func (q *QueryURL) Set(key string, val string) {
 	for i, k := range q.Keys {
 		if k == key {
 			q.Vals[i] = val
@@ -157,13 +157,13 @@ func (q *QueryUrl) Set(key string, val string) {
 }
 
 // Add 方法新增一个uri参数的值。
-func (q *QueryUrl) Add(key string, val string) {
+func (q *QueryURL) Add(key string, val string) {
 	q.Keys = append(q.Keys, key)
 	q.Vals = append(q.Vals, val)
 }
 
 // Del 方法删除一个uri参数的值。
-func (q *QueryUrl) Del(key string) {
+func (q *QueryURL) Del(key string) {
 	for i, k := range q.Keys {
 		if k == key {
 			q.Keys[i] = ""
@@ -173,7 +173,7 @@ func (q *QueryUrl) Del(key string) {
 }
 
 // Len 方法返回uri参数的数量。
-func (q *QueryUrl) Len() (n int) {
+func (q *QueryURL) Len() (n int) {
 	for _, k := range q.Keys {
 		if k != "" {
 			n++
@@ -183,7 +183,7 @@ func (q *QueryUrl) Len() (n int) {
 }
 
 // Range 方法实现遍历uri参数。
-func (q *QueryUrl) Range(fn func(string, string)) {
+func (q *QueryURL) Range(fn func(string, string)) {
 	for i, k := range q.Keys {
 		if k != "" {
 			fn(k, q.Vals[i])
@@ -191,7 +191,7 @@ func (q *QueryUrl) Range(fn func(string, string)) {
 	}
 }
 
-func (q *QueryUrl) readQuery(query string) (err error) {
+func (q *QueryURL) readQuery(query string) (err error) {
 	q.Keys = q.Keys[0:0]
 	q.Vals = q.Vals[0:0]
 	for query != "" {
@@ -337,10 +337,10 @@ var isTokenTable = [127]bool{
 	'~':  true,
 }
 
-// HandlerUpgradeHttp 函数实现http upgrade成websocket实现，最后返回net.Conn对象。
+// HandlerUpgradeHTTP 函数实现http upgrade成websocket实现，最后返回net.Conn对象。
 //
 // source: github.com/gobwas/ws
-func HandlerUpgradeHttp(ctx Context) (net.Conn, error) {
+func HandlerUpgradeHTTP(ctx Context) (net.Conn, error) {
 	conn, err := ctx.Response().Hijack()
 	if err != nil {
 		return nil, err
@@ -372,7 +372,7 @@ func HandlerUpgradeHttp(ctx Context) (net.Conn, error) {
 		httpWriteResponseUpgrade(rw, []byte(nonce))
 		err = rw.Flush()
 	} else {
-		var code int = 500
+		var code = 500
 		if err2, ok := err.(*ErrorCode); ok {
 			code = err2.Code()
 		}
@@ -933,7 +933,7 @@ func getStatic(path string) ([]string, error) {
 		params := sriRegexpScript.FindStringSubmatch(line)
 		// match css
 		if len(params) == 0 {
-			params = sriRegexpCss.FindStringSubmatch(line)
+			params = sriRegexpCSS.FindStringSubmatch(line)
 		}
 		if len(params) == 0 {
 			params = sriRegexpImg.FindStringSubmatch(line)
@@ -1107,9 +1107,9 @@ func (c switchProtocolCopier) copyToBackend(errc chan<- error) {
 // HandlerRedirect Redirect a Context.
 //
 // HandlerRedirect 重定向一个Context。
-func HandlerRedirect(ctx Context, redirectUrl string, code int) {
+func HandlerRedirect(ctx Context, redirectURL string, code int) {
 	// parseURL is just url.Parse (url is shadowed for godoc).
-	if u, err := url.Parse(redirectUrl); err == nil {
+	if u, err := url.Parse(redirectURL); err == nil {
 		// If url was relative, make its path absolute by
 		// combining with request path.
 		// The client would probably do this for us,
@@ -1122,24 +1122,24 @@ func HandlerRedirect(ctx Context, redirectUrl string, code int) {
 			}
 
 			// no leading http://server
-			if redirectUrl == "" || redirectUrl[0] != '/' {
+			if redirectURL == "" || redirectURL[0] != '/' {
 				// make relative path absolute
 				olddir, _ := path.Split(oldpath)
-				redirectUrl = olddir + redirectUrl
+				redirectURL = olddir + redirectURL
 			}
 
 			var query string
-			if i := strings.Index(redirectUrl, "?"); i != -1 {
-				redirectUrl, query = redirectUrl[:i], redirectUrl[i:]
+			if i := strings.Index(redirectURL, "?"); i != -1 {
+				redirectURL, query = redirectURL[:i], redirectURL[i:]
 			}
 
 			// clean up but preserve trailing slash
-			trailing := strings.HasSuffix(redirectUrl, "/")
-			redirectUrl = path.Clean(redirectUrl)
-			if trailing && !strings.HasSuffix(redirectUrl, "/") {
-				redirectUrl += "/"
+			trailing := strings.HasSuffix(redirectURL, "/")
+			redirectURL = path.Clean(redirectURL)
+			if trailing && !strings.HasSuffix(redirectURL, "/") {
+				redirectURL += "/"
 			}
-			redirectUrl += query
+			redirectURL += query
 		}
 	}
 
@@ -1151,7 +1151,7 @@ func HandlerRedirect(ctx Context, redirectUrl string, code int) {
 	// Do it only if the request didn't already have a Content-Type header.
 	hadCT := len(h.Get(HeaderContentType)) > 0
 
-	h.Set(HeaderLocation, hexEscapeNonASCII(redirectUrl))
+	h.Set(HeaderLocation, hexEscapeNonASCII(redirectURL))
 	if !hadCT && (method == MethodGet || method == MethodHead) {
 		h.Set(HeaderContentType, "text/html; charset=utf-8")
 	}
@@ -1159,7 +1159,7 @@ func HandlerRedirect(ctx Context, redirectUrl string, code int) {
 
 	// Shouldn't send the body for POST or HEAD; that leaves GET.
 	if !hadCT && method == MethodGet {
-		body := "<a href=\"" + htmlEscape(redirectUrl) + "\">" + http.StatusText(code) + "</a>.\n"
+		body := "<a href=\"" + htmlEscape(redirectURL) + "\">" + http.StatusText(code) + "</a>.\n"
 		fmt.Fprintln(ctx.Response(), body)
 	}
 }

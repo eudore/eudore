@@ -16,6 +16,7 @@ eudore中影响运行性能的router middleware logger完成性能优化，ctx�
 
 eudore mvc实现思路就是闭包形成HandlerFunc，然后使用路由器注册即可，默认的mvc和其他mvc一样使用反射来调用执行，eudore mvc的Controller是一个接口  所有行为也是自定义的，需要一个控制器解析函数，在修改ctx扩展后发现，如果mvc需要的功能简单的话就可以不反射了实现mvc，性能上直接和restful api风格差不多了。
 
+eudore实现未参考或准许任何设计模式，设计从心，将整体思路优化到流畅，并保证功能和任意扩展。
 
 eudore最大的特点是解耦，除Application以外其他对象均为接口，每个对象都具有明确语义，Application是最顶级对象可以通过组合方式实现重写(参考Core)，其他对象为接口定义直接重新实现，或组合接口实现部分重写。
 
@@ -25,8 +26,6 @@ eudore最大的特点是解耦，除Application以外其他对象均为接口，
 | ------------ | ------------ | ------------ |
 | [Application](application_zh.md) | 运行对象主体 | app.go core.go eudore.go |
 | [Context](context_zh.md) | 请求处理上下文 | context.go contextextend.go |
-| Request | Http请求数据 | protocol/protocol.go request.go |
-| Response | http响应写入 | protocol/protocol.go response.go |
 | [Router](router_zh.md) | 请求路由选择 | router.go routerradix.go routerfull.go |
 | [Handler](handler_zh.md) | 请求处理函数 ||  handler.go |
 | [Middleware](middleware_zh.md) | 多Handler组合运行 | handler.go |
@@ -57,7 +56,8 @@ eudore最大的特点是解耦，除Application以外其他对象均为接口，
 
 日期：2019年8月16日 logger重写提升效率、更新或整理老旧扩展部分、文档完善
 日期：2019年9月1日 view封装、session完善、httptest、文档完善
+日期：2019年9月7日 工具相关优化完善
 
 ## 各类简写
 
-Core、Eudore等app对象变量名称统一为app，Context及衍生对象变量名称统一为ctx,基础控制器命名为ControllerXxxx，应用控制器为XxxxController。
+Core、Eudore等app对象变量名称统一为app，Context及衍生对象变量名称统一为ctx。基础控制器命名为ControllerXxxx，应用控制器为XxxxController，这些控制器变量命名为xxxx。

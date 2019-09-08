@@ -83,7 +83,7 @@ func (g *Gzip) NewGzipResponse(w protocol.ResponseWriter) (*GzipResponse, error)
 	case error:
 		return nil, val
 	}
-	return nil, fmt.Errorf("Create GzipResponse exception.")
+	return nil, fmt.Errorf("Create GzipResponse exception")
 }
 
 // Write 实现protocol.ResponseWriter中的Write方法。

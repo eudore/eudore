@@ -11,7 +11,7 @@ func main() {
 	// 创建熔断器并注入管理路由
 	cb := middleware.NewCircuitBreaker()
 	cb.InjectRoutes(app.Group("/eudore/debug/breaker"))
-	app.AddMiddleware(eudore.MethodAny, "", cb.Handle)
+	app.AddMiddleware(cb.Handle)
 
 	app.GetFunc("/*", echo)
 	app.Listen(":8088")

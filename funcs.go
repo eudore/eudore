@@ -34,8 +34,8 @@ func init() {
 	// ConfigReadFunc
 	GlobalConfigReadFunc["default"] = ConfigReadFile
 	GlobalConfigReadFunc["file"] = ConfigReadFile
-	GlobalConfigReadFunc["https"] = ConfigReadHttp
-	GlobalConfigReadFunc["http"] = ConfigReadHttp
+	GlobalConfigReadFunc["https"] = ConfigReadHTTP
+	GlobalConfigReadFunc["http"] = ConfigReadHTTP
 }
 
 // ConfigParseRead 函数使用'keys.config'读取配置内容，并使用[]byte类型保存到'keys.configdata'。
@@ -115,7 +115,7 @@ func ConfigParseMods(c Config) error {
 func ConfigParseHelp(c Config) error {
 	ok := c.Get("keys.help") != nil
 	if ok {
-		Json(c)
+		JSON(c)
 	}
 	return nil
 }
@@ -133,8 +133,8 @@ func ConfigReadFile(path string) ([]byte, error) {
 	return data, err
 }
 
-// ConfigReadHttp Send http request get config info
-func ConfigReadHttp(path string) ([]byte, error) {
+// ConfigReadHTTP Send http request get config info
+func ConfigReadHTTP(path string) ([]byte, error) {
 	resp, err := http.Get(path)
 	if err != nil {
 		return nil, err
@@ -164,7 +164,7 @@ func ConfigReadHttp(path string) ([]byte, error) {
 
 // InitSignal 函数定义初始化系统信号。
 func InitSignal(app *Eudore) error {
-	if runtime.GOOS == "windows" || GetStringBool(os.Getenv(ENV_EUDORE_DISABLE_SIGNAL)) {
+	if runtime.GOOS == "windows" || GetStringBool(os.Getenv(EnvEudoreDisableSignal)) {
 		return nil
 	}
 

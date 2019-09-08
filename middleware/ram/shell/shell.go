@@ -27,7 +27,7 @@ func NewShell() *Shell {
 
 // RamHandle 实现ram.RamHandler接口。
 func (s *Shell) RamHandle(id int, action string, ctx eudore.Context) (bool, bool) {
-	ctx.SetParam(eudore.ParamRam, "shell")
+	ctx.SetParam(eudore.ParamRAM, "shell")
 	ip := ctx.RealIP()
 	for _, i := range s.List {
 		if ip == i {

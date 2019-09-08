@@ -7,7 +7,7 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	app.AddMiddleware(eudore.MethodAny, "", middleware.NewRecoverFunc())
+	app.AddMiddleware(middleware.NewRecoverFunc())
 	app.Listen(":8088")
 	app.Run()
 }

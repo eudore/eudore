@@ -34,6 +34,7 @@ curl -XGET localhost:8088/get/0xx
 */
 import (
 	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/component/httptest"
 )
 
 func main() {
@@ -41,8 +42,9 @@ func main() {
 
 	// 修改路由
 	app.Router = eudore.NewRouterFull()
+	eudore.Set(app.Router, "print", eudore.NewLoggerPrintFunc(app.Logger))
 
-	app.AddMiddleware("ANY", "", func(ctx eudore.Context) {
+	app.AddMiddleware(func(ctx eudore.Context) {
 		ctx.WriteString("route: " + ctx.GetParam("route") + "\n")
 	})
 	app.GetFunc("/get/:name", func(ctx eudore.Context) {
@@ -70,13 +72,31 @@ func main() {
 	})
 	// 校验函数，使用校验函数isnum。
 	app.GetFunc("/get/:num|isnum", func(ctx eudore.Context) {
-		ctx.WriteString("num is: " + ctx.GetParam("num") + "\n")
+		ctx.WriteString("isnum num is: " + ctx.GetParam("num") + "\n")
 	})
 
 	// 通配符研究不写了，和变量校验相同。
 	app.GetFunc("/*path|^0.*$", func(ctx eudore.Context) {
 		ctx.WriteString("get path first char is '0', path is: " + ctx.GetParam("path") + "\n")
 	})
+
+	// ---------- 分割线 运行测试请求 ----------
+
+	// 测试
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/get").Do().CheckStatus(200).CheckBodyContainString("get", "/*path")
+	client.NewRequest("GET", "/get/ha").Do().CheckStatus(200).CheckBodyContainString("/get/:name")
+	client.NewRequest("GET", "/get/eudore").Do().CheckStatus(200).CheckBodyContainString("/get/eudore")
+	client.NewRequest("PUT", "/get/eudore").Do().CheckStatus(200).CheckBodyContainString("any", "/*path")
+
+	client.NewRequest("GET", "/get/2").Do().CheckStatus(200).CheckBodyContainString("isnum")
+	client.NewRequest("GET", "/get/22").Do().CheckStatus(200).CheckBodyContainString("isnum")
+	client.NewRequest("GET", "/get/222").Do().CheckStatus(200).CheckBodyContainString("num great 100", "222")
+	client.NewRequest("GET", "/get/0xx").Do().CheckStatus(200).CheckBodyContainString("first char is '0'", "0xx")
+	client.NewRequest("XXX", "/get/0xx").Do().CheckStatus(200).Out()
+	for client.Next() {
+		app.Error(client.Error())
+	}
 
 	// 启动server
 	app.Listen(":8088")

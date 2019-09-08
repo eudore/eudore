@@ -25,7 +25,7 @@ type (
 	Server struct {
 		http      *server.Server
 		listeners []net.Listener
-		handler   protocol.HandlerHttp
+		handler   protocol.HandlerHTTP
 		mu        sync.Mutex
 		wg        sync.WaitGroup
 		Print     func(...interface{}) `set:"print" json:"-"`
@@ -47,7 +47,7 @@ func NewServer(arg interface{}) *Server {
 		httpsrc.IdleTimeout = idle
 	}
 	return &Server{
-		handler: protocol.HandlerHttpFunc(func(_ context.Context, w protocol.ResponseWriter, _ protocol.RequestReader) {
+		handler: protocol.HandlerHTTPFunc(func(_ context.Context, w protocol.ResponseWriter, _ protocol.RequestReader) {
 			w.Write([]byte("start eudore server, this default page."))
 		}),
 		http: httpsrc,
@@ -63,7 +63,7 @@ func (srv *Server) Start() error {
 
 	// 初始化服务连接处理者。
 	srv.http.Print = srv.Print
-	srv.http.SetHandler(http.NewHttpHandler(srv.handler))
+	srv.http.SetHandler(http.NewHandler(srv.handler))
 	srv.http.SetNextHandler("h2", http2.NewServer(srv.handler))
 
 	// 启动http
@@ -97,7 +97,7 @@ func (srv *Server) Shutdown(ctx context.Context) (err error) {
 }
 
 // AddHandler 方法设置http清楚处理。
-func (srv *Server) AddHandler(h protocol.HandlerHttp) {
+func (srv *Server) AddHandler(h protocol.HandlerHTTP) {
 	srv.handler = h
 }
 

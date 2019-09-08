@@ -37,6 +37,8 @@ func (app *Core) Run() (err error) {
 	if initlog, ok := app.Logger.(LoggerInitHandler); ok {
 		app.Logger, _ = NewLoggerStd(nil)
 		initlog.NextHandler(app.Logger)
+		Set(app.Router, "print", NewLoggerPrintFunc(app.Logger))
+		Set(app.Server, "print", NewLoggerPrintFunc(app.Logger))
 	}
 
 	app.Server.AddHandler(app)
@@ -61,8 +63,8 @@ func (app *Core) Listen(addr string) {
 func (app *Core) ListenTLS(addr, key, cert string) {
 	conf := ServerListenConfig{
 		Addr:     addr,
-		Https:    true,
-		Http2:    true,
+		HTTPS:    true,
+		HTTP2:    true,
 		Keyfile:  key,
 		Certfile: cert,
 	}
@@ -75,7 +77,7 @@ func (app *Core) ListenTLS(addr, key, cert string) {
 	app.Server.AddListener(ln)
 }
 
-// EudoreHTTP 方法实现protocol.HandlerHttp接口，处理http请求。
+// EudoreHTTP 方法实现protocol.HandlerHTTP接口，处理http请求。
 func (app *Core) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader) {
 	// init
 	ctx := app.ContextPool.Get().(Context)

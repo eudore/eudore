@@ -9,11 +9,11 @@ eudore是一个高扩展、高效的http框架及[http文档库](docs)。
 
 ## Features
 
-- 易扩展：主要设计目标，核心全部解耦，接口即可逻辑。
+- 易扩展：主要设计目标、核心全部解耦，接口即为逻辑。
 - 简单：对象语义明确，框架代码量少复杂度低，无依赖库。
 - 易用：支持各种Appcation和Context扩展添加功能。
 - 高性能：各部分在同类库中没有明显性能问题。
-- 两项创新：[新Radix路由实现](https://github.com/eudore/erouter)和处理函数扩展机制
+- 两项创新：[新Radix路由实现](https://github.com/eudore/erouter)和[处理函数扩展机制](docs/frame/handler_zh.md)
 
 ## 安装
 
@@ -27,7 +27,7 @@ go get -v -u github.com/eudore/eudore
 
 - [源码](https://github.com/eudore/eudore)
 - [godoc](https://godoc.org/github.com/eudore/eudore)
-- [例子](docs/example)
+- [演示例子](docs/example#example)
 - [框架文档](docs/frame)
 
 ## 许可

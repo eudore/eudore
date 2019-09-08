@@ -1,11 +1,12 @@
 package test
 
 import (
-	"context"
 	"fmt"
-	"github.com/eudore/eudore"
 	"testing"
 	"time"
+
+	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/component/httptest"
 )
 
 type (
@@ -20,24 +21,17 @@ type (
 func TestRpc(t *testing.T) {
 	app := eudore.NewCore()
 	app.PostFunc("/get", hanele1)
-	app.PostFunc("/2", eudore.NewRpcHandlerFunc(hanele2))
+	app.PostFunc("/2", eudore.NewRPCHandlerFunc(hanele2))
 
-	req, _ := eudore.NewRequestReaderTest("POST", "/get", `{"Name": "han1"}`)
-	req.Header().Add(eudore.HeaderContentType, eudore.MimeApplicationJson)
-	resp := eudore.NewResponseWriterTest()
-	app.EudoreHTTP(context.Background(), resp, req)
-
-	req, _ = eudore.NewRequestReaderTest("POST", "/2", `{"Name": "han2"}`)
-	req.Header().Add(eudore.HeaderContentType, eudore.MimeApplicationJson)
-	resp = eudore.NewResponseWriterTest()
-	app.EudoreHTTP(context.Background(), resp, req)
+	client := httptest.NewClient(app).WithHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationJSON)
+	client.NewRequest("POST", "/get").WithBodyString(`{"Name": "han1"}`).Do()
+	client.NewRequest("POST", "/2").WithBodyString(`{"Name": "han2"}`).Do()
 
 	time.Sleep(time.Second)
-
 }
 
 func hanele1(ctx eudore.Context, req map[string]interface{}) (resp map[string]interface{}, err error) {
-	eudore.Json(req)
+	eudore.JSON(req)
 	fmt.Println("hanele1", ctx.Path())
 	resp = map[string]interface{}{
 		"name": "hanele1",

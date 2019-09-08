@@ -107,11 +107,11 @@ func (r *RamAny) RamHandle(id int, action string, ctx eudore.Context) (bool, boo
 	for _, h := range r.Rams {
 		isgrant, ok := h.RamHandle(id, action, ctx)
 		if ok {
-			ctx.SetParam(eudore.ParamRam, "ram-"+ctx.GetParam(eudore.ParamRam))
+			ctx.SetParam(eudore.ParamRAM, "ram-"+ctx.GetParam(eudore.ParamRAM))
 			return isgrant, true
 		}
 	}
-	ctx.SetParam(eudore.ParamRam, "ram-default")
+	ctx.SetParam(eudore.ParamRAM, "ram-default")
 	return false, false
 }
 
@@ -122,12 +122,12 @@ func (r *RamAny) Handle(ctx eudore.Context) {
 
 // RamHandle 方法实现RamHandler接口。
 func (Deny) RamHandle(id int, action string, ctx eudore.Context) (bool, bool) {
-	ctx.SetParam(eudore.ParamRam, "deny")
+	ctx.SetParam(eudore.ParamRAM, "deny")
 	return false, true
 }
 
 // RamHandle 方法实现RamHandler接口。
 func (Allow) RamHandle(id int, action string, ctx eudore.Context) (bool, bool) {
-	ctx.SetParam(eudore.ParamRam, "allow")
+	ctx.SetParam(eudore.ParamRAM, "allow")
 	return true, true
 }

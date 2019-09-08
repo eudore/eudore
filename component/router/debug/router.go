@@ -22,14 +22,14 @@ type (
 
 var _ eudore.Router = (*RouterDebug)(nil)
 
-// StaticHtml 定义ui文件的位置，默认是该文件同名称后缀为html
-var StaticHtml = ""
+// StaticHTML 定义ui文件的位置，默认是该文件同名称后缀为html
+var StaticHTML = ""
 
 // 获取文件定义位置，静态ui文件在同目录。
 func init() {
 	_, file, _, ok := runtime.Caller(0)
 	if ok {
-		StaticHtml = file[:len(file)-2] + "html"
+		StaticHTML = file[:len(file)-2] + "html"
 	}
 }
 
@@ -45,8 +45,8 @@ func NewRouterDebug() eudore.Router {
 	}
 	r.GetFunc("/eudore/debug/router/data", r.getData)
 	r.GetFunc("/eudore/debug/router/ui", func(ctx eudore.Context) {
-		if StaticHtml != "" {
-			ctx.WriteFile(StaticHtml)
+		if StaticHTML != "" {
+			ctx.WriteFile(StaticHTML)
 		} else {
 			ctx.WriteString("breaker not set ui file path.")
 		}

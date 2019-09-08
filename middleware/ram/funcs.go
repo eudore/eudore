@@ -37,7 +37,7 @@ func GetActionDefault(ctx eudore.Context) string {
 func ForbiddenDefault(ctx eudore.Context) {
 	ctx.WriteHeader(403)
 	ctx.Render(map[string]interface{}{
-		eudore.ParamRam:    ctx.GetParam(eudore.ParamRam),
+		eudore.ParamRAM:    ctx.GetParam(eudore.ParamRAM),
 		eudore.ParamAction: ctx.GetParam(eudore.ParamAction),
 	})
 	ctx.End()

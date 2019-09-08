@@ -65,10 +65,10 @@ func MatchStar(obj, patten string) bool {
 	return true
 }
 
-// Json test function, json formatted output args.
+// JSON test function, json formatted output args.
 //
-// Json 测试函数，json格式化输出args。
-func Json(args ...interface{}) {
+// JSON 测试函数，json格式化输出args,不保证可靠性，框架完全稳定后删除。
+func JSON(args ...interface{}) {
 	indent, err := json.MarshalIndent(&args, "", "\t")
 	fmt.Println(string(indent), err)
 }

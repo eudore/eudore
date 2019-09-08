@@ -324,10 +324,10 @@ func NewLoggerPrintFunc(log Logger) func(...interface{}) {
 	}
 }
 
-// LogFormatFileLine 函数获得调用的文件位置，默认层数加三。
+// logFormatFileLine 函数获得调用的文件位置，默认层数加三。
 //
 // 文件位置会从第一个src后开始截取，处理gopath下文件位置。
-func LogFormatFileLine(depth int) (string, int) {
+func logFormatFileLine(depth int) (string, int) {
 	_, file, line, ok := runtime.Caller(3 + depth)
 	if !ok {
 		file = "???"

@@ -20,14 +20,10 @@ func (*BaseController) Any() {}
 func (c *BaseController) Get() {
 	c.Debug("---")
 }
-func (c *BaseController) GetIdById(id int) {
-	c.Debug("id", id)
-	c.Render(id)
+func (c *BaseController) GetIdById() {
 }
 
-func (c *BaseController) GetInfoByIdName(id int, name string) {
-	c.Render(id)
-	c.WriteString(name)
+func (c *BaseController) GetInfoByIdName() {
 }
 
 func (*BaseController) GetIndex()   {}

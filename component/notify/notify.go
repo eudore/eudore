@@ -13,15 +13,10 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-const (
-	// NOTIFY_ENVIRON_KEY 是检查notify启动程序的环境变量。
-	NOTIFY_ENVIRON_KEY = "EUDORE_IS_NOTIFY"
-)
-
 var notifyArgs = []string{
-	fmt.Sprintf("%s=%d", eudore.ENV_EUDORE_IS_NOTIFY, 1),
-	fmt.Sprintf("%s=%d", eudore.ENV_EUDORE_DISABLE_PIDFILE, 1),
-	fmt.Sprintf("%s=%d", eudore.ENV_EUDORE_DISABLE_SIGNAL, 1),
+	fmt.Sprintf("%s=%d", eudore.EnvEudoreIsNotify, 1),
+	fmt.Sprintf("%s=%d", eudore.EnvEudoreDisablePidfile, 1),
+	fmt.Sprintf("%s=%d", eudore.EnvEudoreDisableSignal, 1),
 }
 
 // Init 函数是eudpre.ReloadFunc, Eudore初始化内容。
@@ -80,7 +75,7 @@ func NewNotify(app *eudore.App) *Notify {
 //
 // 调用App.Logger
 func (n *Notify) Run() error {
-	if eudore.GetStringBool(os.Getenv(eudore.ENV_EUDORE_IS_NOTIFY)) || n == nil {
+	if eudore.GetStringBool(os.Getenv(eudore.EnvEudoreIsNotify)) || n == nil {
 		return nil
 	}
 	for _, i := range n.watchDir {
@@ -91,8 +86,10 @@ func (n *Notify) Run() error {
 
 	go func(n *Notify) {
 		var timer = time.AfterFunc(1000*time.Hour, n.buildAndRestart)
-		defer timer.Stop()
-		defer n.cmd.Process.Kill()
+		defer func() {
+			timer.Stop()
+			n.cmd.Process.Kill()
+		}()
 
 		for {
 			select {
@@ -122,6 +119,7 @@ func (n *Notify) Run() error {
 	return eudore.ErrEudoreIgnoreInit
 }
 
+// WatchAll 方法添加一个文件或目录，如果/结尾的目录会递归监听子目录。
 func (n *Notify) WatchAll(path string) {
 	// 递归目录处理
 	if path[len(path)-1] == '/' {

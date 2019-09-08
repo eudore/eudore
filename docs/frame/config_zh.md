@@ -45,11 +45,7 @@ c.ParseFuncs(func(fn []ConfigParseFunc) []ConfigParseFunc{
 c.Parse()
 ```
 
-目前Config默认内置了七个解析函数，后续按顺序介绍。
-
-### ConfigParseInit
-
-作用未知，待删除。
+目前Config默认内置了六个解析函数，后续按顺序介绍。
 
 ### ConfigParseRead
 

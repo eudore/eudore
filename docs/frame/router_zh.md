@@ -9,44 +9,33 @@
 
 ```golang
 type (
-	// The route is directly registered by default. Other methods can be directly registered using the RouterRegister interface.
+	// RouterMethod the route is directly registered by default. Other methods can be directly registered using the RouterRegister interface.
 	//
-	// 路由默认直接注册的方法，其他方法可以使用RouterRegister接口直接注册。
+	// RouterMethod 路由默认直接注册的方法，其他方法可以使用RouterRegister接口直接注册。
 	RouterMethod interface {
 		Group(string) RouterMethod
-		AddHandler(string, string, ...HandlerFunc) RouterMethod
-		AddMiddleware(string, string, ...HandlerFunc) RouterMethod
+		AddHandler(string, string, ...interface{}) RouterMethod
+		AddMiddleware(...HandlerFunc) RouterMethod
 		AddController(...Controller) RouterMethod
-		Any(string, ...Handler)
-		AnyFunc(string, ...HandlerFunc)
-		Delete(string, ...Handler)
-		DeleteFunc(string, ...HandlerFunc)
-		Get(string, ...Handler)
-		GetFunc(string, ...HandlerFunc)
-		Head(string, ...Handler)
-		HeadFunc(string, ...HandlerFunc)
-		Options(string, ...Handler)
-		OptionsFunc(string, ...HandlerFunc)
-		Patch(string, ...Handler)
-		PatchFunc(string, ...HandlerFunc)
-		Post(string, ...Handler)
-		PostFunc(string, ...HandlerFunc)
-		Put(string, ...Handler)
-		PutFunc(string, ...HandlerFunc)
+		AnyFunc(string, ...interface{})
+		GetFunc(string, ...interface{})
+		PostFunc(string, ...interface{})
+		PutFunc(string, ...interface{})
+		DeleteFunc(string, ...interface{})
+		HeadFunc(string, ...interface{})
+		PatchFunc(string, ...interface{})
+		OptionsFunc(string, ...interface{})
 	}
-	// The router core interface, performs routing, middleware registration, and matches a request and returns to the handler.
+	// RouterCore interface, performs routing, middleware registration, and matches a request and returns to the handler.
 	//
-	// 路由器核心接口，执行路由、中间件的注册和匹配一个请求并返回处理者。
+	// RouterCore接口，执行路由、中间件的注册和匹配一个请求并返回处理者。
 	RouterCore interface {
-		RegisterMiddleware(string, string, HandlerFuncs)
+		RegisterMiddleware(string, HandlerFuncs)
 		RegisterHandler(string, string, HandlerFuncs)
 		Match(string, string, Params) HandlerFuncs
 	}
-	// Router interface, you need to set the component, router method, router core three interfaces.
-	//
-	// 路由器接口，需要设置组件、路由器方法、路由器核心三个接口。
+	// Router 接口，需要实现路由器方法、路由器核心两个接口。
 	Router interface {
-		Component
 		RouterCore
 		RouterMethod
 	}
@@ -55,7 +44,7 @@ type (
 
 ### Router
 
-路由器接口组合组件接口、路由器核心接口、路由器方法接口。
+路由器接口组合路由器核心接口、路由器方法接口。
 
 ### RouterCore
 
@@ -74,11 +63,10 @@ RouterMethod接口主要有下面方法
 ```golang
 type RouterMethod {
 	Group(string) RouterMethod
-	AddHandler(string, string, ...HandlerFunc) RouterMethod
-	AddMiddleware(string, string, ...HandlerFunc) RouterMethod
+	AddHandler(string, string, ...interface{}) RouterMethod
+	AddMiddleware(...HandlerFunc) RouterMethod
 	AddController(...Controller) RouterMethod
-	Any(string, ...Handler)
-	AnyFunc(string, ...HandlerFunc)
+	AnyFunc(string, ...interface{})
 	...
 }
 ```

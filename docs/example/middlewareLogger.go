@@ -7,7 +7,7 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	app.AddMiddleware(eudore.MethodAny, "", middleware.NewLoggerFunc(app.App))
+	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
 	app.Listen(":8088")
 	app.Run()
 }

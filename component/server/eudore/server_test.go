@@ -1,7 +1,6 @@
 package eudore
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -10,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/eudore/eudore/component/server/eudore"
-	"github.com/eudore/eudore/protocol"
 )
 
 func TestStart(t *testing.T) {

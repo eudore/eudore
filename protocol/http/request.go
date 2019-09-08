@@ -14,6 +14,7 @@ import (
 )
 
 type (
+	// Request 定义一个http请求。
 	Request struct {
 		conn       net.Conn
 		reader     *bufio.Reader
@@ -32,6 +33,7 @@ type (
 	}
 )
 
+// Reset 方法重置请求对象
 func (r *Request) Reset(conn net.Conn) error {
 	r.conn = conn
 	r.reader.Reset(conn)
@@ -80,6 +82,7 @@ func (r *Request) Reset(conn net.Conn) error {
 	return err
 }
 
+// Read 方法读取数据，实现io.Reader。
 func (r *Request) Read(p []byte) (int, error) {
 	r.mu.Lock()
 	// First judge whether it has been read
@@ -116,37 +119,47 @@ func (r *Request) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// Method 方法获取http请求方法。
 func (r *Request) Method() string {
 	return r.method
 }
 
+// Proto 方法获得http协议版本。
 func (r *Request) Proto() string {
 	return r.proto
 }
 
+// RequestURI 方法获得http请求uri。
 func (r *Request) RequestURI() string {
 	return r.requestURI
 }
 
+// Path 方法获得http请求路径。
 func (r *Request) Path() string {
 	return r.path
 }
+
+// RawQuery 方法获得http请求uri的参数部分。
 func (r *Request) RawQuery() string {
 	return r.rawQuery
 }
+
+// Header 方法获得http请求header。
 func (r *Request) Header() protocol.Header {
 	return &r.header
 }
 
+// Host 方法获得请求host。
 func (r *Request) Host() string {
 	return r.header.Get("Host")
 }
 
-// conn data
+// RemoteAddr 方法获得远程连接地址
 func (r *Request) RemoteAddr() string {
 	return r.conn.RemoteAddr().String()
 }
 
+// TLS 方法获得TLS状态。
 func (r *Request) TLS() *tls.ConnectionState {
 	return nil
 }

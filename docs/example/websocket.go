@@ -16,7 +16,7 @@ import (
 func main() {
 	app := eudore.NewCore()
 	app.AnyFunc("/*", eudore.HandlerFunc(func(ctx eudore.Context) {
-		conn, err := eudore.HandlerUpgradeHttp(ctx)
+		conn, err := eudore.HandlerUpgradeHTTP(ctx)
 		if err != nil {
 			ctx.Fatal(err)
 			return

@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-type StoreSql struct {
+// StoreSQL 定义sql数据库存储，支持mysql、mariadb、pgsql
+type StoreSQL struct {
 	*sql.DB
 	stmtInsert *sql.Stmt
 	stmtDelete *sql.Stmt
@@ -19,23 +20,25 @@ type StoreSql struct {
 	stmtClean  *sql.Stmt
 }
 
+// NewSessionDB 使用sql.DB连接创建会话。
 func NewSessionDB(db *sql.DB) Session {
-	return NewSessionStd(NewStoreDB(db))
+	return NewsessionStd(NewStoreDB(db))
 }
 
-// NewSessionSql 创建一个使用sql存储的会话对象。
+// NewSessionSQL 创建一个使用sql存储的会话对象。
 //
 // 支持 PostgreSQL MariaDB MySQL
-func NewSessionSql(name, config string) Session {
+func NewSessionSQL(name, config string) Session {
 	db, err := sql.Open(name, config)
 	if err != nil {
 		panic(err)
 	}
-	return NewSessionStd(NewStoreDB(db))
+	return NewsessionStd(NewStoreDB(db))
 }
 
-func NewStoreDB(db *sql.DB) SessionStore {
-	store := &StoreSql{DB: db}
+// NewStoreDB 使用sql.DB连接创建存储。
+func NewStoreDB(db *sql.DB) Store {
+	store := &StoreSQL{DB: db}
 	err := store.Init()
 	if err != nil {
 		panic(err)
@@ -43,7 +46,8 @@ func NewStoreDB(db *sql.DB) SessionStore {
 	return store
 }
 
-func (store *StoreSql) Init() error {
+// Init 方法执行存储的初始化。
+func (store *StoreSQL) Init() error {
 	name, err := store.getServerName()
 	if err != nil {
 		return err
@@ -55,7 +59,7 @@ func (store *StoreSql) Init() error {
 			`INSERT INTO tb_eudore_session(id,data) VALUES(?,?)`,
 			`DELETE FROM tb_eudore_session WHERE id=?`,
 			`UPDATE tb_eudore_session SET data=?,expires=now() WHERE id=?`,
-			`SELECT data,expires FROM tb_eudore_session WHERE id=?`,
+			`SELECT data FROM tb_eudore_session WHERE id=?`,
 			`DELETE FROM tb_eudore_session WHERE expires>?`,
 		})
 	case "PostgreSQL":
@@ -64,7 +68,7 @@ func (store *StoreSql) Init() error {
 			`INSERT INTO tb_eudore_session("id", "data") VALUES($1,$2)`,
 			`DELETE FROM tb_eudore_session WHERE id=$1`,
 			`UPDATE tb_eudore_session SET data=$1,expires=now() WHERE id=$2`,
-			`SELECT data,expires FROM tb_eudore_session WHERE id=$1`,
+			`SELECT data FROM tb_eudore_session WHERE id=$1`,
 			`DELETE FROM tb_eudore_session WHERE expires>$1`,
 		})
 	default:
@@ -74,7 +78,8 @@ func (store *StoreSql) Init() error {
 	return err
 }
 
-func (store *StoreSql) getServerName() (string, error) {
+// getServerName 获得sql.DB的数据库名称。
+func (store *StoreSQL) getServerName() (string, error) {
 	var version string
 	err := store.DB.QueryRow("SELECT version()").Scan(&version)
 	if err != nil {
@@ -104,7 +109,8 @@ func (store *StoreSql) getServerName() (string, error) {
 	return "", err
 }
 
-func (store *StoreSql) initStmt(sqls []string) (err error) {
+// initStmt 初始化sql.Stmt
+func (store *StoreSQL) initStmt(sqls []string) (err error) {
 	store.stmtInsert, err = store.DB.Prepare(sqls[0])
 	if err != nil {
 		return err
@@ -128,17 +134,25 @@ func (store *StoreSql) initStmt(sqls []string) (err error) {
 	return nil
 }
 
-func (store *StoreSql) Insert(key string) (err error) {
-	_, err = store.stmtInsert.Exec(key, make(map[string]interface{}))
+// Insert 方法执行插入
+func (store *StoreSQL) Insert(key string) (err error) {
+	var data bytes.Buffer
+	err = gob.NewEncoder(&data).Encode(make(map[string]interface{}))
+	if err != nil {
+		return nil
+	}
+	_, err = store.stmtInsert.Exec(key, data.Bytes())
 	return
 }
 
-func (store *StoreSql) Delete(key string) (err error) {
+// Delete 方法执行删除数据
+func (store *StoreSQL) Delete(key string) (err error) {
 	_, err = store.stmtDelete.Exec(key)
 	return
 }
 
-func (store *StoreSql) Update(key string, val map[string]interface{}) error {
+// Update 方法执行更新数据。
+func (store *StoreSQL) Update(key string, val map[string]interface{}) error {
 	var data bytes.Buffer
 	err := gob.NewEncoder(&data).Encode(val)
 	if err != nil {
@@ -148,12 +162,10 @@ func (store *StoreSql) Update(key string, val map[string]interface{}) error {
 	return err
 }
 
-func (store *StoreSql) Select(key string) (map[string]interface{}, error) {
-	var (
-		data    []byte
-		expires time.Time
-	)
-	err := store.stmtSelect.QueryRow(key).Scan(&data, &expires)
+// Select 方法查询加载一个会话数据。
+func (store *StoreSQL) Select(key string) (map[string]interface{}, error) {
+	var data []byte
+	err := store.stmtSelect.QueryRow(key).Scan(&data)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrDataNotFound
@@ -166,7 +178,8 @@ func (store *StoreSql) Select(key string) (map[string]interface{}, error) {
 	return i, err
 }
 
-func (store *StoreSql) Clean(expires time.Time) error {
+// Clean 方法清理过期数据。
+func (store *StoreSQL) Clean(expires time.Time) error {
 	_, err := store.stmtClean.Exec(expires)
 	return err
 }

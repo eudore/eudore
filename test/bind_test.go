@@ -2,6 +2,7 @@ package test
 
 import (
 	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/component/httptest"
 	"testing"
 )
 
@@ -16,11 +17,13 @@ type (
 func TestCacheMap(t *testing.T) {
 	app := eudore.NewCore()
 	app.GetFunc("/get", BindUrl)
-	eudore.TestAppRequest(app, "GET", "/get?field1=2&field3=1", nil)
+
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/get?field1=2&field3=1").Do()
 }
 
 func BindUrl(ctx eudore.Context) {
 	var req Request1
 	ctx.Bind(&req)
-	eudore.Json(req)
+	eudore.JSON(req)
 }

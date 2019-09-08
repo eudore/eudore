@@ -28,7 +28,7 @@ func (a *Acl) Handle(ctx eudore.Context) {
 
 // RamHandle 方法实现ram.RamHandler接口，匹配一个请求。
 func (a *Acl) RamHandle(id int, perm string, ctx eudore.Context) (bool, bool) {
-	ctx.SetParam(eudore.ParamRam, "acl")
+	ctx.SetParam(eudore.ParamRAM, "acl")
 	ps, ok := a.Data[id]
 	if ok {
 		isgrant, ok := ps[perm]

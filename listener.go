@@ -23,8 +23,8 @@ type (
 	// ServerListenConfig 定义一个通用的端口监听配置。
 	ServerListenConfig struct {
 		Addr      string `set:"addr" description:"Listen addr."`
-		Https     bool   `set:"https" description:"Is https."`
-		Http2     bool   `set:"http2" description:"Is http2."`
+		HTTPS     bool   `set:"https" description:"Is https."`
+		HTTP2     bool   `set:"http2" description:"Is http2."`
 		Mutual    bool   `set:"mutual" description:"Is mutual tls."`
 		Certfile  string `set:"certfile" description:"Http server cert file."`
 		Keyfile   string `set:"keyfile" description:"Http server key file."`
@@ -46,13 +46,13 @@ type (
 )
 
 var (
-	typeListener reflect.Type = reflect.TypeOf((*serverListener)(nil)).Elem()
+	typeListener = reflect.TypeOf((*serverListener)(nil)).Elem()
 )
 
 // ListenWithFD 创建一个地址监听，同时会从fd里面创建监听。
 func ListenWithFD(addr string) (net.Listener, error) {
 	addr = translateAddr(addr)
-	for i, str := range strings.Split(os.Getenv(EUDORE_GRACEFUL_ADDRS), ",") {
+	for i, str := range strings.Split(os.Getenv(EnvEudoreGracefulAddrs), ",") {
 		if str != addr {
 			continue
 		}
@@ -131,7 +131,7 @@ func getServerListen(i reflect.Value) (serverListener, error) {
 func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 	// set default port
 	if len(slc.Addr) == 0 {
-		if slc.Https {
+		if slc.HTTPS {
 			slc.Addr = ":80"
 		} else {
 			slc.Addr = ":443"
@@ -144,7 +144,7 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !slc.Https {
+	if !slc.HTTPS {
 		return ln, nil
 	}
 	// set tls
@@ -152,7 +152,7 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 		NextProtos:   []string{"http/1.1"},
 		Certificates: make([]tls.Certificate, 1),
 	}
-	if slc.Http2 {
+	if slc.HTTP2 {
 		config.NextProtos = []string{"h2"}
 	}
 
@@ -237,19 +237,19 @@ func GetAllListener(lns []net.Listener) ([]string, []*os.File) {
 	return addrs, files
 }
 
-// StartNewProcess start new process to handle HTTP Connection。
-func StartNewProcess(lns []net.Listener) error {
+// startNewProcess start new process to handle HTTP Connection。
+func startNewProcess(lns []net.Listener) error {
 	// get addrs and socket listen fds
 	addrs, files := GetAllListener(lns)
 
 	// set graceful restart env flag
 	envs := []string{}
 	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, EUDORE_GRACEFUL_ADDRS) {
+		if !strings.HasPrefix(value, EnvEudoreGracefulAddrs) {
 			envs = append(envs, value)
 		}
 	}
-	envs = append(envs, fmt.Sprintf("%s=%s", EUDORE_GRACEFUL_ADDRS, strings.Join(addrs, ",")))
+	envs = append(envs, fmt.Sprintf("%s=%s", EnvEudoreGracefulAddrs, strings.Join(addrs, ",")))
 
 	// fork new process
 	cmd := exec.Command(os.Args[0], os.Args[1:]...)

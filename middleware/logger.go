@@ -6,8 +6,7 @@ import (
 )
 
 // NewLoggerFunc 函数创建一个请求日志记录中间件。
-func NewLoggerFunc(app *eudore.App) eudore.HandlerFunc {
-	var params = []string{"action", "ram", "route", "controller"}
+func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
 		now := time.Now()
 		f := eudore.Fields{
@@ -22,12 +21,19 @@ func NewLoggerFunc(app *eudore.App) eudore.HandlerFunc {
 		f["status"] = status
 		f["time"] = time.Now().Sub(now).String()
 		f["size"] = ctx.Response().Size()
-		existsAddParam(ctx, f, params)
-		if requestId := ctx.GetHeader(eudore.HeaderXRequestID); len(requestId) > 0 {
-			f["x-request-id"] = requestId
+
+		for _, param := range params {
+			val := ctx.GetParam(param)
+			if val != "" {
+				f[param] = val
+			}
 		}
-		if parentId := ctx.GetHeader(eudore.HeaderXParentID); len(parentId) > 0 {
-			f["x-parent-id"] = parentId
+
+		if requestID := ctx.GetHeader(eudore.HeaderXRequestID); len(requestID) > 0 {
+			f["x-request-id"] = requestID
+		}
+		if parentID := ctx.GetHeader(eudore.HeaderXParentID); len(parentID) > 0 {
+			f["x-parent-id"] = parentID
 		}
 
 		if 300 < status && status < 400 && status != 304 {
@@ -37,15 +43,6 @@ func NewLoggerFunc(app *eudore.App) eudore.HandlerFunc {
 			app.Logger.WithFields(f).Info()
 		} else {
 			app.Logger.WithFields(f).Error()
-		}
-	}
-}
-
-func existsAddParam(ctx eudore.Context, field eudore.Fields, names []string) {
-	for _, name := range names {
-		val := ctx.GetParam(name)
-		if val != "" {
-			field[name] = val
 		}
 	}
 }

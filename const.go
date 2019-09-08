@@ -3,14 +3,14 @@ package eudore
 // 定义eudore定义各种常量。
 const (
 	// Eudore environ
-	// ENV_EUDORE_IS_NOTIFY 表示使用使用了Notify组件。
-	ENV_EUDORE_IS_NOTIFY = "EUDORE_IS_NOTIFY"
-	// ENV_EUDORE_IS_DEAMON 用于表示是否fork来后台启动。
-	ENV_EUDORE_IS_DEAMON = "EUDORE_IS_DEAMON"
-	// ENV_EUDORE_DISABLE_PIDFILE 用于Command组件不写入pidfile，Notify组件启动的子程序不写入pidfile。
-	ENV_EUDORE_DISABLE_PIDFILE = "EUDORE_DISABLE_PIDFILE"
-	// ENV_EUDORE_DISABLE_SIGNAL 用于InitSignal不启用，Notify组件启动的子程序不注册信号。
-	ENV_EUDORE_DISABLE_SIGNAL = "EUDORE_DISABLE_SIGNAL"
+	// EnvEudoreIsNotify 表示使用使用了Notify组件。
+	EnvEudoreIsNotify = "EUDORE_IS_NOTIFY"
+	// EnvEudoreIsDaemon 用于表示是否fork来后台启动。
+	EnvEudoreIsDaemon = "EUDORE_IS_DEAMON"
+	// EnvEudoreDisablePidfile 用于Command组件不写入pidfile，Notify组件启动的子程序不写入pidfile。
+	EnvEudoreDisablePidfile = "EUDORE_DISABLE_PIDFILE"
+	// EnvEudoreDisableSignal 用于InitSignal不启用，Notify组件启动的子程序不注册信号。
+	EnvEudoreDisableSignal = "EUDORE_DISABLE_SIGNAL"
 
 	// Response statue
 	StatusContinue           = 100 // RFC 7231, 6.2.1
@@ -120,25 +120,25 @@ const (
 	MimeTextPlainCharsetUtf8       = MimeTextPlain + "; " + MimeCharsetUtf8
 	MimeTextHTML                   = "text/html"
 	MimeTextHTMLCharsetUtf8        = MimeTextHTML + "; " + MimeCharsetUtf8
-	MimeTextCss                    = "text/css"
-	MimeTextCssUtf8                = MimeTextCss + "; " + MimeCharsetUtf8
+	MimeTextCSS                    = "text/css"
+	MimeTextCSSUtf8                = MimeTextCSS + "; " + MimeCharsetUtf8
 	MimeTextJavascript             = "text/javascript"
 	MimeTextJavascriptUtf8         = MimeTextJavascript + "; " + MimeCharsetUtf8
 	MimeTextMarkdown               = "text/markdown"
 	MimeTextMarkdownUtf8           = MimeTextMarkdown + "; " + MimeCharsetUtf8
-	MimeTextXml                    = "text/xml"
-	MimeTextXmlCharsetUtf8         = MimeTextXml + "; " + MimeCharsetUtf8
-	MimeApplicationJson            = "application/json"
-	MimeApplicationJsonUtf8        = MimeApplicationJson + "; " + MimeCharsetUtf8
-	MimeApplicationXml             = "application/xml"
-	MimeApplicationxmlCharsetUtf8  = MimeApplicationXml + "; " + MimeCharsetUtf8
+	MimeTextXML                    = "text/xml"
+	MimeTextXMLCharsetUtf8         = MimeTextXML + "; " + MimeCharsetUtf8
+	MimeApplicationJSON            = "application/json"
+	MimeApplicationJSONUtf8        = MimeApplicationJSON + "; " + MimeCharsetUtf8
+	MimeApplicationXML             = "application/xml"
+	MimeApplicationxmlCharsetUtf8  = MimeApplicationXML + "; " + MimeCharsetUtf8
 	MimeApplicationForm            = "application/x-www-form-urlencoded"
 	MimeApplicationFormCharsetUtf8 = MimeApplicationForm + "; " + MimeCharsetUtf8
 	MimeMultipartForm              = "multipart/form-data"
 
 	// Param
 	ParamAction   = "action"
-	ParamRam      = "ram"
+	ParamRAM      = "ram"
 	ParamTemplate = "template"
 	ParamRoute    = "route"
 	ParamDeny     = "deny"

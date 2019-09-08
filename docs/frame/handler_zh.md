@@ -21,6 +21,7 @@ type (
 
 ```godoc
 func(eudore.Context) error
+func(eudore.Context) interface
 func(eudore.Context) (interface {}, error)
 func(eudore.ContextData)
 func(eudore.Context, map[string]interface {}) (map[string]interface {}, error)
@@ -39,11 +40,11 @@ func main() {
 		}
 		return nil
 	})
-	app.GetFunc("/data", func(ctx eudore.Context) (interface{}, error) {
+	app.GetFunc("/data", func(ctx eudore.Context) interface{} {
 		return map[string]string{
 			"a": "1",
 			"b": "2",
-		}, nil
+		}
 	})
 	app.Listen(":8080")
 	app.Run()
@@ -51,6 +52,8 @@ func main() {
 ```
 
 ### 实现一个扩展函数
+
+**如果使用请求上下文扩展机制，最好自己创建一个请求上下文类型**
 
 MyContext额外实现了一个Hello方法，然后使用eudore.RegisterHandlerFunc注册一个转换函数，转换函数要求参数是一个函数，返回参数是一个eudore.HandlerFunc。
 

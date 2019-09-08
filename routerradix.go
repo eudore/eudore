@@ -66,18 +66,18 @@ type (
 func NewRouterRadix() Router {
 	r := &RouterRadix{
 		Print:       func(...interface{}) {},
-		nodefunc404: HandlerFuncs{DefaultRouter404Func},
-		nodefunc405: HandlerFuncs{DefaultRouter405Func},
+		nodefunc404: HandlerFuncs{HandlerRouter404},
+		nodefunc405: HandlerFuncs{HandlerRouter405},
 		node404: radixNode{
 			tags:     []string{ParamRoute},
 			vals:     []string{"404"},
-			handlers: HandlerFuncs{DefaultRouter404Func},
+			handlers: HandlerFuncs{HandlerRouter404},
 		},
 		node405: radixNode{
 			Wchildren: &radixNode{
 				tags:     []string{ParamRoute},
 				vals:     []string{"405"},
-				handlers: HandlerFuncs{DefaultRouter405Func},
+				handlers: HandlerFuncs{HandlerRouter405},
 			},
 		},
 		middtree: &middNode{},
@@ -90,28 +90,13 @@ func NewRouterRadix() Router {
 
 // RegisterMiddleware register the middleware into the middleware tree and append the handler if it exists.
 //
-// If the method is not empty, the path is empty and the modified path is '/'.
-//
 // RegisterMiddleware注册中间件到中间件树中，如果存在则追加处理者。
-//
-// 如果方法非空，路径为空，修改路径为'/'。
-func (r *RouterRadix) RegisterMiddleware(method, path string, hs HandlerFuncs) {
-	if len(method) != 0 && len(path) == 0 {
-		path = "/"
-	}
-	r.Print("RegisterMiddleware:", method, path, hs)
-	if method == MethodAny {
-		if path == "/" {
-			r.middtree.Insert("", hs)
-			r.node404.handlers = append(r.middtree.val, r.nodefunc404...)
-			r.node405.Wchildren.handlers = append(r.middtree.val, r.nodefunc405...)
-			return
-		}
-		for _, method = range RouterAllMethod {
-			r.middtree.Insert(method+path, hs)
-		}
-	} else {
-		r.middtree.Insert(method+path, hs)
+func (r *RouterRadix) RegisterMiddleware(path string, hs HandlerFuncs) {
+	r.Print("RegisterMiddleware:", path, hs)
+	r.middtree.Insert(path, hs)
+	if path == "" {
+		r.node404.handlers = append(r.middtree.val, r.nodefunc404...)
+		r.node405.Wchildren.handlers = append(r.middtree.val, r.nodefunc405...)
 	}
 }
 
@@ -132,11 +117,12 @@ func (r *RouterRadix) RegisterHandler(method string, path string, handler Handle
 		r.nodefunc405 = handler
 		r.node405.Wchildren.handlers = CombineHandlerFuncs(handler, r.middtree.val)
 	case MethodAny:
+		handler = CombineHandlerFuncs(r.middtree.Lookup(path), handler)
 		for _, method := range RouterAllMethod {
-			r.insertRoute(method, path, true, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
+			r.insertRoute(method, path, true, handler)
 		}
 	default:
-		r.insertRoute(method, path, false, CombineHandlerFuncs(r.middtree.Lookup(method+path), handler))
+		r.insertRoute(method, path, false, CombineHandlerFuncs(r.middtree.Lookup(path), handler))
 	}
 }
 
@@ -156,7 +142,7 @@ func (r *RouterRadix) RegisterHandler(method string, path string, handler Handle
 //
 // insertRoute 路径切割见getSpiltPath函数，当前未完善，处理正则可能异常。
 func (r *RouterRadix) insertRoute(method, key string, isany bool, val HandlerFuncs) {
-	var currentNode *radixNode = r.getTree(method)
+	var currentNode = r.getTree(method)
 	if currentNode == &r.node405 {
 		return
 	}
@@ -172,6 +158,8 @@ func (r *RouterRadix) insertRoute(method, key string, isany bool, val HandlerFun
 			return
 		}
 		currentNode.kind |= radixNodeKindAnyMethod
+	} else {
+		currentNode.kind &^= radixNodeKindAnyMethod
 	}
 
 	currentNode.handlers = val
@@ -457,9 +445,9 @@ func getSplitPath(key string) []string {
 		return []string{"/"}
 	}
 	var strs []string
-	var length int = -1
-	var ismatch bool = false
-	var isconst bool = false
+	var length = -1
+	var ismatch = false
+	var isconst = false
 	for i := range key {
 		if ismatch {
 			strs[length] = strs[length] + key[i:i+1]

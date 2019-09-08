@@ -12,6 +12,7 @@ import (
 )
 
 type (
+	// Server 定义一个http server
 	Server struct {
 		ReadTimeout   time.Duration
 		WriteTimeout  time.Duration
@@ -24,30 +25,37 @@ type (
 		defaultHandle protocol.HandlerConn
 		Print         func(...interface{}) `set:"print"`
 	}
+	// SetTimeouter 定义设置超时的接口
 	SetTimeouter interface {
 		SetIdleTimeout(time.Duration)
 		SetReadTimeout(time.Duration)
 		SetWriteTimeout(time.Duration)
 	}
+	// SetPrinter 定义设置输出函数的接口
 	SetPrinter interface {
 		SetPrint(func(...interface{}))
 	}
 )
 
+// NextProtoTLS 定义TLS Next Proto的值
 var NextProtoTLS = "h2"
 
+// LocalAddrContextKey 定义context获得远程地址的key
+var LocalAddrContextKey = struct{}{}
+
+// NewServer 方法创建一个server
 func NewServer() *Server {
 	return &Server{
 		ReadTimeout:   60 * time.Second,
 		WriteTimeout:  60 * time.Second,
 		IdleTimeout:   60 * time.Second,
 		ctx:           context.Background(),
-		defaultHandle: &http.HttpHandler{},
+		defaultHandle: &http.Handler{},
 	}
 }
 
-// 监听一个tcp连接，并启动服务。
-func (srv *Server) ListenAndServe(addr string, handle protocol.HandlerHttp) error {
+// ListenAndServe 方法监听一个tcp连接，并启动服务。
+func (srv *Server) ListenAndServe(addr string, handle protocol.HandlerHTTP) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -55,8 +63,8 @@ func (srv *Server) ListenAndServe(addr string, handle protocol.HandlerHttp) erro
 	return srv.Serve(ln)
 }
 
-// 监听一个tcp连接，并启动服务。
-func (srv *Server) ListenAndServeTls(addr, certFile, keyFile string, handle protocol.HandlerHttp) error {
+// ListenAndServeTLS 方法监听一个tcp连接，并启动服务。
+func (srv *Server) ListenAndServeTLS(addr, certFile, keyFile string, handle protocol.HandlerHTTP) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -77,7 +85,7 @@ func (srv *Server) ListenAndServeTls(addr, certFile, keyFile string, handle prot
 	return srv.Serve(tls.NewListener(ln, config))
 }
 
-// 服务处理监听
+// Serve 方法服务处理监听
 func (srv *Server) Serve(ln net.Listener) error {
 	srv.mu.Lock()
 	for _, i := range srv.listeners {
@@ -107,7 +115,7 @@ func (srv *Server) Serve(ln net.Listener) error {
 
 func (srv *Server) newConnServe(c net.Conn) {
 	remoteAddr := c.RemoteAddr().String()
-	ctx := context.WithValue(srv.ctx, "LocalAddrContextKey", remoteAddr)
+	ctx := context.WithValue(srv.ctx, LocalAddrContextKey, remoteAddr)
 	if tlsConn, ok := c.(*tls.Conn); ok {
 		if err := tlsConn.Handshake(); err != nil {
 			// Gol.12 version
@@ -132,6 +140,7 @@ func (srv *Server) newConnServe(c net.Conn) {
 	srv.defaultHandle.EudoreConn(ctx, c)
 }
 
+// Close 方法关闭Server
 func (srv *Server) Close() (err error) {
 	srv.mu.Lock()
 	for _, ln := range srv.listeners {
@@ -144,6 +153,7 @@ func (srv *Server) Close() (err error) {
 	return err
 }
 
+// Shutdown 方法关闭Server
 func (srv *Server) Shutdown(ctx context.Context) error {
 	var stop = make(chan error)
 	go func() {
@@ -159,12 +169,14 @@ func (srv *Server) Shutdown(ctx context.Context) error {
 	}
 }
 
+// SetHandler 方法设置serve的连接处理者
 func (srv *Server) SetHandler(h protocol.HandlerConn) {
 	srv.defaultHandle = h
 	srv.SetHandlerTimeouter(h)
 	srv.SetHandlerPrinter(h)
 }
 
+// SetNextHandler 方法设置serve的next连接处理者
 func (srv *Server) SetNextHandler(proto string, h protocol.HandlerConn) error {
 	switch proto {
 	case "h2":
@@ -173,9 +185,10 @@ func (srv *Server) SetNextHandler(proto string, h protocol.HandlerConn) error {
 		srv.SetHandlerPrinter(h)
 		return nil
 	}
-	return fmt.Errorf("tls nosuppered npn proto.")
+	return fmt.Errorf("tls nosuppered npn proto")
 }
 
+// SetHandlerTimeouter 方法设置连接处理者超时
 func (srv *Server) SetHandlerTimeouter(h protocol.HandlerConn) {
 	if timer, ok := h.(SetTimeouter); ok {
 		timer.SetIdleTimeout(srv.IdleTimeout)
@@ -184,6 +197,7 @@ func (srv *Server) SetHandlerTimeouter(h protocol.HandlerConn) {
 	}
 }
 
+// SetHandlerPrinter 方法设置连接处理者输出函数
 func (srv *Server) SetHandlerPrinter(h protocol.HandlerConn) {
 	if printer, ok := h.(SetPrinter); ok {
 		printer.SetPrint(srv.Print)

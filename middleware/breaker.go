@@ -12,7 +12,7 @@ import (
 func init() {
 	_, file, _, ok := runtime.Caller(0)
 	if ok {
-		StaticHtml = file[:len(file)-2] + "html"
+		StaticHTML = file[:len(file)-2] + "html"
 	}
 }
 
@@ -27,7 +27,7 @@ const (
 var (
 	MaxConsecutiveSuccesses uint32 = 10
 	MaxConsecutiveFailures  uint32 = 10
-	StaticHtml                     = ""
+	StaticHTML                     = ""
 	// CircuitBreakerStatues 定义熔断状态字符串
 	CircuitBreakerStatues = []string{"closed", "half-open", "open"}
 )
@@ -46,7 +46,7 @@ type (
 	// Route 定义单词路由的熔断数据。
 	Route struct {
 		mu                   sync.Mutex
-		Id                   int
+		ID                   int
 		Name                 string
 		State                State
 		LastTime             time.Time
@@ -78,7 +78,7 @@ func (cb *CircuitBreaker) Handle(ctx eudore.Context) {
 	if !ok {
 		cb.mu.Lock()
 		route = &Route{
-			Id:            cb.num,
+			ID:            cb.num,
 			Name:          name,
 			LastTime:      time.Now(),
 			OnStateChange: cb.OnStateChange,
@@ -95,8 +95,8 @@ func (cb *CircuitBreaker) Handle(ctx eudore.Context) {
 // InjectRoutes 方法给给路由器注入熔断器的路由。
 func (cb *CircuitBreaker) InjectRoutes(r eudore.RouterMethod) {
 	r.GetFunc("/ui", func(ctx eudore.Context) {
-		if StaticHtml != "" {
-			ctx.WriteFile(StaticHtml)
+		if StaticHTML != "" {
+			ctx.WriteFile(StaticHTML)
 		} else {
 			ctx.WriteString("breaker not set ui file path.")
 		}

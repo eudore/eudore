@@ -19,7 +19,7 @@ type (
 	RouterMethod interface {
 		Group(string) RouterMethod
 		AddHandler(string, string, ...interface{}) RouterMethod
-		AddMiddleware(string, string, ...HandlerFunc) RouterMethod
+		AddMiddleware(...HandlerFunc) RouterMethod
 		AddController(...Controller) RouterMethod
 		AnyFunc(string, ...interface{})
 		GetFunc(string, ...interface{})
@@ -34,7 +34,7 @@ type (
 	//
 	// RouterCore接口，执行路由、中间件的注册和匹配一个请求并返回处理者。
 	RouterCore interface {
-		RegisterMiddleware(string, string, HandlerFuncs)
+		RegisterMiddleware(string, HandlerFuncs)
 		RegisterHandler(string, string, HandlerFuncs)
 		Match(string, string, Params) HandlerFuncs
 	}
@@ -86,16 +86,16 @@ var (
 	RouterAllMethod              = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions}
 )
 
-// DefaultRouter405Func 函数定义默认405处理
-func DefaultRouter405Func(ctx Context) {
+// HandlerRouter405 函数定义默认405处理
+func HandlerRouter405(ctx Context) {
 	const page405 string = "405 method not allowed\n"
 	ctx.Response().Header().Add("Allow", "HEAD, GET, POST, PUT, DELETE, PATCH")
 	ctx.WriteHeader(405)
 	ctx.WriteString(page405)
 }
 
-// DefaultRouter404Func 函数定义默认404处理
-func DefaultRouter404Func(ctx Context) {
+// HandlerRouter404 函数定义默认404处理
+func HandlerRouter404(ctx Context) {
 	const page404 string = "404 page not found\n"
 	ctx.WriteHeader(404)
 	ctx.WriteString(page404)
@@ -107,7 +107,7 @@ func (config *RouterConfig) RoutesInject(r RouterMethod) {
 	r.AddHandler(config.Method, config.Path, config.Handler)
 
 	// middleware
-	r.AddMiddleware(config.Method, config.Path, config.Middleware...)
+	r.AddMiddleware(config.Middleware...)
 
 	// routes
 	r = r.Group(config.Path)
@@ -127,7 +127,7 @@ func (m *RouterMethodStd) Group(path string) RouterMethod {
 	return &RouterMethodStd{
 		RouterCore: m.RouterCore,
 		prefix:     m.prefix + prefix,
-		tags:       tags + m.tags,
+		tags:       m.tags + tags,
 	}
 }
 
@@ -147,9 +147,9 @@ func (m *RouterMethodStd) AddHandler(method, path string, hs ...interface{}) Rou
 }
 
 // AddMiddleware 给路由器添加一个中间件函数。
-func (m *RouterMethodStd) AddMiddleware(method, path string, hs ...HandlerFunc) RouterMethod {
+func (m *RouterMethodStd) AddMiddleware(hs ...HandlerFunc) RouterMethod {
 	if len(hs) > 0 {
-		m.RegisterMiddleware(method, m.prefix+path+m.tags, hs)
+		m.RegisterMiddleware(m.prefix+m.tags, hs)
 	}
 	return m
 }

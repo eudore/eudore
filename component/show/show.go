@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var objs map[string]interface{} = make(map[string]interface{})
+var objs = make(map[string]interface{})
 
 // RegisterObject 函数注册显示的对象。
 func RegisterObject(key string, val interface{}) {
@@ -62,7 +62,7 @@ func Showkey(ctx eudore.Context) {
 		return
 	}
 
-	var length int = reflect.TypeOf(val).Elem().NumField()
+	var length = reflect.TypeOf(val).Elem().NumField()
 	fields := make(map[string]interface{}, length)
 	pt := reflect.TypeOf(val).Elem()
 	pv := reflect.ValueOf(val).Elem()
@@ -73,6 +73,6 @@ func Showkey(ctx eudore.Context) {
 	}
 	ctx.SetHeader(eudore.HeaderContentType, "text/plain; charset=utf-8")
 	// ctx.WriteRender(fields)
-	// ctx.WriteJson(fields)
+	// ctx.WriteJSON(fields)
 	fmt.Fprintf(ctx, "%# v", pretty.Formatter(val))
 }

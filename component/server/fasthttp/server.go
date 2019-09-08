@@ -15,7 +15,7 @@ type (
 	Server struct {
 		Config    interface{} `set:"config"`
 		srvs      []*fasthttp.Server
-		handler   protocol.HandlerHttp
+		handler   protocol.HandlerHTTP
 		listeners []net.Listener `set:"listeners"`
 		wg        sync.WaitGroup
 	}
@@ -81,7 +81,7 @@ func (srv *Server) Shutdown(context.Context) error {
 }
 
 // AddHandler 方法设置http处理者。
-func (srv *Server) AddHandler(h protocol.HandlerHttp) {
+func (srv *Server) AddHandler(h protocol.HandlerHTTP) {
 	srv.handler = h
 }
 

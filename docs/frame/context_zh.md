@@ -63,7 +63,7 @@ type Context interface {
 	RenderWith(interface{}, Renderer) error
 	// render writer
 	WriteString(string) error
-	WriteJson(interface{}) error
+	WriteJSON(interface{}) error
 	WriteFile(string) error
 
 	// log Logout interface
@@ -304,7 +304,7 @@ type Context interface {
 	RenderWith(interface{}, Renderer) error
 	// render writer
 	WriteString(string) error
-	WriteJson(interface{}) error
+	WriteJSON(interface{}) error
 	WriteFile(string) error
 	...
 }
@@ -338,7 +338,7 @@ h2 Push资源,调用ResponseWriter.Push()。
 
 写入渲染模板，调用View对象渲染。
 
-`WriteJson(interface{}) error`
+`WriteJSON(interface{}) error`
 
 写入Json数据
 

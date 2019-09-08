@@ -31,18 +31,18 @@ var (
 	ErrLineInvalid = errors.New("request line is invalid")
 )
 
-// HttpHandler 定义解析处理http连接。
-type HttpHandler struct {
-	Handler      protocol.HandlerHttp
+// Handler 定义解析处理http连接。
+type Handler struct {
+	Handler      protocol.HandlerHTTP
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	IdleTimeout  time.Duration
 	Print        func(...interface{}) `set:"print"`
 }
 
-// NewHttpHandler 函数创建一个http/1.1的http处理这
-func NewHttpHandler(h protocol.HandlerHttp) *HttpHandler {
-	return &HttpHandler{
+// NewHandler 函数创建一个http/1.1的http处理这
+func NewHandler(h protocol.HandlerHTTP) *Handler {
+	return &Handler{
 		Handler:      h,
 		ReadTimeout:  60 * time.Minute,
 		WriteTimeout: 60 * time.Minute,
@@ -52,7 +52,7 @@ func NewHttpHandler(h protocol.HandlerHttp) *HttpHandler {
 }
 
 // EudoreConn 实现protocol.HandlerConn接口，处理http连接。
-func (h *HttpHandler) EudoreConn(pctx context.Context, c net.Conn) {
+func (h *Handler) EudoreConn(pctx context.Context, c net.Conn) {
 	// Initialize the request object.
 	// 初始化请求对象。
 	resp := rwPool.Get().(*Response)
@@ -99,22 +99,23 @@ func isNotCommonNetReadError(err error) bool {
 	return true
 }
 
-// SetIdleTimeout 设置http连接处理的IdleTimeout时间。
-func (h *HttpHandler) SetIdleTimeout(t time.Duration) {
+// SetIdleTimeout 方法设置http连接处理的IdleTimeout时间。
+func (h *Handler) SetIdleTimeout(t time.Duration) {
 	h.IdleTimeout = t
 }
 
-// SetReadDeadline 设置http连接处理的ReadTimeout时间。
-func (h *HttpHandler) SetReadTimeout(t time.Duration) {
+// SetReadTimeout 方法设置http连接处理的ReadTimeout时间。
+func (h *Handler) SetReadTimeout(t time.Duration) {
 	h.ReadTimeout = t
 
 }
 
-// SetWriteDeadline 设置http连接处理的WriteTimeout时间。
-func (h *HttpHandler) SetWriteTimeout(t time.Duration) {
+// SetWriteTimeout 方法设置http连接处理的WriteTimeout时间。
+func (h *Handler) SetWriteTimeout(t time.Duration) {
 	h.WriteTimeout = t
 }
 
-func (h *HttpHandler) SetPrint(fn func(...interface{})) {
+// SetPrint 方法设置输出函数
+func (h *Handler) SetPrint(fn func(...interface{})) {
 	h.Print = fn
 }

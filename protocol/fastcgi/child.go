@@ -35,13 +35,13 @@ type envVarsContextKey struct{}
 type child struct {
 	baseCtx context.Context
 	conn    *conn
-	handler protocol.HandlerHttp
+	handler protocol.HandlerHTTP
 
 	mu       sync.Mutex          // protects requests:
 	requests map[uint16]*request // keyed by request ID
 }
 
-func newChild(ctx context.Context, rwc io.ReadWriteCloser, handler protocol.HandlerHttp) *child {
+func newChild(ctx context.Context, rwc io.ReadWriteCloser, handler protocol.HandlerHTTP) *child {
 	return &child{
 		baseCtx:  ctx,
 		conn:     newConn(rwc),

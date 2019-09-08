@@ -18,7 +18,7 @@ const (
 	ServerStateClose
 	ServerStateUnknown
 	// 按顺序记录fork多端口fd对应的地址。
-	EUDORE_GRACEFUL_ADDRS = "EUDORE_GRACEFUL_ADDRS"
+	EnvEudoreGracefulAddrs = "EnvEudoreGracefulAddrs"
 )
 
 type (
@@ -26,7 +26,7 @@ type (
 	ServerState int
 	// Server 定义启动http服务的对象。
 	Server interface {
-		AddHandler(protocol.HandlerHttp)
+		AddHandler(protocol.HandlerHTTP)
 		AddListener(net.Listener)
 		Start() error
 		Close() error
@@ -71,15 +71,15 @@ type (
 	// ServerStd 定义使用net/http启动http server。
 	ServerStd struct {
 		*http.Server
-		handler   protocol.HandlerHttp
+		handler   protocol.HandlerHTTP
 		listeners []net.Listener       `set:"listeners"`
 		Print     func(...interface{}) `set:"print"`
 		mu        sync.Mutex           `set:"-"`
 		wg        sync.WaitGroup       `set:"-"`
 		state     ServerState          `set:"-"`
 	}
-	// netHttpLog 实现一个函数处理log.Logger的内容，用于捕捉net/http.Server输出的error内容。
-	netHttpLog struct {
+	// netHTTPLog 实现一个函数处理log.Logger的内容，用于捕捉net/http.Server输出的error内容。
+	netHTTPLog struct {
 		print func(...interface{})
 		log   *log.Logger
 	}
@@ -119,7 +119,7 @@ func (srv *ServerStd) Start() error {
 		srv.Server.Handler = h
 	}
 	if srv.Print != nil {
-		srv.Server.ErrorLog = newNetHttpLog(srv.Print).Logger()
+		srv.Server.ErrorLog = newNetHTTPLog(srv.Print).Logger()
 	}
 
 	// start server
@@ -164,7 +164,7 @@ func (srv *ServerStd) Shutdown(ctx context.Context) error {
 // AddHandler 方法设置server的http处理者。
 //
 // 如果处理者同时实现了http.Handler接口，会使用处理者的http.Handler的接口。
-func (srv *ServerStd) AddHandler(h protocol.HandlerHttp) {
+func (srv *ServerStd) AddHandler(h protocol.HandlerHTTP) {
 	srv.handler = h
 }
 
@@ -175,15 +175,15 @@ func (srv *ServerStd) AddListener(l net.Listener) {
 
 // ServeHTTP 实现http.Handler接口，处理net/http Server的请求。
 func (srv *ServerStd) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	request := requestReaderHttpPool.Get().(*RequestReaderHttp)
-	response := responseWriterHttpPool.Get().(*ResponseWriterHttp)
+	request := requestReaderHTTPPool.Get().(*RequestReaderHTTP)
+	response := responseWriterHTTPPool.Get().(*ResponseWriterHTTP)
 
 	request.Reset(r)
 	response.Reset(w)
 	srv.handler.EudoreHTTP(r.Context(), response, request)
 
-	requestReaderHttpPool.Put(request)
-	responseWriterHttpPool.Put(response)
+	requestReaderHTTPPool.Put(request)
+	responseWriterHTTPPool.Put(response)
 }
 
 // Set 方法允许Server设置输出函数和配置
@@ -204,20 +204,20 @@ func (srv *ServerStd) SetPrint(fn func(...interface{})) {
 	srv.Print = fn
 }
 
-// newNetHttpLog 实现将一个日志处理函数适配成log.Logger对象。
-func newNetHttpLog(fn func(...interface{})) *netHttpLog {
-	e := &netHttpLog{
+// newNetHTTPLog 实现将一个日志处理函数适配成log.Logger对象。
+func newNetHTTPLog(fn func(...interface{})) *netHTTPLog {
+	e := &netHTTPLog{
 		print: fn,
 	}
 	e.log = log.New(e, "", 0)
 	return e
 }
 
-func (e *netHttpLog) Write(p []byte) (n int, err error) {
+func (e *netHTTPLog) Write(p []byte) (n int, err error) {
 	e.print(string(p))
 	return 0, nil
 }
 
-func (e *netHttpLog) Logger() *log.Logger {
+func (e *netHTTPLog) Logger() *log.Logger {
 	return e.log
 }

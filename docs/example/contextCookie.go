@@ -1,5 +1,16 @@
 package main
 
+/*
+Cookie相关方法定义。
+type Context interface {
+	Cookies() []Cookie
+	GetCookie(name string) string
+	SetCookie(cookie *SetCookie)
+	SetCookieValue(string, string, int)
+	...
+}
+*/
+
 import (
 	"fmt"
 	"github.com/eudore/eudore"

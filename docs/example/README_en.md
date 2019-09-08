@@ -11,12 +11,12 @@
 	- [Eudore daemon](eudoreDaemon.go)
 	- [Eudore command](eudoreCommand.go)
 - [Server]
-	- [https](serverHttps.go)
+	- [https](serverHTTPS.go)
 	- [fasthttp](serverFasthttp.go)
 	- [eudore server](serverEudore.go)
 - [Logger]
-	- [LoggerInit]
-	- [LoggerStd]
+	- [LoggerInit](loggerInit.go)
+	- [LoggerStd](loggerStd.go)
 - [Router]
 	- [Group and Middleware](routerGroupAndMiddleware.go)
 	- [RouterRaidx](routerRadix.go)

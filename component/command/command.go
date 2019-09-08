@@ -56,8 +56,8 @@ func NewCommand(ctx context.Context, cmd, pidfile string) *Command {
 // Run 函数解析命令并执行。
 func (c *Command) Run() (err error) {
 	if c.pidfile == "" {
-		fmt.Println("pidfile is empty string.")
-		return errors.New("pidfile is empty string.")
+		fmt.Println("pidfile is empty string")
+		return errors.New("pidfile is empty string")
 	}
 	switch c.cmd {
 	case "start":
@@ -81,7 +81,7 @@ func (c *Command) Run() (err error) {
 		fmt.Printf("%s is true.\n", c.cmd)
 	}
 	if c.cmd == "daemon" {
-		if os.Getenv(eudore.ENV_EUDORE_IS_DEAMON) == "" {
+		if os.Getenv(eudore.EnvEudoreIsDaemon) == "" {
 			return eudore.ErrApplicationStop
 		}
 		return
@@ -111,12 +111,12 @@ func (c *Command) Start() error {
 //
 // Daemon 函数后台启动进程。若不是后台启动，则创建一个后台进程。
 func (c *Command) Daemon() error {
-	if eudore.GetStringBool(os.Getenv(eudore.ENV_EUDORE_IS_DEAMON)) {
+	if eudore.GetStringBool(os.Getenv(eudore.EnvEudoreIsDaemon)) {
 		return c.Start()
 	}
 
 	cmd := exec.Command(os.Args[0], os.Args[1:]...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", eudore.ENV_EUDORE_IS_DEAMON, 1))
+	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", eudore.EnvEudoreIsDaemon, 1))
 	return cmd.Start()
 }
 
@@ -180,7 +180,7 @@ func (c *Command) readpid() (int, error) {
 //
 // 打开并锁定pid文件，写入pid的值。
 func (c *Command) writepid() (err error) {
-	if eudore.GetStringBool(os.Getenv(eudore.ENV_EUDORE_DISABLE_PIDFILE)) {
+	if eudore.GetStringBool(os.Getenv(eudore.EnvEudoreDisablePidfile)) {
 		return nil
 	}
 
@@ -220,12 +220,12 @@ func (c *Command) Release() {
 
 // Daemon 函数直接后台启动程序。
 func Daemon() {
-	if eudore.GetStringBool(os.Getenv(eudore.ENV_EUDORE_IS_DEAMON)) {
+	if eudore.GetStringBool(os.Getenv(eudore.EnvEudoreIsDaemon)) {
 		return
 	}
 
 	cmd := exec.Command(os.Args[0], os.Args[1:]...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", eudore.ENV_EUDORE_IS_DEAMON, 1))
+	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", eudore.EnvEudoreIsDaemon, 1))
 	cmd.Start()
 	os.Exit(0)
 }

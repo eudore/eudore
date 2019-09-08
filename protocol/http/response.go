@@ -11,12 +11,79 @@ import (
 	"time"
 )
 
+// TimeFormat 定义响应header写入Date的时间格式。
 const TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
 
+// Status 定义http状态码响应值
 var Status = map[int]string{
+	100: "Continue",
+	101: "Switching Protocols",
+	102: "Processing",
+
 	200: "OK",
+	201: "Created",
+	202: "Accepted",
+	203: "Non-Authoritative Information",
+	204: "No Content",
+	205: "Reset Content",
+	206: "Partial Content",
+	207: "Multi-Status",
+	208: "Already Reported",
+	226: "IM Used",
+
+	300: "Multiple Choices",
+	301: "Moved Permanently",
+	302: "Found",
+	303: "See Other",
+	304: "Not Modified",
+	305: "Use Proxy",
+	307: "Temporary Redirect",
+	308: "Permanent Redirect",
+
+	400: "Bad Request",
+	401: "Unauthorized",
+	402: "Payment Required",
+	403: "Forbidden",
+	404: "Not Found",
+	405: "Method Not Allowed",
+	406: "Not Acceptable",
+	407: "Proxy Authentication Required",
+	408: "Request Timeout",
+	409: "Conflict",
+	410: "Gone",
+	411: "Length Required",
+	412: "Precondition Failed",
+	413: "Request Entity Too Large",
+	414: "Request URI Too Long",
+	415: "Unsupported Media Type",
+	416: "Requested Range Not Satisfiable",
+	417: "Expectation Failed",
+	418: "I'm a teapot",
+	421: "Misdirected Request",
+	422: "Unprocessable Entity",
+	423: "Locked",
+	424: "Failed Dependency",
+	425: "Too Early",
+	426: "Upgrade Required",
+	428: "Precondition Required",
+	429: "Too Many Requests",
+	431: "Request Header Fields Too Large",
+	451: "Unavailable For Legal Reasons",
+
+	500: "Internal Server Error",
+	501: "Not Implemented",
+	502: "Bad Gateway",
+	503: "Service Unavailable",
+	504: "Gateway Timeout",
+	505: "HTTP Version Not Supported",
+	506: "Variant Also Negotiates",
+	507: "Insufficient Storage",
+	508: "Loop Detected",
+	510: "Not Extended",
+	511: "Network Authentication Required",
 }
 
+// Response 定义http响应对象
 type Response struct {
 	request *Request
 	writer  *bufio.Writer
@@ -34,11 +101,13 @@ type Response struct {
 	cancel context.CancelFunc
 }
 
-type CancelConn struct {
+// cancelConn 定义Conn在Close时执行Context cancel
+type cancelConn struct {
 	net.Conn
 	cancel context.CancelFunc
 }
 
+// Reset 方法重置http响应状态
 func (w *Response) Reset(conn net.Conn) {
 	w.writer.Reset(conn)
 	w.header.Reset()
@@ -51,15 +120,17 @@ func (w *Response) Reset(conn net.Conn) {
 	w.n = 0
 }
 
+// Header 方法获得http响应header对象。
 func (w *Response) Header() protocol.Header {
 	return &w.header
 }
 
+// WriteHeader 方法写入状态码
 func (w *Response) WriteHeader(codeCode int) {
 	w.status = codeCode
 }
 
-// 写入数据，如果写入数据长度小于缓冲，不会立刻返回，也不会写入状态行。
+// Write 方法写入数据，如果写入数据长度小于缓冲，不会立刻返回，也不会写入状态行。
 func (w *Response) Write(p []byte) (int, error) {
 	// 数据大于缓冲，发送数据
 	if w.n+len(p) > len(w.buf) {
@@ -77,7 +148,7 @@ func (w *Response) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// 写入数据并返回。
+// writeDate 方法写入数据并返回。
 //
 // 会先写入缓冲数据，然后将当前数据写入
 //
@@ -111,7 +182,7 @@ func (w *Response) writeDate(p []byte, length int) (n int, err error) {
 	return
 }
 
-// 写入状态行
+// writerResponseLine 方法写入状态行
 func (w *Response) writerResponseLine() {
 	// 已经写入则返回
 	if w.iswrite {
@@ -141,7 +212,7 @@ func (w *Response) writerResponseLine() {
 	w.writer.Write([]byte("\r\n"))
 }
 
-// 数据写入
+// Flush 方法数据写入
 func (w *Response) Flush() {
 	// 将缓冲数据写入
 	w.writeDate(nil, 0)
@@ -150,7 +221,7 @@ func (w *Response) Flush() {
 	w.writer.Flush()
 }
 
-// 请求结束时flush写入数据。
+// finalFlush 方法请求结束时flush写入数据。
 func (w *Response) finalFlush() (err error) {
 	// 如果没有写入状态行，并且没有指定内容长度。
 	// 设置内容长度为当前缓冲数据。
@@ -182,26 +253,30 @@ func (w *Response) finalFlush() (err error) {
 	return
 }
 
+// Hijack 方法劫持http连接。
 func (w *Response) Hijack() (net.Conn, error) {
 	w.ishjack = true
 	w.request.conn.SetDeadline(time.Time{})
-	return &CancelConn{w.request.conn, w.cancel}, nil
+	return &cancelConn{w.request.conn, w.cancel}, nil
 }
 
-// http协议不支持push方法。
+// Push 方法http协议不支持push方法。
 func (*Response) Push(string, *protocol.PushOptions) error {
 	return nil
 }
 
+// Status 方法返回当前状态码。
 func (w *Response) Status() int {
 	return w.status
 }
 
+// Size 方法返回写入的数据长度。
 func (w *Response) Size() int {
 	return w.size
 }
 
-func (c *CancelConn) Close() (err error) {
+// Close 方法在net.Conn关闭时，执行context cancel。
+func (c *cancelConn) Close() (err error) {
 	err = c.Conn.Close()
 	c.cancel()
 	return
