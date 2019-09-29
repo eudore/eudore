@@ -5,13 +5,12 @@ import (
 	"time"
 )
 
-// NewTimeoutFunc 未实现
+// NewTimeoutFunc 未实现, 触发bug
 //
 // NewTimeoutFunc 函数创建一个处理超时中间件。
 func NewTimeoutFunc(t time.Duration) eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
 		finish := make(chan struct{})
-
 		go func(ctx eudore.Context) {
 			ctx.Next()
 			finish <- struct{}{}
@@ -22,6 +21,7 @@ func NewTimeoutFunc(t time.Duration) eudore.HandlerFunc {
 			ctx.WriteHeader(504)
 			ctx.WriteString("timeout")
 			ctx.End()
+		case <-ctx.Done():
 		case <-finish:
 		}
 	}

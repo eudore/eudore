@@ -1,3 +1,5 @@
+// +build !windows
+
 package notify
 
 import (
@@ -138,7 +140,7 @@ func (n *Notify) watch(path string) {
 
 func (n *Notify) buildAndRestart() {
 	// 执行编译命令
-	body, err := exec.Command(n.buildCmd[0], n.buildCmd[1:]...).CombinedOutput()
+	body, err := exec.CommandContext(n.app.Context, n.buildCmd[0], n.buildCmd[1:]...).CombinedOutput()
 	if err != nil {
 		fmt.Printf("notify build error: \n%s", body)
 		n.app.Errorf("notify build error: %s", body)
@@ -158,7 +160,7 @@ func (n *Notify) restart() {
 	}
 
 	// 启动新进程
-	n.cmd = exec.Command(n.startCmd[0], n.startCmd[1:]...)
+	n.cmd = exec.CommandContext(n.app.Context, n.startCmd[0], n.startCmd[1:]...)
 	n.cmd.Stdin = os.Stdin
 	n.cmd.Stdout = os.Stdout
 	n.cmd.Stderr = os.Stderr

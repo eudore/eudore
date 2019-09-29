@@ -1,31 +1,42 @@
-package rbac
+package ram
 
 import (
 	"github.com/eudore/eudore"
 )
 
 type (
-	// Role 定义一个rbac角色。
-	Role struct {
-		Name  string
-		Binds []string
-	}
 	// Rbac 定义rbac对象。
 	Rbac struct {
-		Binds map[int][]*Role
-		Roles map[string]*Role
+		RoleBinds       map[int][]int
+		PermissionBinds map[int][]int
+		Permissions     map[string]int
 	}
 )
 
 // NewRbac 函数创建一个Rbac的ram处理者。
 func NewRbac() *Rbac {
 	return &Rbac{
-		Binds: make(map[int][]*Role),
-		Roles: make(map[string]*Role),
+		RoleBinds:       make(map[int][]int),
+		PermissionBinds: make(map[int][]int),
+		Permissions:     make(map[string]int),
 	}
 }
 
-// NewRole 方法创建一个角色。
+func (r *Rbac) BindRole(userid, roleid int) {
+	r.RoleBinds[userid] = append(r.RoleBinds[userid], roleid)
+}
+
+func (r *Rbac) BindPermissions(roleid, permid int) {
+	r.PermissionBinds[roleid] = append(r.PermissionBinds[roleid], permid)
+
+}
+
+// AddPermission 方法增加一个权限。
+func (r *Rbac) AddPermission(id int, permid string) {
+	r.Permissions[permid] = id
+}
+
+/*// NewRole 方法创建一个角色。
 func (r *Rbac) NewRole(name string, perms []string) {
 	r.Roles[name] = &Role{
 		Name:  name,
@@ -47,25 +58,21 @@ func (r *Rbac) BindRoles(id int, rolesname []string) {
 		}
 	}
 	r.Binds[id] = roles
-}
+}*/
 
 // RamHandle 方法实现ram.RamHandler接口。
 func (r *Rbac) RamHandle(id int, name string, ctx eudore.Context) (bool, bool) {
 	ctx.SetParam(eudore.ParamRAM, "rbac")
-	for _, i := range r.Binds[id] {
-		if ok := i.Match(name); ok {
-			return true, true
+	permid, ok := r.Permissions[name]
+	if !ok {
+		return false, false
+	}
+	for _, roles := range r.RoleBinds[id] {
+		for _, perm := range r.PermissionBinds[roles] {
+			if perm == permid {
+				return true, true
+			}
 		}
 	}
 	return false, false
-}
-
-// Match 方法实现角色匹配一个行为。
-func (r *Role) Match(name string) bool {
-	for _, i := range r.Binds {
-		if i == name {
-			return true
-		}
-	}
-	return false
 }

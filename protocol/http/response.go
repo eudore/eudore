@@ -200,7 +200,7 @@ func (w *Response) writerResponseLine() {
 		fmt.Fprintf(w.writer, "%s: %s\r\n", k, h.Vals[i])
 	}
 	// 写入时间和Server
-	fmt.Fprintf(w.writer, "Date: %s\r\nServer: eudore\r\n", time.Now().Format(TimeFormat))
+	fmt.Fprintf(w.writer, "Date: %s\r\nServer: eudore\r\n", time.Now().UTC().Format(TimeFormat))
 	// 检测是否有写入长度，没有则进行分块传输。
 	// 未检测Content-Length值是否合法
 	w.chunked = len(w.header.Get("Content-Length")) == 0 && w.header.Get("Upgrade") == ""

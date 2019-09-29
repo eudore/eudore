@@ -13,6 +13,9 @@ import (
 	"sync"
 )
 
+// AppContextKey 定义从context.Value中获取app实例对象的key，如果app支持的话。
+var AppContextKey = struct{}{}
+
 type (
 	// PoolGetFunc 定义sync.Pool对象使用的构造函数。
 	PoolGetFunc func() interface{}

@@ -20,8 +20,8 @@ type MyUserController struct {
 }
 
 func (*MyUserController) Any() {}
-func (myuser *MyUserController) Get() {
-	myuser.SetTemplate("index.html")
+func (ctl *MyUserController) Get() {
+	ctl.SetTemplate("index.html")
 }
 func (*MyUserController) GetInfoByIdName() {}
 func (*MyUserController) GetIndex()        {}

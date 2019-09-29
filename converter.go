@@ -424,9 +424,11 @@ func convertMapstringStructToMapString(iType reflect.Type, iValue reflect.Value,
 	for i := 0; i < iType.NumField(); i++ {
 		fieldKey := iType.Field(i)
 		fieldValue := iValue.Field(i)
-		// map设置键位结构体的名称，值为结构体值转换，基本类型会直接返回。
-		// 未支持接口和标签
-		val[fieldKey.Name] = convertMapString(fieldValue.Type(), fieldValue)
+		if fieldValue.CanSet() {
+			// map设置键位结构体的名称，值为结构体值转换，基本类型会直接返回。
+			// 未支持接口和标签
+			val[fieldKey.Name] = convertMapString(fieldValue.Type(), fieldValue)
+		}
 	}
 }
 
@@ -483,9 +485,11 @@ func convertMapStructToMap(iType reflect.Type, iValue reflect.Value, val map[int
 	for i := 0; i < iType.NumField(); i++ {
 		fieldKey := iType.Field(i)
 		fieldValue := iValue.Field(i)
-		// map设置键位结构体的名称，值为结构体值转换，基本类型会直接返回。
-		// 未支持接口和标签
-		val[fieldKey.Name] = convertMap(fieldValue.Type(), fieldValue)
+		if fieldValue.CanSet() {
+			// map设置键位结构体的名称，值为结构体值转换，基本类型会直接返回。
+			// 未支持接口和标签
+			val[fieldKey.Name] = convertMap(fieldValue.Type(), fieldValue)
+		}
 	}
 }
 

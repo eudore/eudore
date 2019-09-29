@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/textproto"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -73,10 +74,10 @@ func (r *Request) Reset(conn net.Conn) error {
 	// 初始化path和uri参数。
 	pos := strings.IndexByte(r.requestURI, '?')
 	if pos == -1 {
-		r.path = r.requestURI
+		r.path, err = url.PathUnescape(r.requestURI)
 		r.rawQuery = ""
 	} else {
-		r.path = r.requestURI[:pos]
+		r.path, err = url.PathUnescape(r.requestURI[:pos])
 		r.rawQuery = r.requestURI[pos+1:]
 	}
 	return err

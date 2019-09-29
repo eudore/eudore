@@ -49,6 +49,7 @@ func NewEudore(options ...interface{}) *Eudore {
 		signalFuncs: make(map[os.Signal][]EudoreFunc),
 	}
 	app.Context, app.cancel = context.WithCancel(app.Context)
+	app.Context = context.WithValue(app.Context, AppContextKey, app)
 	app.handlers = HandlerFuncs{app.HandleContext}
 
 	// init options
@@ -113,7 +114,12 @@ func (app *Eudore) Start() error {
 	go app.InitAll()
 	<-app.Done()
 
-	time.Sleep(200 * time.Millisecond)
+	// 处理后续日志
+	if initlog, ok := app.Logger.(LoggerInitHandler); ok {
+		app.Logger, _ = NewLoggerStd(nil)
+		initlog.NextHandler(app.Logger)
+	}
+	time.Sleep(100 * time.Millisecond)
 	app.Logger.Sync()
 	time.Sleep(50 * time.Millisecond)
 	return app.Err()
@@ -145,7 +151,6 @@ func (app *Eudore) Init(names ...string) (err error) {
 		err = app.inits[name].fn(app)
 		if err != nil {
 			if err == ErrEudoreIgnoreInit {
-
 				app.Logger.Errorf("eudore init %d/%d %s ignore the remaining init function.", i+1, num, name)
 				return nil
 			}
@@ -351,7 +356,6 @@ func (app *Eudore) AddGlobalMiddleware(hs ...HandlerFunc) {
 func (app *Eudore) HandleContext(ctx Context) {
 	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx))
 	ctx.Next()
-	ctx.End()
 }
 
 // EudoreHTTP 方法处理一个http请求。
@@ -387,24 +391,38 @@ func (app *Eudore) Error(args ...interface{}) {
 	app.logReset().Error(args...)
 }
 
+// Fatal 方法输出Fatal级别日志。
+func (app *Eudore) Fatal(args ...interface{}) {
+	app.logReset().Fatal(args...)
+	time.Sleep(90 * time.Millisecond)
+	panic(fmt.Sprintln(args...))
+}
+
 // Debugf 方法输出Debug级别日志。
 func (app *Eudore) Debugf(format string, args ...interface{}) {
-	app.logReset().Debug(fmt.Sprintf(format, args...))
+	app.logReset().Debugf(format, args...)
 }
 
 // Infof 方法输出Info级别日志。
 func (app *Eudore) Infof(format string, args ...interface{}) {
-	app.logReset().Info(fmt.Sprintf(format, args...))
+	app.logReset().Infof(format, args...)
 }
 
 // Warningf 方法输出Warning级别日志。
 func (app *Eudore) Warningf(format string, args ...interface{}) {
-	app.logReset().Warning(fmt.Sprintf(format, args...))
+	app.logReset().Warningf(format, args...)
 }
 
 // Errorf 方法输出Error级别日志。
 func (app *Eudore) Errorf(format string, args ...interface{}) {
-	app.logReset().Error(fmt.Sprintf(format, args...))
+	app.logReset().Errorf(format, args...)
+}
+
+// Fatalf 方法输出Error级别日志。
+func (app *Eudore) Fatalf(format string, args ...interface{}) {
+	app.logReset().Errorf(format, args...)
+	time.Sleep(90 * time.Millisecond)
+	panic(fmt.Sprintf(format, args...))
 }
 
 func (app *Eudore) logReset() Logout {

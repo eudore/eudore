@@ -187,7 +187,7 @@ func TestConvertStruct(*testing.T) {
 		},
 	}
 	var b = &B1{}
-	eudore.ConvertTo(b, c)
+	eudore.ConvertTo(c, b)
 	fmt.Printf("struct: %# v\n", pretty.Formatter(b))
 
 	var a []int //= make([]int, 3)
@@ -195,4 +195,56 @@ func TestConvertStruct(*testing.T) {
 	ii, _ := eudore.Set(a, "+", 66)
 	ii, _ = eudore.Set(ii.([]int), "1", 1)
 	fmt.Printf("struct: %# v\n", pretty.Formatter(ii))
+}
+
+func Benchmark_iterator(b *testing.B) {
+
+	b.StopTimer() //调用该函数停止压力测试的时间计数
+
+	//做一些初始化的工作,例如读取文件数据,数据库连接之类的,
+	//这样这些时间不影响我们测试函数本身的性能
+
+	b.StartTimer() //重新开始时间
+	b.ReportAllocs()
+	type Stu1 struct {
+		Name string
+		Age  int
+		HIgh bool
+		sex  string
+	}
+	type Stu2 struct {
+		Name string
+		Age  int
+		HIgh bool
+		sex  string
+		Stu1 Stu1
+	}
+	type Stu3 struct {
+		Name string
+		Age  int
+		HIgh bool
+		sex  string
+		Stu2 Stu2
+	}
+	stu := Stu3{
+		Name: "张三3",
+		Age:  183,
+		HIgh: true,
+		sex:  "男3",
+		Stu2: Stu2{
+			Name: "张三2",
+			Age:  182,
+			HIgh: true,
+			sex:  "男2",
+			Stu1: Stu1{
+				Name: "张三1",
+				Age:  181,
+				HIgh: true,
+				sex:  "男1",
+			},
+		},
+	}
+	for i := 0; i < b.N; i++ {
+		eudore.ConvertMap(stu)
+	}
 }

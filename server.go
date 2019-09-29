@@ -17,7 +17,7 @@ const (
 	ServerStateRun
 	ServerStateClose
 	ServerStateUnknown
-	// 按顺序记录fork多端口fd对应的地址。
+	// EnvEudoreGracefulAddrs 按顺序记录fork多端口fd对应的地址。
 	EnvEudoreGracefulAddrs = "EnvEudoreGracefulAddrs"
 )
 

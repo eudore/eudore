@@ -74,25 +74,13 @@ func NewRamHttp(rams ...RamHandler) *RamHttp {
 }
 
 // Handle 方法实现eudore请求上下文处理函数。
-func (r *RamHttp) Handle(ctx eudore.Context) {
-	action := r.GetAction(ctx)
-	if len(action) > 0 && !HandleDefaultRam(r.GetId(ctx), action, ctx, r.RamHandler.RamHandle) {
-		r.Forbidden(ctx)
+func (r *RamHttp) NewRamFunc() eudore.HandlerFunc {
+	return func(ctx eudore.Context) {
+		action := r.GetAction(ctx)
+		if len(action) > 0 && !HandleDefaultRam(r.GetId(ctx), action, ctx, r.RamHandler.RamHandle) {
+			r.Forbidden(ctx)
+		}
 	}
-}
-
-// Set 方法设置获取id、获得action、403处理函数，如果参数不为空会更新函数。
-func (r *RamHttp) Set(f1 GetIdFunc, f2 GetActionFunc, f3 ForbiddenFunc) *RamHttp {
-	if f1 != nil {
-		r.GetId = f1
-	}
-	if f2 != nil {
-		r.GetAction = f2
-	}
-	if f3 != nil {
-		r.Forbidden = f3
-	}
-	return r
 }
 
 // NewRamAny 函数创建一个或逻辑的ram组合处理者。

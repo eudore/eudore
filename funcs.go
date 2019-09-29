@@ -40,22 +40,23 @@ func init() {
 
 // ConfigParseRead 函数使用'keys.config'读取配置内容，并使用[]byte类型保存到'keys.configdata'。
 func ConfigParseRead(c Config) error {
-	path := GetString(c.Get("keys.config"))
-	if path == "" {
-		return nil //fmt.Errorf("config data is null")
+	errs := NewErrors()
+	for _, path := range GetArrayString(c.Get("keys.config")) {
+		// read protocol and get read func
+		s := strings.SplitN(path, "://", 2)
+		fn := GlobalConfigReadFunc[s[0]]
+		if fn == nil {
+			// use default read func
+			fn = GlobalConfigReadFunc["default"]
+		}
+		data, err := fn(path)
+		if err == nil {
+			c.Set("keys.configdata", data)
+			return nil
+		}
+		errs.HandleError(err)
 	}
-	// read protocol
-	// get read func
-	s := strings.SplitN(path, "://", 2)
-	fn := GlobalConfigReadFunc[s[0]]
-	if fn == nil {
-		// use default read func
-		fmt.Println("undefined read config: " + path + ", use default file:// .")
-		fn = GlobalConfigReadFunc["default"]
-	}
-	data, err := fn(path)
-	c.Set("keys.configdata", data)
-	return err
+	return errs.GetError()
 }
 
 // ConfigParseConfig 函数获得'keys.configdata'的内容解析配置。
@@ -92,6 +93,8 @@ func ConfigParseEnvs(c Config) error {
 }
 
 // ConfigParseMods 函数从'enable'项获得使用的模式的数组字符串，从'mods.xxx'加载配置。
+//
+// 默认会加载OS mod。
 func ConfigParseMods(c Config) error {
 	mod, ok := c.Get("enable").([]string)
 	if !ok {
@@ -105,6 +108,7 @@ func ConfigParseMods(c Config) error {
 			return nil
 		}
 	}
+	mod = append(mod, runtime.GOOS)
 	for _, i := range mod {
 		ConvertTo(c.Get("mods."+i), c.Get(""))
 	}

@@ -1795,7 +1795,7 @@ func (sc *serverConn) newStream(id, pusherID uint32, state streamState) *stream 
 	return st
 }
 
-func (sc *serverConn) newWriterAndRequest(st *stream, f *MetaHeadersFrame) (*responseWriter, *requestReader, error) {
+func (sc *serverConn) newWriterAndRequest(st *stream, f *MetaHeadersFrame) (*responseWriterState, *requestReader, error) {
 	sc.serveG.check()
 
 	rp := requestParam{
@@ -1861,7 +1861,7 @@ type requestParam struct {
 	header                  Header
 }
 
-func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*responseWriter, *requestReader, error) {
+func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*responseWriterState, *requestReader, error) {
 	sc.serveG.check()
 
 	var tlsState *tls.ConnectionState // nil if not scheme https
@@ -1940,20 +1940,20 @@ func (sc *serverConn) newWriterAndRequestNoBody(st *stream, rp requestParam) (*r
 	rws.req = req
 	// rws.body = req.requestBody
 
-	rw := &responseWriter{rws: rws}
-	return rw, req, nil
+	// rw := &responseWriter{rws: rws}
+	return rws, req, nil
 }
 
 // Run on its own goroutine.
-func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, handler protocol.HandlerHTTP) {
+func (sc *serverConn) runHandler(rws *responseWriterState, req *requestReader, handler protocol.HandlerHTTP) {
 	didPanic := true
 	defer func() {
-		rw.rws.stream.cancelCtx()
+		rws.stream.cancelCtx()
 		if didPanic {
 			e := recover()
 			sc.writeFrameFromHandler(FrameWriteRequest{
-				write:  handlerPanicRST{rw.rws.stream.id},
-				stream: rw.rws.stream,
+				write:  handlerPanicRST{rws.stream.id},
+				stream: rws.stream,
 			})
 			// Same as net/http:
 			if e != nil && e != http.ErrAbortHandler {
@@ -1964,9 +1964,9 @@ func (sc *serverConn) runHandler(rw *responseWriter, req *requestReader, handler
 			}
 			return
 		}
-		rw.handlerDone()
+		rws.HandlerDone()
 	}()
-	handler.EudoreHTTP(req.ctx, rw, req)
+	handler.EudoreHTTP(req.ctx, rws, req)
 	didPanic = false
 }
 
@@ -2219,23 +2219,6 @@ func (r *requestReader) TLS() *tls.ConnectionState {
 	return r.tls
 }
 
-// responseWriter is the http.ResponseWriter implementation. It's
-// intentionally small (1 pointer wide) to minimize garbage. The
-// responseWriterState pointer inside is zeroed at the end of a
-// request (in handlerDone) and calls on the responseWriter thereafter
-// simply crash (caller's mistake), but the much larger responseWriterState
-// and buffers are reused between multiple requests.
-type responseWriter struct {
-	rws *responseWriterState
-}
-
-// Optional http.ResponseWriter interfaces implemented.
-var (
-	_ http.CloseNotifier = (*responseWriter)(nil)
-	_ http.Flusher       = (*responseWriter)(nil)
-	_ stringWriter       = (*responseWriter)(nil)
-)
-
 type responseWriterState struct {
 	// immutable within a request:
 	stream *stream
@@ -2258,6 +2241,7 @@ type responseWriterState struct {
 
 	sentContentLen int64 // non-zero if handler set a Content-Length header
 	wroteBytes     int64
+	length         int
 
 	closeNotifierMu sync.Mutex // guards closeNotifierCh
 	closeNotifierCh chan bool  // nil until first used
@@ -2292,7 +2276,7 @@ func (rws *responseWriterState) declareTrailer(k string) {
 // HEADER response.
 func (rws *responseWriterState) writeChunk(p []byte) (n int, err error) {
 	if !rws.wroteHeader {
-		rws.writeHeader(200)
+		rws.WriteHeader(200)
 	}
 
 	isHeadResp := rws.req.method == "HEAD"
@@ -2443,11 +2427,7 @@ func (rws *responseWriterState) promoteUndeclaredTrailers() {
 	}
 }
 
-func (w *responseWriter) Flush() {
-	rws := w.rws
-	if rws == nil {
-		panic("Header called after Handler finished")
-	}
+func (rws *responseWriterState) Flush() {
 	if rws.bw.Buffered() > 0 {
 		if err := rws.bw.Flush(); err != nil {
 			// Ignore the error. The frame writer already knows.
@@ -2462,11 +2442,7 @@ func (w *responseWriter) Flush() {
 	}
 }
 
-func (w *responseWriter) CloseNotify() <-chan bool {
-	rws := w.rws
-	if rws == nil {
-		panic("CloseNotify called after Handler finished")
-	}
+func (rws *responseWriterState) CloseNotify() <-chan bool {
 	rws.closeNotifierMu.Lock()
 	ch := rws.closeNotifierCh
 	if ch == nil {
@@ -2482,11 +2458,7 @@ func (w *responseWriter) CloseNotify() <-chan bool {
 	return ch
 }
 
-func (w *responseWriter) Header() protocol.Header {
-	rws := w.rws
-	if rws == nil {
-		panic("Header called after Handler finished")
-	}
+func (rws *responseWriterState) Header() protocol.Header {
 	if rws.handlerHeader == nil {
 		rws.handlerHeader = make(Header)
 	}
@@ -2511,15 +2483,7 @@ func checkWriteHeaderCode(code int) {
 	}
 }
 
-func (w *responseWriter) WriteHeader(code int) {
-	rws := w.rws
-	if rws == nil {
-		panic("WriteHeader called after Handler finished")
-	}
-	rws.writeHeader(code)
-}
-
-func (rws *responseWriterState) writeHeader(code int) {
+func (rws *responseWriterState) WriteHeader(code int) {
 	if !rws.wroteHeader {
 		checkWriteHeaderCode(code)
 		rws.wroteHeader = true
@@ -2558,22 +2522,22 @@ func cloneProtocolHeader(h protocol.Header) Header {
 // * -> chunkWriter{rws}
 // * -> responseWriterState.writeChunk(p []byte)
 // * -> responseWriterState.writeChunk (most of the magic; see comment there)
-func (w *responseWriter) Write(p []byte) (n int, err error) {
-	return w.write(len(p), p, "")
+func (rws *responseWriterState) Write(p []byte) (n int, err error) {
+	return rws.write(len(p), p, "")
 }
 
-func (w *responseWriter) WriteString(s string) (n int, err error) {
-	return w.write(len(s), nil, s)
+func (rws *responseWriterState) WriteString(s string) (n int, err error) {
+	return rws.write(len(s), nil, s)
 }
 
 // either dataB or dataS is non-zero.
-func (w *responseWriter) write(lenData int, dataB []byte, dataS string) (n int, err error) {
-	rws := w.rws
+func (rws *responseWriterState) write(lenData int, dataB []byte, dataS string) (n int, err error) {
+	rws.length += lenData
 	if rws == nil {
 		panic("Write called after Handler finished")
 	}
 	if !rws.wroteHeader {
-		w.WriteHeader(200)
+		rws.WriteHeader(200)
 	}
 	if !bodyAllowedForStatus(rws.status) {
 		return 0, http.ErrBodyNotAllowed
@@ -2591,12 +2555,10 @@ func (w *responseWriter) write(lenData int, dataB []byte, dataS string) (n int, 
 	}
 }
 
-func (w *responseWriter) handlerDone() {
-	rws := w.rws
+func (rws *responseWriterState) HandlerDone() {
 	dirty := rws.dirty
 	rws.handlerDone = true
-	w.Flush()
-	w.rws = nil
+	rws.Flush()
 	if !dirty {
 		// Only recycle the pool if all prior Write calls to
 		// the serverConn goroutine completed successfully. If
@@ -2608,16 +2570,16 @@ func (w *responseWriter) handlerDone() {
 	}
 }
 
-func (w *responseWriter) Hijack() (net.Conn, error) {
+func (rws *responseWriterState) Hijack() (net.Conn, error) {
 	return nil, fmt.Errorf("http2 nosupported State Hijacked")
 }
 
-func (w *responseWriter) Size() int {
-	return 0
+func (rws *responseWriterState) Size() int {
+	return rws.length
 }
 
-func (w *responseWriter) Status() int {
-	return 0
+func (rws *responseWriterState) Status() int {
+	return rws.status
 }
 
 // Push errors.
@@ -2626,8 +2588,8 @@ var (
 	ErrPushLimitReached = errors.New("http2: push would exceed peer's SETTINGS_MAX_CONCURRENT_STREAMS")
 )
 
-func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
-	st := w.rws.stream
+func (rws *responseWriterState) Push(target string, opts *protocol.PushOptions) error {
+	st := rws.stream
 	sc := st.sc
 	sc.serveG.checkNotOn()
 
@@ -2649,7 +2611,7 @@ func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
 		opts.Header = Header{}
 	}
 	wantScheme := "http"
-	if w.rws.req.TLS() != nil {
+	if rws.req.TLS() != nil {
 		wantScheme = "https"
 	}
 
@@ -2663,7 +2625,7 @@ func (w *responseWriter) Push(target string, opts *protocol.PushOptions) error {
 			return fmt.Errorf("target must be an absolute URL or an absolute path: %q", target)
 		}
 		u.Scheme = wantScheme
-		u.Host = w.rws.req.host
+		u.Host = rws.req.host
 	} else {
 		if u.Scheme != wantScheme {
 			return fmt.Errorf("cannot push URL with scheme %q from request with scheme %q", u.Scheme, wantScheme)

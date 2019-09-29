@@ -30,10 +30,10 @@
 		var open = 0
 		for(var i in data) {
 			var route = data[i]
-			globaldata[route.Id] = route
+			globaldata[route.ID] = route
 			CreateJsonDom({
 				'div': {
-					id: "route-" + route.Id,
+					id: "route-" + route.ID,
 					className: "route",
 					div: {
 						className: "route-line " + route.State,

@@ -2,10 +2,11 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/eudore/eudore)](https://goreportcard.com/report/github.com/eudore/eudore)
 [![GoDoc](https://godoc.org/github.com/eudore/eudore?status.svg)](https://godoc.org/github.com/eudore/eudore)
+[![Gitter](https://badges.gitter.im/eudore/community.svg)](https://gitter.im/eudore/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
 eudore是一个高扩展、高效的http框架及[http文档库](docs)。
 
-反馈和交流[q群373278915](//shang.qq.com/wpa/qunwpa?idkey=869ec8f1272b4757771c3e406349f1128cfa3bd9ca668937dda8dfb223261a60)。
+反馈和交流请加群组：[QQ群373278915](//shang.qq.com/wpa/qunwpa?idkey=869ec8f1272b4757771c3e406349f1128cfa3bd9ca668937dda8dfb223261a60)。
 
 ## Features
 

@@ -3,6 +3,7 @@ package eudore
 // 定义eudore定义各种常量。
 const (
 	// Eudore environ
+
 	// EnvEudoreIsNotify 表示使用使用了Notify组件。
 	EnvEudoreIsNotify = "EUDORE_IS_NOTIFY"
 	// EnvEudoreIsDaemon 用于表示是否fork来后台启动。
@@ -13,6 +14,7 @@ const (
 	EnvEudoreDisableSignal = "EUDORE_DISABLE_SIGNAL"
 
 	// Response statue
+
 	StatusContinue           = 100 // RFC 7231, 6.2.1
 	StatusSwitchingProtocols = 101 // RFC 7231, 6.2.2
 	StatusProcessing         = 102 // RFC 2518, 10.1
@@ -81,6 +83,7 @@ const (
 	StatusNetworkAuthenticationRequired = 511 // RFC 6585, 6
 
 	// Header
+
 	HeaderAccept          = "Accept"
 	HeaderAcceptEncoding  = "Accept-Encoding"
 	HeaderAuthorization   = "Authorization"
@@ -102,6 +105,7 @@ const (
 	HeaderXRequestID      = "X-Request-ID"
 
 	// 默认http请求方法
+
 	MethodAny     = "ANY"
 	MethodGet     = "GET"
 	MethodPost    = "POST"
@@ -114,6 +118,7 @@ const (
 	MethodTrace   = "TRACE"
 
 	// Mime
+
 	MimeCharsetUtf8                = "charset=utf-8"
 	MimeText                       = "text/*"
 	MimeTextPlain                  = "text/plain"
@@ -137,6 +142,7 @@ const (
 	MimeMultipartForm              = "multipart/form-data"
 
 	// Param
+
 	ParamAction   = "action"
 	ParamRAM      = "ram"
 	ParamTemplate = "template"

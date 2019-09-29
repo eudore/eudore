@@ -9,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -27,7 +28,7 @@ var (
 	}
 	part1 = []byte(`{"time":"`)
 	part2 = []byte(`","level":"`)
-	part3 = []byte(`","fields":`)
+	part3 = []byte(`","fields":{`)
 	part4 = []byte("\"")
 	part5 = []byte(`,"message":"`)
 	part6 = []byte("\"}\n")
@@ -72,15 +73,17 @@ func NewLoggerStd(arg interface{}) (*LoggerStd, error) {
 		LoggerStdConfig: config,
 	}
 	log.pool.New = func() interface{} {
+		data := make([]byte, 2048)
 		return &entryStd{
 			logger: log,
-			data:   []byte{'{'},
+			data:   data[0:0],
 		}
 	}
 	return log, log.initOut()
 }
 
 func (log *LoggerStd) initOut() error {
+	log.Path = strings.TrimSpace(log.Path)
 	if len(log.Path) == 0 {
 		log.out = bufio.NewWriter(os.Stdout)
 		return nil
@@ -237,7 +240,7 @@ func (entry *entryStd) Fatal(args ...interface{}) {
 	entry.logger.mu.Lock()
 	entry.writeTo(entry.logger.out)
 	entry.logger.mu.Unlock()
-	panic(entry.message)
+	entry.logger.pool.Put(entry)
 }
 
 // Debugf 方法格式化写入流Debug级别日志
@@ -295,7 +298,7 @@ func (entry *entryStd) Fatalf(format string, args ...interface{}) {
 	entry.logger.mu.Lock()
 	entry.writeTo(entry.logger.out)
 	entry.logger.mu.Unlock()
-	panic(entry.message)
+	entry.logger.pool.Put(entry)
 }
 
 // WithFields 方法设置多个条目属性。
@@ -503,14 +506,16 @@ func (entry *entryStd) writeTo(w io.Writer) {
 		w.Write(part3)
 		entry.data[len(entry.data)-1] = '}'
 		w.Write(entry.data)
-		entry.data = entry.data[0:1]
+		entry.data = entry.data[0:0]
 	} else {
 		w.Write(part4)
 	}
 
 	if len(entry.message) > 0 {
 		w.Write(part5)
-		w.Write(*(*[]byte)(unsafe.Pointer(&entry.message)))
+		entry.writeString(entry.message)
+		w.Write(entry.data)
+		entry.data = entry.data[0:0]
 		w.Write(part6)
 	} else {
 		w.Write(part7)

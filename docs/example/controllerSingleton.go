@@ -11,18 +11,18 @@ type MyBaseController struct {
 }
 
 // 每次初始化访问次数加一
-func (c *MyBaseController) Init(ctx eudore.Context) error {
-	c.visitor++
+func (ctl *MyBaseController) Init(ctx eudore.Context) error {
+	ctl.visitor++
 	return nil
 }
 
 // 返回访问次数
-func (c *MyBaseController) Any() interface{} {
-	return c.visitor
+func (ctl *MyBaseController) Any() interface{} {
+	return ctl.visitor
 }
 
 // 单例控制器Context对象必须要参数传入，Init保存Context会并发不安全。
-func (c *MyBaseController) Path(ctx eudore.Context) interface{} {
+func (ctl *MyBaseController) Path(ctx eudore.Context) interface{} {
 	return ctx.Path()
 }
 

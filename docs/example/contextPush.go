@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/eudore/eudore"
 )
 
@@ -30,5 +29,5 @@ push test
 	})
 
 	app.ListenTLS(":8088", "", "")
-	fmt.Println(app.Run())
+	app.Run()
 }

@@ -67,8 +67,8 @@ type (
 const (
 	// sniffLen 是读取数据长度。
 	sniffLen = 512
-	// timeFormat 定义GMT时间格式化使用的格式。
-	timeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
+	// TimeFormat 定义GMT时间格式化使用的格式。
+	TimeFormat = "Mon, 02 Jan 2006 15:04:05 GMT"
 	// RFC6455: The value of this header field MUST be a nonce consisting of a
 	// randomly selected 16-byte value that has been base64-encoded (see
 	// Section 4 of [RFC4648]).  The nonce MUST be selected randomly for each
@@ -527,7 +527,7 @@ func HandlerContent(ctx Context, content io.ReadSeeker, modtime time.Time, sendS
 	// If Content-Type isn't set, use the file's extension to find it, but
 	// if the Content-Type is unset explicitly, do not sniff the type.
 	h := ctx.Response().Header()
-	h.Set("Last-Modified", modtime.UTC().Format(timeFormat))
+	h.Set("Last-Modified", modtime.UTC().Format(TimeFormat))
 	h.Set(HeaderContentType, ctype)
 
 	// handle Content-Range header.
@@ -1009,8 +1009,8 @@ func copyheader(source protocol.Header, target protocol.Header) {
 	})
 }
 
-// HandlerProxy 创建一个反向代理处理函数，支持101处理。
-func HandlerProxy(addr string) HandlerFunc {
+// NewProxyHandlerFunc 创建一个反向代理处理函数，支持101处理。
+func NewProxyHandlerFunc(addr string) HandlerFunc {
 	return func(ctx Context) {
 		req, err := http.NewRequest(ctx.Method(), addr+ctx.Request().RequestURI(), ctx)
 		if err != nil {

@@ -27,7 +27,7 @@ var (
 	ErrNewHandlerFuncParamNotFunc = errors.New("NewHandlerFunc input parameter must be a function")
 	// ErrNotToServerListener newServerListens函数参数异常，无法解析并转换成serverListener类型。
 	ErrNotToServerListener = errors.New("Parameters cannot be converted to serverListener type")
-	// ErrRegisterControllerExecFuncParamNotFunc RegisterControllerHandlerFunc第一个参数必须是一个函数。
+	// ErrRegisterControllerHandlerFuncParamNotFunc RegisterControllerHandlerFunc第一个参数必须是一个函数。
 	ErrRegisterControllerHandlerFuncParamNotFunc = errors.New("The parameter type of RegisterControllerHandlerFunc must be a function")
 	// ErrRegisterNewHandlerParamNotFunc 调用RegisterHandlerFunc函数时，参数必须是一个函数。
 	ErrRegisterNewHandlerParamNotFunc = errors.New("The parameter type of RegisterNewHandler must be a function")
@@ -92,45 +92,49 @@ func NewErrors() *Errors {
 }
 
 // HandleError 实现处理多个错误，如果非空则保存错误。
-func (e *Errors) HandleError(errs ...error) {
-	for _, err := range errs {
-		if err != nil {
-			e.errs = append(e.errs, err)
+func (err *Errors) HandleError(errs ...error) {
+	for _, e := range errs {
+		if e != nil {
+			err.errs = append(err.errs, e)
 		}
 	}
 }
 
 // Error 方法实现error接口，返回错误描述。
-func (e *Errors) Error() string {
-	switch len(e.errs) {
+func (err *Errors) Error() string {
+	switch len(err.errs) {
 	case 0:
 		return ""
 	case 1:
-		return e.errs[0].Error()
+		return err.errs[0].Error()
 	default:
-		return fmt.Sprint(e.errs)
+		return fmt.Sprint(err.errs)
 	}
 }
 
 // GetError 方法返回错误，如果没有保存的错误则返回空。
-func (e *Errors) GetError() error {
-	if len(e.errs) == 0 {
+func (err *Errors) GetError() error {
+	switch len(err.errs) {
+	case 0:
 		return nil
+	case 1:
+		return err.errs[0]
+	default:
+		return err
 	}
-	return e
 }
 
 // NewErrorCode 创建一个ErrorCode对象。
-func NewErrorCode(c int, str string) *ErrorCode {
-	return &ErrorCode{code: c, message: str}
+func NewErrorCode(code int, msg string) *ErrorCode {
+	return &ErrorCode{code: code, message: msg}
 }
 
 // Error 方法实现error接口，返回错误信息。
-func (e *ErrorCode) Error() string {
-	return e.message
+func (err *ErrorCode) Error() string {
+	return err.message
 }
 
 // Code 方法返回错误状态码。
-func (e *ErrorCode) Code() int {
-	return e.code
+func (err *ErrorCode) Code() int {
+	return err.code
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/eudore/eudore"
 	"github.com/kr/pretty"
-	"reflect"
+	// "reflect"
 	"strings"
 )
 
@@ -36,43 +36,24 @@ func List(ctx eudore.Context) {
 	ctx.Render(keys)
 }
 
-func getVal(key1, key2 string) interface{} {
-	val, ok := objs[key1]
-	if ok {
-		if key2 != "" {
-			return eudore.Get(val, strings.Replace(key2[1:], "/", ".", -1))
-		}
-		return val
-	}
-
-	index := strings.LastIndexByte(key1, '/')
-	if index == -1 {
-		return nil
-	}
-
-	key1 += key2
-	return getVal(key1[0:index], key1[index:len(key1)])
-}
-
 // Showkey 函数显示key的数据。
 func Showkey(ctx eudore.Context) {
-	val := getVal(ctx.GetParam("key"), "")
+	// 获取对象
+	key, path := getNameAndPath(ctx.GetParam("key"))
+	val := objs[key]
+	if val != nil {
+		val = eudore.Get(val, path)
+	}
 	if val == nil {
 		ctx.WriteString("not found key: " + ctx.GetParam("key"))
 		return
 	}
 
-	var length = reflect.TypeOf(val).Elem().NumField()
-	fields := make(map[string]interface{}, length)
-	pt := reflect.TypeOf(val).Elem()
-	pv := reflect.ValueOf(val).Elem()
-	for i := 0; i < length; i++ {
-		if pv.Field(i).CanInterface() {
-			fields[pt.Field(i).Name] = pv.Field(i).Interface()
-		}
-	}
 	ctx.SetHeader(eudore.HeaderContentType, "text/plain; charset=utf-8")
-	// ctx.WriteRender(fields)
-	// ctx.WriteJSON(fields)
 	fmt.Fprintf(ctx, "%# v", pretty.Formatter(val))
+}
+
+func getNameAndPath(key string) (string, string) {
+	keys := strings.Split(key, "/")
+	return keys[0], strings.Join(keys[1:], ".")
 }

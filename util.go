@@ -201,6 +201,27 @@ func GetDefaultString(i interface{}, str string) string {
 	return str
 }
 
+// GetArrayString 转换成[]string
+func GetArrayString(i interface{}) []string {
+	str, ok := i.(string)
+	if ok {
+		return []string{str}
+	}
+	strs, ok := i.([]string)
+	if ok {
+		return strs
+	}
+	is, ok := i.([]interface{})
+	if ok {
+		strs = make([]string, len(is))
+		for i := range is {
+			strs[i] = fmt.Sprint(is[i])
+		}
+		return strs
+	}
+	return nil
+}
+
 // GetStringBool 使用GetStringDefaultBool，默认false。
 func GetStringBool(str string) bool {
 	return GetStringDefaultBool(str, false)

@@ -21,13 +21,13 @@ type (
 	}
 	// ConfigMap 使用map保存配置。
 	ConfigMap struct {
-		Keys  map[string]interface{}
+		Keys  map[string]interface{} `set:"keys"`
 		funcs []ConfigParseFunc
 		mu    sync.RWMutex
 	}
 	// ConfigEudore 使用结构体或map保存配置，通过反射来读写属性。
 	ConfigEudore struct {
-		Keys  interface{}       `set:"key"`
+		Keys  interface{}       `set:"keys"`
 		mu    sync.RWMutex      `set:"-"`
 		funcs []ConfigParseFunc `set:"-"`
 	}
