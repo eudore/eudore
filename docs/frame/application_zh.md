@@ -11,7 +11,6 @@ app对象无法直接使用,需要额外实现EudoreHTTP方法，然后给Server
 App对象定义：
 
 ```golang
-// app.go
 type (
 	// PoolGetFunc 定义sync.Pool对象使用的构造函数。
 	PoolGetFunc func() interface{}
@@ -31,37 +30,32 @@ type (
 		ContextPool sync.Pool
 	}
 )
-
 ```
 
 ## Core
 
-Core组合App对象，额外添加了Run、Listen、ListenTLS和EudoreHTTP四个函数，实现最简app。
+Core组合App对象，额外添加了Run、Listen、ListenTLS、Serve和ServeHTTP五个函数，实现最简app。
 
-Listen和ListenTLS是添加一个监听端口信息，Run用来启动程序，启动Server监听端口。
+Listen和ListenTLS是添加一个监听端口信息，Serve启动一个监听，Run用来启动程序，启动Server监听端口。
 
-EudoreHTTP是实现protocol.Handler接口，额外兼容实现了http.Handler接口，用于处理Server传统的请求。
+ServeHTTP是实现http.Handler接口，用于处理Server传递的请求。
 
 ```golang
-// protocol/protocol.go
-type Handler interface {
-	EudoreHTTP(context.Context, ResponseWriter, RequestReader)
-}
-
-// core.go
 // Core 定义Core对象，是App对象的一种实例化。
 type Core struct {
 	*App
+	wg sync.WaitGroup
 }
 ```
 
 ```godoc
 type Core
-    func NewCore() *Core
-    func (app *Core) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader)
-    func (app *Core) Listen(addr string) *Core
-    func (app *Core) ListenTLS(addr, key, cert string) *Core
-    func (app *Core) Run() (err error)
+	func NewCore() *Core
+	func (app *Core) Listen(addr string)
+	func (app *Core) ListenTLS(addr, key, cert string)
+	func (app *Core) Run() (err error)
+	func (app *Core) Serve(ln net.Listener) error
+	func (app *Core) ServeHTTP(w http.ResponseWriter, r *http.Request)
 ```
 
 ## Eudore
@@ -93,27 +87,29 @@ type Eudore struct {
 type Eudore
     func NewEudore(options ...interface{}) *Eudore
     func (app *Eudore) AddGlobalMiddleware(hs ...HandlerFunc)
-    func (app *Eudore) AddListener(l net.Listener)
+    func (app *Eudore) AddListener(ln net.Listener)
     func (app *Eudore) AddStatic(path, dir string)
-    func (app *Eudore) Close() error
     func (app *Eudore) Debug(args ...interface{})
     func (app *Eudore) Debugf(format string, args ...interface{})
     func (app *Eudore) Err() error
     func (app *Eudore) Error(args ...interface{})
     func (app *Eudore) Errorf(format string, args ...interface{})
-    func (app *Eudore) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader)
+    func (app *Eudore) Fatal(args ...interface{})
+    func (app *Eudore) Fatalf(format string, args ...interface{})
     func (app *Eudore) HandleContext(ctx Context)
     func (app *Eudore) HandleError(err error)
     func (app *Eudore) HandleSignal(sig os.Signal)
     func (app *Eudore) Info(args ...interface{})
     func (app *Eudore) Infof(format string, args ...interface{})
     func (app *Eudore) Init(names ...string) (err error)
-    func (app *Eudore) Listen(addr string) *Eudore
-    func (app *Eudore) ListenTLS(addr, key, cert string) *Eudore
+    func (app *Eudore) InitAll() error
+    func (app *Eudore) Listen(addr string)
+    func (app *Eudore) ListenTLS(addr, key, cert string)
     func (app *Eudore) RegisterInit(name string, index int, fn EudoreFunc)
     func (app *Eudore) RegisterSignal(sig os.Signal, fn EudoreFunc)
     func (app *Eudore) Restart() error
     func (app *Eudore) Run() error
+    func (app *Eudore) ServeHTTP(w http.ResponseWriter, r *http.Request)
     func (app *Eudore) Shutdown() error
     func (app *Eudore) Start() error
     func (app *Eudore) Warning(args ...interface{})

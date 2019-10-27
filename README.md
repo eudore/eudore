@@ -30,6 +30,7 @@ go get -v -u github.com/eudore/eudore
 - [godoc](https://godoc.org/github.com/eudore/eudore)
 - [演示例子](docs/example#example)
 - [框架文档](docs/frame)
+- [实践](https://github.com/eudore/website)
 
 ## 许可
 

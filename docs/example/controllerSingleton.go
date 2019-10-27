@@ -5,28 +5,28 @@ import (
 	"github.com/eudore/eudore/component/httptest"
 )
 
-type MyBaseController struct {
+type myBaseController struct {
 	eudore.ControllerSingleton
 	visitor uint64
 }
 
 // 每次初始化访问次数加一
-func (ctl *MyBaseController) Init(ctx eudore.Context) error {
+func (ctl *myBaseController) Init(ctx eudore.Context) error {
 	ctl.visitor++
 	return nil
 }
 
 // 返回访问次数
-func (ctl *MyBaseController) Any() interface{} {
+func (ctl *myBaseController) Any() interface{} {
 	return ctl.visitor
 }
 
 // 单例控制器Context对象必须要参数传入，Init保存Context会并发不安全。
-func (ctl *MyBaseController) Path(ctx eudore.Context) interface{} {
+func (ctl *myBaseController) Path(ctx eudore.Context) interface{} {
 	return ctx.Path()
 }
 
-func (*MyBaseController) ControllerRoute() map[string]string {
+func (*myBaseController) ControllerRoute() map[string]string {
 	return map[string]string{
 		// 修改Path方法的路由注册
 		"Path": "/path/*",
@@ -35,7 +35,7 @@ func (*MyBaseController) ControllerRoute() map[string]string {
 
 func main() {
 	app := eudore.NewCore()
-	app.AddController(new(MyBaseController))
+	app.AddController(new(myBaseController))
 
 	// 请求测试
 	client := httptest.NewClient(app)

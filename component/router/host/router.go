@@ -82,7 +82,7 @@ func (r *RouterHost) RegisterHandler(method string, path string, handler eudore.
 
 // Match 方法根据host选择路由器然后匹配请求。
 func (r *RouterHost) Match(method, path string, params eudore.Params) eudore.HandlerFuncs {
-	return r.matchRouter(params.GetParam("host")).Match(method, path, params)
+	return r.matchRouter(params.Get("host")).Match(method, path, params)
 }
 
 // Set 方法传递路由器的Set行为。

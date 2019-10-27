@@ -8,10 +8,12 @@ import (
 	"github.com/eudore/eudore"
 )
 
+// MyContext 定义新的请求上下文扩展。
 type MyContext struct {
 	eudore.Context
 }
 
+// Hello 方法返回hello。
 func (ctx MyContext) Hello() {
 	ctx.WriteString("hello")
 }

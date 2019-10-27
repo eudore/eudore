@@ -5,117 +5,85 @@ import (
 	"github.com/eudore/eudore"
 )
 
-const (
-	// UserIdString 定义获取用户id的参数名称。
-	UserIdString = "UID"
-)
-
 type (
-	// GetActionFunc 定义Ram获得Action的函数。
-	GetActionFunc func(eudore.Context) string
-	// GetIdFunc 定义Ram获得id的函数。
-	GetIdFunc func(eudore.Context) int
-	// ForbiddenFunc 定义Ram执行403的处理函数。
-	ForbiddenFunc func(eudore.Context)
-	// RamHandleFunc 定义Ram处理一个认证请求的函数。
-	RamHandleFunc func(int, string, eudore.Context) (bool, bool)
-	// RamHandler 定义Ram处理接口
-	RamHandler interface {
-		RamHandle(int, string, eudore.Context) (bool, bool)
+	// Handler 定义Ram处理接口
+	Handler interface {
+		Match(int, string, eudore.Context) (bool, bool)
 		// return1 验证结果 return2 是否验证
-
 	}
-	// RamHttp 定义Ram处理一个eudore http请求上下文。
-	RamHttp struct {
-		RamHandler
-		GetId     GetIdFunc
-		GetAction GetActionFunc
-		Forbidden ForbiddenFunc
-	}
-	// RamAny 是一个Ram组合处理，多个Ram任意一个通过即可。
-	RamAny struct {
-		Rams []RamHandler
-	}
-	// RanAnd 是一个Ram组合处理，要求多个Ram全部通过。
-	RanAnd struct {
-		Rams []RamHandler
-	}
-	// Deny 定义默认全部拒绝处理
-	Deny struct{}
-	// Allow 定义默认全部通过处理
+	// Allow 定义全部允许处理
 	Allow struct{}
+	// Deny 定义全部拒绝处理
+	Deny struct{}
 )
 
 var (
-	// DenyHander 是拒绝处理者
-	DenyHander = Deny{}
-	// AllowHanlder 是允许处理者
-	AllowHanlder = Allow{}
+	_ Handler = (*Acl)(nil)
+	_ Handler = (*Rbac)(nil)
+	_ Handler = (*Pbac)(nil)
+	_ Handler = (*Allow)(nil)
+	_ Handler = (*Deny)(nil)
 )
 
-// NewRamHttp 创建一个eudore请求处理者，需要给予Ram处理者。
-//
-// 如果没有Ram处理者默认使用全部拒绝，如果有多个Ram处理者，使用或逻辑。多Ram任意一个允许即可。
-func NewRamHttp(rams ...RamHandler) *RamHttp {
-	r := &RamHttp{
-		GetId:     GetIdDefault,
-		GetAction: GetActionDefault,
-		Forbidden: ForbiddenDefault,
-	}
-	switch len(rams) {
-	case 0:
-		r.RamHandler = AllowHanlder
-	case 1:
-		r.RamHandler = rams[0]
-	default:
-		r.RamHandler = NewRamAny(rams...)
-	}
-	return r
-}
-
-// Handle 方法实现eudore请求上下文处理函数。
-func (r *RamHttp) NewRamFunc() eudore.HandlerFunc {
-	return func(ctx eudore.Context) {
-		action := r.GetAction(ctx)
-		if len(action) > 0 && !HandleDefaultRam(r.GetId(ctx), action, ctx, r.RamHandler.RamHandle) {
-			r.Forbidden(ctx)
-		}
-	}
-}
-
-// NewRamAny 函数创建一个或逻辑的ram组合处理者。
-func NewRamAny(hs ...RamHandler) *RamAny {
-	return &RamAny{
-		Rams: hs,
-	}
-}
-
-// RamHandle 方法实现RamHandler接口。
-func (r *RamAny) RamHandle(id int, action string, ctx eudore.Context) (bool, bool) {
-	for _, h := range r.Rams {
-		isgrant, ok := h.RamHandle(id, action, ctx)
-		if ok {
-			ctx.SetParam(eudore.ParamRAM, "ram-"+ctx.GetParam(eudore.ParamRAM))
-			return isgrant, true
-		}
-	}
-	ctx.SetParam(eudore.ParamRAM, "ram-default")
-	return false, false
-}
-
-// Handle 方法实现eudore请求上下文处理函数。
-func (r *RamAny) Handle(ctx eudore.Context) {
-	DefaultHandle(ctx, r)
-}
-
-// RamHandle 方法实现RamHandler接口。
-func (Deny) RamHandle(id int, action string, ctx eudore.Context) (bool, bool) {
-	ctx.SetParam(eudore.ParamRAM, "deny")
+// Match 方法实现Handler接口。
+func (Deny) Match(int, string, eudore.Context) (bool, bool) {
 	return false, true
 }
 
-// RamHandle 方法实现RamHandler接口。
-func (Allow) RamHandle(id int, action string, ctx eudore.Context) (bool, bool) {
-	ctx.SetParam(eudore.ParamRAM, "allow")
+// Match 方法实现andler接口。
+func (Allow) Match(int, string, eudore.Context) (bool, bool) {
 	return true, true
+}
+
+// NewMiddleware 函数使用多个ram.Handler创建一个eudore中间件处理函数。
+func NewMiddleware(rams ...Handler) eudore.HandlerFunc {
+	return func(ctx eudore.Context) {
+		// 如果请求用户资源是用户本身的直接通过，UID、UNAME由用户信息中间件加载，userid、username由路由参数加载。
+		if ctx.GetParam("userid") == ctx.GetParam("UID") && ctx.GetParam("userid") != "" {
+			return
+		}
+		if ctx.GetParam("username") == ctx.GetParam("UNAME") && ctx.GetParam("username") != "" {
+			return
+		}
+
+		// 执行ram鉴权逻辑
+		action := ctx.GetParam("action")
+		if action == "" {
+			return
+		}
+
+		uid := eudore.GetInt(ctx.GetParam("UID"))
+		for {
+			// 依次检查每种ram是否匹配
+			for _, ram := range rams {
+				result, ok := ram.Match(uid, action, ctx)
+				if ok {
+					if !result {
+						forbiddenFunc(ctx)
+					}
+					return
+				}
+			}
+			// 执行非0和0两种userid匹配,用户0相当于用户的默认的权限。
+			if uid == 0 {
+				break
+			} else {
+				uid = 0
+			}
+		}
+
+		// 都未匹配返回403
+		ctx.SetParam("ram", "deny")
+		forbiddenFunc(ctx)
+	}
+}
+
+func forbiddenFunc(ctx eudore.Context) {
+	ctx.WriteHeader(403)
+	ctx.Render(map[string]string{
+		eudore.ParamRAM:    ctx.GetParam("ram"),
+		eudore.ParamAction: ctx.GetParam("action"),
+		"message":          "Forbidden",
+	})
+	ctx.End()
 }

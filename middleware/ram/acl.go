@@ -24,24 +24,19 @@ func NewAcl() *Acl {
 	}
 }
 
-// Handle 实现eduore请求上下文处理函数
-func (acl *Acl) Handle(ctx eudore.Context) {
-	DefaultHandle(ctx, acl)
-}
-
-// RamHandle 方法实现ram.RamHandler接口，匹配一个请求。
-func (acl *Acl) RamHandle(id int, perm string, ctx eudore.Context) (bool, bool) {
-	ctx.SetParam(eudore.ParamRAM, "acl")
-
+// Match 方法实现ram.Handler接口，匹配一个请求。
+func (acl *Acl) Match(id int, perm string, ctx eudore.Context) (bool, bool) {
 	permid, ok := acl.Permissions[perm]
 	if ok {
 		_, ok = acl.AllowBinds[id][permid]
 		if ok {
+			ctx.SetParam(eudore.ParamRAM, "acl")
 			return true, true
 		}
 
 		_, ok = acl.DenyBinds[id][permid]
 		if ok {
+			ctx.SetParam(eudore.ParamRAM, "acl")
 			return false, true
 		}
 	}

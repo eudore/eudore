@@ -224,7 +224,10 @@ func ControllerBaseInject(controller Controller, router RouterMethod) error {
 	// 添加控制器组。
 	cname := iType.Name()
 	cpkg := iType.PkgPath()
-	if strings.HasSuffix(cname, "Controller") {
+	group := router.GetParam("controllergroup")
+	if group != "" {
+		router = router.Group(group).SetParam("controllergroup", "")
+	} else if strings.HasSuffix(cname, "Controller") {
 		router = router.Group("/" + strings.ToLower(strings.TrimSuffix(cname, "Controller")))
 	}
 
@@ -288,7 +291,10 @@ func ControllerSingletonInject(controller Controller, router RouterMethod) error
 	// 添加控制器组。
 	cname := iType.Name()
 	cpkg := iType.PkgPath()
-	if strings.HasSuffix(cname, "Controller") {
+	group := router.GetParam("controllergroup")
+	if group != "" {
+		router = router.Group(group).SetParam("controllergroup", "")
+	} else if strings.HasSuffix(cname, "Controller") {
 		router = router.Group("/" + strings.ToLower(strings.TrimSuffix(cname, "Controller")))
 	}
 

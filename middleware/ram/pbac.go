@@ -1,10 +1,9 @@
 package ram
 
 import (
+	"github.com/eudore/eudore"
 	"strconv"
 	"strings"
-
-	"github.com/eudore/eudore"
 )
 
 type (
@@ -12,12 +11,7 @@ type (
 	Pbac struct {
 		PolicyBinds map[int][]int   `json:"-" key:"-"`
 		Policys     map[int]*Policy `json:"-" key:"-"`
-	}
-	// ConditionS 定义PBAC使用的条件对象。
-	ConditionS struct {
-		Addr   []string
-		Method []string
-		Bash   bool
+		GetResource func(eudore.Context) string
 	}
 )
 
@@ -26,7 +20,19 @@ func NewPbac() *Pbac {
 	return &Pbac{
 		PolicyBinds: make(map[int][]int),
 		Policys:     make(map[int]*Policy),
+		GetResource: getResource,
 	}
+}
+
+func getResource(ctx eudore.Context) string {
+	path := ctx.Path()
+	// 移除无效的前缀
+	prefix := ctx.GetParam("prefix")
+	if prefix != "" {
+		path = path[len(prefix):]
+	}
+	ctx.SetParam("resource", path)
+	return path
 }
 
 // BindPolicy 方法给一个用户id绑定一个策略id
@@ -56,14 +62,9 @@ func (p *Pbac) AddPolicyStringJson(id int, str string) {
 	p.AddPolicy(id, NewPolicyStringJSON(str))
 }
 
-// Handle 实现eduore请求上下文处理函数
-func (p *Pbac) Handle(ctx eudore.Context) {
-	DefaultHandle(ctx, p)
-}
-
-// RamHandle 方法实现ram.RamHandler接口，匹配一个请求。
-func (p *Pbac) RamHandle(id int, action string, ctx eudore.Context) (bool, bool) {
-	resource := getResource(ctx)
+// Match 方法实现ram.Handler接口，匹配一个请求。
+func (p *Pbac) Match(id int, action string, ctx eudore.Context) (bool, bool) {
+	resource := p.GetResource(ctx)
 	bs, ok := p.PolicyBinds[id]
 	if ok {
 		for _, b := range bs {
@@ -80,9 +81,4 @@ func (p *Pbac) RamHandle(id int, action string, ctx eudore.Context) (bool, bool)
 		}
 	}
 	return false, false
-}
-
-func getResource(ctx eudore.Context) string {
-	path := ctx.Path()
-	return path
 }

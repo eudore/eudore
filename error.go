@@ -84,6 +84,12 @@ type (
 		code    int
 		message string
 	}
+	errorInfo struct {
+		error
+		file string
+		line int
+		name string
+	}
 )
 
 // NewErrors 创建Errors对象。

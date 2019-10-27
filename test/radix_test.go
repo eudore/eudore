@@ -73,7 +73,7 @@ func (r *radixNode) InsertNode(path, key string, value interface{}) {
 
 // 对指定路径为edgeKey的Node分叉，公共前缀路径为pathKey
 func (r *radixNode) SplitNode(pathKey, edgeKey string) *radixNode {
-	for i, _ := range r.children {
+	for i := range r.children {
 		// 找到路径为edgeKey路径的Node，然后分叉
 		if r.children[i].path == edgeKey {
 			// 创建新的分叉Node，路径为公共前缀路径pathKey
@@ -106,7 +106,7 @@ func (t *radixTree) Insert(key string, val interface{}) {
 //
 // targetKey和targetValue为新Node数据。
 func (t *radixTree) recursiveInsertTree(currentNode *radixNode, containKey string, targetKey string, targetValue interface{}) {
-	for i, _ := range currentNode.children {
+	for i := range currentNode.children {
 		// 检查当前遍历的Node和插入路径是否有公共路径
 		// subStr是两者的公共路径，find表示是否有
 		subStr, find := getSubsetPrefix(containKey, currentNode.children[i].path)

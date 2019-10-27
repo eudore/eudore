@@ -66,6 +66,23 @@ type (
 	}
 )
 
+/*
+func TestTree(*testing.T) {
+	tree := eudore.NewTrieNode()
+	tree.Insert("", []int{00})
+	tree.Insert("/api/", []int{1})
+	tree.Insert("/api/v1", []int{2})
+	tree.Insert("/api/v2/", []int{3})
+	tree.Insert("/auth/index/", []int{4})
+	tree.Insert("/status/index/", []int{5})
+	fmt.Println(tree.Lookup("/a"))
+	fmt.Println(tree.Lookup("/api"))
+	fmt.Println(tree.Lookup("/api/v1"))
+	fmt.Println(tree.Lookup("/api/v2/2"))
+	fmt.Printf("struct: %# v\n", pretty.Formatter(tree))
+}
+*/
+
 func TestSetMap(*testing.T) {
 	var config = &config{}
 	fmt.Println(eudore.Set(config, "map.M2.2", "999"))

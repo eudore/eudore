@@ -55,9 +55,9 @@ func BindDefault(ctx Context, r io.Reader, i interface{}) error {
 
 // BindURL 函数使用url参数实现bind。
 func BindURL(ctx Context, _ io.Reader, i interface{}) error {
-	ctx.Querys().Range(func(k, v string) {
-		Set(i, k, v)
-	})
+	for key, vals := range ctx.Querys() {
+		Set(i, key, vals[0])
+	}
 	return nil
 }
 
@@ -92,9 +92,9 @@ func BindXML(_ Context, r io.Reader, i interface{}) error {
 
 // BindHeader 函数实现使用header数据bind。
 func BindHeader(ctx Context, r io.Reader, i interface{}) error {
-	ctx.Request().Header().Range(func(k, v string) {
-		Set(i, k, v)
-	})
+	// ctx.Request().Header().Range(func(k, v string) {
+	// 	Set(i, k, v)
+	// })
 	return nil
 }
 

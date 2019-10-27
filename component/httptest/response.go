@@ -6,8 +6,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-
-	"github.com/eudore/eudore/protocol"
 )
 
 type (
@@ -31,7 +29,7 @@ type (
 		// Deprecated: HeaderMap exists for historical compatibility
 		// and should not be used. To access the headers returned by a handler,
 		// use the Response.Header map as returned by the Result method.
-		HeaderMap HeaderMap
+		HeaderMap http.Header
 
 		// Body is the buffer to which the Handler's Write calls are sent.
 		// If nil, the Writes are silently discarded.
@@ -41,7 +39,7 @@ type (
 		Flushed bool
 
 		//		result      *http.Response // cache of Result's return value
-		snapHeader  HeaderMap // snapshot of HeaderMap at first Write
+		snapHeader  http.Header // snapshot of HeaderMap at first Write
 		wroteHeader bool
 	}
 )
@@ -51,7 +49,7 @@ func NewResponseWriterTest(client *Client, req *RequestReaderTest) *ResponseWrit
 	return &ResponseWriterTest{
 		client:    client,
 		Request:   req,
-		HeaderMap: make(HeaderMap),
+		HeaderMap: make(http.Header),
 		Body:      new(bytes.Buffer),
 		Code:      200,
 	}
@@ -62,10 +60,10 @@ func NewResponseWriterTest(client *Client, req *RequestReaderTest) *ResponseWrit
 const DefaultRemoteAddr = "1.2.3.4"
 
 // Header returns the response headers.
-func (rw *ResponseWriterTest) Header() protocol.Header {
+func (rw *ResponseWriterTest) Header() http.Header {
 	m := rw.HeaderMap
 	if m == nil {
-		m = make(HeaderMap)
+		m = make(http.Header)
 		rw.HeaderMap = m
 	}
 	return m
@@ -125,13 +123,13 @@ func (rw *ResponseWriterTest) WriteHeader(code int) {
 	rw.Code = code
 	rw.wroteHeader = true
 	if rw.HeaderMap == nil {
-		rw.HeaderMap = make(HeaderMap)
+		rw.HeaderMap = make(http.Header)
 	}
 	rw.snapHeader = cloneHeaderMap(rw.HeaderMap)
 }
 
-func cloneHeaderMap(h HeaderMap) HeaderMap {
-	h2 := make(HeaderMap, len(h))
+func cloneHeaderMap(h http.Header) http.Header {
+	h2 := make(http.Header, len(h))
 	for k, vv := range h {
 		vv2 := make([]string, len(vv))
 		copy(vv2, vv)
@@ -154,7 +152,7 @@ func (rw *ResponseWriterTest) Hijack() (net.Conn, error) {
 }
 
 // Push 方法实现http2 push操作，改方法始终为空操作。
-func (rw *ResponseWriterTest) Push(string, *protocol.PushOptions) error {
+func (rw *ResponseWriterTest) Push(string, *http.PushOptions) error {
 	return nil
 }
 
@@ -168,13 +166,14 @@ func (rw *ResponseWriterTest) Status() int {
 	return rw.Code
 }
 
+// Errorf 方法输出错误学习。
 func (rw *ResponseWriterTest) Errorf(format string, args ...interface{}) {
 	err := fmt.Errorf(format, args...)
-	err = fmt.Errorf("httptest request %s %s of file location %s:%d, error: %v", rw.Request.Method(), rw.Request.RequestURI(), rw.Request.File, rw.Request.Line, err)
+	err = fmt.Errorf("httptest request %s %s of file location %s:%d, error: %v", rw.Request.Method, rw.Request.RequestURI, rw.Request.File, rw.Request.Line, err)
 	rw.client.Errs = append(rw.client.Errs, err)
 }
 
-// CheckStatus 方法检查
+// CheckStatus 方法检查状态码。
 func (rw *ResponseWriterTest) CheckStatus(status ...int) *ResponseWriterTest {
 	for _, i := range status {
 		if i == rw.Code {
@@ -186,6 +185,7 @@ func (rw *ResponseWriterTest) CheckStatus(status ...int) *ResponseWriterTest {
 	return rw
 }
 
+// CheckHeader 方法检查多个header的值
 func (rw *ResponseWriterTest) CheckHeader(h ...string) *ResponseWriterTest {
 	for i := 0; i < len(h)/2; i++ {
 		if rw.HeaderMap.Get(h[i]) != h[i+1] {
@@ -195,6 +195,7 @@ func (rw *ResponseWriterTest) CheckHeader(h ...string) *ResponseWriterTest {
 	return rw
 }
 
+// CheckBodyContainString 方法检查响应的字符串body是否包含指定多个字符串。
 func (rw *ResponseWriterTest) CheckBodyContainString(strs ...string) *ResponseWriterTest {
 	body := rw.Body.String()
 	for _, str := range strs {
@@ -205,20 +206,23 @@ func (rw *ResponseWriterTest) CheckBodyContainString(strs ...string) *ResponseWr
 	return rw
 }
 
+// CheckBodyString 方法检查body是否为指定字符串。
 func (rw *ResponseWriterTest) CheckBodyString(s string) *ResponseWriterTest {
 	if s != rw.Body.String() {
 		rw.Errorf("CheckBodyString response body size %d not is check string", rw.Body.Len())
 	}
 	return rw
 }
-func (rw *ResponseWriterTest) CheckBodyJson(data interface{}) *ResponseWriterTest {
 
+// CheckBodyJSON 方法检查body是否是指定对象的json， 未实现。
+func (rw *ResponseWriterTest) CheckBodyJSON(data interface{}) *ResponseWriterTest {
 	return rw
 }
 
+// Out 方法输出完整响应。
 func (rw *ResponseWriterTest) Out() *ResponseWriterTest {
 	var b bytes.Buffer
-	b.WriteString(fmt.Sprintf("httptest request %s %s status: %d", rw.Request.Method(), rw.Request.RequestURI(), rw.Code))
+	b.WriteString(fmt.Sprintf("httptest request %s %s status: %d", rw.Request.Method, rw.Request.RequestURI, rw.Code))
 	for k, v := range rw.HeaderMap {
 		b.WriteString(fmt.Sprintf("\n%s: %s", k, v))
 	}
@@ -227,13 +231,16 @@ func (rw *ResponseWriterTest) Out() *ResponseWriterTest {
 	return rw
 }
 
+// OutStatus 方法输出状态码。
 func (rw *ResponseWriterTest) OutStatus() *ResponseWriterTest {
-	rw.client.Printf("httptest request %s %s status: %d", rw.Request.Method(), rw.Request.RequestURI(), rw.Code)
+	rw.client.Printf("httptest request %s %s status: %d", rw.Request.Method, rw.Request.RequestURI, rw.Code)
 	return rw
 }
+
+// OutHeader 方法输出全部header。
 func (rw *ResponseWriterTest) OutHeader() *ResponseWriterTest {
 	var b bytes.Buffer
-	b.WriteString(fmt.Sprintf("httptest request %s %s status: %d", rw.Request.Method(), rw.Request.RequestURI(), rw.Code))
+	b.WriteString(fmt.Sprintf("httptest request %s %s status: %d", rw.Request.Method, rw.Request.RequestURI, rw.Code))
 	for k, v := range rw.HeaderMap {
 		b.WriteString(fmt.Sprintf("\n%s: %s", k, v))
 	}
@@ -241,7 +248,8 @@ func (rw *ResponseWriterTest) OutHeader() *ResponseWriterTest {
 	return rw
 }
 
+// OutBody 方法输出body字符串信息。
 func (rw *ResponseWriterTest) OutBody() *ResponseWriterTest {
-	rw.client.Printf("httptest request %s %s body: %s", rw.Request.Method(), rw.Request.RequestURI(), rw.Body.String())
+	rw.client.Printf("httptest request %s %s body: %s", rw.Request.Method, rw.Request.RequestURI, rw.Body.String())
 	return rw
 }

@@ -15,28 +15,28 @@ import (
 	"github.com/eudore/eudore/component/httptest"
 )
 
-type MyUserController struct {
+type myUserController struct {
 	eudore.ControllerView
 }
 
-func (*MyUserController) Any() {}
-func (ctl *MyUserController) Get() {
+func (*myUserController) Any() {}
+func (ctl *myUserController) Get() {
 	ctl.SetTemplate("index.html")
 }
-func (*MyUserController) GetInfoByIdName() {}
-func (*MyUserController) GetIndex()        {}
-func (*MyUserController) GetContent()      {}
+func (*myUserController) GetInfoByIdName() {}
+func (*myUserController) GetIndex()        {}
+func (*myUserController) GetContent()      {}
 
-func (user *MyUserController) Release() (err error) {
-	user.Data["method"] = user.Method()
-	return user.ControllerView.Release()
+func (ctl *myUserController) Release() (err error) {
+	ctl.Data["method"] = ctl.Method()
+	return ctl.ControllerView.Release()
 }
 
 func main() {
 	app := eudore.NewCore()
 	// 支持渲染模板
 	app.Renderer = eudore.NewHTMLWithRender(app.Renderer, nil)
-	app.AddController(new(MyUserController))
+	app.AddController(new(myUserController))
 
 	// 请求测试
 	client := httptest.NewClient(app)

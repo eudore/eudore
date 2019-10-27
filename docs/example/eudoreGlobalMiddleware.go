@@ -6,7 +6,6 @@ Eudore全局中间件会在路由匹配前执行，可以影响路由匹配数�
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/protocol"
 )
 
 func main() {
@@ -14,7 +13,8 @@ func main() {
 	app.RegisterInit("init-router", 0x015, func(app *eudore.Eudore) error {
 		// 添加全局中间件修改请求，请求方法和路径固定位PUT和/。
 		app.AddGlobalMiddleware(func(ctx eudore.Context) {
-			ctx.SetRequest(&newRequest{ctx.Request()})
+			ctx.Request().Method = "PUT"
+			ctx.Request().URL.Path = "/"
 		})
 		// 添加路由详细。
 		app.GetFunc("/*", func(ctx eudore.Context) {
@@ -31,16 +31,4 @@ func main() {
 		return nil
 	})
 	app.Run()
-}
-
-type newRequest struct {
-	protocol.RequestReader
-}
-
-func (*newRequest) Method() string {
-	return "PUT"
-}
-
-func (*newRequest) Path() string {
-	return "/"
 }

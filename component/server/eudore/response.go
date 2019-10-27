@@ -1,12 +1,12 @@
-package http
+package eudore
 
 import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/eudore/eudore/protocol"
 	"io"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -85,9 +85,9 @@ var Status = map[int]string{
 
 // Response 定义http响应对象
 type Response struct {
-	request *Request
+	request Request
 	writer  *bufio.Writer
-	header  Header
+	header  http.Header
 	status  int
 	size    int
 	iswrite bool
@@ -110,7 +110,7 @@ type cancelConn struct {
 // Reset 方法重置http响应状态
 func (w *Response) Reset(conn net.Conn) {
 	w.writer.Reset(conn)
-	w.header.Reset()
+	w.header = make(http.Header)
 	w.status = 200
 	w.size = 0
 	w.iswrite = false
@@ -121,8 +121,8 @@ func (w *Response) Reset(conn net.Conn) {
 }
 
 // Header 方法获得http响应header对象。
-func (w *Response) Header() protocol.Header {
-	return &w.header
+func (w *Response) Header() http.Header {
+	return w.header
 }
 
 // WriteHeader 方法写入状态码
@@ -192,12 +192,13 @@ func (w *Response) writerResponseLine() {
 	w.iswrite = true
 	// Write response line
 	// 写入响应行
-	fmt.Fprintf(w.writer, "%s %d %s\r\n", w.request.Proto(), w.status, Status[w.status])
+	fmt.Fprintf(w.writer, "%s %d %s\r\n", w.request.Proto, w.status, Status[w.status])
 	// Write headers
 	// 写入headers
-	h := w.header
-	for i, k := range h.Keys {
-		fmt.Fprintf(w.writer, "%s: %s\r\n", k, h.Vals[i])
+	for key, vals := range w.header {
+		for _, val := range vals {
+			fmt.Fprintf(w.writer, "%s: %s\r\n", key, val)
+		}
 	}
 	// 写入时间和Server
 	fmt.Fprintf(w.writer, "Date: %s\r\nServer: eudore\r\n", time.Now().UTC().Format(TimeFormat))
@@ -256,12 +257,13 @@ func (w *Response) finalFlush() (err error) {
 // Hijack 方法劫持http连接。
 func (w *Response) Hijack() (net.Conn, error) {
 	w.ishjack = true
-	w.request.conn.SetDeadline(time.Time{})
-	return &cancelConn{w.request.conn, w.cancel}, nil
+	// w.request.conn.SetDeadline(time.Time{})
+	// return &cancelConn{w.request.conn, w.cancel}, nil
+	return nil, nil
 }
 
 // Push 方法http协议不支持push方法。
-func (*Response) Push(string, *protocol.PushOptions) error {
+func (*Response) Push(string, *http.PushOptions) error {
 	return nil
 }
 

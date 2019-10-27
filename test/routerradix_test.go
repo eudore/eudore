@@ -10,14 +10,14 @@ import (
 
 type Params struct{}
 
-func (*Params) GetParam(string) string {
+func (*Params) Get(string) string {
 	return ""
 }
 
-func (*Params) AddParam(key string, val string) {
+func (*Params) Add(key string, val string) {
 	fmt.Println("Add", key, val)
 }
-func (*Params) SetParam(key string, val string) {
+func (*Params) Set(key string, val string) {
 	fmt.Println("Set", key, val)
 }
 

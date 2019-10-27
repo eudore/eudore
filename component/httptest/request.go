@@ -2,14 +2,13 @@ package httptest
 
 import (
 	"bytes"
-	"context"
-	"crypto/tls"
 	"encoding/json"
 	"io"
+	"io/ioutil"
+	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
-
-	"github.com/eudore/eudore/protocol"
 )
 
 type (
@@ -20,12 +19,7 @@ type (
 		File   string
 		Line   int
 		// data
-		method string
-		path   string
-		args   url.Values
-		proto  string
-		header HeaderMap
-		body   io.Reader
+		*http.Request
 	}
 )
 
@@ -33,131 +27,117 @@ type (
 func NewRequestReaderTest(client *Client, method, path string) *RequestReaderTest {
 	r := &RequestReaderTest{
 		client: client,
-		method: method,
-		header: make(HeaderMap),
+		Request: &http.Request{
+			Method:     method,
+			RequestURI: path,
+			Header:     make(http.Header),
+			Proto:      "HTTP/1.0",
+			Host:       "eudore-httptest",
+			RemoteAddr: "192.0.2.1:1234",
+		},
 	}
-	pos := strings.IndexByte(path, '?')
-	if pos == -1 {
-		r.path = path
-		r.args = make(url.Values)
-	} else {
-		r.path = path[:pos]
-		r.args, _ = url.ParseQuery(path[pos+1:])
+	r.Request.URL, _ = url.ParseRequestURI(path)
+	r.Form, _ = url.ParseQuery(r.Request.URL.RawQuery)
+	return r
+}
+
+// WithAddQuery 方法给请求添加一个url参数。
+func (r *RequestReaderTest) WithAddQuery(key, val string) *RequestReaderTest {
+	r.Form.Add(key, val)
+	return r
+}
+
+// WithHeaders 方法给请求添加多个header。
+func (r *RequestReaderTest) WithHeaders(headers http.Header) *RequestReaderTest {
+	for key, vals := range headers {
+		for _, val := range vals {
+			r.Request.Header.Add(key, val)
+		}
 	}
 	return r
 }
 
-func (r *RequestReaderTest) WithAddParam(key, val string) *RequestReaderTest {
-	r.args.Add(key, val)
-	return r
-}
-func (r *RequestReaderTest) WithHeader(headers protocol.Header) *RequestReaderTest {
-	headers.Range(func(key, val string) {
-		r.header.Add(key, val)
-	})
-	return r
-}
-
+// WithHeaderValue 方法给请求添加一个header的值。
 func (r *RequestReaderTest) WithHeaderValue(key, val string) *RequestReaderTest {
-	r.header.Add(key, val)
+	r.Request.Header.Add(key, val)
 	return r
 }
 
+// WithBody 方法设置请求的body。
 func (r *RequestReaderTest) WithBody(reader io.Reader) *RequestReaderTest {
-	r.body = reader
+	r.Request.Body = ioutil.NopCloser(reader)
 	return r
 }
 
+// WithBodyString 方法设置请求的字符串body。
 func (r *RequestReaderTest) WithBodyString(s string) *RequestReaderTest {
-	r.body = strings.NewReader(s)
+	r.Body = ioutil.NopCloser(strings.NewReader(s))
+	r.ContentLength = int64(len(s))
 	return r
 }
 
+// WithBodyByte 方法设置请的字节body。
 func (r *RequestReaderTest) WithBodyByte(b []byte) *RequestReaderTest {
-	r.body = bytes.NewReader(b)
+	r.Body = ioutil.NopCloser(bytes.NewReader(b))
+	r.ContentLength = int64(len(b))
 	return r
 }
-func (r *RequestReaderTest) WithBodyJson(data interface{}) *RequestReaderTest {
-	r.header.Add("Content-Type", "application/json")
+
+// WithBodyJSON 方法设置body为一个对象的json字符串。
+func (r *RequestReaderTest) WithBodyJSON(data interface{}) *RequestReaderTest {
+	r.Request.Header.Add("Content-Type", "application/json")
 	reader, writer := io.Pipe()
-	r.body = reader
+	r.Body = reader
 	json.NewEncoder(writer).Encode(data)
 	return r
 }
 
+// WithBodyFrom 方法设置body是一个From对象，未完成。
 func (r *RequestReaderTest) WithBodyFrom() *RequestReaderTest {
 	return r
 }
 
+// Do 方法发送这个请求，使用客户端处理这个请求返回响应。
 func (r *RequestReaderTest) Do() *ResponseWriterTest {
 	// 附加客户端公共参数
 	for key, vals := range r.client.Args {
 		for _, val := range vals {
-			r.args.Add(key, val)
+			r.Request.Form.Add(key, val)
 		}
 	}
-	r.client.Headers.Range(func(key, val string) {
-		r.header.Add(key, val)
-	})
-	if r.body == nil {
-		r.body = bytes.NewReader(nil)
+	r.Request.URL.RawQuery = r.Form.Encode()
+	r.Form = nil
+
+	for key, vals := range r.client.Headers {
+		for _, val := range vals {
+			r.Request.Header.Add(key, val)
+		}
+	}
+
+	if r.Request.Body == nil {
+		r.Request.Body = ioutil.NopCloser(bytes.NewReader(nil))
+		r.Request.ContentLength = -1
 	}
 	// 创建响应并处理
 	resp := NewResponseWriterTest(r.client, r)
-	r.client.EudoreHTTP(context.Background(), resp, r)
+	r.client.Handler.ServeHTTP(resp, r.Request)
 	return resp
 }
 
-// Method 方法返回请求方法。
-func (r *RequestReaderTest) Method() string {
-	return r.method
-}
-
-// Proto 方法返回http协议版本，使用"HTTP/1.0"。
-func (r *RequestReaderTest) Proto() string {
-	return "HTTP/1.0"
-}
-
-// RequestURI 方法返回http请求的完整uri。
-func (r *RequestReaderTest) RequestURI() string {
-	raw := r.RawQuery()
-	if raw == "" {
-		return r.Path()
+// logFormatFileLine 函数获得调用的文件位置，默认层数加三。
+//
+// 文件位置会从第一个src后开始截取，处理gopath下文件位置。
+func logFormatFileLine(depth int) (string, int) {
+	_, file, line, ok := runtime.Caller(depth)
+	if !ok {
+		file = "???"
+		line = 1
+	} else {
+		// slash := strings.LastIndex(file, "/")
+		slash := strings.Index(file, "src")
+		if slash >= 0 {
+			file = file[slash+4:]
+		}
 	}
-	return r.path + "?" + raw
-}
-
-// Path 方法返回http请求的方法。
-func (r *RequestReaderTest) Path() string {
-	return r.path
-}
-
-// RawQuery 方法返回http请求的uri参数。
-func (r *RequestReaderTest) RawQuery() string {
-	return r.args.Encode()
-}
-
-// Header 方法返回http请求的header
-func (r *RequestReaderTest) Header() protocol.Header {
-	return r.header
-}
-
-// Read 方法实现io.Reader接口，用于读取body内容。
-func (r *RequestReaderTest) Read(p []byte) (int, error) {
-	return r.body.Read(p)
-}
-
-// Host 方法返回请求Host。
-func (r *RequestReaderTest) Host() string {
-	return "eudore-httptest"
-}
-
-// RemoteAddr 方法返回远程连接地址，使用默认值"192.0.2.1:1234"。
-func (r *RequestReaderTest) RemoteAddr() string {
-	return "192.0.2.1:1234"
-}
-
-// TLS 方法返回tls状态。
-func (r *RequestReaderTest) TLS() *tls.ConnectionState {
-	return nil
+	return file, line
 }

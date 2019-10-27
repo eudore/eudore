@@ -3,18 +3,19 @@ package middleware
 import (
 	"compress/gzip"
 	"fmt"
-	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/protocol"
 	"io/ioutil"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/eudore/eudore"
 )
 
 type (
-	// GzipResponse 定义Gzip响应，实现protocol.ResponseWriter接口
+	// GzipResponse 定义Gzip响应，实现ResponseWriter接口
 	GzipResponse struct {
-		protocol.ResponseWriter
+		eudore.ResponseWriter
 		writer *gzip.Writer
 	}
 	// Gzip 定义gzip压缩处理者。
@@ -74,7 +75,7 @@ func (g *Gzip) Handle(ctx eudore.Context) {
 }
 
 // NewGzipResponse 创建一个gzip响应。
-func (g *Gzip) NewGzipResponse(w protocol.ResponseWriter) (*GzipResponse, error) {
+func (g *Gzip) NewGzipResponse(w eudore.ResponseWriter) (*GzipResponse, error) {
 	switch val := g.pool.Get().(type) {
 	case *GzipResponse:
 		val.ResponseWriter = w
@@ -86,19 +87,19 @@ func (g *Gzip) NewGzipResponse(w protocol.ResponseWriter) (*GzipResponse, error)
 	return nil, fmt.Errorf("Create GzipResponse exception")
 }
 
-// Write 实现protocol.ResponseWriter中的Write方法。
+// Write 实现ResponseWriter中的Write方法。
 func (w *GzipResponse) Write(data []byte) (int, error) {
 	return w.writer.Write(data)
 }
 
-// Flush 实现protocol.ResponseWriter中的Flush方法。
+// Flush 实现ResponseWriter中的Flush方法。
 func (w *GzipResponse) Flush() {
 	w.writer.Flush()
 	w.ResponseWriter.Flush()
 }
 
 func shouldCompress(ctx eudore.Context) bool {
-	h := ctx.Request().Header()
+	h := ctx.Request().Header
 	if !strings.Contains(h.Get(eudore.HeaderAcceptEncoding), "gzip") ||
 		strings.Contains(h.Get(eudore.HeaderConnection), "Upgrade") ||
 		strings.Contains(h.Get(eudore.HeaderContentType), "text/event-stream") {
@@ -122,16 +123,16 @@ func shouldCompress(ctx eudore.Context) bool {
 // Push initiates an HTTP/2 server push.
 // Push returns ErrNotSupported if the client has disabled push or if push
 // is not supported on the underlying connection.
-func (w *GzipResponse) Push(target string, opts *protocol.PushOptions) error {
+func (w *GzipResponse) Push(target string, opts *http.PushOptions) error {
 	return w.ResponseWriter.Push(target, setAcceptEncodingForPushOptions(opts))
 }
 
 // setAcceptEncodingForPushOptions sets "Accept-Encoding" : "gzip" for PushOptions without overriding existing headers.
-func setAcceptEncodingForPushOptions(opts *protocol.PushOptions) *protocol.PushOptions {
+func setAcceptEncodingForPushOptions(opts *http.PushOptions) *http.PushOptions {
 
 	if opts == nil {
-		opts = &protocol.PushOptions{
-			Header: eudore.HeaderMap{
+		opts = &http.PushOptions{
+			Header: http.Header{
 				eudore.HeaderAcceptEncoding: []string{"gzip"},
 			},
 		}
@@ -139,7 +140,7 @@ func setAcceptEncodingForPushOptions(opts *protocol.PushOptions) *protocol.PushO
 	}
 
 	if opts.Header == nil {
-		opts.Header = eudore.HeaderMap{
+		opts.Header = http.Header{
 			eudore.HeaderAcceptEncoding: []string{"gzip"},
 		}
 		return opts

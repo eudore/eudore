@@ -18,6 +18,8 @@ type (
 	// RouterMethod 路由默认直接注册的方法，其他方法可以使用RouterRegister接口直接注册。
 	RouterMethod interface {
 		Group(string) RouterMethod
+		GetParam(string) string
+		SetParam(string, string) RouterMethod
 		AddHandler(string, string, ...interface{}) RouterMethod
 		AddMiddleware(...HandlerFunc) RouterMethod
 		AddController(...Controller) RouterMethod
@@ -47,43 +49,25 @@ type (
 	// RouterMethodStd 默认路由器方法注册实现
 	RouterMethodStd struct {
 		RouterCore
-		prefix string
-		tags   string
+		params *ParamsArray
 	}
-	// 存储中间件信息的基数树。
+	// trieNode 存储中间件信息的前缀树。
 	//
 	// 用于内存存储路由器中间件注册信息，并根据注册路由返回对应的中间件。
-	middTree struct {
-		root middNode
-	}
-	middNode struct {
-		path     string
-		children []*middNode
-		key      string
-		val      HandlerFuncs
-	}
-	// RoutesInjecter 定义路由注入接口，允许调用路由器方法注入自身路由信息。
-	RoutesInjecter interface {
-		RoutesInject(RouterMethod)
-	}
-	// RouterConfig storage router configuration for constructing routers.
-	//
-	// RouterConfig 存储路由器配置，用于构造路由器。
-	RouterConfig struct {
-		Path       string          `json:",omitempty"`
-		Method     string          `json:",omitempty"`
-		Handler    HandlerFuncs    `json:",omitempty"`
-		Middleware HandlerFuncs    `json:",omitempty"`
-		Routes     []*RouterConfig `json:",omitempty"`
+	trieNode struct {
+		path   string
+		childs []*trieNode
+		vals   HandlerFuncs
 	}
 )
 
 // check RouterStd has Router interface
 var (
-	_               Router       = &RouterRadix{}
-	_               Router       = &RouterFull{}
-	_               RouterMethod = &RouterMethodStd{}
-	RouterAllMethod              = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions}
+	_ Router       = &RouterRadix{}
+	_ Router       = &RouterFull{}
+	_ RouterMethod = &RouterMethodStd{}
+	// RouterAllMethod 影响Any方法的注册。
+	RouterAllMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions}
 )
 
 // HandlerRouter405 函数定义默认405处理
@@ -101,55 +85,80 @@ func HandlerRouter404(ctx Context) {
 	ctx.WriteString(page404)
 }
 
-// RoutesInject 方法将路由配置注入到路由中。
-func (config *RouterConfig) RoutesInject(r RouterMethod) {
-	// handler
-	r.AddHandler(config.Method, config.Path, config.Handler)
-
-	// middleware
-	r.AddMiddleware(config.Middleware...)
-
-	// routes
-	r = r.Group(config.Path)
-	for _, i := range config.Routes {
-		i.RoutesInject(r)
+// NewRouterMethodStd 方法创建一个RouterMethod对象。
+func NewRouterMethodStd(core RouterCore) RouterMethod {
+	return &RouterMethodStd{
+		RouterCore: core,
+		params: &ParamsArray{
+			Keys: []string{"route"},
+			Vals: []string{""},
+		},
 	}
 }
 
 // Group 返回一个组路由方法。
 func (m *RouterMethodStd) Group(path string) RouterMethod {
-	// 将路径前缀和路径参数分割出来
-	args := strings.Split(path, " ")
-	prefix := args[0]
-	tags := path[len(prefix):]
-
 	// 构建新的路由方法配置器
 	return &RouterMethodStd{
 		RouterCore: m.RouterCore,
-		prefix:     m.prefix + prefix,
-		tags:       m.tags + tags,
+		params:     m.ParamsCombine(path),
 	}
+}
+
+// Params 方法返回当前路由参数，路由参数值为空字符串不会被使用。
+func (m *RouterMethodStd) Params() Params {
+	return m.params
+}
+
+// GetParam 方法返回一个路由器参数。
+func (m *RouterMethodStd) GetParam(key string) string {
+	return m.params.Get(key)
+}
+
+// SetParam 方法设置一个路由器参数。
+func (m *RouterMethodStd) SetParam(key string, val string) RouterMethod {
+	m.params.Set(key, val)
+	return m
+}
+
+// ParamsCombine 方法解析一个字符串路径，并合并到一个当前路由参数的副本中。
+func (m *RouterMethodStd) ParamsCombine(path string) *ParamsArray {
+	args := strings.Split(path, " ")
+	params := m.params.Clone()
+	for _, str := range args[1:] {
+		params.Set(split2byte(str, '='))
+	}
+	params.Set("route", params.Get("route")+args[0])
+	return params
 }
 
 func (m *RouterMethodStd) registerHandlers(method, path string, hs ...interface{}) {
 	handler := NewHandlerFuncs(hs)
 	if len(handler) > 0 {
-		m.RouterCore.RegisterHandler(method, m.prefix+path+m.tags, handler)
+		m.RouterCore.RegisterHandler(method, m.ParamsCombine(path).String()[6:], handler)
 	}
 }
 
-// AddHandler 添加一个新路由。
+// AddHandler 添加一个新路由, 允许添加多个方法使用空格分开。
 //
-// 方法和RegisterHandler方法的区别在于AddHandler方法不会继承Group的路径和参数信息，AddMiddleware相同。
+// AddHandler方法和RegisterHandler方法的区别在于：AddHandler方法会继承Group和Params的路径和参数信息，AddMiddleware相同。
 func (m *RouterMethodStd) AddHandler(method, path string, hs ...interface{}) RouterMethod {
-	m.registerHandlers(method, path, hs)
+	for _, method := range strings.Split(method, " ") {
+		if method != "" {
+			m.registerHandlers(method, path, hs)
+		}
+	}
 	return m
 }
 
 // AddMiddleware 给路由器添加一个中间件函数。
 func (m *RouterMethodStd) AddMiddleware(hs ...HandlerFunc) RouterMethod {
 	if len(hs) > 0 {
-		m.RegisterMiddleware(m.prefix+m.tags, hs)
+		path := m.params.String()
+		if len(path) > 5 && path[:6] == "route=" {
+			path = path[6:]
+		}
+		m.RegisterMiddleware(path, hs)
 	}
 	return m
 }
@@ -207,89 +216,48 @@ func (m *RouterMethodStd) OptionsFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodOptions, path, h)
 }
 
-// Insert 方法实现middNode添加一个子节点。
-func (t *middNode) Insert(key string, val HandlerFuncs) {
-	t.recursiveInsertTree(key, key, val)
+func newTrieNode() *trieNode {
+	return &trieNode{}
 }
 
-// Lookup Find if seachKey exist in current radix tree and return its value
-func (t *middNode) Lookup(searchKey string) HandlerFuncs {
-	searchKey = strings.Split(searchKey, " ")[0]
-	if searchKey[len(searchKey)-1] == '*' {
-		searchKey = searchKey[:len(searchKey)-1]
+// Insert 方法实现trieNode添加一个子节点。
+func (t *trieNode) Insert(path string, vals HandlerFuncs) {
+	if path == "" {
+		t.vals = append(t.vals, vals...)
+		return
 	}
-	return t.recursiveLoopup(searchKey)
-}
-
-// InsertNode 新增Node
-func (t *middNode) InsertNode(path, key string, value HandlerFuncs) {
-	if len(path) == 0 {
-		// 路径空就设置当前node的值
-		t.key = key
-		t.val = CombineHandlerFuncs(t.val, value)
-	} else {
-		// 否则新增node
-		t.children = append(t.children, &middNode{path: path, key: key, val: value})
-	}
-}
-
-// SplitNode 对指定路径为edgeKey的Node分叉，公共前缀路径为pathKey
-func (t *middNode) SplitNode(pathKey, edgeKey string) *middNode {
-	for i := range t.children {
-		if t.children[i].path == edgeKey {
-			newNode := &middNode{path: pathKey}
-			newNode.children = append(newNode.children, &middNode{
-				path:     strings.TrimPrefix(edgeKey, pathKey),
-				key:      t.children[i].key,
-				val:      t.children[i].val,
-				children: t.children[i].children,
-			})
-			t.children[i] = newNode
-			return newNode
-		}
-	}
-	return nil
-}
-
-// 给currentNode递归添加，路径为containKey的Node。
-func (t *middNode) recursiveInsertTree(containKey string, targetKey string, targetValue HandlerFuncs) {
-	for i := range t.children {
-		subStr, find := getSubsetPrefix(containKey, t.children[i].path)
+	for i := range t.childs {
+		subStr, find := getSubsetPrefix(path, t.childs[i].path)
 		if find {
-			if subStr == t.children[i].path {
-				nextTargetKey := strings.TrimPrefix(containKey, t.children[i].path)
-				t.children[i].recursiveInsertTree(nextTargetKey, targetKey, targetValue)
-			} else {
-				newNode := t.SplitNode(subStr, t.children[i].path)
-				if newNode == nil {
-					panic("Unexpect error on split node")
-				}
-
-				newNode.InsertNode(strings.TrimPrefix(containKey, subStr), targetKey, targetValue)
+			if subStr != t.childs[i].path {
+				t.childs[i].SplitNode(subStr)
 			}
+			t.childs[i].Insert(path[len(subStr):], vals)
 			return
 		}
 	}
-	t.InsertNode(containKey, targetKey, targetValue)
+	t.childs = append(t.childs, &trieNode{path: path, vals: vals})
 }
 
-// 递归获得searchNode路径为searchKey的Node数据。
-func (t *middNode) recursiveLoopup(searchKey string) HandlerFuncs {
-	if len(searchKey) == 0 {
-		return t.val
+// SplitNode 方法基于路径拆分。
+func (t *trieNode) SplitNode(path string) {
+	t.childs = []*trieNode{
+		&trieNode{
+			path:   t.path[len(path):],
+			childs: t.childs,
+			vals:   t.vals,
+		},
 	}
+	t.path = path
+	t.vals = nil
+}
 
-	for _, edgeObj := range t.children {
-		// 寻找相同前缀node
-		if contrainPrefix(searchKey, edgeObj.path) {
-			nextSearchKey := strings.TrimPrefix(searchKey, edgeObj.path)
-			return append(t.val, edgeObj.recursiveLoopup(nextSearchKey)...)
+// Lookup Find if seachKey exist in current trie tree and return its value
+func (t *trieNode) Lookup(path string) HandlerFuncs {
+	for _, i := range t.childs {
+		if strings.HasPrefix(path, i.path) {
+			return append(t.vals, i.Lookup(path[len(i.path):])...)
 		}
 	}
-
-	if len(t.key) == 0 || t.key[len(t.key)-1] == '/' {
-		return t.val
-	}
-
-	return nil
+	return t.vals
 }

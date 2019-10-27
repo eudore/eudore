@@ -6,21 +6,21 @@ import (
 	"github.com/eudore/eudore"
 )
 
-type ContextJwt struct {
+type contextJwt struct {
 	eudore.Context
 }
 
 func init() {
-	eudore.RegisterHandlerFunc(func(fn func(ContextJwt)) eudore.HandlerFunc {
+	eudore.RegisterHandlerFunc(func(fn func(contextJwt)) eudore.HandlerFunc {
 		return func(ctx eudore.Context) {
-			fn(ContextJwt{ctx})
+			fn(contextJwt{ctx})
 		}
 	})
 }
 
 var hmacSampleSecret = []byte("secret")
 
-func (ctx ContextJwt) ParseJwt() map[string]interface{} {
+func (ctx contextJwt) parseJwt() map[string]interface{} {
 	tokenString := ctx.GetHeader(eudore.HeaderAuthorization)
 	token, err := jwt.Parse(tokenString[7:], func(token *jwt.Token) (interface{}, error) {
 		return hmacSampleSecret, nil
@@ -37,7 +37,7 @@ func (ctx ContextJwt) ParseJwt() map[string]interface{} {
 
 func main() {
 	app := eudore.NewCore()
-	app.GetFunc("/*", func(ctx ContextJwt) {
-		fmt.Println(ctx.ParseJwt())
+	app.GetFunc("/*", func(ctx contextJwt) {
+		fmt.Println(ctx.parseJwt())
 	})
 }

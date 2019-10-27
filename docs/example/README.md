@@ -14,7 +14,6 @@
 	- [Eudore启动命令解析](eudoreCommand.go)
 - [Server]
 	- [使用https](serverHttps.go)
-	- [fasthttp启动服务](serverFasthttp.go)
 	- [eudore server启动服务](serverEudore.go)
 	- [fastcgi启动服务]
 - [Logger]

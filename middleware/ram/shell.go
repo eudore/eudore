@@ -25,8 +25,8 @@ func NewShell() *Shell {
 	return s
 }
 
-// RamHandle 实现ram.RamHandler接口。
-func (s *Shell) RamHandle(id int, action string, ctx eudore.Context) (bool, bool) {
+// Match 方法实现ram.Handler接口，匹配一个请求。
+func (s *Shell) Match(id int, action string, ctx eudore.Context) (bool, bool) {
 	ctx.SetParam(eudore.ParamRAM, "shell")
 	ip := ctx.RealIP()
 	for _, i := range s.List {

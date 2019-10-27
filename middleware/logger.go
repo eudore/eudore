@@ -13,7 +13,7 @@ func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
 			"method": ctx.Method(),
 			"path":   ctx.Path(),
 			"remote": ctx.RealIP(),
-			"proto":  ctx.Request().Proto(),
+			"proto":  ctx.Request().Proto,
 			"host":   ctx.Host(),
 		}
 		ctx.Next()
@@ -42,6 +42,9 @@ func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
 		if status < 400 {
 			app.Logger.WithFields(f).Info()
 		} else {
+			if err := ctx.Err(); err != nil {
+				f["error"] = err.Error()
+			}
 			app.Logger.WithFields(f).Error()
 		}
 	}

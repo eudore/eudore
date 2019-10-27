@@ -52,6 +52,7 @@ func ConfigParseRead(c Config) error {
 		data, err := fn(path)
 		if err == nil {
 			c.Set("keys.configdata", data)
+			c.Set("keys.configpath", path)
 			return nil
 		}
 		errs.HandleError(err)
@@ -94,7 +95,7 @@ func ConfigParseEnvs(c Config) error {
 
 // ConfigParseMods 函数从'enable'项获得使用的模式的数组字符串，从'mods.xxx'加载配置。
 //
-// 默认会加载OS mod。
+// 默认会加载OS mod,如果是docker环境下使用docker模式。
 func ConfigParseMods(c Config) error {
 	mod, ok := c.Get("enable").([]string)
 	if !ok {
@@ -108,11 +109,21 @@ func ConfigParseMods(c Config) error {
 			return nil
 		}
 	}
-	mod = append(mod, runtime.GOOS)
+	mod = append(mod, getOS())
 	for _, i := range mod {
 		ConvertTo(c.Get("mods."+i), c.Get(""))
 	}
 	return nil
+}
+
+func getOS() string {
+	// check docker
+	_, err := os.Stat("/.dockerenv")
+	if err == nil || !os.IsNotExist(err) {
+		return "docker"
+	}
+	// 返回默认OS
+	return runtime.GOOS
 }
 
 // ConfigParseHelp 函数测试配置内容，如果存在'keys.help'项会使用JSON标准化输出配置到标准输出。
@@ -228,6 +239,16 @@ func InitLoggerStd(app *Eudore) error {
 
 // InitStart 函数启动Eudore Server。
 func InitStart(app *Eudore) error {
+	// 更新context func，设置server处理者。
+	if fn, ok := app.Config.Get("keys.context").(PoolGetFunc); ok {
+		app.ContextPool.New = fn
+	}
+	if h, ok := app.Config.Get("keys.handler").(http.Handler); ok {
+		app.Server.SetHandler(h)
+	} else {
+		app.Server.SetHandler(app)
+	}
+
 	// 监听全部配置
 	lns, err := newServerListens(app.Config.Get("listeners"))
 	if err != nil {
@@ -241,18 +262,6 @@ func InitStart(app *Eudore) error {
 		}
 		app.AddListener(ln)
 	}
-
-	// 更新context func，设置server处理者。
-	if fn, ok := app.Config.Get("keys.context").(PoolGetFunc); ok {
-		app.ContextPool.New = fn
-	}
-	app.Server.AddHandler(app)
-
-	// 启动server。
-	go func() {
-		err := app.Server.Start()
-		app.HandleError(err)
-	}()
 	return nil
 }
 

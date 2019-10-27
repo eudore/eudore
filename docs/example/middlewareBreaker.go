@@ -19,7 +19,7 @@ func main() {
 }
 
 func echo(ctx eudore.Context) {
-	if ctx.Querys().Len() > 0 {
+	if len(ctx.Querys()) > 0 {
 		ctx.Fatal("test err")
 		return
 	}

@@ -40,9 +40,7 @@ func NewRouterDebug() eudore.Router {
 		RouterCore: r2,
 		router:     r2,
 	}
-	r.RouterMethod = &eudore.RouterMethodStd{
-		RouterCore: r,
-	}
+	r.RouterMethod = eudore.NewRouterMethodStd(r)
 	r.GetFunc("/eudore/debug/router/data", r.getData)
 	r.GetFunc("/eudore/debug/router/ui", func(ctx eudore.Context) {
 		if StaticHTML != "" {

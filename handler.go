@@ -2,6 +2,7 @@ package eudore
 
 import (
 	"fmt"
+	"net/http"
 	"reflect"
 	"runtime"
 )
@@ -23,6 +24,8 @@ var (
 
 // init 函数初始化内置四种扩展的请求上下文处理函数。
 func init() {
+	RegisterHandlerFunc(NewNetHTTP1HandlerFunc)
+	RegisterHandlerFunc(NewNetHTTP2HandlerFunc)
 	RegisterHandlerFunc(NewContextErrorHanderFunc)
 	RegisterHandlerFunc(NewContextRenderHanderFunc)
 	RegisterHandlerFunc(NewContextRenderErrorHanderFunc)
@@ -82,7 +85,7 @@ func RegisterHandlerFunc(fn interface{}) {
 	if iType.Kind() != reflect.Func {
 		panic(ErrRegisterNewHandlerParamNotFunc)
 	}
-	if iType.NumIn() != 1 || iType.In(0).Kind() != reflect.Func {
+	if iType.NumIn() != 1 || (iType.In(0).Kind() != reflect.Func && iType.In(0).Kind() != reflect.Interface) {
 		panic(fmt.Errorf(ErrFormatRegisterHandlerFuncInputParamError, iType.String()))
 	}
 	if iType.NumOut() != 1 || iType.Out(0) != typeHandlerFunc {
@@ -161,6 +164,20 @@ func ListExtendHandlerFunc() []string {
 		strs = append(strs, i.String())
 	}
 	return strs
+}
+
+// NewNetHTTP1HandlerFunc 方法转换处理func(http.ResponseWriter, *http.Request)类型。
+func NewNetHTTP1HandlerFunc(fn func(http.ResponseWriter, *http.Request)) HandlerFunc {
+	return func(ctx Context) {
+		fn(ctx.Response(), ctx.Request())
+	}
+}
+
+// NewNetHTTP2HandlerFunc 方法转换处理http.HandlerFunc类型。
+func NewNetHTTP2HandlerFunc(fn http.HandlerFunc) HandlerFunc {
+	return func(ctx Context) {
+		fn(ctx.Response(), ctx.Request())
+	}
 }
 
 // NewContextErrorHanderFunc 函数处理func(Context) error返回的error处理。

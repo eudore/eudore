@@ -17,7 +17,7 @@ func TestServerStd(t *testing.T) {
 		http.Get("http://localhost:8088/index")
 	})
 	time.AfterFunc(2*time.Second, func() {
-		app.Close()
+		app.Server.Shutdown(app.Context)
 	})
 	t.Log(app.Run())
 }
@@ -30,7 +30,7 @@ func TestServerMulti(t *testing.T) {
 		http.Get("http://localhost:8088/")
 	})
 	time.AfterFunc(2*time.Second, func() {
-		app.Close()
+		app.Server.Shutdown(app.Context)
 	})
 	app.Run()
 }

@@ -5,12 +5,16 @@ eudore.HandlerProxy实现参考net/http/httputil.NewSingleHostReverseProxy
 */
 
 import (
+	"net/http/httputil"
+	"net/url"
+
 	"github.com/eudore/eudore"
 )
 
 func main() {
 	app := eudore.NewCore()
-	app.AnyFunc("/*", eudore.HandlerProxy("http://localhost:8089"))
+	addr, _ := url.Parse("http://localhost:8089")
+	app.AnyFunc("/*", httputil.NewSingleHostReverseProxy(addr).ServeHTTP)
 
 	go func() {
 		app := eudore.NewCore()

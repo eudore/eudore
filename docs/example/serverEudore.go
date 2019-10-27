@@ -12,7 +12,7 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	app.Server = eserver.NewServer(nil)
+	app.Server = eserver.NewServer()
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteString("start fasthttp server, this default page.\n")
 		ctx.WriteString("your path is " + ctx.Path())

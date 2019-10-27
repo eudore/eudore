@@ -12,7 +12,7 @@ func TestCore(*testing.T) {
 		ctx.WriteString("hello eudore core")
 	})
 	time.AfterFunc(3*time.Second, func() {
-		app.Server.Close()
+		app.Server.Shutdown(app.Context)
 	})
 	app.Listen(":8082")
 	app.Info("start core result: ", app.Run())

@@ -26,8 +26,8 @@ type (
 		RouterMethod
 		// save middleware
 		// 保存注册的中间件信息
-		Print    func(...interface{}) `set:"print"`
-		middtree *middNode
+		Print       func(...interface{}) `set:"print"`
+		middlewares *trieNode
 		// exception handling method
 		// 异常处理方法
 		node404     radixNode
@@ -80,11 +80,9 @@ func NewRouterRadix() Router {
 				handlers: HandlerFuncs{HandlerRouter405},
 			},
 		},
-		middtree: &middNode{},
+		middlewares: newTrieNode(),
 	}
-	r.RouterMethod = &RouterMethodStd{
-		RouterCore: r,
-	}
+	r.RouterMethod = NewRouterMethodStd(r)
 	return r
 }
 
@@ -93,10 +91,11 @@ func NewRouterRadix() Router {
 // RegisterMiddleware注册中间件到中间件树中，如果存在则追加处理者。
 func (r *RouterRadix) RegisterMiddleware(path string, hs HandlerFuncs) {
 	r.Print("RegisterMiddleware:", path, hs)
-	r.middtree.Insert(path, hs)
+	path = strings.Split(path, " ")[0]
+	r.middlewares.Insert(path, hs)
 	if path == "" {
-		r.node404.handlers = append(r.middtree.val, r.nodefunc404...)
-		r.node405.Wchildren.handlers = append(r.middtree.val, r.nodefunc405...)
+		r.node404.handlers = append(r.middlewares.vals, r.nodefunc404...)
+		r.node405.Wchildren.handlers = append(r.middlewares.vals, r.nodefunc405...)
 	}
 }
 
@@ -112,17 +111,17 @@ func (r *RouterRadix) RegisterHandler(method string, path string, handler Handle
 	switch method {
 	case "NotFound", "404":
 		r.nodefunc404 = handler
-		r.node404.handlers = CombineHandlerFuncs(handler, r.middtree.val)
+		r.node404.handlers = CombineHandlerFuncs(r.middlewares.vals, handler)
 	case "MethodNotAllowed", "405":
 		r.nodefunc405 = handler
-		r.node405.Wchildren.handlers = CombineHandlerFuncs(handler, r.middtree.val)
+		r.node405.Wchildren.handlers = CombineHandlerFuncs(r.middlewares.vals, handler)
 	case MethodAny:
-		handler = CombineHandlerFuncs(r.middtree.Lookup(path), handler)
+		handler = CombineHandlerFuncs(r.middlewares.Lookup(path), handler)
 		for _, method := range RouterAllMethod {
 			r.insertRoute(method, path, true, handler)
 		}
 	default:
-		r.insertRoute(method, path, false, CombineHandlerFuncs(r.middtree.Lookup(path), handler))
+		r.insertRoute(method, path, false, CombineHandlerFuncs(r.middlewares.Lookup(path), handler))
 	}
 }
 
@@ -335,7 +334,7 @@ func (r *radixNode) SetTags(args []string) {
 // AddTagsToParams 将当前Node的tags给予Params
 func (r *radixNode) AddTagsToParams(p Params) {
 	for i := range r.tags {
-		p.AddParam(r.tags[i], r.vals[i])
+		p.Add(r.tags[i], r.vals[i])
 	}
 }
 
@@ -402,7 +401,7 @@ func (r *radixNode) recursiveLoopup(searchKey string, params Params) HandlerFunc
 			// 遍历参数节点是否后续匹配
 			for _, edgeObj := range r.Pchildren {
 				if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
-					params.AddParam(edgeObj.name, searchKey[:pos])
+					params.Add(edgeObj.name, searchKey[:pos])
 					return n
 				}
 			}
@@ -413,7 +412,7 @@ func (r *radixNode) recursiveLoopup(searchKey string, params Params) HandlerFunc
 	// 若当前节点有通配符处理方法直接匹配，返回结果。
 	if r.Wchildren != nil {
 		r.Wchildren.AddTagsToParams(params)
-		params.AddParam(r.Wchildren.name, searchKey)
+		params.Add(r.Wchildren.name, searchKey)
 		return r.Wchildren.handlers
 	}
 
@@ -500,20 +499,4 @@ func getSubsetPrefix(str1, str2 string) (string, bool) {
 	}
 
 	return str1, findSubset
-}
-
-// Check if the string str2 is the prefix of str1.
-//
-// 检测字符串str2是否为str1的前缀。
-func contrainPrefix(str1, str2 string) bool {
-	if len(str1) < len(str2) {
-		return false
-	}
-	for i := 0; i < len(str2); i++ {
-		if str1[i] != str2[i] {
-			return false
-		}
-	}
-
-	return true
 }

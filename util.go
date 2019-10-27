@@ -99,6 +99,9 @@ func GetDefaultInt(i interface{}, n int) int {
 	if v, ok := i.(int); ok {
 		return v
 	}
+	if v, ok := i.(int64); ok {
+		return int(v)
+	}
 	if v, err := strconv.Atoi(GetDefaultString(i, "")); err == nil {
 		return v
 	}
@@ -114,6 +117,9 @@ func GetInt64(i interface{}) int64 {
 func GetDefaultInt64(i interface{}, n int64) int64 {
 	if v, ok := i.(int64); ok {
 		return v
+	}
+	if v, ok := i.(int); ok {
+		return int64(v)
 	}
 	if v, err := strconv.ParseInt(GetDefaultString(i, ""), 10, 64); err == nil {
 		return v
@@ -361,6 +367,11 @@ func (m StringMap) Del(key string) {
 // GetInt 方法获取对应的值并转换成int。
 func (m StringMap) GetInt(key string) int {
 	return GetInt(m.Get(key))
+}
+
+// GetInt64 方法获取对应的值并转换成int。
+func (m StringMap) GetInt64(key string) int64 {
+	return GetInt64(m.Get(key))
 }
 
 // GetDefultInt 方法获取对应的值并转换成int,如果无法转换返回默认值。

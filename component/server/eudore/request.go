@@ -1,36 +1,30 @@
-package http
+package eudore
 
 import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
-	"github.com/eudore/eudore/protocol"
 	"io"
 	"net"
+	"net/http"
 	"net/textproto"
 	"net/url"
 	"strconv"
-	"strings"
 	"sync"
 )
 
 type (
 	// Request 定义一个http请求。
 	Request struct {
-		conn       net.Conn
-		reader     *bufio.Reader
-		method     string
-		requestURI string
-		path       string
-		rawQuery   string
-		proto      string
-		header     Header
+		http.Request
+		conn   net.Conn
+		reader *bufio.Reader
 		//
-		mu        sync.Mutex
-		length    int
-		sawEOF    bool
-		expect    bool
-		isnotkeep bool
+		mu         sync.Mutex
+		netxLength int
+		sawEOF     bool
+		expect     bool
+		isnotkeep  bool
 	}
 )
 
@@ -38,7 +32,7 @@ type (
 func (r *Request) Reset(conn net.Conn) error {
 	r.conn = conn
 	r.reader.Reset(conn)
-	r.header.Reset()
+	r.Header = make(http.Header)
 	// Read the http request line.
 	// 读取http请求行。
 	line, err := r.readLine()
@@ -46,7 +40,7 @@ func (r *Request) Reset(conn net.Conn) error {
 		return err
 	}
 	// 读取请求行，sawEOF作为临时变量
-	r.method, r.requestURI, r.proto, r.sawEOF = parseRequestLine(line)
+	r.Method, r.RequestURI, r.Proto, r.sawEOF = parseRequestLine(line)
 	if !r.sawEOF {
 		return ErrLineInvalid
 	}
@@ -61,25 +55,31 @@ func (r *Request) Reset(conn net.Conn) error {
 		}
 		// Split into headers and store them in the request.
 		// 分割成header存储到请求中。
-		r.header.Add(splitHeader(line))
+		r.Header.Add(splitHeader(line))
 	}
+	r.Host = r.Header.Get("Host")
+	r.RemoteAddr = conn.RemoteAddr().String()
 	// Read the request body length from the header, if no body direct length is 0
 	// 从header中读取请求body长度，如果无body直接长度为0
-	r.length, _ = strconv.Atoi(r.header.Get("Content-Length"))
+	lenstr := r.Header.Get("Content-Length")
+	if len(lenstr) > 0 {
+		r.ContentLength, err = strconv.ParseInt(lenstr, 10, 64)
+		if err != nil {
+			return err
+		}
+		r.netxLength = int(r.ContentLength)
+	} else {
+		r.ContentLength = -1
+		r.netxLength = 0
+	}
+	r.Body = r
 	// When the body length is zero, the body is read directly to return EOF.
 	// body长度为零时，读取body直接返回EOF。
-	r.sawEOF = r.length == 0
-	r.expect = r.header.Get("Expect") == "100-continue"
-	r.isnotkeep = r.header.Get("Connection") != "keep-alive"
+	r.sawEOF = r.netxLength == 0
+	r.expect = r.Header.Get("Expect") == "100-continue"
+	r.isnotkeep = r.Header.Get("Connection") != "keep-alive"
 	// 初始化path和uri参数。
-	pos := strings.IndexByte(r.requestURI, '?')
-	if pos == -1 {
-		r.path, err = url.PathUnescape(r.requestURI)
-		r.rawQuery = ""
-	} else {
-		r.path, err = url.PathUnescape(r.requestURI[:pos])
-		r.rawQuery = r.requestURI[pos+1:]
-	}
+	r.URL, err = url.ParseRequestURI(r.RequestURI)
 	return err
 }
 
@@ -108,10 +108,10 @@ func (r *Request) Read(p []byte) (int, error) {
 	} else if err == nil && n > 0 {
 		// Reduce the length of unread data
 		// 减少未读数据长度
-		r.length -= n
+		r.netxLength -= n
 		// set EOF
 		// 设置EOF
-		r.sawEOF = r.length == 0
+		r.sawEOF = r.netxLength == 0
 		if r.sawEOF {
 			err = io.EOF
 		}
@@ -120,44 +120,10 @@ func (r *Request) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// Method 方法获取http请求方法。
-func (r *Request) Method() string {
-	return r.method
-}
-
-// Proto 方法获得http协议版本。
-func (r *Request) Proto() string {
-	return r.proto
-}
-
-// RequestURI 方法获得http请求uri。
-func (r *Request) RequestURI() string {
-	return r.requestURI
-}
-
-// Path 方法获得http请求路径。
-func (r *Request) Path() string {
-	return r.path
-}
-
-// RawQuery 方法获得http请求uri的参数部分。
-func (r *Request) RawQuery() string {
-	return r.rawQuery
-}
-
-// Header 方法获得http请求header。
-func (r *Request) Header() protocol.Header {
-	return &r.header
-}
-
-// Host 方法获得请求host。
-func (r *Request) Host() string {
-	return r.header.Get("Host")
-}
-
-// RemoteAddr 方法获得远程连接地址
-func (r *Request) RemoteAddr() string {
-	return r.conn.RemoteAddr().String()
+// Close 方法关闭read。
+func (r *Request) Close() error {
+	r.sawEOF = true
+	return nil
 }
 
 // TLS 方法获得TLS状态。

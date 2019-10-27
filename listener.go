@@ -46,7 +46,9 @@ type (
 )
 
 var (
-	typeListener = reflect.TypeOf((*serverListener)(nil)).Elem()
+	// EnvEudoreGracefulAddrs 按顺序记录fork多端口fd对应的地址。
+	EnvEudoreGracefulAddrs = "EnvEudoreGracefulAddrs"
+	typeListener           = reflect.TypeOf((*serverListener)(nil)).Elem()
 )
 
 // ListenWithFD 创建一个地址监听，同时会从fd里面创建监听。

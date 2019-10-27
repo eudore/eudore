@@ -8,13 +8,12 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"sort"
 	"sync"
 	"time"
-
-	"github.com/eudore/eudore/protocol"
 )
 
 type (
@@ -224,14 +223,6 @@ func (app *Eudore) Restart() error {
 	return err
 }
 
-// Close 方法关闭app。
-func (app *Eudore) Close() error {
-	app.mu.Lock()
-	defer app.mu.Unlock()
-	defer app.HandleError(ErrApplicationStop)
-	return app.Server.Close()
-}
-
 // Shutdown 方法正常退出关闭app。
 func (app *Eudore) Shutdown() error {
 	app.mu.Lock()
@@ -336,7 +327,9 @@ func (app *Eudore) ListenTLS(addr, key, cert string) {
 func (app *Eudore) AddListener(ln net.Listener) {
 	app.Logger.Infof("listen %s %s", ln.Addr().Network(), ln.Addr().String())
 	app.listeners = append(app.listeners, ln)
-	app.Server.AddListener(ln)
+	go func() {
+		app.HandleError(app.Server.Serve(ln))
+	}()
 }
 
 // AddStatic method register a static file Handle.
@@ -354,20 +347,23 @@ func (app *Eudore) AddGlobalMiddleware(hs ...HandlerFunc) {
 
 // HandleContext 实现处理请求上下文函数。
 func (app *Eudore) HandleContext(ctx Context) {
-	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx))
+	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params()))
 	ctx.Next()
 }
 
-// EudoreHTTP 方法处理一个http请求。
-func (app *Eudore) EudoreHTTP(pctx context.Context, w protocol.ResponseWriter, req protocol.RequestReader) {
+// ServeHTTP 实现http.Handler接口，处理http请求。
+func (app *Eudore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// init
 	ctx := app.ContextPool.Get().(Context)
+	response := responseWriterHTTPPool.Get().(*ResponseWriterHTTP)
 	// handle
-	ctx.Reset(pctx, w, req)
+	response.Reset(w)
+	ctx.Reset(r.Context(), response, r)
 	ctx.SetHandler(app.handlers)
 	ctx.Next()
 	ctx.End()
 	// release
+	responseWriterHTTPPool.Put(response)
 	app.ContextPool.Put(ctx)
 }
 

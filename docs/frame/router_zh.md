@@ -14,6 +14,8 @@ type (
 	// RouterMethod 路由默认直接注册的方法，其他方法可以使用RouterRegister接口直接注册。
 	RouterMethod interface {
 		Group(string) RouterMethod
+		GetParam(string) string
+		SetParam(string, string) RouterMethod
 		AddHandler(string, string, ...interface{}) RouterMethod
 		AddMiddleware(...HandlerFunc) RouterMethod
 		AddController(...Controller) RouterMethod
