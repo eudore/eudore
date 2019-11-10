@@ -42,6 +42,46 @@ eudore最大的特点是解耦，除Application以外其他对象均为接口，
 | Error | 错误 | error.go |
 | Converter | 反射读写数据 | converter.go |
 
+# 源码文件关系
+
+
+```
+                          core.go                      eudore.go
+                            |                           |    |
+                            ---------- app.go -----------  listener.go
+                                         |
+        -----------------------------------------------------------------------------
+        |           |               |           |           |               |       |
+    config.go   logger.go       router.go   server.go    context.go     bind.go render.go
+        |           |               |                       |
+    converter.go loggerstd.go       |                   contextdata.go
+                -----------------------------------------
+                |           |               |           |
+            handler.go routerradix.go routerfull.go controller.go
+```
+
+上述文件相关间的关系：
+
+- core.go	封装app.go提供基础的app实现。
+- eudore.go	封装app.go提供一种复杂的app实现；listener.go提供启动监听实现热重启支持。
+- app.go	组合config、logger、router、server、context、bind、render这个六个对象定义App，对应六个源码文件定义每部分对象。
+- config.go	定义Config接口相关对象，同时实现内置两种Config对象ConfigMap和ConfigEudore；converter.go为configEudore提供一些基础函数(Set & Get)支持。
+- logger.go	定义Logger接口相关对象，实现LooggerInit对象，loggerstd.go实现LoggerStd提供默认的json日志处理器。
+- router.go	定义Router接口相关对象，实现RouterMethodStd对象和中间件存储前缀树；handler.go定义http Handler对象以及实现处理函数扩展机制；routerradix.go基于radix实现默认的路由器RouterRaidx，routerfull.go实现基于RouterRadix的扩展版本RouterFull，具有更多的路由器功能；controller.go定义控制器相关接口，同时给与几种默认控制器实现。
+- server.go	定义Server接口相关对象，实现默认Server版本ServerStd。
+- context.go定义Context接口，同时实现默认Context对象ContextBase;contextdata.go实现一种Context对象的扩展ContextData,基于处理函数扩展可以直接使用。
+- bind.go	定义Binder对象并实现。
+- render.go	定义Renderer对象并实现。
+
+下列文件未出现在上述关系图，提供了基本对象的支持：
+
+- const.go	定义全部常量
+- doc.go	定义godoc
+- error.go	定义error和相关对象
+- funcs.go	定义一些全局函数对象
+- http.hp	定义http对象
+- util.go	实现简单类型转换函数封装
+
 # Q & A
 
 ## eudore的完整学习方式？

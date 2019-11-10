@@ -8,6 +8,9 @@ import (
 	"net"
 	"net/http"
 	"sync"
+
+	"crypto/tls"
+	"golang.org/x/net/http2"
 )
 
 var (
@@ -18,6 +21,10 @@ var (
 		New: func() interface{} {
 			return &Response{
 				request: Request{
+					Request: http.Request{
+						ProtoMajor: 1,
+						ProtoMinor: 1,
+					},
 					reader: bufio.NewReaderSize(nil, 2048),
 				},
 				writer: bufio.NewWriterSize(nil, 2048),
@@ -75,4 +82,15 @@ func isNotCommonNetReadError(err error) bool {
 		return false
 	}
 	return true
+}
+
+// NewHTTP2Handler 方法创建一个h2处理函数。
+func NewHTTP2Handler() func(context.Context, *tls.Conn, http.Handler) {
+	h2svc := &http2.Server{}
+	return func(ctx context.Context, conn *tls.Conn, h http.Handler) {
+		h2svc.ServeConn(conn, &http2.ServeConnOpts{
+			Context: ctx,
+			Handler: h,
+		})
+	}
 }

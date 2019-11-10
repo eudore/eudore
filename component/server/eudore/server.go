@@ -50,6 +50,8 @@ func NewServer() *Server {
 			fmt.Println(r)
 		}),
 		defaultHandle: HTTPHandler,
+		nextHandle:    NewHTTP2Handler(),
+		proto:         "h2",
 	}
 }
 

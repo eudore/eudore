@@ -429,3 +429,62 @@ func (app *Eudore) logReset() Logout {
 	}
 	return app.Logger.WithFields(f)
 }
+
+// GetBool 方法获取bool类型的配置值。
+func (app *Eudore) GetBool(key string) bool {
+	return GetBool(app.Get(key))
+}
+
+// GetInt 方法获取int类型的配置值。
+func (app *Eudore) GetInt(key string) int {
+	return GetInt(app.Get(key))
+}
+
+// GetUint 方法获tuint类型的配置值。
+func (app *Eudore) GetUint(key string) uint {
+	return GetUint(app.Get(key))
+}
+
+// GetInt64 方法etint64类型的配置值。
+func (app *Eudore) GetInt64(key string) int64 {
+	return GetInt64(app.Get(key))
+}
+
+// GetFloat32 取Getfloat32类型的配置值。
+func (app *Eudore) GetFloat32(key string) float32 {
+	return GetFloat32(app.Get(key))
+}
+
+// GetFloat64 取Getfloat64类型的配置值。
+func (app *Eudore) GetFloat64(key string) float64 {
+	return GetFloat64(app.Get(key))
+}
+
+// GetString 方法获取一个字符串，如果字符串为空返回其他默认非空字符串，
+func (app *Eudore) GetString(key string, vals ...string) string {
+	str := GetString(app.Get(key))
+	if str == "" {
+		for _, i := range vals {
+			if i != "" {
+				return i
+			}
+		}
+	}
+	return ""
+}
+
+// GetBytes 方法获取[]byte类型的配置值，如果是字符串类型会转换成[]byte。
+func (app *Eudore) GetBytes(key string) []byte {
+	val := app.Get(key)
+	body, ok := val.([]byte)
+	if ok {
+		return body
+	}
+
+	str := GetString(val)
+	if str != "" {
+		return []byte(str)
+	}
+
+	return nil
+}

@@ -29,7 +29,7 @@ type (
 		// http.Flusher
 		Flush()
 		// http.Hijacker
-		Hijack() (net.Conn, error)
+		Hijack() (net.Conn, *bufio.ReadWriter, error)
 		// http.Pusher
 		Push(string, *http.PushOptions) error
 		Size() int
@@ -154,12 +154,11 @@ func (w *ResponseWriterHTTP) Flush() {
 }
 
 // Hijack 方法实现劫持http连接。
-func (w *ResponseWriterHTTP) Hijack() (conn net.Conn, err error) {
+func (w *ResponseWriterHTTP) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if hj, ok := w.ResponseWriter.(http.Hijacker); ok {
-		conn, _, err = hj.Hijack()
-		return
+		return hj.Hijack()
 	}
-	return nil, ErrResponseWriterHTTPNotHijacker
+	return nil, nil, ErrResponseWriterHTTPNotHijacker
 }
 
 // Push 方法实现http Psuh，如果ResponseWriterHTTP实现http.Push接口，则Push资源。

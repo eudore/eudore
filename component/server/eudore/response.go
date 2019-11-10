@@ -255,11 +255,11 @@ func (w *Response) finalFlush() (err error) {
 }
 
 // Hijack 方法劫持http连接。
-func (w *Response) Hijack() (net.Conn, error) {
+func (w *Response) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	w.ishjack = true
 	// w.request.conn.SetDeadline(time.Time{})
 	// return &cancelConn{w.request.conn, w.cancel}, nil
-	return nil, nil
+	return w.request.conn, bufio.NewReadWriter(w.request.reader, w.writer), nil
 }
 
 // Push 方法http协议不支持push方法。

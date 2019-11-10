@@ -60,7 +60,7 @@ type Core
 
 ## Eudore
 
-Eudore是App对象的另外一种实现方式，主要添加了日志函数、初始化函数、阻塞chan、信号监听和处理、全局中间件。
+Eudore是App对象的另外一种实现方式，主要添加了日志函数、初始化函数、阻塞chan、信号监听和处理、全局中间件、配置类型转换。
 
 基于Logger重新封装了部分方法，输出将带有文件位置信息。
 
@@ -96,6 +96,14 @@ type Eudore
     func (app *Eudore) Errorf(format string, args ...interface{})
     func (app *Eudore) Fatal(args ...interface{})
     func (app *Eudore) Fatalf(format string, args ...interface{})
+    func (app *Eudore) GetBool(key string) bool
+    func (app *Eudore) GetBytes(key string) []byte
+    func (app *Eudore) GetFloat32(key string) float32
+    func (app *Eudore) GetFloat64(key string) float64
+    func (app *Eudore) GetInt(key string) int
+    func (app *Eudore) GetInt64(key string) int64
+    func (app *Eudore) GetString(key string, vals ...string) string
+    func (app *Eudore) GetUint(key string) uint
     func (app *Eudore) HandleContext(ctx Context)
     func (app *Eudore) HandleError(err error)
     func (app *Eudore) HandleSignal(sig os.Signal)
