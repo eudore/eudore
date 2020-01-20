@@ -7,8 +7,8 @@ type (
 	}
 )
 
-// NewContextDataHanderFunc 转换ContextData处理函数为Context处理函数。
-func NewContextDataHanderFunc(fn func(ContextData)) HandlerFunc {
+// NewExtendContextData 转换ContextData处理函数为Context处理函数。
+func NewExtendContextData(fn func(ContextData)) HandlerFunc {
 	return func(ctx Context) {
 		fn(ContextData{Context: ctx})
 	}
@@ -32,6 +32,16 @@ func (ctx *ContextData) GetParamInt(key string) int {
 // GetParamDefaultInt 获取参数转换成int类型，转换失败返回默认值。
 func (ctx *ContextData) GetParamDefaultInt(key string, i int) int {
 	return GetStringDefaultInt(ctx.GetParam(key), i)
+}
+
+// GetParamInt64 获取参数转换成int64类型。
+func (ctx *ContextData) GetParamInt64(key string) int64 {
+	return GetStringDefaultInt64(ctx.GetParam(key), 0)
+}
+
+// GetParamDefaultInt64 获取参数转换成int64类型，转换失败返回默认值。
+func (ctx *ContextData) GetParamDefaultInt64(key string, i int64) int64 {
+	return GetStringDefaultInt64(ctx.GetParam(key), i)
 }
 
 // GetParamFloat32 获取参数转换成int32类型。
@@ -79,6 +89,16 @@ func (ctx *ContextData) GetHeaderDefaultInt(key string, i int) int {
 	return GetStringDefaultInt(ctx.GetHeader(key), i)
 }
 
+// GetHeaderInt64 获取header转换成int64类型。
+func (ctx *ContextData) GetHeaderInt64(key string) int64 {
+	return GetStringDefaultInt64(ctx.GetHeader(key), 0)
+}
+
+// GetHeaderDefaultInt64 获取header转换成int64类型，转换失败返回默认值。
+func (ctx *ContextData) GetHeaderDefaultInt64(key string, i int64) int64 {
+	return GetStringDefaultInt64(ctx.GetHeader(key), i)
+}
+
 // GetHeaderFloat32 获取header转换成float32类型。
 func (ctx *ContextData) GetHeaderFloat32(key string) float32 {
 	return GetStringDefaultFloat32(ctx.GetHeader(key), 0)
@@ -124,6 +144,16 @@ func (ctx *ContextData) GetQueryDefaultInt(key string, i int) int {
 	return GetStringDefaultInt(ctx.GetQuery(key), i)
 }
 
+// GetQueryInt64 获取uri参数值转换成int64类型。
+func (ctx *ContextData) GetQueryInt64(key string) int64 {
+	return GetStringDefaultInt64(ctx.GetQuery(key), 0)
+}
+
+// GetQueryDefaultInt64 获取uri参数值转换成int64类型，转换失败返回默认值。
+func (ctx *ContextData) GetQueryDefaultInt64(key string, i int64) int64 {
+	return GetStringDefaultInt64(ctx.GetQuery(key), i)
+}
+
 // GetQueryFloat32 获取url参数值转换成float32类型。
 func (ctx *ContextData) GetQueryFloat32(key string) float32 {
 	return GetStringDefaultFloat32(ctx.GetQuery(key), 0)
@@ -167,6 +197,16 @@ func (ctx *ContextData) GetCookieInt(key string) int {
 // GetCookieDefaultInt 获取一个cookie的转换成int类型，转换失败返回默认值
 func (ctx *ContextData) GetCookieDefaultInt(key string, i int) int {
 	return GetStringDefaultInt(ctx.GetCookie(key), i)
+}
+
+// GetCookieInt64 获取一个cookie的转换成int64类型。
+func (ctx *ContextData) GetCookieInt64(key string) int64 {
+	return GetStringDefaultInt64(ctx.GetCookie(key), 0)
+}
+
+// GetCookieDefaultInt64 获取一个cookie的转换成int64类型，转换失败返回默认值
+func (ctx *ContextData) GetCookieDefaultInt64(key string, i int64) int64 {
+	return GetStringDefaultInt64(ctx.GetCookie(key), i)
 }
 
 // GetCookieFloat32 获取一个cookie的转换成float32类型。

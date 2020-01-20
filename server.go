@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/fcgi"
 	"time"
 )
 
@@ -59,7 +60,12 @@ type (
 	// netHTTPLog 实现一个函数处理log.Logger的内容，用于捕捉net/http.Server输出的error内容。
 	netHTTPLog struct {
 		print func(...interface{})
-		log   *log.Logger
+	}
+
+	// ServerFcgi 定义fastcgi server
+	ServerFcgi struct {
+		http.Handler
+		Listeners []net.Listener
 	}
 )
 
@@ -86,7 +92,7 @@ func (srv *ServerStd) SetHandler(h http.Handler) {
 func (srv *ServerStd) SetPrint(fn func(...interface{})) {
 	srv.Print = fn
 	if srv.Print != nil {
-		srv.Server.ErrorLog = newNetHTTPLog(srv.Print).Logger()
+		srv.Server.ErrorLog = newNetHTTPLogger(srv.Print)
 	}
 }
 
@@ -95,7 +101,7 @@ func (srv *ServerStd) Set(key string, value interface{}) error {
 	switch val := value.(type) {
 	case func(...interface{}):
 		srv.Print = val
-		srv.Server.ErrorLog = newNetHTTPLog(srv.Print).Logger()
+		srv.Server.ErrorLog = newNetHTTPLogger(srv.Print)
 	case ServerConfigStd, *ServerConfigStd:
 		ConvertTo(value, srv.Server)
 	default:
@@ -105,12 +111,11 @@ func (srv *ServerStd) Set(key string, value interface{}) error {
 }
 
 // newNetHTTPLog 实现将一个日志处理函数适配成log.Logger对象。
-func newNetHTTPLog(fn func(...interface{})) *netHTTPLog {
+func newNetHTTPLogger(fn func(...interface{})) *log.Logger {
 	e := &netHTTPLog{
 		print: fn,
 	}
-	e.log = log.New(e, "", 0)
-	return e
+	return log.New(e, "", 0)
 }
 
 func (e *netHTTPLog) Write(p []byte) (n int, err error) {
@@ -118,6 +123,28 @@ func (e *netHTTPLog) Write(p []byte) (n int, err error) {
 	return 0, nil
 }
 
-func (e *netHTTPLog) Logger() *log.Logger {
-	return e.log
+// NewServerFcgi 函数创建一个fcgi server。
+func NewServerFcgi() Server {
+	return &ServerFcgi{Handler: http.NotFoundHandler()}
+}
+
+// SetHandler 方法设置fcgi处理对象。
+func (srv *ServerFcgi) SetHandler(h http.Handler) {
+	srv.Handler = h
+}
+
+// Serve 方法启动一个新的fcgi监听。
+func (srv *ServerFcgi) Serve(ln net.Listener) error {
+	srv.Listeners = append(srv.Listeners, ln)
+	return fcgi.Serve(ln, srv.Handler)
+}
+
+// Shutdown 方法关闭fcgi关闭监听。
+func (srv *ServerFcgi) Shutdown(ctx context.Context) error {
+	var errs Errors
+	for _, ln := range srv.Listeners {
+		err := ln.Close()
+		errs.HandleError(err)
+	}
+	return errs.GetError()
 }

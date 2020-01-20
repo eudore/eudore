@@ -1,12 +1,14 @@
 package httptest
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 )
 
 var (
@@ -87,4 +89,35 @@ func (clt *Client) WithHeaders(headers http.Header) *Client {
 func (clt *Client) WithHeaderValue(key, val string) *Client {
 	clt.Headers.Add(key, val)
 	return clt
+}
+
+// Stop 方法指定时间后停止app，默认3秒。
+//
+// 如果Handler实现Shutdown(ctx context.Context) error方法。
+func (clt *Client) Stop(t time.Duration) {
+	if t == 0 {
+		t = 1 * time.Second
+	}
+	{
+		app, ok := clt.Handler.(interface {
+			Shutdown() error
+		})
+		if ok {
+			go func() {
+				time.Sleep(t)
+				app.Shutdown()
+			}()
+		}
+	}
+	{
+		app, ok := clt.Handler.(interface {
+			Shutdown(ctx context.Context) error
+		})
+		if ok {
+			go func() {
+				time.Sleep(t)
+				app.Shutdown(context.Background())
+			}()
+		}
+	}
 }

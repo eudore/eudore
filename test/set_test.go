@@ -209,9 +209,9 @@ func TestConvertStruct(*testing.T) {
 
 	var a []int //= make([]int, 3)
 
-	ii, _ := eudore.Set(a, "+", 66)
-	ii, _ = eudore.Set(ii.([]int), "1", 1)
-	fmt.Printf("struct: %# v\n", pretty.Formatter(ii))
+	eudore.Set(&a, "+", 66)
+	eudore.Set(&a, "1", 1)
+	fmt.Printf("struct: %# v\n", pretty.Formatter(a))
 }
 
 func Benchmark_iterator(b *testing.B) {

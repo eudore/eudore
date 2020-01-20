@@ -7,6 +7,6 @@ import (
 )
 
 func TestStart(t *testing.T) {
-	srv := eudore.NewServer()
+	srv := eudore.NewServerEudore()
 	srv.ListenAndServe(":8084")
 }

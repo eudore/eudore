@@ -38,23 +38,17 @@ func NewRecoverFunc() eudore.HandlerFunc {
 			// Loop to get frames.
 			// A fixed number of pcs can expand to an indefinite number of Frames.
 			frame, more := frames.Next()
-			for more {
-				if strings.HasPrefix(frame.Function, "runtime.") {
-					stack = stack[0:0]
-
-				} else {
-					// remove prefix
-					pos := strings.Index(frame.File, "src")
-					if pos >= 0 {
-						frame.File = frame.File[pos+4:]
-					}
-					pos = strings.LastIndex(frame.Function, "/")
-					if pos >= 0 {
-						frame.Function = frame.Function[pos+1:]
-					}
-
-					stack = append(stack, fmt.Sprintf("%s:%d %s", frame.File, frame.Line, frame.Function))
+			for more && frame.Function != "runtime.main" {
+				// remove prefix
+				pos := strings.Index(frame.File, "src")
+				if pos >= 0 {
+					frame.File = frame.File[pos+4:]
 				}
+				pos = strings.LastIndex(frame.Function, "/")
+				if pos >= 0 {
+					frame.Function = frame.Function[pos+1:]
+				}
+				stack = append(stack, fmt.Sprintf("%s:%d %s", frame.File, frame.Line, frame.Function))
 
 				frame, more = frames.Next()
 			}

@@ -7,7 +7,7 @@ import (
 
 type (
 	// ConfigReadFunc 定义配置数据读取参数。
-	ConfigReadFunc func(string) ([]byte, error)
+	ConfigReadFunc func(string) (string, []byte, error)
 	// ConfigParseFunc 定义配置解析函数。
 	ConfigParseFunc func(Config) error
 	// ConfigParseOption 定义配置解析选项，用于修改配置解析函数。
@@ -22,14 +22,16 @@ type (
 	// ConfigMap 使用map保存配置。
 	ConfigMap struct {
 		Keys  map[string]interface{} `set:"keys"`
-		funcs []ConfigParseFunc
-		mu    sync.RWMutex
+		Print func(...interface{})   `set:"print"`
+		funcs []ConfigParseFunc      `set:"-"`
+		mu    sync.RWMutex           `set:"-"`
 	}
 	// ConfigEudore 使用结构体或map保存配置，通过反射来读写属性。
 	ConfigEudore struct {
-		Keys  interface{}       `set:"keys"`
-		mu    sync.RWMutex      `set:"-"`
-		funcs []ConfigParseFunc `set:"-"`
+		Keys  interface{}          `set:"keys"`
+		Print func(...interface{}) `set:"print"`
+		funcs []ConfigParseFunc    `set:"-"`
+		mu    sync.RWMutex         `set:"-"`
 	}
 )
 
@@ -43,6 +45,9 @@ func NewConfigMap(arg interface{}) Config {
 	}
 	return &ConfigMap{
 		Keys: keys,
+		Print: func(...interface{}) {
+			// Do nothing because not print message.
+		},
 		funcs: []ConfigParseFunc{
 			ConfigParseRead,
 			ConfigParseConfig,
@@ -71,6 +76,13 @@ func (c *ConfigMap) Set(key string, val interface{}) error {
 		keys, ok := val.(map[string]interface{})
 		if ok {
 			c.Keys = keys
+		}
+	} else if key == "print" {
+		fn, ok := val.(func(...interface{}))
+		if ok {
+			c.Print = fn
+		} else {
+			c.Print(val)
 		}
 	} else {
 		c.Keys[key] = val
@@ -112,6 +124,9 @@ func NewConfigEudore(i interface{}) Config {
 	}
 	return &ConfigEudore{
 		Keys: i,
+		Print: func(...interface{}) {
+			// Do nothing because not print message.
+		},
 		funcs: []ConfigParseFunc{
 			ConfigParseRead,
 			ConfigParseConfig,
@@ -139,8 +154,15 @@ func (c *ConfigEudore) Set(key string, val interface{}) (err error) {
 	c.mu.RLock()
 	if len(key) == 0 {
 		c.Keys = val
+	} else if key == "print" {
+		fn, ok := val.(func(...interface{}))
+		if ok {
+			c.Print = fn
+		} else {
+			c.Print(val)
+		}
 	} else {
-		c.Keys, err = Set(c.Keys, key, val)
+		err = Set(c.Keys, key, val)
 	}
 	c.mu.RUnlock()
 	return

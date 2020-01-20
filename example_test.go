@@ -54,6 +54,6 @@ func ExampleNewRouterRadix() {
 	r.GetFunc("/api/v1/info/:name action=showname version=v1", func(ctx eudore.Context) {
 		// Get route additional parameters and path parameters
 		// 获取路由附加参数和路径参数
-		ctx.WithField("version", ctx.GetParam("version")).Info("user name is: " + ctx.GetParam("name"))
+		ctx.WithField("route version", ctx.GetParam("version")).Info("user name is: " + ctx.GetParam("name"))
 	})
 }

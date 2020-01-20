@@ -7,17 +7,8 @@ import (
 	"strings"
 )
 
-func arrayclean(names []string) (n []string) {
-	for _, name := range names {
-		if name != "" {
-			n = append(n, name)
-		}
-	}
-	return
-}
-
 // Each string strs handle element, if return is null, then delete this a elem.
-func eachstring(strs []string, fn func(string) string) (s []string) {
+func stringeach(strs []string, fn func(string) string) (s []string) {
 	for _, i := range strs {
 		i = fn(i)
 		if i != "" {
@@ -41,28 +32,6 @@ func env2arg(str string) string {
 	k, v := split2byte(str, '=')
 	k = strings.ToLower(strings.Replace(k, "_", ".", -1))[4:]
 	return fmt.Sprintf("--%s=%s", k, v)
-}
-
-// MatchStar 模式匹配对象，允许使用带'*'的模式。
-func MatchStar(obj, patten string) bool {
-	ps := strings.Split(patten, "*")
-	if len(ps) < 2 {
-		return patten == obj
-	}
-	if !strings.HasPrefix(obj, ps[0]) {
-		return false
-	}
-	for _, i := range ps {
-		if i == "" {
-			continue
-		}
-		pos := strings.Index(obj, i)
-		if pos == -1 {
-			return false
-		}
-		obj = obj[pos+len(i):]
-	}
-	return true
 }
 
 // JSON test function, json formatted output args.
@@ -337,54 +306,150 @@ func GetStringsDefault(strs ...string) string {
 	return ""
 }
 
-// StringMap 定义map[string]interface{}对象的操作。
-type StringMap map[string]interface{}
+// GetWarp 对象封装Get函数提供类型转换功能。
+type GetWarp struct {
+	Get func(string) interface{}
+}
 
-// NewStringMap 创建一个StringMap对象，如果参数不是map[string]interface{}，则返回空。
-func NewStringMap(i interface{}) StringMap {
-	v, ok := i.(map[string]interface{})
-	if ok {
-		return StringMap(v)
+// NewGetWarp 函数创建一个getwarp处理类型转换。
+func NewGetWarp(fn func(string) interface{}) GetWarp {
+	return GetWarp{Get: fn}
+}
+
+// NewGetWarpWithConfig 函数使用Config.Get创建getwarp
+func NewGetWarpWithConfig(c Config) GetWarp {
+	return GetWarp{Get: c.Get}
+}
+
+// NewGetWarpWithApp 函数使用App创建getwarp
+func NewGetWarpWithApp(app *App) GetWarp {
+	return GetWarp{
+		Get: func(key string) interface{} {
+			return app.Get(key)
+		},
 	}
+}
+
+// GetBool 方法获取bool类型的配置值。
+func (c GetWarp) GetBool(key string, vals ...bool) bool {
+	return GetBool(c.Get(key))
+}
+
+// GetInt 方法获取int类型的配置值。
+func (c GetWarp) GetInt(key string, vals ...int) int {
+	num := GetInt(c.Get(key))
+	if num != 0 {
+		return num
+	}
+	for _, i := range vals {
+		if i != 0 {
+			return i
+		}
+	}
+	return 0
+}
+
+// GetUint 方法取获取uint类型的配置值。
+func (c GetWarp) GetUint(key string, vals ...uint) uint {
+	num := GetUint(c.Get(key))
+	if num != 0 {
+		return num
+	}
+	for _, i := range vals {
+		if i != 0 {
+			return i
+		}
+	}
+	return 0
+}
+
+// GetInt64 方法int64类型的配置值。
+func (c GetWarp) GetInt64(key string, vals ...int64) int64 {
+	num := GetInt64(c.Get(key))
+	if num != 0 {
+		return num
+	}
+	for _, i := range vals {
+		if i != 0 {
+			return i
+		}
+	}
+	return 0
+}
+
+// GetUint64 方法取获取uint64类型的配置值。
+func (c GetWarp) GetUint64(key string, vals ...uint64) uint64 {
+	num := GetUint64(c.Get(key))
+	if num != 0 {
+		return num
+	}
+	for _, i := range vals {
+		if i != 0 {
+			return i
+		}
+	}
+	return 0
+}
+
+// GetFloat32 方法取获取float32类型的配置值。
+func (c GetWarp) GetFloat32(key string, vals ...float32) float32 {
+	num := GetFloat32(c.Get(key))
+	if num != 0 {
+		return num
+	}
+	for _, i := range vals {
+		if i != 0 {
+			return i
+		}
+	}
+	return 0.0
+}
+
+// GetFloat64 方法取获取float64类型的配置值。
+func (c GetWarp) GetFloat64(key string, vals ...float64) float64 {
+	num := GetFloat64(c.Get(key))
+	if num != 0 {
+		return num
+	}
+	for _, i := range vals {
+		if i != 0 {
+			return i
+		}
+	}
+	return 0.0
+}
+
+// GetString 方法获取一个字符串，如果字符串为空返回其他默认非空字符串，
+func (c GetWarp) GetString(key string, vals ...string) string {
+	str := GetString(c.Get(key))
+	if str != "" {
+		return str
+	}
+	for _, i := range vals {
+		if i != "" {
+			return i
+		}
+	}
+	return ""
+}
+
+// GetBytes 方法获取[]byte类型的配置值，如果是字符串类型会转换成[]byte。
+func (c GetWarp) GetBytes(key string) []byte {
+	val := c.Get(key)
+	body, ok := val.([]byte)
+	if ok {
+		return body
+	}
+
+	str := GetString(val)
+	if str != "" {
+		return []byte(str)
+	}
+
 	return nil
 }
 
-// Get 方法实现获得一个键值。
-func (m StringMap) Get(key string) interface{} {
-	return m[key]
-}
-
-// Set 方法实现设置一个值。
-func (m StringMap) Set(key string, val interface{}) {
-	m[key] = val
-}
-
-// Del 方法实现删除一个键值。
-func (m StringMap) Del(key string) {
-	delete(m, key)
-}
-
-// GetInt 方法获取对应的值并转换成int。
-func (m StringMap) GetInt(key string) int {
-	return GetInt(m.Get(key))
-}
-
-// GetInt64 方法获取对应的值并转换成int。
-func (m StringMap) GetInt64(key string) int64 {
-	return GetInt64(m.Get(key))
-}
-
-// GetDefultInt 方法获取对应的值并转换成int,如果无法转换返回默认值。
-func (m StringMap) GetDefultInt(key string, n int) int {
-	return GetDefaultInt(m.Get(key), n)
-}
-
-// GetString 方法获取对应的值并转换成string
-func (m StringMap) GetString(key string) string {
-	return GetString(m.Get(key))
-}
-
-// GetDefaultString 方法获取对应的值并转换成string,如果无法转换返回默认值。
-func (m StringMap) GetDefaultString(key string, str string) string {
-	return GetDefaultString(m.Get(key), str)
+// GetStrings 方法获取[]string值
+func (c GetWarp) GetStrings(key string) []string {
+	return GetArrayString(c.Get(key))
 }

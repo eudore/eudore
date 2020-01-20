@@ -5,7 +5,7 @@ func InitMidd(app *eudore.Eudore) error {
 	cb.InjectRoutes(app.Group("/eudore/debug/breaker"))
 	app.AddMiddleware(
 		// add logger middleware
-		middleware.NewLoggerFunc(),
+		middleware.NewLoggerFunc(app),
 		// 熔断器
 		cb.Handle,
 		// 处理超时
@@ -22,8 +22,8 @@ func InitMidd(app *eudore.Eudore) error {
 		// 黑名单
 		middleware.NewDenialsFunc(app.Cache, 72*time.Hour),
 		// 流控
-		middleware.NewRateFunc(10, 30),
-		middlewareNewBasicAuthFunc("", map[string]string{
+		middleware.NewRateFunc(app, 10, 30),
+		middleware.NewBasicAuthFunc("", map[string]string{
 			"root": "111",
 		}),
 		// gzip压缩

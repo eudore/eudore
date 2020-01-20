@@ -16,13 +16,15 @@ type (
 	// Core 定义Core对象，是App对象的一种实例化。
 	Core struct {
 		*App
+		GetWarp
 		wg sync.WaitGroup
 	}
 )
 
 // NewCore 创建一个Core对象，并使用默认组件初始化。
 func NewCore() *Core {
-	return &Core{App: NewApp()}
+	app := NewApp()
+	return &Core{App: app, GetWarp: NewGetWarpWithApp(app)}
 }
 
 // Run 方法初始化日志输出然后启动Core，Config需要手动调用Parse方法。
@@ -38,32 +40,39 @@ func (app *Core) Run() (err error) {
 	if initlog, ok := app.Logger.(LoggerInitHandler); ok {
 		app.Logger, _ = NewLoggerStd(nil)
 		initlog.NextHandler(app.Logger)
-		Set(app.Router, "print", NewLoggerPrintFunc(app.Logger))
-		Set(app.Server, "print", NewLoggerPrintFunc(app.Logger))
+		app.Logger.Sync()
+	}
+	// 解析配置
+	err = app.Config.Parse()
+	if err != nil {
+		app.Error(err)
+		return err
 	}
 
 	app.Server.SetHandler(app)
+	// 等一下让go Serve启动
+	time.Sleep(time.Millisecond * 100)
 	app.wg.Wait()
 	return nil
 }
 
 // Listen 方法监听一个http端口
-func (app *Core) Listen(addr string) {
+func (app *Core) Listen(addr string) error {
 	conf := ServerListenConfig{
 		Addr: addr,
 	}
 	ln, err := conf.Listen()
 	if err != nil {
 		app.Error(err)
-		return
+		return err
 	}
 	app.Logger.Infof("listen %s %s", ln.Addr().Network(), ln.Addr().String())
-	app.wg.Add(1)
 	go app.Serve(ln)
+	return nil
 }
 
 // ListenTLS 方法监听一个https端口，如果支持默认开启h2
-func (app *Core) ListenTLS(addr, key, cert string) {
+func (app *Core) ListenTLS(addr, key, cert string) error {
 	conf := ServerListenConfig{
 		Addr:     addr,
 		HTTPS:    true,
@@ -74,15 +83,16 @@ func (app *Core) ListenTLS(addr, key, cert string) {
 	ln, err := conf.Listen()
 	if err != nil {
 		app.Error(err)
-		return
+		return err
 	}
-	app.Logger.Infof("listen %s %s", ln.Addr().Network(), ln.Addr().String())
-	app.wg.Add(1)
+	app.Logger.Infof("listen tls %s %s", ln.Addr().Network(), ln.Addr().String())
 	go app.Serve(ln)
+	return nil
 }
 
 // Serve 方法阻塞启动一个监听服务。
 func (app *Core) Serve(ln net.Listener) error {
+	app.wg.Add(1)
 	err := app.Server.Serve(ln)
 	if err != nil {
 		app.Error(err)

@@ -50,7 +50,8 @@ func NewApp() *App {
 	app.ContextPool.New = func() interface{} {
 		return NewContextBase(app)
 	}
-	Set(app.Router, "print", NewLoggerPrintFunc(app.Logger))
-	Set(app.Server, "print", NewLoggerPrintFunc(app.Logger))
+	Set(app.Config, "print", NewPrintFunc(app))
+	Set(app.Server, "print", NewPrintFunc(app))
+	Set(app.Router, "print", NewPrintFunc(app))
 	return app
 }

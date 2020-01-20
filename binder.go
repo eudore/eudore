@@ -38,11 +38,11 @@ func BindDefault(ctx Context, r io.Reader, i interface{}) error {
 		return BindURL(ctx, r, i)
 	}
 	switch strings.SplitN(ctx.GetHeader(HeaderContentType), ";", 2)[0] {
-	case MimeApplicationJSON:
+	case MimeApplicationJSON, MimeApplicationJSONUtf8:
 		return BindJSON(ctx, r, i)
-	case MimeTextXML, MimeApplicationXML:
+	case MimeTextXML, MimeTextXMLCharsetUtf8, MimeApplicationXML, MimeApplicationxmlCharsetUtf8:
 		return BindXML(ctx, r, i)
-	case MimeMultipartForm:
+	case MimeMultipartForm, MimeApplicationFormCharsetUtf8:
 		return BindForm(ctx, r, i)
 	case MimeApplicationForm:
 		return BindURLBody(ctx, r, i)
@@ -91,27 +91,41 @@ func BindXML(_ Context, r io.Reader, i interface{}) error {
 }
 
 // BindHeader 函数实现使用header数据bind。
-func BindHeader(ctx Context, r io.Reader, i interface{}) error {
-	// ctx.Request().Header().Range(func(k, v string) {
-	// 	Set(i, k, v)
-	// })
+func BindHeader(ctx Context, _ io.Reader, i interface{}) error {
+	for k, v := range ctx.Request().Header {
+		Set(i, k, v)
+	}
 	return nil
 }
 
-// BindHeaderWithBinder 实现Binder额外封装bind header。
-func BindHeaderWithBinder(fn Binder) Binder {
+// NewHeaderBinder 实现Binder额外封装bind header。
+func NewHeaderBinder(fn Binder) Binder {
 	return func(ctx Context, r io.Reader, i interface{}) error {
 		BindHeader(ctx, r, i)
 		return fn(ctx, r, i)
 	}
 }
 
-// BinderURLWithBinder 实现Binder在非get和head方法下实现BindURL。
-func BinderURLWithBinder(fn Binder) Binder {
+// NewURLBinder 实现Binder在非get和head方法下实现BindURL。
+func NewURLBinder(fn Binder) Binder {
 	return func(ctx Context, r io.Reader, i interface{}) error {
 		if ctx.Method() != MethodGet && ctx.Method() != MethodHead {
 			BindURL(ctx, r, i)
 		}
 		return fn(ctx, r, i)
+	}
+}
+
+// NewValidateBinder 实际Binder后调用ValidateStruct检测结构体对象数据是否有效。
+func NewValidateBinder(fn Binder) Binder {
+	return func(ctx Context, r io.Reader, i interface{}) error {
+		err := fn(ctx, r, i)
+		if err == nil {
+			err = Validate(i)
+			if err != nil {
+				ctx.Error(err)
+			}
+		}
+		return err
 	}
 }

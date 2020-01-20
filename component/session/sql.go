@@ -31,7 +31,7 @@ func NewSessionDB(db *sql.DB) Session {
 func NewSessionSQL(name, config string) Session {
 	db, err := sql.Open(name, config)
 	if err != nil {
-		panic(err)
+		return nil
 	}
 	return NewsessionStd(NewStoreDB(db))
 }
@@ -41,7 +41,7 @@ func NewStoreDB(db *sql.DB) Store {
 	store := &StoreSQL{DB: db}
 	err := store.Init()
 	if err != nil {
-		panic(err)
+		return nil
 	}
 	return store
 }

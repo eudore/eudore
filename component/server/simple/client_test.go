@@ -1,7 +1,7 @@
 package simple
 
 import (
-	"eudore/component/server/simple"
+	"github.com/eudore/eudore/component/server/simple"
 	"testing"
 )
 

@@ -23,14 +23,13 @@ func NewRbac() *Rbac {
 }
 
 // BindRole 方法用户绑定一个角色。
-func (r *Rbac) BindRole(userid, roleid int) {
-	r.RoleBinds[userid] = append(r.RoleBinds[userid], roleid)
+func (r *Rbac) BindRole(userid int, roleid ...int) {
+	r.RoleBinds[userid] = append(r.RoleBinds[userid], roleid...)
 }
 
 // BindPermissions 方法角色绑定一个权限id
-func (r *Rbac) BindPermissions(roleid, permid int) {
-	r.PermissionBinds[roleid] = append(r.PermissionBinds[roleid], permid)
-
+func (r *Rbac) BindPermissions(roleid int, permid ...int) {
+	r.PermissionBinds[roleid] = append(r.PermissionBinds[roleid], permid...)
 }
 
 // AddPermission 方法增加一个权限。

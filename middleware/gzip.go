@@ -62,11 +62,11 @@ func (g *Gzip) Handle(ctx eudore.Context) {
 		ctx.Next()
 		return
 	}
-	// 设置gzip header
-	w.Header().Set(eudore.HeaderContentEncoding, "gzip")
-	w.Header().Set(eudore.HeaderVary, eudore.HeaderAcceptEncoding)
-	// Next
 	ctx.SetResponse(w)
+	// 设置gzip header
+	ctx.SetHeader(eudore.HeaderContentEncoding, "gzip")
+	ctx.SetHeader(eudore.HeaderVary, eudore.HeaderAcceptEncoding)
+	// Next
 	ctx.Next()
 	w.writer.Close()
 	// 回收GzipResponse
@@ -104,6 +104,11 @@ func shouldCompress(ctx eudore.Context) bool {
 		strings.Contains(h.Get(eudore.HeaderConnection), "Upgrade") ||
 		strings.Contains(h.Get(eudore.HeaderContentType), "text/event-stream") {
 
+		return false
+	}
+
+	h = ctx.Response().Header()
+	if strings.Contains(h.Get(eudore.HeaderContentEncoding), "gzip") {
 		return false
 	}
 

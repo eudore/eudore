@@ -18,31 +18,14 @@ const (
 )
 
 type (
-	// RouterCheckFunc defines the routing data check function
-	//
-	// RouterCheckFunc 定义路由数据校验函数
-	RouterCheckFunc func(string) bool
-	// RouterFindFunc func() []string
-
-	// RouterNewCheckFunc defines the creation function of the routing data check function
-	//
-	// Construct a check function by specifying a string
-	//
-	// RouterNewCheckFunc 定义路由数据校验函数的创建函数
-	//
-	// 通过指定字符串构造出一个校验函数
-	RouterNewCheckFunc func(string) RouterCheckFunc
-
-	// RouterFull is implemented based on the radix tree to implement all router related features.
+	// RouterCoreFull is implemented based on the radix tree to implement all router related features.
 	//
 	// With path parameters, wildcard parameters, default parameters, parameter verification, wildcard verification, multi-parameter regular capture is not implemented.
 	//
 	// RouterFull基于基数树实现，实现全部路由器相关特性。
 	//
 	// 具有路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
-	RouterFull struct {
-		RouterMethod
-		Print       func(...interface{}) `set:"print"`
+	RouterCoreFull struct {
 		middlewares *trieNode
 		node404     fullNode
 		nodefunc404 HandlerFuncs
@@ -72,7 +55,7 @@ type (
 		tags []string
 		vals []string
 		// 校验函数
-		check RouterCheckFunc
+		check ValidateStringFunc
 		// 正则捕获名称和函数
 		// names		[]string
 		// find		RouterFindFunc
@@ -83,8 +66,12 @@ type (
 
 // NewRouterFull 函数创建一个Full路由器。
 func NewRouterFull() Router {
-	r := &RouterFull{
-		Print:       func(...interface{}) {},
+	return NewRouterStd(NewRouterCoreFull())
+}
+
+// NewRouterCoreFull 函数创建一个Full路由器核心，使用radix匹配。
+func NewRouterCoreFull() RouterCore {
+	return &RouterCoreFull{
 		nodefunc404: HandlerFuncs{HandlerRouter404},
 		nodefunc405: HandlerFuncs{HandlerRouter405},
 		node404: fullNode{
@@ -101,15 +88,12 @@ func NewRouterFull() Router {
 		},
 		middlewares: newTrieNode(),
 	}
-	r.RouterMethod = NewRouterMethodStd(r)
-	return r
 }
 
 // RegisterMiddleware method register the middleware into the middleware tree and append the handler if it exists.
 //
 // RegisterMiddleware 注册中间件到中间件树中，如果存在则追加处理者。
-func (r *RouterFull) RegisterMiddleware(path string, hs HandlerFuncs) {
-	r.Print("RegisterMiddleware:", path, hs)
+func (r *RouterCoreFull) RegisterMiddleware(path string, hs HandlerFuncs) {
 	path = strings.Split(path, " ")[0]
 	r.middlewares.Insert(path, hs)
 	if path == "" {
@@ -125,22 +109,21 @@ func (r *RouterFull) RegisterMiddleware(path string, hs HandlerFuncs) {
 // RegisterHandler 给路由器注册一个新的方法请求路径
 //
 // 路由器会从中间件树中匹配当前路径可使用的处理者，并添加到处理者前方。
-func (r *RouterFull) RegisterHandler(method string, path string, handler HandlerFuncs) {
-	r.Print("RegisterHandler:", method, path, handler)
+func (r *RouterCoreFull) RegisterHandler(method string, path string, handler HandlerFuncs) {
 	switch method {
 	case "NotFound", "404":
 		r.nodefunc404 = handler
-		r.node404.handlers = CombineHandlerFuncs(r.middlewares.vals, handler)
+		r.node404.handlers = HandlerFuncsCombine(r.middlewares.vals, handler)
 	case "MethodNotAllowed", "405":
 		r.nodefunc405 = handler
-		r.node405.Wchildren.handlers = CombineHandlerFuncs(r.middlewares.vals, handler)
+		r.node405.Wchildren.handlers = HandlerFuncsCombine(r.middlewares.vals, handler)
 	case MethodAny:
-		handler = CombineHandlerFuncs(r.middlewares.Lookup(path), handler)
+		handler = HandlerFuncsCombine(r.middlewares.Lookup(path), handler)
 		for _, method := range RouterAllMethod {
 			r.insertRoute(method, path, true, handler)
 		}
 	default:
-		r.insertRoute(method, path, false, CombineHandlerFuncs(r.middlewares.Lookup(path), handler))
+		r.insertRoute(method, path, false, HandlerFuncsCombine(r.middlewares.Lookup(path), handler))
 	}
 }
 
@@ -151,7 +134,7 @@ func (r *RouterFull) RegisterHandler(method string, path string, handler Handler
 // 添加一个新的路由Node。
 //
 // 如果方法不支持则不会添加，请求改路径会响应405
-func (r *RouterFull) insertRoute(method, key string, isany bool, val HandlerFuncs) {
+func (r *RouterCoreFull) insertRoute(method, key string, isany bool, val HandlerFuncs) {
 	var currentNode = r.getTree(method)
 	if currentNode == &r.node405 {
 		return
@@ -181,9 +164,7 @@ func (r *RouterFull) insertRoute(method, key string, isany bool, val HandlerFunc
 // Note: 404 does not support extra parameters, not implemented.
 //
 // 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
-//
-// 注意：404不支持额外参数，未实现。
-func (r *RouterFull) Match(method, path string, params Params) HandlerFuncs {
+func (r *RouterCoreFull) Match(method, path string, params Params) HandlerFuncs {
 	if n := r.getTree(method).recursiveLoopup(path, params); n != nil {
 		return n
 	}
@@ -191,17 +172,6 @@ func (r *RouterFull) Match(method, path string, params Params) HandlerFuncs {
 	// 处理404
 	r.node404.AddTagsToParams(params)
 	return r.node404.handlers
-}
-
-// Set 方法允许设置Print属性，设置日志输出信息。
-func (r *RouterFull) Set(key string, value interface{}) error {
-	switch val := value.(type) {
-	case func(...interface{}):
-		r.Print = val
-	default:
-		return ErrSeterNotSupportField
-	}
-	return nil
 }
 
 // Create a 405 response radixNode.
@@ -260,7 +230,7 @@ func newFullNode(path string) *fullNode {
 // Load the checksum function by name.
 //
 // 根据名称加载校验函数。
-func loadCheckFunc(path string) (string, RouterCheckFunc) {
+func loadCheckFunc(path string) (string, ValidateStringFunc) {
 	// invalid path
 	// 无效路径
 	if len(path) == 0 || (path[0] != ':' && path[0] != '*') {
@@ -282,22 +252,8 @@ func loadCheckFunc(path string) (string, RouterCheckFunc) {
 		fname = "regexp:" + fname
 	}
 
-	// Determine if there is ':'
-	// 判断是否有':'
-	f2name, arg := split2byte(fname, ':')
-	// no ':' is a fixed function, return directly
-	// 没有':'为固定函数，直接返回
-	if len(arg) == 0 {
-		return name, GlobalRouterCheckFunc[fname]
-	}
-
-	// There is a ':' variable function to create a checksum function
-	// 有':'为变量函数，创建校验函数
-	fn := GlobalRouterNewCheckFunc[f2name](arg)
-	// save the newly created checksum function
-	// 保存新建的校验函数
-	GlobalRouterCheckFunc[fname] = fn
-	return name, fn
+	// 调用validate部分创建check函数
+	return name, GetValidateStringFunc(fname)
 }
 
 // InsertNode add a child node to the node.
@@ -424,7 +380,7 @@ func (r *fullNode) AddTagsToParams(p Params) {
 // 获取对应方法的树。
 //
 // 支持eudore.RouterAllMethod这些方法,弱不支持会返回405处理树。
-func (r *RouterFull) getTree(method string) *fullNode {
+func (r *RouterCoreFull) getTree(method string) *fullNode {
 	switch method {
 	case MethodGet:
 		return &r.get

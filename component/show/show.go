@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/eudore/eudore"
 	"github.com/kr/pretty"
-	// "reflect"
 	"strings"
 )
 
@@ -21,7 +20,7 @@ func DeleteObject(key string) {
 }
 
 // RoutesInject 函数注入show使用的路由。
-func RoutesInject(r eudore.RouterMethod) {
+func RoutesInject(r eudore.Router) {
 	r = r.Group("/show")
 	r.GetFunc("/", List)
 	r.GetFunc("/*key", Showkey)

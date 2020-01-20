@@ -3,8 +3,8 @@ package eudore
 import (
 	"bufio"
 	"bytes"
-	"crypto/tls"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/textproto"
@@ -17,14 +17,12 @@ type (
 	// Request 定义一个http请求。
 	Request struct {
 		http.Request
-		conn   net.Conn
-		reader *bufio.Reader
-		//
-		mu         sync.Mutex
-		netxLength int
-		sawEOF     bool
+		conn net.Conn
+		// read body
+		reader     *bufio.Reader
+		nextLength int64
 		expect     bool
-		isnotkeep  bool
+		mu         sync.Mutex
 	}
 )
 
@@ -40,94 +38,69 @@ func (r *Request) Reset(conn net.Conn) error {
 		return err
 	}
 	// 读取请求行，sawEOF作为临时变量
-	r.Method, r.RequestURI, r.Proto, r.sawEOF = parseRequestLine(line)
-	if !r.sawEOF {
-		return ErrLineInvalid
+	r.Method, r.RequestURI, r.Proto, err = parseRequestLine(line)
+	if err != nil {
+		return err
 	}
-	// read http headers
+	// 初始化path和uri参数。
+	r.URL, err = url.ParseRequestURI(r.RequestURI)
+	if err != nil {
+		return err
+	}
 	// 读取http headers
 	for {
-		// Read a line of content.
 		// 读取一行内容。
 		line, err = r.readLine()
 		if err != nil || len(line) == 0 {
 			break
 		}
-		// Split into headers and store them in the request.
 		// 分割成header存储到请求中。
 		r.Header.Add(splitHeader(line))
 	}
 	r.Host = r.Header.Get("Host")
 	r.RemoteAddr = conn.RemoteAddr().String()
-	// Read the request body length from the header, if no body direct length is 0
-	// 从header中读取请求body长度，如果无body直接长度为0
+
+	// 从header中读取请求body长度，如果无body直接长度为0,未处理分段传输。
 	lenstr := r.Header.Get("Content-Length")
 	if len(lenstr) > 0 {
 		r.ContentLength, err = strconv.ParseInt(lenstr, 10, 64)
 		if err != nil {
 			return err
 		}
-		r.netxLength = int(r.ContentLength)
+		r.expect = r.Header.Get("Expect") == "100-continue"
+		r.nextLength = r.ContentLength
+		r.Body = r
 	} else {
-		r.ContentLength = -1
-		r.netxLength = 0
+		r.ContentLength = 0
+		r.Body = NoBody
 	}
-	r.Body = r
-	// When the body length is zero, the body is read directly to return EOF.
-	// body长度为零时，读取body直接返回EOF。
-	r.sawEOF = r.netxLength == 0
-	r.expect = r.Header.Get("Expect") == "100-continue"
-	r.isnotkeep = r.Header.Get("Connection") != "keep-alive"
-	// 初始化path和uri参数。
-	r.URL, err = url.ParseRequestURI(r.RequestURI)
-	return err
+	return nil
 }
 
 // Read 方法读取数据，实现io.Reader。
 func (r *Request) Read(p []byte) (int, error) {
 	r.mu.Lock()
-	// First judge whether it has been read
-	// 先判断是否已经读取完毕
-	if r.sawEOF {
-		r.mu.Unlock()
-		return 0, io.EOF
-	}
-	// If Expect is 100-continue, return 100 first and continue reading data.
-	// 如果Expect为100-continue，先返回100然后继续读取数据。
 	if r.expect {
 		r.expect = false
 		r.conn.Write(constinueMsg)
 	}
-	// read data from the connection
-	// 从连接读取数据
-	n, err := r.reader.Read(p)
-	if err == io.EOF {
-		// read return EOF
-		// 读取返回EOF
-		r.sawEOF = true
-	} else if err == nil && n > 0 {
-		// Reduce the length of unread data
-		// 减少未读数据长度
-		r.netxLength -= n
-		// set EOF
-		// 设置EOF
-		r.sawEOF = r.netxLength == 0
-		if r.sawEOF {
-			err = io.EOF
-		}
+	if r.nextLength <= 0 {
+		return 0, io.EOF
 	}
+	if int64(len(p)) > r.nextLength {
+		p = p[0:r.nextLength]
+	}
+	n, err := r.reader.Read(p)
+	r.nextLength -= int64(n)
 	r.mu.Unlock()
 	return n, err
 }
 
 // Close 方法关闭read。
 func (r *Request) Close() error {
-	r.sawEOF = true
-	return nil
-}
-
-// TLS 方法获得TLS状态。
-func (r *Request) TLS() *tls.ConnectionState {
+	r.mu.Lock()
+	io.CopyN(ioutil.Discard, r.reader, r.nextLength)
+	r.mu.Unlock()
 	return nil
 }
 
@@ -153,14 +126,14 @@ func (r *Request) readLine() ([]byte, error) {
 }
 
 // parseRequestLine parses "GET /foo HTTP/1.1" into its three parts.
-func parseRequestLine(line []byte) (method, requestURI, proto string, ok bool) {
+func parseRequestLine(line []byte) (method, requestURI, proto string, err error) {
 	s1 := bytes.IndexByte(line, ' ')
 	s2 := bytes.IndexByte(line[s1+1:], ' ')
 	if s1 < 0 || s2 < 0 {
-		return
+		return method, requestURI, proto, ErrLineInvalid
 	}
 	s2 += s1 + 1
-	return string(line[:s1]), string(line[s1+1 : s2]), string(line[s2+1:]), true
+	return string(line[:s1]), string(line[s1+1 : s2]), string(line[s2+1:]), nil
 }
 
 // 将header的键值切分
@@ -171,3 +144,12 @@ func splitHeader(line []byte) (string, string) {
 	}
 	return "", ""
 }
+
+// NoBody 定义没有数据的body。
+var NoBody = noBody{}
+
+type noBody struct{}
+
+func (noBody) Read([]byte) (int, error)         { return 0, io.EOF }
+func (noBody) Close() error                     { return nil }
+func (noBody) WriteTo(io.Writer) (int64, error) { return 0, nil }

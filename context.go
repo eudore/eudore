@@ -96,7 +96,7 @@ type (
 		Fatalf(string, ...interface{})
 		WithField(key string, value interface{}) Logout
 		WithFields(fields Fields) Logout
-		Logger() Logger
+		Logger() Logout
 	}
 
 	// ContextBase 实现Context接口。
@@ -117,7 +117,7 @@ type (
 		postBody   []byte
 		// component
 		app *App
-		log Logger
+		log Logout
 	}
 	// entryContextBase 实现ContextBase使用的Logout对象。
 	entryContextBase struct {
@@ -135,6 +135,7 @@ var _ Context = (*ContextBase)(nil)
 func NewContextBase(app *App) *ContextBase {
 	return &ContextBase{
 		app: app,
+		log: app.Logger,
 	}
 }
 
@@ -144,7 +145,6 @@ func (ctx *ContextBase) Reset(pctx context.Context, w ResponseWriter, r *Request
 	ctx.RequestReader = r
 	ctx.ResponseWriter = w
 	ctx.err = ""
-	// logger
 	ctx.log = ctx.app.Logger
 
 	// data
@@ -279,7 +279,7 @@ func (ctx *ContextBase) Body() []byte {
 	if !ctx.isReadBody {
 		bts, err := ioutil.ReadAll(ctx.RequestReader.Body)
 		if err != nil {
-			ctx.logReset(0).WithField("caller", "Context.Body").Error(err)
+			ctx.logReset(3).WithField(ParamCaller, "Context.Body").Error(err)
 			return []byte{}
 		}
 		ctx.isReadBody = true
@@ -300,7 +300,7 @@ func (ctx *ContextBase) getReader() io.Reader {
 func (ctx *ContextBase) BindWith(i interface{}, r Binder) (err error) {
 	err = r(ctx, ctx.getReader(), i)
 	if err != nil {
-		ctx.logReset(0).WithField("caller", "Context.ReadBind").Error(err)
+		ctx.logReset(3).WithField(ParamCaller, "Context.ReadBind").Error(err)
 	}
 	return
 }
@@ -309,7 +309,7 @@ func (ctx *ContextBase) BindWith(i interface{}, r Binder) (err error) {
 func (ctx *ContextBase) Bind(i interface{}) (err error) {
 	err = ctx.app.Binder(ctx, ctx.getReader(), i)
 	if err != nil {
-		ctx.logReset(0).WithField("caller", "Context.ReadBind").Error(err)
+		ctx.logReset(3).WithField(ParamCaller, "Context.ReadBind").Error(err)
 	}
 	return
 }
@@ -336,15 +336,13 @@ func (ctx *ContextBase) AddParam(key, val string) {
 
 // Querys 方法返回http请求的全部uri参数。
 func (ctx *ContextBase) Querys() url.Values {
-	if ctx.querys == nil {
-		if ctx.RequestReader.URL != nil {
-			newValues, err := url.ParseQuery(ctx.RequestReader.URL.RawQuery)
-			if err != nil {
-				ctx.Error(err)
-				ctx.querys = make(url.Values)
-			} else {
-				ctx.querys = newValues
-			}
+	if ctx.querys == nil && ctx.RequestReader.URL != nil {
+		newValues, err := url.ParseQuery(ctx.RequestReader.URL.RawQuery)
+		if err != nil {
+			ctx.Error(err)
+			ctx.querys = make(url.Values)
+		} else {
+			ctx.querys = newValues
 		}
 	}
 	return ctx.querys
@@ -383,13 +381,13 @@ func (ctx *ContextBase) GetCookie(name string) string {
 // SetCookie 设置一个Set-Cookie header，返回设置的cookie。
 func (ctx *ContextBase) SetCookie(cookie *SetCookie) {
 	if v := cookie.String(); v != "" {
-		ctx.ResponseWriter.Header().Add("Set-Cookie", v)
+		ctx.ResponseWriter.Header().Add(HeaderSetCookie, v)
 	}
 }
 
 // SetCookieValue 返回一个cookie。
 func (ctx *ContextBase) SetCookieValue(name, value string, maxAge int) {
-	ctx.ResponseWriter.Header().Add("Set-Cookie", fmt.Sprintf("%s=%s; Max-Age=%d", name, url.QueryEscape(value), maxAge))
+	ctx.ResponseWriter.Header().Add(HeaderSetCookie, fmt.Sprintf("%s=%s; Max-Age=%d", name, url.QueryEscape(value), maxAge))
 }
 
 // FormValue 使用body解析成Form数据，并返回对应key的值
@@ -439,7 +437,7 @@ func (ctx *ContextBase) parseForm() error {
 	}
 	_, params, err := mime.ParseMediaType(ctx.GetHeader(HeaderContentType))
 	if err != nil {
-		ctx.logReset(0).WithField("caller", "Context.Form...").WithField("check", "request content-type header: "+ctx.ContentType()).Error(err)
+		ctx.logReset(3).WithField(ParamCaller, "Context.Form...").WithField("check", "request content-type header: "+ctx.ContentType()).Error(err)
 		return err
 	}
 
@@ -448,7 +446,7 @@ func (ctx *ContextBase) parseForm() error {
 		ctx.RequestReader.MultipartForm = f
 	}
 	if err != nil {
-		ctx.logReset(0).WithField("caller", "Context.Form...").Error(err)
+		ctx.logReset(3).WithField(ParamCaller, "Context.Form...").Error(err)
 	}
 	return err
 }
@@ -472,7 +470,7 @@ func (ctx *ContextBase) Push(target string, opts *http.PushOptions) error {
 
 	err := ctx.ResponseWriter.Push(target, opts)
 	if err != nil {
-		ctx.logReset(0).WithField("caller", "Context.Push").Errorf("Failed to push: %v, Resource path: %s.", err, target)
+		ctx.logReset(3).WithField(ParamCaller, "Context.Push").Errorf("Failed to push: %v, Resource path: %s.", err, target)
 	}
 	return err
 }
@@ -481,28 +479,16 @@ func (ctx *ContextBase) Push(target string, opts *http.PushOptions) error {
 func (ctx *ContextBase) Write(data []byte) (n int, err error) {
 	n, err = ctx.ResponseWriter.Write(data)
 	if err != nil {
-		ctx.logReset(0).WithField("caller", "Context.Write").Error(err)
+		ctx.logReset(3).WithField(ParamCaller, "Context.Write").Error(err)
 	}
 	return
 }
-
-/*
-// WriteView 实现返回一个View渲染的html。
-func (ctx *ContextBase) WriteView(path string, i interface{}) error {
-	ctx.ResponseWriter.Header().Add(HeaderContentType, MimeTextHTMLCharsetUtf8)
-	err := ctx.app.View.ExecuteTemplate(ctx, path, i)
-	if err != nil {
-		ctx.logReset(0).WithField("caller", "Context.WriteView").Error(err)
-	}
-	return err
-}
-*/
 
 // WriteString 实现向响应写入一个字符串。
 func (ctx *ContextBase) WriteString(i string) (err error) {
 	_, err = ctx.ResponseWriter.Write([]byte(i))
 	if err != nil {
-		ctx.logReset(0).WithField("caller", "Context.WriteString").Error(err)
+		ctx.logReset(3).WithField(ParamCaller, "Context.WriteString").Error(err)
 	}
 	return
 }
@@ -531,24 +517,24 @@ func (ctx *ContextBase) RenderWith(i interface{}, r Renderer) error {
 func (ctx *ContextBase) writeRenderWith(i interface{}, r Renderer) error {
 	err := r(ctx, i)
 	if err != nil {
-		ctx.logReset(1).WithField("caller", "Context.Render Context.Render Context.WriteJSON").Error(err)
+		ctx.logReset(4).WithField(ParamCaller, "Context.Render Context.Render Context.WriteJSON").Error(err)
 	}
 	return err
 }
 
 // Debug 方法写入Debug日志。
 func (ctx *ContextBase) Debug(args ...interface{}) {
-	ctx.logReset(0).Debug(fmt.Sprint(args...))
+	ctx.logReset(3).Debug(args...)
 }
 
 // Info 方法写入Info日志。
 func (ctx *ContextBase) Info(args ...interface{}) {
-	ctx.logReset(0).Info(fmt.Sprint(args...))
+	ctx.logReset(3).Info(args...)
 }
 
 // Warning 方法写入Warning日志。
 func (ctx *ContextBase) Warning(args ...interface{}) {
-	ctx.logReset(0).Warning(fmt.Sprint(args...))
+	ctx.logReset(3).Warning(args...)
 }
 
 // Error 方法写入Error日志。
@@ -557,44 +543,48 @@ func (ctx *ContextBase) Error(args ...interface{}) {
 	if len(args) == 1 && args[0] == nil {
 		return
 	}
-	ctx.logReset(0).Error(fmt.Sprint(args...))
+	ctx.logReset(3).Error(args...)
 }
 
 // Fatal 方法写入Fatal日志，并结束请求上下文处理。
+//
+// 注意：如果err中存在敏感信息会被写入到响应中。
 func (ctx *ContextBase) Fatal(args ...interface{}) {
 	if len(args) == 1 && args[0] == nil {
 		return
 	}
 	msg := fmt.Sprintln(args...)
 	ctx.err = msg[:len(msg)-1]
-	ctx.logReset(0).Fatal(msg)
+	ctx.logReset(3).Fatal(ctx.err)
 	ctx.logFatal()
 }
 
 // Debugf 方法输出Info日志。
 func (ctx *ContextBase) Debugf(format string, args ...interface{}) {
-	ctx.logReset(0).Debug(fmt.Sprintf(format, args...))
+	ctx.logReset(3).Debug(fmt.Sprintf(format, args...))
 }
 
 // Infof 方法输出Info日志。
 func (ctx *ContextBase) Infof(format string, args ...interface{}) {
-	ctx.logReset(0).Info(fmt.Sprintf(format, args...))
+	ctx.logReset(3).Info(fmt.Sprintf(format, args...))
 }
 
 // Warningf 方法输出Warning日志。
 func (ctx *ContextBase) Warningf(format string, args ...interface{}) {
-	ctx.logReset(0).Warning(fmt.Sprintf(format, args...))
+	ctx.logReset(3).Warning(fmt.Sprintf(format, args...))
 }
 
 // Errorf 方法输出Error日志。
 func (ctx *ContextBase) Errorf(format string, args ...interface{}) {
-	ctx.logReset(0).Error(fmt.Sprintf(format, args...))
+	ctx.logReset(3).Error(fmt.Sprintf(format, args...))
 }
 
 // Fatalf 方法输出Fatal日志，并结束请求上下文处理。
+//
+// 注意：如果err中存在敏感信息会被写入到响应中。
 func (ctx *ContextBase) Fatalf(format string, args ...interface{}) {
 	ctx.err = fmt.Sprintf(format, args...)
-	ctx.logReset(0).Fatal(ctx.err)
+	ctx.logReset(3).Fatal(ctx.err)
 	ctx.logFatal()
 }
 
@@ -614,7 +604,7 @@ func (ctx *ContextBase) logFatal() {
 	if ctx.ResponseWriter.Status() == 200 {
 		ctx.WriteHeader(500)
 		ctx.Render(map[string]string{
-			// "error":        ctx.err,
+			"error":        ctx.err,
 			"status":       "500",
 			"x-request-id": ctx.RequestID(),
 		})
@@ -625,25 +615,33 @@ func (ctx *ContextBase) logFatal() {
 // WithField 方法增加一个日志属性，返回一个新的Logout。
 func (ctx *ContextBase) WithField(key string, value interface{}) Logout {
 	return &entryContextBase{
-		Logout:  ctx.logReset(0).WithField(key, value),
+		Logout:  ctx.logReset(3).WithField(key, value),
 		Context: ctx,
 	}
 }
 
 // WithFields 方法增加多个日志属性，返回一个新的Logout。
+//
+// 如果fields包含file条目属性，则不会添加调用位置信息。
 func (ctx *ContextBase) WithFields(fields Fields) Logout {
-	file, line := logFormatFileLine(0)
+	if fields == nil {
+		fields = make(Fields)
+	}
+	_, ok := fields["file"]
+	if !ok {
+		file, line := logFormatFileLine(2)
+		fields["file"] = file
+		fields["line"] = line
+	}
 	fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
-	fields["file"] = file
-	fields["line"] = line
 	return &entryContextBase{
 		Logout:  ctx.log.WithFields(fields),
 		Context: ctx,
 	}
 }
 
-// Logger 直接返回app的Logger对象，通常用于Hijack并释放Context后使用Logger。
-func (ctx *ContextBase) Logger() Logger {
+// Logger 直接返回app的Logger对象，通常用于Hijack并释放Context后使用Logout。
+func (ctx *ContextBase) Logger() Logout {
 	return ctx.log
 }
 

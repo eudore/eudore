@@ -61,7 +61,7 @@ func HTTPHandler(pctx context.Context, conn net.Conn, handler http.Handler) {
 			return
 		}
 		resp.finalFlush()
-		if resp.request.isnotkeep {
+		if resp.request.Header.Get("Connection") != "keep-alive" {
 			break
 		}
 		// c.SetDeadline(time.Now().Add(h.IdleTimeout))

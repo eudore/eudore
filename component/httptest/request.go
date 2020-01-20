@@ -88,7 +88,7 @@ func (r *RequestReaderTest) WithBodyJSON(data interface{}) *RequestReaderTest {
 	r.Request.Header.Add("Content-Type", "application/json")
 	reader, writer := io.Pipe()
 	r.Body = reader
-	json.NewEncoder(writer).Encode(data)
+	go json.NewEncoder(writer).Encode(data)
 	return r
 }
 
@@ -118,6 +118,7 @@ func (r *RequestReaderTest) Do() *ResponseWriterTest {
 		r.Request.Body = ioutil.NopCloser(bytes.NewReader(nil))
 		r.Request.ContentLength = -1
 	}
+	defer r.Body.Close()
 	// 创建响应并处理
 	resp := NewResponseWriterTest(r.client, r)
 	r.client.Handler.ServeHTTP(resp, r.Request)

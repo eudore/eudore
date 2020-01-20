@@ -108,7 +108,7 @@ func (l *LoggerInit) NextHandler(logger Logger) {
 	for _, e := range l.data {
 		switch e.Level {
 		case LogDebug:
-			logger.WithFields(e.Fields).WithField("time", e.Time).Info(e.Message)
+			logger.WithFields(e.Fields).WithField("time", e.Time).Debug(e.Message)
 		case LogInfo:
 			logger.WithFields(e.Fields).WithField("time", e.Time).Info(e.Message)
 		case LogWarning:
@@ -310,25 +310,42 @@ func (l *LoggerLevel) UnmarshalText(text []byte) error {
 	return ErrLoggerLevelUnmarshalText
 }
 
-// NewLoggerPrintFunc 函数使用Logger创建一个输出函数，如果参数是一个error则输出error级别日志，否在输出info级别日志。
-func NewLoggerPrintFunc(log Logger) func(...interface{}) {
+// NewPrintFunc 函数使用app创建一个输出函数。
+//
+// 如果第一个参数Fields类型，则调用WithFields方法。
+//
+// 如果参数是一个error则输出error级别日志，否在输出info级别日志。
+func NewPrintFunc(app *App) func(...interface{}) {
+	var log Logout = app
 	return func(args ...interface{}) {
-		if len(args) == 1 {
-			err, ok := args[0].(error)
-			if ok {
-				log.Error(err)
-				return
-			}
+		if len(args) == 0 {
+			return
 		}
-		log.Info(args...)
+		fields, ok := args[0].(Fields)
+		if ok {
+			printLogout(log.WithFields(fields), args[1:])
+		} else {
+			printLogout(log, args)
+		}
 	}
 }
 
-// logFormatFileLine 函数获得调用的文件位置，默认层数加三。
+func printLogout(log Logout, args []interface{}) {
+	if len(args) == 1 {
+		err, ok := args[0].(error)
+		if ok {
+			log.Error(err)
+			return
+		}
+	}
+	log.Info(args...)
+}
+
+// logFormatFileLine 函数获得调用的文件位置。
 //
 // 文件位置会从第一个src后开始截取，处理gopath下文件位置。
 func logFormatFileLine(depth int) (string, int) {
-	_, file, line, ok := runtime.Caller(3 + depth)
+	_, file, line, ok := runtime.Caller(depth)
 	if !ok {
 		file = "???"
 		line = 1
@@ -340,4 +357,10 @@ func logFormatFileLine(depth int) (string, int) {
 		}
 	}
 	return file, line
+}
+
+// newFileLineFields 函数使用文件行返回Fields
+func newFileLineFields(depth int) Fields {
+	file, line := logFormatFileLine(depth)
+	return Fields{"file": file, "line": line}
 }

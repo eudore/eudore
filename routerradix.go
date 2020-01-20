@@ -16,17 +16,15 @@ const (
 )
 
 type (
-	// RouterRadix basic function router based on radix tree implementation.
+	// RouterCoreRadix basic function router based on radix tree implementation.
 	//
 	// There are three basic functions: path parameter, wildcard parameter, default parameter, and parameter verification.
 	// RouterRadix基于基数树实现的基本功能路由器。
 	//
 	// 具有路径参数、通配符参数、默认参数三项基本功能。
-	RouterRadix struct {
-		RouterMethod
+	RouterCoreRadix struct {
 		// save middleware
 		// 保存注册的中间件信息
-		Print       func(...interface{}) `set:"print"`
 		middlewares *trieNode
 		// exception handling method
 		// 异常处理方法
@@ -64,8 +62,12 @@ type (
 
 // NewRouterRadix 创建一个Radix路由器。
 func NewRouterRadix() Router {
-	r := &RouterRadix{
-		Print:       func(...interface{}) {},
+	return NewRouterStd(NewRouterCoreRadix())
+}
+
+// NewRouterCoreRadix 函数创建一个Full路由器核心，使用radix匹配。
+func NewRouterCoreRadix() RouterCore {
+	return &RouterCoreRadix{
 		nodefunc404: HandlerFuncs{HandlerRouter404},
 		nodefunc405: HandlerFuncs{HandlerRouter405},
 		node404: radixNode{
@@ -82,15 +84,12 @@ func NewRouterRadix() Router {
 		},
 		middlewares: newTrieNode(),
 	}
-	r.RouterMethod = NewRouterMethodStd(r)
-	return r
 }
 
 // RegisterMiddleware register the middleware into the middleware tree and append the handler if it exists.
 //
 // RegisterMiddleware注册中间件到中间件树中，如果存在则追加处理者。
-func (r *RouterRadix) RegisterMiddleware(path string, hs HandlerFuncs) {
-	r.Print("RegisterMiddleware:", path, hs)
+func (r *RouterCoreRadix) RegisterMiddleware(path string, hs HandlerFuncs) {
 	path = strings.Split(path, " ")[0]
 	r.middlewares.Insert(path, hs)
 	if path == "" {
@@ -106,22 +105,21 @@ func (r *RouterRadix) RegisterMiddleware(path string, hs HandlerFuncs) {
 // RegisterHandler 给路由器注册一个新的方法请求路径
 //
 // 路由器会从中间件树中匹配当前路径可使用的处理者，并添加到处理者前方。
-func (r *RouterRadix) RegisterHandler(method string, path string, handler HandlerFuncs) {
-	r.Print("RegisterHandler:", method, path, handler)
+func (r *RouterCoreRadix) RegisterHandler(method string, path string, handler HandlerFuncs) {
 	switch method {
 	case "NotFound", "404":
 		r.nodefunc404 = handler
-		r.node404.handlers = CombineHandlerFuncs(r.middlewares.vals, handler)
+		r.node404.handlers = HandlerFuncsCombine(r.middlewares.vals, handler)
 	case "MethodNotAllowed", "405":
 		r.nodefunc405 = handler
-		r.node405.Wchildren.handlers = CombineHandlerFuncs(r.middlewares.vals, handler)
+		r.node405.Wchildren.handlers = HandlerFuncsCombine(r.middlewares.vals, handler)
 	case MethodAny:
-		handler = CombineHandlerFuncs(r.middlewares.Lookup(path), handler)
+		handler = HandlerFuncsCombine(r.middlewares.Lookup(path), handler)
 		for _, method := range RouterAllMethod {
 			r.insertRoute(method, path, true, handler)
 		}
 	default:
-		r.insertRoute(method, path, false, CombineHandlerFuncs(r.middlewares.Lookup(path), handler))
+		r.insertRoute(method, path, false, HandlerFuncsCombine(r.middlewares.Lookup(path), handler))
 	}
 }
 
@@ -140,7 +138,7 @@ func (r *RouterRadix) RegisterHandler(method string, path string, handler Handle
 // 将路径按节点类型切割，每段路径即为一种类型的节点，然后依次向树追加，然后给最后的节点设置数据。
 //
 // insertRoute 路径切割见getSpiltPath函数，当前未完善，处理正则可能异常。
-func (r *RouterRadix) insertRoute(method, key string, isany bool, val HandlerFuncs) {
+func (r *RouterCoreRadix) insertRoute(method, key string, isany bool, val HandlerFuncs) {
 	var currentNode = r.getTree(method)
 	if currentNode == &r.node405 {
 		return
@@ -170,9 +168,7 @@ func (r *RouterRadix) insertRoute(method, key string, isany bool, val HandlerFun
 // Note: 404 does not support extra parameters, not implemented.
 //
 // 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
-//
-// 注意：404不支持额外参数，未实现。
-func (r *RouterRadix) Match(method, path string, params Params) HandlerFuncs {
+func (r *RouterCoreRadix) Match(method, path string, params Params) HandlerFuncs {
 	if n := r.getTree(method).recursiveLoopup(path, params); n != nil {
 		return n
 	}
@@ -180,17 +176,6 @@ func (r *RouterRadix) Match(method, path string, params Params) HandlerFuncs {
 	// 处理404
 	r.node404.AddTagsToParams(params)
 	return r.node404.handlers
-}
-
-// Set 方法允许设置Print属性，设置日志输出信息。
-func (r *RouterRadix) Set(key string, value interface{}) error {
-	switch val := value.(type) {
-	case func(...interface{}):
-		r.Print = val
-	default:
-		return ErrSeterNotSupportField
-	}
-	return nil
 }
 
 // Create a 405 response radixNode.
@@ -345,7 +330,7 @@ func (r *radixNode) AddTagsToParams(p Params) {
 // 获取对应方法的树。
 //
 // 支持eudore.RouterAllMethod这些方法,弱不支持会返回405处理树。
-func (r *RouterRadix) getTree(method string) *radixNode {
+func (r *RouterCoreRadix) getTree(method string) *radixNode {
 	switch method {
 	case MethodGet:
 		return &r.get

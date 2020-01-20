@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -17,6 +18,15 @@ var notifyArgs = []string{
 	fmt.Sprintf("%s=%d", eudore.EnvEudoreIsNotify, 1),
 	fmt.Sprintf("%s=%d", eudore.EnvEudoreDisablePidfile, 1),
 	fmt.Sprintf("%s=%d", eudore.EnvEudoreDisableSignal, 1),
+}
+var startcmd string
+
+func init() {
+	if runtime.GOOS == "windows" {
+		startcmd = "powershell"
+	} else {
+		startcmd = "bash"
+	}
 }
 
 // Init 函数是eudpre.ReloadFunc, Eudore初始化内容。
@@ -88,7 +98,9 @@ func (n *Notify) Run() error {
 		var timer = time.AfterFunc(1000*time.Hour, n.buildAndRestart)
 		defer func() {
 			timer.Stop()
-			n.cmd.Process.Kill()
+			if n.cmd != nil {
+				n.cmd.Process.Kill()
+			}
 		}()
 
 		for {
@@ -138,7 +150,9 @@ func (n *Notify) watch(path string) {
 
 func (n *Notify) buildAndRestart() {
 	// 执行编译命令
-	body, err := exec.CommandContext(n.app.Context, n.buildCmd[0], n.buildCmd[1:]...).CombinedOutput()
+	cmd := exec.CommandContext(n.app.Context, startcmd, "-c", strings.Join(n.buildCmd, " "))
+	cmd.Env = os.Environ()
+	body, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Printf("notify build error: \n%s", body)
 		n.app.Errorf("notify build error: %s", body)

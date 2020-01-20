@@ -36,7 +36,7 @@ func RenderText(ctx Context, data interface{}) error {
 	if val := header.Get(HeaderContentType); len(val) == 0 {
 		header.Add(HeaderContentType, MimeTextPlainCharsetUtf8)
 	}
-	_, err := fmt.Fprint(ctx, data)
+	_, err := fmt.Fprintf(ctx, "%#v", data)
 	return err
 }
 
@@ -91,8 +91,8 @@ func NewHTMLRender(temp *template.Template) Renderer {
 	}
 }
 
-// NewHTMLWithRender 函数使用Renderer支持html Renderer。
-func NewHTMLWithRender(r Renderer, temp *template.Template) Renderer {
+// NewHTMLRenderWithTemplate 函数使用Renderer支持html Renderer。
+func NewHTMLRenderWithTemplate(r Renderer, temp *template.Template) Renderer {
 	htmlRender := NewHTMLRender(temp)
 	return func(ctx Context, data interface{}) error {
 		path := ctx.GetParam("template")

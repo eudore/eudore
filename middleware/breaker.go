@@ -93,7 +93,7 @@ func (cb *CircuitBreaker) Handle(ctx eudore.Context) {
 }
 
 // InjectRoutes 方法给给路由器注入熔断器的路由。
-func (cb *CircuitBreaker) InjectRoutes(r eudore.RouterMethod) {
+func (cb *CircuitBreaker) InjectRoutes(r eudore.Router) {
 	r.GetFunc("/ui", func(ctx eudore.Context) {
 		if StaticHTML != "" {
 			ctx.WriteFile(StaticHTML)

@@ -72,6 +72,9 @@ func NewStoreMap() Store {
 
 // NewsessionStd 创建一个使用Store为存储的Session对象。
 func NewsessionStd(store Store) Session {
+	if store == nil {
+		return nil
+	}
 	session := &sessionStd{
 		Store:  store,
 		Maxage: 3600,
@@ -183,6 +186,13 @@ func (store *StoreMap) Clean(expires time.Time) error {
 		return true
 	})
 	return nil
+}
+
+// NewExtendContextSession 转换ContextSession处理函数为Context处理函数。
+func NewExtendContextSession(fn func(ContextSession)) eudore.HandlerFunc {
+	return func(ctx eudore.Context) {
+		fn(ContextSession{Context: ctx})
+	}
 }
 
 // DeleteSession 方法删除当前会话数据

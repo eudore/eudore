@@ -35,7 +35,7 @@ func main() {
 注入方法实现：
 
 ```golang
-func Inject(r eudore.RouterMethod) {
+func Inject(r eudore.Router) {
 	r = r.Group("/show")
 	r.GetFunc("/", List)
 	r.GetFunc("/*key", Showkey)

@@ -39,8 +39,8 @@ type (
 	}
 )
 
-// NewServer 方法创建一个server
-func NewServer() *Server {
+// NewServerEudore 方法创建一个server
+func NewServerEudore() *Server {
 	return &Server{
 		ReadTimeout:  60 * time.Second,
 		WriteTimeout: 60 * time.Second,

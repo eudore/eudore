@@ -323,32 +323,34 @@ func GetArrayString(i interface{}) []string {
 	return nil
 }
 
+// timeformats 定义允许使用的时间格式。
+var timeformats = []string{
+	time.ANSIC,
+	time.UnixDate,
+	time.RubyDate,
+	time.RFC822,
+	time.RFC822Z,
+	time.RFC850,
+	time.RFC1123,
+	time.RFC1123Z,
+	time.RFC3339,
+	time.RFC3339Nano,
+	time.Kitchen,
+	time.Stamp,
+	time.StampMilli,
+	time.StampMicro,
+	time.StampNano,
+	"2006-1-02",
+	"2006-01-02",
+	"15:04:05",
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05Z07:00",
+	"2006-01-02T15:04:05.999999999Z07:00",
+}
+
 // TimeParse 方法通过解析内置支持的时间格式。
 func TimeParse(str string) time.Time {
-	var formats = []string{
-		time.ANSIC,
-		time.UnixDate,
-		time.RubyDate,
-		time.RFC822,
-		time.RFC822Z,
-		time.RFC850,
-		time.RFC1123,
-		time.RFC1123Z,
-		time.RFC3339,
-		time.RFC3339Nano,
-		time.Kitchen,
-		time.Stamp,
-		time.StampMilli,
-		time.StampMicro,
-		time.StampNano,
-		"2006-1-02",
-		"2006-01-02",
-		"15:04:05",
-		"2006-01-02 15:04:05",
-		"2006-01-02T15:04:05Z07:00",
-		"2006-01-02T15:04:05.999999999Z07:00",
-	}
-	for _, f := range formats {
+	for _, f := range timeformats {
 		t, err := time.Parse(f, str)
 		if err == nil {
 			return t

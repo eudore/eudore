@@ -2,9 +2,8 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/eudore/eudore)](https://goreportcard.com/report/github.com/eudore/eudore)
 [![GoDoc](https://godoc.org/github.com/eudore/eudore?status.svg)](https://godoc.org/github.com/eudore/eudore)
-[![Gitter](https://badges.gitter.im/eudore/community.svg)](https://gitter.im/eudore/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
-eudore是一个高扩展、高效的http框架及[http文档库](docs)。
+eudore是轻而全的http框架，高度解耦而轻，功能丰富而全。
 
 反馈和交流请加群组：[QQ群373278915](//shang.qq.com/wpa/qunwpa?idkey=869ec8f1272b4757771c3e406349f1128cfa3bd9ca668937dda8dfb223261a60)。
 
@@ -14,7 +13,7 @@ eudore是一个高扩展、高效的http框架及[http文档库](docs)。
 - 简单：对象语义明确，框架代码量少复杂度低，无依赖库。
 - 易用：支持各种Appcation和Context扩展添加功能。
 - 高性能：各部分在同类库中没有明显性能问题。
-- 两项创新：[新Radix路由实现](https://github.com/eudore/erouter)和[处理函数扩展机制](docs/frame/handler_zh.md)
+- 两项创新：[新Radix路由实现](https://github.com/eudore/erouter)和[处理函数扩展机制](https://github.com/eudore/eudore/wiki/4.5-eudore-handler)
 
 ## 安装
 
@@ -28,12 +27,10 @@ go get -v -u github.com/eudore/eudore
 
 - [源码](https://github.com/eudore/eudore)
 - [godoc](https://godoc.org/github.com/eudore/eudore)
-- [演示例子](docs/example#example)
-- [框架文档](docs/frame)
+- [演示例子 80+](_example#example)
+- [wiki文档](https://github.com/eudore/eudore/wiki)
 - [实践](https://github.com/eudore/website)
 
 ## 许可
 
 MIT
-
-框架使用无限制且不负责，文档转载需声明出处。

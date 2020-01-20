@@ -10,7 +10,7 @@ import (
 // TestStart 测试host路由器。
 func TestStart(*testing.T) {
 	rh := host.NewRouterHost()
-	rh.RegisterHost("example", eudore.NewRouterRadix())
+	rh.SetRouter("example", eudore.NewRouterRadix())
 
 	app := eudore.NewEudore(rh)
 	app.AddGlobalMiddleware(host.InitAddHost)

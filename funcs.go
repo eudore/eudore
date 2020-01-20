@@ -6,13 +6,12 @@ package eudore
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	// etcd "github.com/coreos/etcd/client"
@@ -20,17 +19,10 @@ import (
 
 // 保存全局函数
 var (
-	GlobalRouterCheckFunc    = make(map[string]RouterCheckFunc)
-	GlobalRouterNewCheckFunc = make(map[string]RouterNewCheckFunc)
-	GlobalConfigReadFunc     = make(map[string]ConfigReadFunc)
+	GlobalConfigReadFunc = make(map[string]ConfigReadFunc)
 )
 
 func init() {
-	// RouterCheckFunc
-	GlobalRouterCheckFunc["isnum"] = RouterCheckFuncIsnum
-	// RouterNewCheckFunc
-	GlobalRouterNewCheckFunc["min"] = RouterNewCheckFuncMin
-	GlobalRouterNewCheckFunc["regexp"] = RouterNewCheckFuncRegexp
 	// ConfigReadFunc
 	GlobalConfigReadFunc["default"] = ConfigReadFile
 	GlobalConfigReadFunc["file"] = ConfigReadFile
@@ -38,8 +30,19 @@ func init() {
 	GlobalConfigReadFunc["http"] = ConfigReadHTTP
 }
 
+func configPrint(c Config, args ...interface{}) {
+	c.Set("print", fmt.Sprint(args...))
+}
+func configPrintf(c Config, format string, args ...interface{}) {
+	c.Set("print", fmt.Sprintf(format, args...))
+}
+func configErrorf(c Config, format string, args ...interface{}) {
+	c.Set("print", fmt.Errorf(format, args...))
+}
+
 // ConfigParseRead 函数使用'keys.config'读取配置内容，并使用[]byte类型保存到'keys.configdata'。
 func ConfigParseRead(c Config) error {
+	configPrint(c, "config read paths: ", c.Get("keys.config"))
 	errs := NewErrors()
 	for _, path := range GetArrayString(c.Get("keys.config")) {
 		// read protocol and get read func
@@ -49,8 +52,10 @@ func ConfigParseRead(c Config) error {
 			// use default read func
 			fn = GlobalConfigReadFunc["default"]
 		}
-		data, err := fn(path)
+		typ, data, err := fn(path)
 		if err == nil {
+			configPrint(c, fmt.Sprint("config read load path: ", path, typ))
+			c.Set("keys.configtype", typ)
 			c.Set("keys.configdata", data)
 			c.Set("keys.configpath", path)
 			return nil
@@ -66,8 +71,13 @@ func ConfigParseConfig(c Config) error {
 	if data == nil {
 		return nil
 	}
-	err := json.Unmarshal(data.([]byte), c)
-	return err
+	switch c.Get("keys.configtype") {
+	case "json":
+		return json.Unmarshal(data.([]byte), c)
+	case "xml":
+		return xml.Unmarshal(data.([]byte), c)
+	}
+	return nil
 }
 
 // ConfigParseArgs 函数使用参数设置配置，参数使用--为前缀。
@@ -76,6 +86,7 @@ func ConfigParseArgs(c Config) (err error) {
 		if !strings.HasPrefix(str, "--") {
 			continue
 		}
+		configPrint(c, "config set arg: ", str)
 		c.Set(split2byte(str[2:], '='))
 	}
 	return
@@ -85,6 +96,7 @@ func ConfigParseArgs(c Config) (err error) {
 func ConfigParseEnvs(c Config) error {
 	for _, value := range os.Environ() {
 		if strings.HasPrefix(value, "ENV_") {
+			configPrint(c, "config set env: ", value)
 			k, v := split2byte(value, '=')
 			k = strings.ToLower(strings.Replace(k, "_", ".", -1))[4:]
 			c.Set(k, v)
@@ -110,6 +122,7 @@ func ConfigParseMods(c Config) error {
 		}
 	}
 	mod = append(mod, getOS())
+	configPrint(c, "config load mods: ", mod)
 	for _, i := range mod {
 		ConvertTo(c.Get("mods."+i), c.Get(""))
 	}
@@ -136,27 +149,46 @@ func ConfigParseHelp(c Config) error {
 }
 
 // ConfigReadFile Read config file
-func ConfigReadFile(path string) ([]byte, error) {
+func ConfigReadFile(path string) (string, []byte, error) {
 	if strings.HasPrefix(path, "file://") {
 		path = path[7:]
 	}
+
+	pos := strings.LastIndexByte(path, '.')
+	if pos == -1 {
+		pos += len(path)
+	}
+
 	data, err := ioutil.ReadFile(path)
 	last := strings.LastIndex(path, ".") + 1
 	if last == 0 {
-		return nil, fmt.Errorf("read file config, type is null")
+		return "", nil, fmt.Errorf("read file config, type is null")
 	}
-	return data, err
+	return path[pos+1:], data, err
 }
 
 // ConfigReadHTTP Send http request get config info
-func ConfigReadHTTP(path string) ([]byte, error) {
-	resp, err := http.Get(path)
+func ConfigReadHTTP(path string) (string, []byte, error) {
+	req, err := http.NewRequest("GET", path, nil)
 	if err != nil {
-		return nil, err
+		return "", nil, err
+	}
+	req.Header.Set(HeaderAccept, MimeApplicationJSON)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", nil, err
 	}
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
-	return data, err
+	fmt.Println(resp.Header.Get(HeaderContentType))
+	var typ string
+	switch resp.Header.Get(HeaderContentType) {
+	case MimeApplicationJSON, MimeApplicationJSONUtf8:
+		typ = "json"
+	case MimeApplicationXML, MimeApplicationxmlCharsetUtf8:
+		typ = "xml"
+	}
+	return typ, data, err
 }
 
 // example: etcd://127.0.0.1:2379/config
@@ -183,17 +215,18 @@ func InitSignal(app *Eudore) error {
 		return nil
 	}
 
+	const strsignal = "signal"
 	// Register signal
 	app.RegisterSignal(syscall.Signal(0x2), func(app *Eudore) error {
-		app.WithField("signal", 2).Info("eudore received SIGINT, eudore shutting down HTTP server.")
+		app.WithField(strsignal, 2).Info("eudore received SIGINT, eudore shutting down HTTP server.")
 		return app.Shutdown()
 	})
 	app.RegisterSignal(syscall.Signal(0xc), func(app *Eudore) error {
-		app.WithField("signal", 12).Info("eudore received SIGUSR2, eudore restarting HTTP server.")
+		app.WithField(strsignal, 12).Info("eudore received SIGUSR2, eudore restarting HTTP server.")
 		return app.Restart()
 	})
 	app.RegisterSignal(syscall.Signal(0xf), func(app *Eudore) error {
-		app.WithField("signal", 15).Info("eudore received SIGTERM, eudore shutting down HTTP server.")
+		app.WithField(strsignal, 15).Info("eudore received SIGTERM, eudore shutting down HTTP server.")
 		return app.Shutdown()
 	})
 
@@ -232,8 +265,6 @@ func InitLoggerStd(app *Eudore) error {
 	// 设置Logger
 	app.Logger = log
 	initlog.NextHandler(app.Logger)
-	Set(app.Router, "print", NewLoggerPrintFunc(app.Logger))
-	Set(app.Server, "print", NewLoggerPrintFunc(app.Logger))
 	return nil
 }
 
@@ -263,38 +294,4 @@ func InitStart(app *Eudore) error {
 		app.AddListener(ln)
 	}
 	return nil
-}
-
-// RouterCheckFuncIsnum 检查字符串是否为数字。
-func RouterCheckFuncIsnum(arg string) bool {
-	_, err := strconv.Atoi(arg)
-	return err == nil
-}
-
-// RouterNewCheckFuncMin 生成一个检查字符串最小值的RouterCheckFunc函数。
-func RouterNewCheckFuncMin(str string) RouterCheckFunc {
-	n, err := strconv.Atoi(str)
-	if err != nil {
-		return nil
-	}
-	return func(arg string) bool {
-		num, err := strconv.Atoi(arg)
-		if err != nil {
-			return false
-		}
-		return num >= n
-	}
-}
-
-// RouterNewCheckFuncRegexp 生成一个正则匹配的RouterCheckFunc函数。
-func RouterNewCheckFuncRegexp(str string) RouterCheckFunc {
-	// 创建正则表达式
-	re, err := regexp.Compile(str)
-	if err != nil {
-		return nil
-	}
-	// 返回正则匹配校验函数
-	return func(arg string) bool {
-		return re.MatchString(arg)
-	}
 }
