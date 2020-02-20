@@ -101,6 +101,7 @@ func (c *ConfigMap) Parse() (err error) {
 	for _, fn := range c.funcs {
 		err = fn(c)
 		if err != nil {
+			c.Print(err)
 			return
 		}
 	}
@@ -178,6 +179,7 @@ func (c *ConfigEudore) Parse() (err error) {
 	for _, fn := range c.funcs {
 		err = fn(c)
 		if err != nil {
+			c.Print(err)
 			return
 		}
 	}

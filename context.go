@@ -33,7 +33,7 @@ type (
 		WithContext(context.Context)
 		SetRequest(*RequestReader)
 		SetResponse(ResponseWriter)
-		SetHandler(HandlerFuncs)
+		SetHandler(int, HandlerFuncs)
 		Next()
 		End()
 		Done() <-chan struct{}
@@ -144,6 +144,7 @@ func (ctx *ContextBase) Reset(pctx context.Context, w ResponseWriter, r *Request
 	ctx.ctx = pctx
 	ctx.RequestReader = r
 	ctx.ResponseWriter = w
+	ctx.handler = nil
 	ctx.err = ""
 	ctx.log = ctx.app.Logger
 
@@ -192,13 +193,12 @@ func (ctx *ContextBase) SetResponse(w ResponseWriter) {
 	ctx.ResponseWriter = w
 }
 
-// SetHandler 重新设置上下文的全部请求处理者。
-func (ctx *ContextBase) SetHandler(fs HandlerFuncs) {
-	ctx.index = -1
-	ctx.handler = fs
+// SetHandler 方法设置上下文的全部请求处理者。
+func (ctx *ContextBase) SetHandler(index int, hs HandlerFuncs) {
+	ctx.index, ctx.handler = index, hs
 }
 
-// Next 调用请求上下文下一个处理函数。
+// Next 方法调用请求上下文下一个处理函数。
 func (ctx *ContextBase) Next() {
 	ctx.index++
 	for ctx.index < len(ctx.handler) {
@@ -437,7 +437,7 @@ func (ctx *ContextBase) parseForm() error {
 	}
 	_, params, err := mime.ParseMediaType(ctx.GetHeader(HeaderContentType))
 	if err != nil {
-		ctx.logReset(3).WithField(ParamCaller, "Context.Form...").WithField("check", "request content-type header: "+ctx.ContentType()).Error(err)
+		ctx.logReset(4).WithField(ParamCaller, "Context.Form...").WithField("check", "request content-type header: "+ctx.ContentType()).Error(err)
 		return err
 	}
 
@@ -446,7 +446,7 @@ func (ctx *ContextBase) parseForm() error {
 		ctx.RequestReader.MultipartForm = f
 	}
 	if err != nil {
-		ctx.logReset(3).WithField(ParamCaller, "Context.Form...").Error(err)
+		ctx.logReset(4).WithField(ParamCaller, "Context.Form...").Error(err)
 	}
 	return err
 }
@@ -603,9 +603,9 @@ func (ctx *ContextBase) logFatal() {
 	// 结束Context
 	if ctx.ResponseWriter.Status() == 200 {
 		ctx.WriteHeader(500)
-		ctx.Render(map[string]string{
+		ctx.Render(map[string]interface{}{
 			"error":        ctx.err,
-			"status":       "500",
+			"status":       500,
 			"x-request-id": ctx.RequestID(),
 		})
 	}

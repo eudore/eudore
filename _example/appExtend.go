@@ -48,7 +48,7 @@ func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// handle
 	response.Reset(w)
 	ctx.Reset(r.Context(), response, r)
-	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params()))
+	ctx.SetHandler(-1, app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params()))
 	ctx.Next()
 	ctx.End()
 	// release

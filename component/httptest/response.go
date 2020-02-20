@@ -12,7 +12,7 @@ type (
 	// ResponseWriterTest is an implementation of protocol.ResponseWriter that
 	// records its mutations for later inspection in tests.
 	ResponseWriterTest struct {
-		client  *Client
+		Client  *Client
 		Request *RequestReaderTest
 
 		// Code is the HTTP response code set by WriteHeader.
@@ -47,7 +47,7 @@ type (
 // NewResponseWriterTest 方法返回一个测试使用的响应写入对象*ResponseWriterTest。
 func NewResponseWriterTest(client *Client, req *RequestReaderTest) *ResponseWriterTest {
 	return &ResponseWriterTest{
-		client:    client,
+		Client:    client,
 		Request:   req,
 		HeaderMap: make(http.Header),
 		Body:      new(bytes.Buffer),
@@ -166,13 +166,6 @@ func (rw *ResponseWriterTest) Status() int {
 	return rw.Code
 }
 
-// Errorf 方法输出错误学习。
-func (rw *ResponseWriterTest) Errorf(format string, args ...interface{}) {
-	err := fmt.Errorf(format, args...)
-	err = fmt.Errorf("httptest request %s %s of file location %s:%d, error: %v", rw.Request.Method, rw.Request.RequestURI, rw.Request.File, rw.Request.Line, err)
-	rw.client.Errs = append(rw.client.Errs, err)
-}
-
 // CheckStatus 方法检查状态码。
 func (rw *ResponseWriterTest) CheckStatus(status ...int) *ResponseWriterTest {
 	for _, i := range status {
@@ -181,7 +174,7 @@ func (rw *ResponseWriterTest) CheckStatus(status ...int) *ResponseWriterTest {
 			return rw
 		}
 	}
-	rw.Errorf("CheckStatus response status is invalid %d,check status: %v", rw.Code, status)
+	rw.Request.Errorf("CheckStatus response status is invalid %d,check status: %v", rw.Code, status)
 	return rw
 }
 
@@ -189,7 +182,7 @@ func (rw *ResponseWriterTest) CheckStatus(status ...int) *ResponseWriterTest {
 func (rw *ResponseWriterTest) CheckHeader(h ...string) *ResponseWriterTest {
 	for i := 0; i < len(h)/2; i++ {
 		if rw.HeaderMap.Get(h[i]) != h[i+1] {
-			rw.Errorf("CheckHeader response header %s value is %s,not is %s", h[i], rw.HeaderMap.Get(h[i]), h[i+1])
+			rw.Request.Errorf("CheckHeader response header %s value is %s,not is %s", h[i], rw.HeaderMap.Get(h[i]), h[i+1])
 		}
 	}
 	return rw
@@ -200,7 +193,7 @@ func (rw *ResponseWriterTest) CheckBodyContainString(strs ...string) *ResponseWr
 	body := rw.Body.String()
 	for _, str := range strs {
 		if !strings.Contains(body, str) {
-			rw.Errorf("CheckBodyContainString response body not contains string: %s", str)
+			rw.Request.Errorf("CheckBodyContainString response body not contains string: %s", str)
 		}
 	}
 	return rw
@@ -209,7 +202,7 @@ func (rw *ResponseWriterTest) CheckBodyContainString(strs ...string) *ResponseWr
 // CheckBodyString 方法检查body是否为指定字符串。
 func (rw *ResponseWriterTest) CheckBodyString(s string) *ResponseWriterTest {
 	if s != rw.Body.String() {
-		rw.Errorf("CheckBodyString response body size %d not is check string", rw.Body.Len())
+		rw.Request.Errorf("CheckBodyString response body size %d not is check string", rw.Body.Len())
 	}
 	return rw
 }
@@ -227,13 +220,13 @@ func (rw *ResponseWriterTest) Out() *ResponseWriterTest {
 		b.WriteString(fmt.Sprintf("\n%s: %s", k, v))
 	}
 	b.WriteString("\n\n" + rw.Body.String())
-	rw.client.Println(b.String())
+	rw.Client.Println(b.String())
 	return rw
 }
 
 // OutStatus 方法输出状态码。
 func (rw *ResponseWriterTest) OutStatus() *ResponseWriterTest {
-	rw.client.Printf("httptest request %s %s status: %d", rw.Request.Method, rw.Request.RequestURI, rw.Code)
+	rw.Client.Printf("httptest request %s %s status: %d", rw.Request.Method, rw.Request.RequestURI, rw.Code)
 	return rw
 }
 
@@ -244,12 +237,12 @@ func (rw *ResponseWriterTest) OutHeader() *ResponseWriterTest {
 	for k, v := range rw.HeaderMap {
 		b.WriteString(fmt.Sprintf("\n%s: %s", k, v))
 	}
-	rw.client.Println(b.String())
+	rw.Client.Println(b.String())
 	return rw
 }
 
 // OutBody 方法输出body字符串信息。
 func (rw *ResponseWriterTest) OutBody() *ResponseWriterTest {
-	rw.client.Printf("httptest request %s %s body: %s", rw.Request.Method, rw.Request.RequestURI, rw.Body.String())
+	rw.Client.Printf("httptest request %s %s body: %s", rw.Request.Method, rw.Request.RequestURI, rw.Body.String())
 	return rw
 }

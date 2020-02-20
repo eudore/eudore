@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path"
 	"sort"
 	"sync"
 	"time"
@@ -341,16 +340,7 @@ func (app *Eudore) AddListener(ln net.Listener) {
 
 // AddStatic method register a static file Handle.
 func (app *Eudore) AddStatic(route, dir string) {
-	if dir == "" {
-		dir = "."
-	}
-	app.Router.GetFunc(route, func(ctx Context) {
-		upath := ctx.GetParam("path")
-		if upath == "" {
-			upath = ctx.Path()
-		}
-		ctx.WriteFile(path.Join(dir, path.Clean("/"+upath)))
-	})
+	app.Router.GetFunc(route, NewStaticHandler(dir))
 }
 
 // AddGlobalMiddleware 给eudore添加全局中间件，会在Router.Match前执行。
@@ -361,7 +351,7 @@ func (app *Eudore) AddGlobalMiddleware(hs ...HandlerFunc) {
 
 // HandleContext 实现处理请求上下文函数。
 func (app *Eudore) HandleContext(ctx Context) {
-	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params()))
+	ctx.SetHandler(-1, app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params()))
 	ctx.Next()
 }
 
@@ -373,7 +363,7 @@ func (app *Eudore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// handle
 	response.Reset(w)
 	ctx.Reset(r.Context(), response, r)
-	ctx.SetHandler(app.handlers)
+	ctx.SetHandler(-1, app.handlers)
 	ctx.Next()
 	ctx.End()
 	// release

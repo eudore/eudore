@@ -359,8 +359,22 @@ func logFormatFileLine(depth int) (string, int) {
 	return file, line
 }
 
-// newFileLineFields 函数使用文件行返回Fields
-func newFileLineFields(depth int) Fields {
-	file, line := logFormatFileLine(depth)
-	return Fields{"file": file, "line": line}
+// logFormatNameFileLine 函数获得调用的文件位置和函数名称。
+//
+// 文件位置会从第一个src后开始截取，处理gopath下文件位置。
+func logFormatNameFileLine(depth int) (string, string, int) {
+	var name string
+	ptr, file, line, ok := runtime.Caller(depth)
+	if !ok {
+		file = "???"
+		line = 1
+	} else {
+		// slash := strings.LastIndex(file, "/")
+		slash := strings.Index(file, "src")
+		if slash >= 0 {
+			file = file[slash+4:]
+		}
+		name = runtime.FuncForPC(ptr).Name()
+	}
+	return name, file, line
 }

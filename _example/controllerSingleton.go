@@ -6,21 +6,23 @@ eudore.ControllerSingleton控制器所有请求公用一个控制器，注意并
 
 import (
 	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/middleware"
 	"github.com/eudore/eudore/component/httptest"
 )
 
 func main() {
 	app := eudore.NewCore()
+	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
 	app.AddController(new(mySingletonController))
 
 	// 请求测试
 	client := httptest.NewClient(app)
-	var mybasepath = "/mybase/"
+	var mybasepath = "/mysingleton/"
 	client.NewRequest("GET", mybasepath).Do().CheckStatus(200).CheckBodyContainString("1")
 	client.NewRequest("GET", mybasepath).Do().CheckStatus(200).CheckBodyContainString("2")
-	client.NewRequest("GET", "/mybase/path/eudore").Do().CheckStatus(200).CheckBodyContainString("/path/eudore")
+	client.NewRequest("GET", "/mysingleton/path/eudore").Do().CheckStatus(200).CheckBodyContainString("/path/eudore")
 	client.NewRequest("GET", mybasepath).Do().CheckStatus(200).CheckBodyContainString("4")
-	client.NewRequest("GET", "/").Do().CheckStatus(200)
+	client.NewRequest("GET", "/").Do().CheckStatus(404)
 	for client.Next() {
 		app.Error(client.Error())
 	}
@@ -32,7 +34,7 @@ func main() {
 
 type mySingletonController struct {
 	eudore.ControllerSingleton
-	visitor uint64
+	visitor int64
 }
 
 // 每次初始化访问次数加一

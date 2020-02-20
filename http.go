@@ -14,6 +14,15 @@ import (
 )
 
 type (
+	// Stream 定义请求流，抽象websocket处理。
+	Stream interface {
+		io.ReadWriteCloser
+		StreamID() string
+		GetType() int
+		SetType(int)
+		SendMsg(m interface{}) error
+		RecvMsg(m interface{}) error
+	}
 	// Header 定义eudore.Header为http.Header。
 	Header = http.Header
 	// RequestReader 对象为请求信息的载体。
@@ -113,8 +122,10 @@ func (p *ParamsArray) Get(key string) string {
 
 // Add 方法添加一个参数。
 func (p *ParamsArray) Add(key string, val string) {
-	p.Keys = append(p.Keys, key)
-	p.Vals = append(p.Vals, val)
+	if key != "" {
+		p.Keys = append(p.Keys, key)
+		p.Vals = append(p.Vals, val)
+	}
 }
 
 // Set 方法设置一个参数的值。

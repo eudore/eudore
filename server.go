@@ -16,8 +16,8 @@ type (
 		Serve(net.Listener) error
 		Shutdown(ctx context.Context) error
 	}
-	// ServerConfigStd 定义ServerStd使用的配置
-	ServerConfigStd struct {
+	// ServerStdConfig 定义ServerStd使用的配置
+	ServerStdConfig struct {
 		// ReadTimeout is the maximum duration for reading the entire
 		// request, including the body.
 		//
@@ -102,7 +102,7 @@ func (srv *ServerStd) Set(key string, value interface{}) error {
 	case func(...interface{}):
 		srv.Print = val
 		srv.Server.ErrorLog = newNetHTTPLogger(srv.Print)
-	case ServerConfigStd, *ServerConfigStd:
+	case ServerStdConfig, *ServerStdConfig:
 		ConvertTo(value, srv.Server)
 	default:
 		return ErrSeterNotSupportField

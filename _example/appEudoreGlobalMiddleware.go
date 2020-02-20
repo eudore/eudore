@@ -23,7 +23,7 @@ func main() {
 			ctx.Request().Method = "PUT"
 			ctx.Request().URL.Path = "/"
 		})
-		// 添加路由详细。
+		// 添加路由学习，Any不会覆盖非Any方法。
 		app.GetFunc("/*", func(ctx eudore.Context) {
 			ctx.WriteString("hello eudore get")
 		})

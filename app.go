@@ -17,7 +17,7 @@ import (
 var AppContextKey = struct{}{}
 
 type (
-	// PoolGetFunc 定义sync.Pool对象使用的构造函数。
+	// PoolGetFunc 定义sync.Pool对象使用的构造函数,返回对象类型必须可以断言成Context类型。
 	PoolGetFunc func() interface{}
 	// The App combines the main functional interfaces, and the instantiation operations such as startup require additional packaging.
 	//

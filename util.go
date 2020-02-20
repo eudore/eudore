@@ -1,7 +1,6 @@
 package eudore
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -18,28 +17,26 @@ func stringeach(strs []string, fn func(string) string) (s []string) {
 	return
 }
 
-// Use sep to split str into two strings.
+// split2byte internal function, splits two strings into two segments using the first specified byte, and returns "", str if there is no split symbol.
+//
+// split2byte 内部函数，使用第一个指定byte两字符串分割成两段，如果不存在分割符号，返回"", str。
 func split2byte(str string, b byte) (string, string) {
 	pos := strings.IndexByte(str, b)
 	if pos == -1 {
-		return "", ""
+		return "", str
 	}
 	return str[:pos], str[pos+1:]
 }
 
-// Env to Arg
+// The env2arg internal function converts environment variables into parameter format.
+//
+// env2arg 内部函数，将环境变量转换成参数格式。
+//
+// ENV_CONFIG_PATH=xxxx -> config.path=xxx
 func env2arg(str string) string {
 	k, v := split2byte(str, '=')
 	k = strings.ToLower(strings.Replace(k, "_", ".", -1))[4:]
 	return fmt.Sprintf("--%s=%s", k, v)
-}
-
-// JSON test function, json formatted output args.
-//
-// JSON 测试函数，json格式化输出args,不保证可靠性，框架完全稳定后删除。
-func JSON(args ...interface{}) {
-	indent, err := json.MarshalIndent(&args, "", "\t")
-	fmt.Println(string(indent), err)
 }
 
 // GetBool 使用GetDefaultBool，默认false。

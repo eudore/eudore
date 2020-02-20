@@ -27,14 +27,15 @@ func NewCore() *Core {
 	return &Core{App: app, GetWarp: NewGetWarpWithApp(app)}
 }
 
-// Run 方法初始化日志输出然后启动Core，Config需要手动调用Parse方法。
+// Run 方法初始化日志输出然后启动Core。
 func (app *Core) Run() (err error) {
-	go func(app *App) {
-		ticker := time.NewTicker(time.Millisecond * 40)
+	ticker := time.NewTicker(time.Millisecond * 40)
+	defer ticker.Stop()
+	go func() {
 		for range ticker.C {
 			app.Logger.Sync()
 		}
-	}(app.App)
+	}()
 
 	defer app.Logger.Sync()
 	if initlog, ok := app.Logger.(LoggerInitHandler); ok {
@@ -42,15 +43,8 @@ func (app *Core) Run() (err error) {
 		initlog.NextHandler(app.Logger)
 		app.Logger.Sync()
 	}
-	// 解析配置
-	err = app.Config.Parse()
-	if err != nil {
-		app.Error(err)
-		return err
-	}
 
 	app.Server.SetHandler(app)
-	// 等一下让go Serve启动
 	time.Sleep(time.Millisecond * 100)
 	app.wg.Wait()
 	return nil
@@ -109,11 +103,10 @@ func (app *Core) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// handle
 	response.Reset(w)
 	ctx.Reset(r.Context(), response, r)
-	ctx.SetHandler(app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params()))
+	ctx.SetHandler(-1, app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params()))
 	ctx.Next()
 	ctx.End()
 	// release
 	responseWriterHTTPPool.Put(response)
 	app.ContextPool.Put(ctx)
-
 }

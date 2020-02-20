@@ -5,10 +5,12 @@ package eudore
 */
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"runtime"
@@ -121,7 +123,7 @@ func ConfigParseMods(c Config) error {
 			return nil
 		}
 	}
-	mod = append(mod, getOS())
+	mod = append([]string{getOS()}, mod...)
 	configPrint(c, "config load mods: ", mod)
 	for _, i := range mod {
 		ConvertTo(c.Get("mods."+i), c.Get(""))
@@ -143,7 +145,8 @@ func getOS() string {
 func ConfigParseHelp(c Config) error {
 	ok := c.Get("keys.help") != nil
 	if ok {
-		JSON(c)
+		indent, err := json.MarshalIndent(&c, "", "\t")
+		fmt.Println(string(indent), err)
 	}
 	return nil
 }
@@ -190,24 +193,6 @@ func ConfigReadHTTP(path string) (string, []byte, error) {
 	}
 	return typ, data, err
 }
-
-// example: etcd://127.0.0.1:2379/config
-/*func ConfigReadEtcd(path string) (string, error) {
-	server, key := split2byte(path[7:], '/')
-	cfg := etcd.Config{
-		Endpoints:               []string{"http://" + server},
-		Transport:               etcd.DefaultTransport,
-		// set timeout per request to fail fast when the target endpoint is unavailable
-		HeaderTimeoutPerRequest: time.Second,
-	}
-	c, err := etcd.New(cfg)
-	if err != nil {
-		return "", err
-	}
-	kapi := etcd.NewKeysAPI(c)
-	resp, err := kapi.Get(context.Background(), key, nil)
-	return resp.Node.Value, err
-}*/
 
 // InitSignal 函数定义初始化系统信号。
 func InitSignal(app *Eudore) error {
@@ -279,6 +264,10 @@ func InitStart(app *Eudore) error {
 	} else {
 		app.Server.SetHandler(app)
 	}
+	// 设置go 1.13 net/htpp.Server生命周期上下文。
+	Set(app.Server, "Server.BaseContext", func(net.Listener) context.Context {
+		return app.Context
+	})
 
 	// 监听全部配置
 	lns, err := newServerListens(app.Config.Get("listeners"))

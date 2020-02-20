@@ -24,8 +24,8 @@ func main() {
 	app.AddController(new(myRouteController))
 
 	client := httptest.NewClient(app)
-	client.NewRequest("GET", "/mybase/hello").Do().Out()
-	client.NewRequest("PUT", "/mybase/").Do().Out()
+	client.NewRequest("GET", "/myroute/hello").Do().Out()
+	client.NewRequest("PUT", "/myroute/").Do().Out()
 	for client.Next() {
 		app.Error(client.Error())
 	}

@@ -39,7 +39,7 @@ func NewRate(ctx context.Context, r2, burst int) *Rate {
 
 // NewRateFunc 返回一个限流处理函数。
 func NewRateFunc(ctx context.Context, r2, burst int) eudore.HandlerFunc {
-	return NewRate(ctx, r2, burst).Handle
+	return NewRate(ctx, r2, burst).HandleHTTP
 }
 
 // ServeHTTP 方法实现http.Handler接口。
@@ -53,8 +53,8 @@ func (r *Rate) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-// Handle 方法实现eudore请求上下文处理函数。
-func (r *Rate) Handle(ctx eudore.Context) {
+// HandleHTTP 方法实现eudore请求上下文处理函数。
+func (r *Rate) HandleHTTP(ctx eudore.Context) {
 	key := ctx.RealIP()
 	limiter := r.GetVisitor(key)
 	if !limiter.Allow() {

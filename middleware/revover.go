@@ -53,7 +53,14 @@ func NewRecoverFunc() eudore.HandlerFunc {
 				frame, more = frames.Next()
 			}
 
-			ctx.WithField("error", "recover error").WithField("stack", stack).Fatal(err)
+			ctx.WithField("error", "recover error").WithField("stack", stack).Error(err)
+			ctx.WriteHeader(500)
+			ctx.Render(map[string]interface{}{
+				"error":        err.Error(),
+				"stack":        stack,
+				"status":       500,
+				"x-request-id": ctx.RequestID(),
+			})
 		}()
 		ctx.Next()
 	}

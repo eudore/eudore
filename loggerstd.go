@@ -46,10 +46,10 @@ type (
 	}
 	// LoggerStdConfig 定义LoggerStd配置信息。
 	LoggerStdConfig struct {
-		Std        bool        `set:"std"`
-		Path       string      `set:"path"`
-		Level      LoggerLevel `set:"level"`
-		TimeFormat string      `set:"timeformat"`
+		Std        bool        `json:"std" set:"std"`
+		Path       string      `json:"path" set:"path"`
+		Level      LoggerLevel `json:"level" set:"level"`
+		TimeFormat string      `json:"timeformat" set:"timeformat"`
 	}
 	// 标准日志条目
 	entryStd struct {
@@ -82,6 +82,7 @@ func NewLoggerStd(arg interface{}) (*LoggerStd, error) {
 	return log, log.initOut()
 }
 
+// initOut 方法初始化输出流。
 func (log *LoggerStd) initOut() error {
 	log.Path = strings.TrimSpace(log.Path)
 	if len(log.Path) == 0 {

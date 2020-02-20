@@ -32,11 +32,11 @@ func NewCors(origins []string, headers map[string]string) *Cors {
 
 // NewCorsFunc 函数创建应该CORES中间件。
 func NewCorsFunc(origins []string, headers map[string]string) eudore.HandlerFunc {
-	return NewCors(origins, headers).Handle
+	return NewCors(origins, headers).HandleHTTP
 }
 
-// Handle 方法实现eudore上下文请求函数。
-func (cors *Cors) Handle(ctx eudore.Context) {
+// HandleHTTP 方法实现eudore上下文请求函数。
+func (cors *Cors) HandleHTTP(ctx eudore.Context) {
 	origin := ctx.GetHeader("Origin")
 	if origin == "" {
 		return

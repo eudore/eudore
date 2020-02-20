@@ -29,8 +29,6 @@ var (
 	ErrNewHandlerFuncParamNotFunc = errors.New("NewHandlerFuncs input parameter must be a function")
 	// ErrNotToServerListener newServerListens函数参数异常，无法解析并转换成serverListener类型。
 	ErrNotToServerListener = errors.New("Parameters cannot be converted to serverListener type")
-	// ErrRouterAddControllerEmpty RouterStd.AddController 添加的控制器为空
-	ErrRouterAddControllerEmpty = errors.New("RouterStd AddController controller is empty")
 	// ErrRegisterControllerHandlerFuncParamNotFunc RegisterControllerHandlerFunc第一个参数必须是一个函数。
 	ErrRegisterControllerHandlerFuncParamNotFunc = errors.New("The parameter type of RegisterControllerHandlerFunc must be a function")
 	// ErrRegisterNewHandlerParamNotFunc 调用RegisterHandlerExtend函数时，参数必须是一个函数。
@@ -46,10 +44,6 @@ var (
 	// ErrSeterNotSupportField Seter对象不支持设置当前属性。
 	ErrSeterNotSupportField = errors.New("Converter seter not support set field")
 
-	// ErrFormatAddHandlerFuncUnregisterType AddHandler函数的第n个函数参数类型未注册，需要先使用RegisterHandlerExtend或AddHandlerExtend注册该函数类型。
-	ErrFormatAddHandlerFuncUnregisterType = "The AddHandler %s %s %dth handler parameter type is %s, this is the unregistered handler type"
-	// ErrFormatAddHandlerMethodInvalid AddHandler的添加的是无效的，全部有效方法为RouterAllMethod。
-	ErrFormatAddHandlerMethodInvalid = "The AddHandler method '%s' is invalid,complete method: %s, add path: %s "
 	// ErrFormatBindDefaultNotSupportContentType BindDefault函数不支持当前的Content-Type Header。
 	ErrFormatBindDefaultNotSupportContentType = "BindDefault not support content type header: %s"
 	// ErrFormatControllerBaseParseFuncNotSupport ControllerBaseParseFunc函数解析的控制器不支持ControllerRoute接口，无法解析。
@@ -72,6 +66,16 @@ var (
 	ErrFormatRegisterHandlerExtendInputParamError = "The '%s' input parameter is illegal and should be one"
 	// ErrFormatRegisterHandlerExtendOutputParamError RegisterHandlerExtend函数注册的函数返回值错误。
 	ErrFormatRegisterHandlerExtendOutputParamError = "The '%s' output parameter is illegal and should be a HandlerFunc object"
+	// ErrFormatRouterStdAddController RouterStd控制器路由注入错误
+	ErrFormatRouterStdAddController = "The RouterStd.AddController Inject error: %v"
+	// ErrFormatRouterStdAddHandlerExtend RouterStd添加扩展错误
+	ErrFormatRouterStdAddHandlerExtend = "The RouterStd.AddHandlerExtend path is '%s' RegisterHandlerExtend error: %v"
+	// ErrFormatRouterStdRegisterHandlersMethodInvalid RouterStd.registerHandlers 的添加的是无效的，全部有效方法为RouterAllMethod。
+	ErrFormatRouterStdRegisterHandlersMethodInvalid = "The RouterStd.registerHandlers arg method '%s' is invalid, complete method: '%s', add fullpath: '%s'"
+	// ErrFormatRouterStdRegisterHandlersRecover RouterStd出现panic。
+	ErrFormatRouterStdRegisterHandlersRecover = "The RouterStd.registerHandlers arg method is '%s' and path is '%s', recover error: %v"
+	// ErrFormatRouterStdNewHandlerFuncsUnregisterType RouterStd添加处理对象或中间件的第n个参数类型未注册，需要先使用RegisterHandlerExtend或AddHandlerExtend注册该函数类型。
+	ErrFormatRouterStdNewHandlerFuncsUnregisterType = "The RouterStd.newHandlerFuncs path is '%s', %dth handler parameter type is '%s', this is the unregistered handler type"
 	// ErrFormatStartNewProcessError 在StartNewProcess函数fork启动新进程错误。
 	ErrFormatStartNewProcessError = "StartNewProcess failed to forkexec error: %v"
 	// ErrFormatUnknownTypeBody 在transbody函数解析参数成io.Reader时，参数类型是非法的。

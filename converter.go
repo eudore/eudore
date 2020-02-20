@@ -3,7 +3,7 @@ package eudore
 /*
 功能1：获取和设置一个对象的属性
 func Get(i interface{}, key string) interface{}
-func Set(i interface{}, key string, val interface{}) (interface{}, error)
+func Set(i interface{}, key string, val interface{}) error
 
 功能2：map和结构体相互转换
 func ConvertMap(i interface{}) map[interface{}]interface{}
@@ -26,8 +26,8 @@ const (
 	defaultConvertTag = "set"
 )
 
-// Seter 定义对象set属性的方法。
-type Seter interface {
+// seter 定义对象set属性的方法。
+type seter interface {
 	Set(string, interface{}) error
 }
 
@@ -74,7 +74,7 @@ func Set(i interface{}, key string, val interface{}) error {
 	if i == nil {
 		return ErrConverterInputDataNil
 	}
-	seter, ok := i.(Seter)
+	seter, ok := i.(seter)
 	if ok {
 		err := seter.Set(key, val)
 		if err == nil || err != ErrSeterNotSupportField {
@@ -757,7 +757,7 @@ func setWithString(iTypeKind reflect.Kind, iValue reflect.Value, val string) err
 	case reflect.Struct:
 		switch iValue.Interface().(type) {
 		case time.Time:
-			t, err := time.Parse(time.RFC3339, val)
+			t, err := setTimeField(val)
 			if err != nil {
 				return err
 			}
@@ -840,36 +840,38 @@ func setTimeDuration(val string, ivalue reflect.Value) error {
 	return nil
 }
 
-// 设置时间类型，未支持未使用
-func setTimeField(val string, structField reflect.StructField, value reflect.Value) error {
-	timeFormat := structField.Tag.Get("time_format")
-	if timeFormat == "" {
-		timeFormat = time.RFC3339
-	}
+// timeformats 定义允许使用的时间格式。
+var timeformats = []string{
+	time.ANSIC,
+	time.UnixDate,
+	time.RubyDate,
+	time.RFC822,
+	time.RFC822Z,
+	time.RFC850,
+	time.RFC1123,
+	time.RFC1123Z,
+	time.RFC3339,
+	time.RFC3339Nano,
+	time.Kitchen,
+	time.Stamp,
+	time.StampMilli,
+	time.StampMicro,
+	time.StampNano,
+	"2006-1-02",
+	"2006-01-02",
+	"15:04:05",
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05Z07:00",
+	"2006-01-02T15:04:05.999999999Z07:00",
+}
 
-	if val == "" {
-		value.Set(reflect.ValueOf(time.Time{}))
-		return nil
-	}
-
-	l := time.Local
-	if isUTC, _ := strconv.ParseBool(structField.Tag.Get("time_utc")); isUTC {
-		l = time.UTC
-	}
-
-	if locTag := structField.Tag.Get("time_location"); locTag != "" {
-		loc, err := time.LoadLocation(locTag)
-		if err != nil {
-			return err
+// TimeParse 方法通过解析内置支持的时间格式。
+func setTimeField(str string) (t time.Time, err error) {
+	for _, f := range timeformats {
+		t, err = time.Parse(f, str)
+		if err == nil {
+			return
 		}
-		l = loc
 	}
-
-	t, err := time.ParseInLocation(timeFormat, val, l)
-	if err != nil {
-		return err
-	}
-
-	value.Set(reflect.ValueOf(t))
-	return nil
+	return
 }

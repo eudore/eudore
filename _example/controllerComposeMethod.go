@@ -10,6 +10,7 @@ import (
 )
 
 type (
+	// Controllerwebsite 是基础方法的控制器
 	Controllerwebsite struct {
 		eudore.ControllerBase
 	}

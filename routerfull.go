@@ -26,19 +26,16 @@ type (
 	//
 	// 具有路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
 	RouterCoreFull struct {
-		middlewares *trieNode
-		node404     fullNode
-		nodefunc404 HandlerFuncs
-		node405     fullNode
-		nodefunc405 HandlerFuncs
-		root        fullNode
-		get         fullNode
-		post        fullNode
-		put         fullNode
-		delete      fullNode
-		options     fullNode
-		head        fullNode
-		patch       fullNode
+		node404 fullNode
+		node405 fullNode
+		root    fullNode
+		get     fullNode
+		post    fullNode
+		put     fullNode
+		delete  fullNode
+		options fullNode
+		head    fullNode
+		patch   fullNode
 	}
 	fullNode struct {
 		path string
@@ -72,8 +69,6 @@ func NewRouterFull() Router {
 // NewRouterCoreFull 函数创建一个Full路由器核心，使用radix匹配。
 func NewRouterCoreFull() RouterCore {
 	return &RouterCoreFull{
-		nodefunc404: HandlerFuncs{HandlerRouter404},
-		nodefunc405: HandlerFuncs{HandlerRouter405},
 		node404: fullNode{
 			tags:     []string{ParamRoute},
 			vals:     []string{"404"},
@@ -86,44 +81,28 @@ func NewRouterCoreFull() RouterCore {
 				handlers: HandlerFuncs{HandlerRouter405},
 			},
 		},
-		middlewares: newTrieNode(),
 	}
 }
 
-// RegisterMiddleware method register the middleware into the middleware tree and append the handler if it exists.
-//
-// RegisterMiddleware 注册中间件到中间件树中，如果存在则追加处理者。
-func (r *RouterCoreFull) RegisterMiddleware(path string, hs HandlerFuncs) {
-	path = strings.Split(path, " ")[0]
-	r.middlewares.Insert(path, hs)
-	if path == "" {
-		r.node404.handlers = append(r.middlewares.vals, r.nodefunc404...)
-		r.node405.Wchildren.handlers = append(r.middlewares.vals, r.nodefunc405...)
-	}
-}
-
-// RegisterHandler method register a new method request path to the router
+// HandleFunc method register a new method request path to the router
 //
 // The router matches the handlers available to the current path from the middleware tree and adds them to the front of the handler.
 //
-// RegisterHandler 给路由器注册一个新的方法请求路径
+// HandleFunc 给路由器注册一个新的方法请求路径
 //
 // 路由器会从中间件树中匹配当前路径可使用的处理者，并添加到处理者前方。
-func (r *RouterCoreFull) RegisterHandler(method string, path string, handler HandlerFuncs) {
+func (r *RouterCoreFull) HandleFunc(method string, path string, handler HandlerFuncs) {
 	switch method {
 	case "NotFound", "404":
-		r.nodefunc404 = handler
-		r.node404.handlers = HandlerFuncsCombine(r.middlewares.vals, handler)
+		r.node404.handlers = handler
 	case "MethodNotAllowed", "405":
-		r.nodefunc405 = handler
-		r.node405.Wchildren.handlers = HandlerFuncsCombine(r.middlewares.vals, handler)
+		r.node405.Wchildren.handlers = handler
 	case MethodAny:
-		handler = HandlerFuncsCombine(r.middlewares.Lookup(path), handler)
 		for _, method := range RouterAllMethod {
 			r.insertRoute(method, path, true, handler)
 		}
 	default:
-		r.insertRoute(method, path, false, HandlerFuncsCombine(r.middlewares.Lookup(path), handler))
+		r.insertRoute(method, path, false, handler)
 	}
 }
 
@@ -264,29 +243,9 @@ func (r *fullNode) InsertNode(path string, nextNode *fullNode) *fullNode {
 		return r
 	}
 	nextNode.path = path
-	switch nextNode.kind {
+	switch nextNode.kind &^ fullNodeKindAnyMethod {
 	case fullNodeKindConst:
-		for i := range r.Cchildren {
-			subStr, find := getSubsetPrefix(path, r.Cchildren[i].path)
-			if find {
-				if subStr == r.Cchildren[i].path {
-					nextTargetKey := strings.TrimPrefix(path, r.Cchildren[i].path)
-					return r.Cchildren[i].InsertNode(nextTargetKey, nextNode)
-				}
-				newNode := r.SplitNode(subStr, r.Cchildren[i].path)
-				if newNode == nil {
-					panic("Unexpect error on split node")
-				}
-				return newNode.InsertNode(strings.TrimPrefix(path, subStr), nextNode)
-			}
-		}
-		r.Cchildren = append(r.Cchildren, nextNode)
-		// 常量node按照首字母排序。
-		for i := len(r.Cchildren) - 1; i > 0; i-- {
-			if r.Cchildren[i].path[0] < r.Cchildren[i-1].path[0] {
-				r.Cchildren[i], r.Cchildren[i-1] = r.Cchildren[i-1], r.Cchildren[i]
-			}
-		}
+		return r.InsertNodeConst(path, nextNode)
 	case fullNodeKindParam:
 		// parameter node
 		// 参数节点
@@ -329,21 +288,30 @@ func (r *fullNode) InsertNode(path string, nextNode *fullNode) *fullNode {
 	return nextNode
 }
 
-// Bifurcate the child node whose path is edgeKey, and the fork common prefix path is pathKey
-//
-// 对指定路径为edgeKey的子节点分叉，分叉公共前缀路径为pathKey
-func (r *fullNode) SplitNode(pathKey, edgeKey string) *fullNode {
+// InsertNodeConst 方法处理添加常量node。
+func (r *fullNode) InsertNodeConst(path string, nextNode *fullNode) *fullNode {
+	// 变量添加常量node
 	for i := range r.Cchildren {
-		if r.Cchildren[i].path == edgeKey {
-			newNode := &fullNode{path: pathKey}
-			newNode.Cchildren = append(newNode.Cchildren, r.Cchildren[i])
-
-			r.Cchildren[i].path = strings.TrimPrefix(edgeKey, pathKey)
-			r.Cchildren[i] = newNode
-			return newNode
+		subStr, find := getSubsetPrefix(path, r.Cchildren[i].path)
+		if find {
+			if subStr != r.Cchildren[i].path {
+				r.Cchildren[i].path = strings.TrimPrefix(r.Cchildren[i].path, subStr)
+				r.Cchildren[i] = &fullNode{
+					path:      subStr,
+					Cchildren: []*fullNode{r.Cchildren[i]},
+				}
+			}
+			return r.Cchildren[i].InsertNode(strings.TrimPrefix(path, subStr), nextNode)
 		}
 	}
-	return nil
+	r.Cchildren = append(r.Cchildren, nextNode)
+	// 常量node按照首字母排序。
+	for i := len(r.Cchildren) - 1; i > 0; i-- {
+		if r.Cchildren[i].path[0] < r.Cchildren[i-1].path[0] {
+			r.Cchildren[i], r.Cchildren[i-1] = r.Cchildren[i-1], r.Cchildren[i]
+		}
+	}
+	return nextNode
 }
 
 // Set the tags for the current Node
@@ -401,35 +369,7 @@ func (r *RouterCoreFull) getTree(method string) *fullNode {
 	}
 }
 
-// Recursively add a constant Node with a path of containKey to the current node
-//
-// targetKey and targetValue are new Node data.
-//
-// 给当前节点递归添加一个路径为containKey的常量Node
-//
-// targetKey和targetValue为新Node数据。
-func (r *fullNode) recursiveInsertTree(containKey string, targetNode *fullNode) *fullNode {
-	for i := range r.Cchildren {
-		subStr, find := getSubsetPrefix(containKey, r.Cchildren[i].path)
-		if find {
-			if subStr == r.Cchildren[i].path {
-				nextTargetKey := strings.TrimPrefix(containKey, r.Cchildren[i].path)
-				return r.Cchildren[i].recursiveInsertTree(nextTargetKey, targetNode)
-			}
-			newNode := r.SplitNode(subStr, r.Cchildren[i].path)
-			if newNode == nil {
-				panic("Unexpect error on split node")
-			}
-
-			return newNode.InsertNode(strings.TrimPrefix(containKey, subStr), targetNode)
-		}
-	}
-
-	return r.InsertNode(containKey, targetNode)
-}
-
 func (r *fullNode) recursiveLoopup(searchKey string, params Params) HandlerFuncs {
-
 	// constant match, return data
 	// 常量匹配，返回数据
 	if len(searchKey) == 0 && r.handlers != nil {

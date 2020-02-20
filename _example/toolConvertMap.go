@@ -56,5 +56,4 @@ func main() {
 	fmt.Printf("%#v\n\n", eudore.ConvertMap(data))
 	target := eudore.ConvertMapString(data)
 	fmt.Printf("%#v\n", target)
-	eudore.JSON(target)
 }

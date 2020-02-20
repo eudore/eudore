@@ -78,6 +78,10 @@ func (tw *timeoutWriter) WriteHeader(code int) {
 func (tw *timeoutWriter) WriteSuccess() {
 	tw.mu.Lock()
 	defer tw.mu.Unlock()
+	if !tw.wroteHeader {
+		tw.wroteHeader = true
+		tw.code = 200
+	}
 	tw.ResponseWriter.WriteHeader(tw.code)
 	tw.ResponseWriter.Write(tw.wbuf.Bytes())
 }

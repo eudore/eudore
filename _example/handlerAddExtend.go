@@ -13,7 +13,7 @@ import (
 
 func main() {
 	// 该注册无效，被github.com/eudore/eudore.NewExtendHandlerInterfaceRender(interface {})覆盖
-	eudore.DefaultHandlerExtend.RegisterHandlerExtend(func(i interface{}) eudore.HandlerFunc {
+	eudore.DefaultHandlerExtend.RegisterHandlerExtend("", func(i interface{}) eudore.HandlerFunc {
 		return func(ctx eudore.Context) {
 			ctx.WriteString("我是全局扩展 " + fmt.Sprint(i))
 		}

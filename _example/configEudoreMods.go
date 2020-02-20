@@ -42,6 +42,10 @@ func main() {
 	tmpfile.Write(content)
 
 	app := eudore.NewCore()
+	err := app.Parse()
+	if err != nil {
+		panic(err)
+	}
 	app.Config = eudore.NewConfigEudore(new(conf))
 	app.Config.Set("keys.config", configfilepath)
 	app.Config.Set("enable", []string{"debug"})

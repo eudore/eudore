@@ -18,7 +18,7 @@ func init() {
 
 // 定义熔断器状态。
 const (
-	CircuitBreakerStatueClosed State = iota
+	CircuitBreakerStatueClosed BreakState = iota
 	CircuitBreakerStatueHalfOpen
 	CircuitBreakerStatueOpen
 )
@@ -33,67 +33,73 @@ var (
 )
 
 type (
-	// State 是熔断器状态。
-	State int8
+	// BreakState 是熔断器状态。
+	BreakState int8
 	// CircuitBreaker 定义熔断器。
 	CircuitBreaker struct {
 		mu            sync.RWMutex
 		num           int
-		Mapping       map[int]string                             `json:"mapping"`
-		Routes        map[string]*Route                          `json:"routes"`
-		OnStateChange func(eudore.Context, string, State, State) `json:"-"`
+		Mapping       map[int]string                                       `json:"mapping"`
+		Routes        map[string]*breakRoute                               `json:"routes"`
+		OnStateChange func(eudore.Context, string, BreakState, BreakState) `json:"-"`
 	}
-	// Route 定义单词路由的熔断数据。
-	Route struct {
+	// breakRoute 定义单词路由的熔断数据。
+	breakRoute struct {
 		mu                   sync.Mutex
 		ID                   int
 		Name                 string
-		State                State
+		BreakState           BreakState `json:"State"`
 		LastTime             time.Time
 		TotalSuccesses       uint64
 		TotalFailures        uint64
 		ConsecutiveSuccesses uint32
 		ConsecutiveFailures  uint32
-		OnStateChange        func(eudore.Context, string, State, State) `json:"-"`
+		OnStateChange        func(eudore.Context, string, BreakState, BreakState) `json:"-"`
 	}
 )
 
 // NewCircuitBreaker 函数创建一个熔断器
-func NewCircuitBreaker() *CircuitBreaker {
-	return &CircuitBreaker{
+func NewCircuitBreaker(r eudore.Router) *CircuitBreaker {
+	cb := &CircuitBreaker{
 		Mapping: make(map[int]string),
-		Routes:  make(map[string]*Route),
-		OnStateChange: func(ctx eudore.Context, name string, from State, to State) {
+		Routes:  make(map[string]*breakRoute),
+		OnStateChange: func(ctx eudore.Context, name string, from BreakState, to BreakState) {
 			ctx.Infof("CircuitBreaker route %s change state from %s to %s", name, from, to)
 		},
 	}
-}
-
-// Handle 方法定义熔断器处理eudore请求上下文函数。
-func (cb *CircuitBreaker) Handle(ctx eudore.Context) {
-	name := ctx.GetParam("route")
-	cb.mu.RLock()
-	route, ok := cb.Routes[name]
-	cb.mu.RUnlock()
-	if !ok {
-		cb.mu.Lock()
-		route = &Route{
-			ID:            cb.num,
-			Name:          name,
-			LastTime:      time.Now(),
-			OnStateChange: cb.OnStateChange,
-		}
-		cb.Mapping[cb.num] = name
-		cb.Routes[name] = route
-		cb.num++
-		cb.mu.Unlock()
+	if r != nil {
+		cb.RoutesInject(r)
 	}
-
-	route.Handle(ctx)
+	return cb
 }
 
-// InjectRoutes 方法给给路由器注入熔断器的路由。
-func (cb *CircuitBreaker) InjectRoutes(r eudore.Router) {
+// NewBreakFunc 方法定义熔断器处理eudore请求上下文函数。
+func (cb *CircuitBreaker) NewBreakFunc() eudore.HandlerFunc {
+	return func(ctx eudore.Context) {
+		name := ctx.GetParam("route")
+		cb.mu.RLock()
+		route, ok := cb.Routes[name]
+		cb.mu.RUnlock()
+		if !ok {
+			cb.mu.Lock()
+			route = &breakRoute{
+				ID:            cb.num,
+				Name:          name,
+				LastTime:      time.Now(),
+				OnStateChange: cb.OnStateChange,
+			}
+			cb.Mapping[cb.num] = name
+			cb.Routes[name] = route
+			cb.num++
+			cb.mu.Unlock()
+		}
+
+		route.Handle(ctx)
+	}
+}
+
+// RoutesInject 方法给给路由器注入熔断器的路由。
+func (cb *CircuitBreaker) RoutesInject(r eudore.Router) {
 	r.GetFunc("/ui", func(ctx eudore.Context) {
 		if StaticHTML != "" {
 			ctx.WriteFile(StaticHTML)
@@ -130,15 +136,15 @@ func (cb *CircuitBreaker) InjectRoutes(r eudore.Router) {
 		cb.mu.RLock()
 		route := cb.Routes[cb.Mapping[id]]
 		cb.mu.RUnlock()
-		route.OnStateChange(ctx, route.Name, route.State, State(state))
-		route.State = State(state)
+		route.OnStateChange(ctx, route.Name, route.BreakState, BreakState(state))
+		route.BreakState = BreakState(state)
 		route.ConsecutiveSuccesses = 0
 		route.ConsecutiveFailures = 0
 	})
 }
 
 // Handle 方法实现路由条目处理熔断。
-func (c *Route) Handle(ctx eudore.Context) {
+func (c *breakRoute) Handle(ctx eudore.Context) {
 	if c.IsDeny() {
 		ctx.WriteHeader(503)
 		ctx.Fatal("CircuitBreaker")
@@ -153,48 +159,48 @@ func (c *Route) Handle(ctx eudore.Context) {
 }
 
 // IsDeny 方法实现熔断器条目是否可以通过。
-func (c *Route) IsDeny() (b bool) {
-	if c.State == CircuitBreakerStatueHalfOpen {
+func (c *breakRoute) IsDeny() (b bool) {
+	if c.BreakState == CircuitBreakerStatueHalfOpen {
 		b = time.Now().Before(c.LastTime.Add(400 * time.Millisecond))
 		if b {
 			c.LastTime = time.Now()
 		}
 		return b
 	}
-	return c.State == CircuitBreakerStatueOpen
+	return c.BreakState == CircuitBreakerStatueOpen
 }
 
 // onSuccess 方法处理熔断器条目成功的情况。
-func (c *Route) onSuccess() {
+func (c *breakRoute) onSuccess() {
 	c.TotalSuccesses++
 	c.ConsecutiveSuccesses++
 	c.ConsecutiveFailures = 0
-	if c.State != CircuitBreakerStatueClosed && c.ConsecutiveSuccesses > MaxConsecutiveSuccesses {
+	if c.BreakState != CircuitBreakerStatueClosed && c.ConsecutiveSuccesses > MaxConsecutiveSuccesses {
 		c.ConsecutiveSuccesses = 0
-		c.State--
+		c.BreakState--
 		c.LastTime = time.Now()
 	}
 }
 
 // onFailure 方法处理熔断器条目失败的情况。
-func (c *Route) onFailure() {
+func (c *breakRoute) onFailure() {
 	c.TotalFailures++
 	c.ConsecutiveFailures++
 	c.ConsecutiveSuccesses = 0
-	if c.State != CircuitBreakerStatueOpen && c.ConsecutiveFailures > MaxConsecutiveFailures {
+	if c.BreakState != CircuitBreakerStatueOpen && c.ConsecutiveFailures > MaxConsecutiveFailures {
 		c.ConsecutiveFailures = 0
-		c.State++
+		c.BreakState++
 		c.LastTime = time.Now()
 	}
 }
 
 // String 方法实现string接口
-func (state State) String() string {
+func (state BreakState) String() string {
 	return CircuitBreakerStatues[state]
 }
 
 // MarshalText 方法实现encoding.TextMarshaler接口。
-func (state State) MarshalText() (text []byte, err error) {
+func (state BreakState) MarshalText() (text []byte, err error) {
 	text = []byte(state.String())
 	return
 }

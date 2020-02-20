@@ -101,17 +101,10 @@ func (r *RouterCoreHost) setRouter(host string, router eudore.Router) {
 	r.Matchs = append(r.Matchs, router)
 }
 
-// RegisterMiddleware 方法根据host选择路由器然后注册中间件。
-func (r *RouterCoreHost) RegisterMiddleware(path string, handler eudore.HandlerFuncs) {
+// HandleFunc 方法根据host选择路由器然后注册路由。
+func (r *RouterCoreHost) HandleFunc(method string, path string, handler eudore.HandlerFuncs) {
 	for _, i := range r.getRouters(getHostOfPath(path)) {
-		i.RegisterMiddleware(path, handler)
-	}
-}
-
-// RegisterHandler 方法根据host选择路由器然后注册路由。
-func (r *RouterCoreHost) RegisterHandler(method string, path string, handler eudore.HandlerFuncs) {
-	for _, i := range r.getRouters(getHostOfPath(path)) {
-		i.RegisterHandler(method, path, handler)
+		i.HandleFunc(method, path, handler)
 	}
 }
 

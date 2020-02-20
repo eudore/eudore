@@ -1,19 +1,20 @@
+# Middleware
+
+Middleware包实现部分基础eudore请求中间件。
 
 ```golang
 func InitMidd(app *eudore.Eudore) error {
-	cb := breaker.NewCircuitBreaker()
-	cb.InjectRoutes(app.Group("/eudore/debug/breaker"))
 	app.AddMiddleware(
 		// add logger middleware
-		middleware.NewLoggerFunc(app),
+		middleware.NewLoggerFunc(app, "route"),
 		// 熔断器
-		cb.Handle,
+		middleware.NewCircuitBreaker(app.Group("/eudore/debug/breaker")).NewBreakFunc(),
 		// 处理超时
 		middleware.NewTimeoutFunc(10 * time.Second),
 		// cors
 		middleware.NewCorsFunc(nil, map[string]string{
 			"Access-Control-Allow-Credentials": "true",
-			"Access-Control-Allow-Headers": "Authorization,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,X-Parent-Id",	
+			"Access-Control-Allow-Headers": "Authorization,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,X-Parent-Id",
 			"Access-Control-Expose-Headers": "X-Request-Id",
 			"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, HEAD",
 			"Access-Control-Max-Age": "1000",

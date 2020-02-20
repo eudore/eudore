@@ -3,8 +3,10 @@ package eudore
 import (
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 )
 
 type (
@@ -13,21 +15,31 @@ type (
 	// HandlerFuncs 是HandlerFunc的集合，表示多个请求处理函数。
 	HandlerFuncs []HandlerFunc
 	// HandlerExtender 定义函数扩展处理者的方法。
+	//
+	// HandlerExtender默认拥有Base、Warp、Tree三种实现，具体参数三种对象的文档。
 	HandlerExtender interface {
-		RegisterHandlerExtend(interface{}) error
-		NewHandlerFuncs(interface{}) HandlerFuncs
+		RegisterHandlerExtend(string, interface{}) error
+		NewHandlerFuncs(string, interface{}) HandlerFuncs
 		ListExtendHandlerNames() []string
 	}
 	// handlerExtendBase 定义基础的函数扩展。
 	handlerExtendBase struct {
+		ExtendNewType       []reflect.Type
+		ExtendNewFunc       []reflect.Value
 		ExtendInterfaceType []reflect.Type
 		ExtendInterfaceFunc []reflect.Value
-		ExtendNewFunc       map[reflect.Type]reflect.Value
+		// ExtendNewFunc       map[reflect.Type]reflect.Value
 	}
 	// handlerExtendWarp 定义链式函数扩展。
 	handlerExtendWarp struct {
 		HandlerExtender
 		LastExtender HandlerExtender
+	}
+	// handlerExtendTree 定义基于路径匹配的函数扩展。
+	handlerExtendTree struct {
+		HandlerExtender
+		path   string
+		childs []*handlerExtendTree
 	}
 	handlerHTTP interface {
 		HandleHTTP(Context)
@@ -42,51 +54,81 @@ var (
 	typeError       = reflect.TypeOf((*error)(nil)).Elem()
 	typeContext     = reflect.TypeOf((*Context)(nil)).Elem()
 	typeHandlerFunc = reflect.TypeOf((*HandlerFunc)(nil)).Elem()
-	typeHTTPHandler = reflect.TypeOf((*http.Handler)(nil)).Elem()
 	// contextFuncName key类型一定为HandlerFunc类型
 	contextFuncName = make(map[uintptr]string)
-	// DefaultHandlerExtend 为默认的函数扩展处理者，是RouterCoreRadix和RouterCoreFull使用的最顶级的函数扩展处理者。
+	// DefaultHandlerExtend 为默认的函数扩展处理者，是RouterStd使用的最顶级的函数扩展处理者。
 	DefaultHandlerExtend = NewHandlerExtendBase()
 )
 
 // init 函数初始化内置扩展的请求上下文处理函数。
 func init() {
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendContextData)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendHandlerHTTPClone)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendHandlerHTTP)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendHandlerNetHTTP)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendFuncNetHTTP1)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendFuncNetHTTP2)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendFuncContextError)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendFuncContextRender)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendFuncContextRenderError)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendFuncRPCMap)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendHandlerRPC)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendFuncString)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendHandlerStringer)
-	DefaultHandlerExtend.RegisterHandlerExtend(NewExtendHandlerInterfaceRender)
+	// 路由方法扩展
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendContextData)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerHTTPClone)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerHTTP)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerNetHTTP)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncNetHTTP1)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncNetHTTP2)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFunc)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncRender)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncError)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncContextError)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncContextRender)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncContextRenderError)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncRPCMap)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerRPC)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncString)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerStringer)
+
+	// 控制器方法扩展
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFunc)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncRender)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncError)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncRenderError)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncContext)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncContextRender)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncContextError)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncContextRenderError)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncMapString)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncMapStringRender)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncMapStringError)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncMapStringRenderError)
+
+	// 默认不注册了，匹配了一切，如果有未匹配就不会触发errorr。
+	// DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerInterfaceRender)
 }
 
+// NewHandlerExtendBase method returns a basic function extension processing object.
+//
+// The NewHandlerExtendBase().RegisterHandlerExtend method registers a conversion function and ignores the path.
+//
+// The NewHandlerExtendBase().NewHandlerFuncs method implementation creates multiple request handler functions, ignoring paths.
+//
 // NewHandlerExtendBase 方法返回一个基本的函数扩展处理对象。
+//
+// NewHandlerExtendBase().RegisterHandlerExtend 方法实现注册一个转换函数，忽略路径。
+//
+// NewHandlerExtendBase().NewHandlerFuncs 方法实现创建多个请求处理函数，忽略路径。
 func NewHandlerExtendBase() HandlerExtender {
-	return &handlerExtendBase{
-		ExtendInterfaceType: make([]reflect.Type, 0, 6),
-		ExtendInterfaceFunc: make([]reflect.Value, 0, 6),
-		ExtendNewFunc:       make(map[reflect.Type]reflect.Value),
-	}
+	return &handlerExtendBase{}
 }
 
-// RegisterHandlerExtend 函数注册一个请求上下文处理转换函数，参数必须是一个函数，该函数的参数必须是一个函数h或接口，返回值必须是返回一个HandlerFunc对象。
+// RegisterHandlerExtend 函数注册一个请求上下文处理转换函数，参数必须是一个函数，该函数的参数必须是一个函数、接口、指针、结构体类型之一，返回值必须是返回一个HandlerFunc对象。
+//
+// 如果添加多个接口类型转换，注册类型不直接是接口而是实现接口，会按照接口注册顺序依次检测是否实现接口。
 //
 // 例如: func(func(...)) HanderFunc, func(http.Handler) HandlerFunc
-func (ext *handlerExtendBase) RegisterHandlerExtend(fn interface{}) error {
+func (ext *handlerExtendBase) RegisterHandlerExtend(_ string, fn interface{}) error {
 	iType := reflect.TypeOf(fn)
 	// RegisterHandlerExtend函数的参数必须是一个函数类型
 	if iType.Kind() != reflect.Func {
 		return ErrRegisterNewHandlerParamNotFunc
 	}
-	// 检查函数参数必须是一个函数或者接口类型。
-	if iType.NumIn() != 1 || (iType.In(0).Kind() != reflect.Func && iType.In(0).Kind() != reflect.Interface) {
+	// 检查函数参数必须是一个函数、接口、指针、结构体类型之一类型。
+	if iType.NumIn() != 1 || (iType.In(0).Kind() != reflect.Func &&
+		iType.In(0).Kind() != reflect.Interface &&
+		iType.In(0).Kind() != reflect.Ptr &&
+		iType.In(0).Kind() != reflect.Struct) {
 		return fmt.Errorf(ErrFormatRegisterHandlerExtendInputParamError, iType.String())
 	}
 	// 检查函数返回值必须是HandlerFunc
@@ -94,17 +136,17 @@ func (ext *handlerExtendBase) RegisterHandlerExtend(fn interface{}) error {
 		return fmt.Errorf(ErrFormatRegisterHandlerExtendOutputParamError, iType.String())
 	}
 
+	ext.ExtendNewType = append(ext.ExtendNewType, iType.In(0))
+	ext.ExtendNewFunc = append(ext.ExtendNewFunc, reflect.ValueOf(fn))
 	if iType.In(0).Kind() == reflect.Interface {
 		ext.ExtendInterfaceType = append(ext.ExtendInterfaceType, iType.In(0))
 		ext.ExtendInterfaceFunc = append(ext.ExtendInterfaceFunc, reflect.ValueOf(fn))
-	} else {
-		ext.ExtendNewFunc[iType.In(0)] = reflect.ValueOf(fn)
 	}
 	return nil
 }
 
 // NewHandlerFuncs 函数根据参数返回一个HandlerFuncs。
-func (ext *handlerExtendBase) NewHandlerFuncs(i interface{}) HandlerFuncs {
+func (ext *handlerExtendBase) NewHandlerFuncs(_ string, i interface{}) HandlerFuncs {
 	return ext.newHandlerFuncs(reflect.ValueOf(i))
 }
 
@@ -115,6 +157,8 @@ func (ext *handlerExtendBase) newHandlerFuncs(iValue reflect.Value) HandlerFuncs
 		return HandlerFuncs{fn}
 	case HandlerFunc:
 		return HandlerFuncs{fn}
+	case []HandlerFunc:
+		return fn
 	case HandlerFuncs:
 		return fn
 	}
@@ -142,22 +186,27 @@ func (ext *handlerExtendBase) newHandlerFuncs(iValue reflect.Value) HandlerFuncs
 	return nil
 }
 
-// NewHandlerFunc 函数使用一个函数或接口参数转换成请求上下文处理函数。
+// newHandlerFunc 函数使用一个函数或接口参数转换成请求上下文处理函数。
 //
 // 参数必须是一个函数，函数拥有一个参数作为入参，一个HandlerFunc对象作为返回值。
+//
+// 先检测对象是否拥有直接注册的类型扩展函数，再检查对象是否实现其中注册的接口类型。
+//
+// 允许进行多次注册，只要注册返回值不为空就会返回对应的处理函数。
 func (ext *handlerExtendBase) newHandlerFunc(iValue reflect.Value) HandlerFunc {
 	iType := iValue.Type()
-	fn, ok := ext.ExtendNewFunc[iType]
-	if ok {
-		h := createHandlerFunc(fn, iValue)
-		if h != nil {
-			return h
+	for i := range ext.ExtendNewType {
+		if ext.ExtendNewType[i] == iType {
+			h := ext.createHandlerFunc(ext.ExtendNewFunc[i], iValue)
+			if h != nil {
+				return h
+			}
 		}
 	}
 	// 判断是否实现接口类型
 	for i, iface := range ext.ExtendInterfaceType {
 		if iType.Implements(iface) {
-			h := createHandlerFunc(ext.ExtendInterfaceFunc[i], iValue)
+			h := ext.createHandlerFunc(ext.ExtendInterfaceFunc[i], iValue)
 			if h != nil {
 				return h
 			}
@@ -171,9 +220,9 @@ var formarExtendername = "%s(%s)"
 // ListExtendHandlerNames 方法返回全部注册的函数名称。
 func (ext *handlerExtendBase) ListExtendHandlerNames() []string {
 	names := make([]string, 0, len(ext.ExtendNewFunc))
-	for k, v := range ext.ExtendNewFunc {
-		if k.Kind() != reflect.Interface {
-			names = append(names, fmt.Sprintf(formarExtendername, runtime.FuncForPC(v.Pointer()).Name(), k.String()))
+	for i := range ext.ExtendNewType {
+		if ext.ExtendNewType[i].Kind() != reflect.Interface {
+			names = append(names, fmt.Sprintf(formarExtendername, runtime.FuncForPC(ext.ExtendNewFunc[i].Pointer()).Name(), ext.ExtendNewType[i].String()))
 		}
 	}
 	for i, iface := range ext.ExtendInterfaceType {
@@ -182,44 +231,65 @@ func (ext *handlerExtendBase) ListExtendHandlerNames() []string {
 	return names
 }
 
+var lastfn reflect.Value
+
 // createHandlerFunc 函数使用转换函数和对象创建一个HandlerFunc，并保存HandlerFunc的名称和使用的扩展函数名称。
-func createHandlerFunc(fn, iValue reflect.Value) HandlerFunc {
+func (ext *handlerExtendBase) createHandlerFunc(fn, iValue reflect.Value) HandlerFunc {
 	h := fn.Call([]reflect.Value{iValue})[0].Interface().(HandlerFunc)
 	if h == nil {
 		return nil
 	}
-	// 获取扩展名称
+	// 获取扩展名称，eudore包移除包前缀
 	extname := runtime.FuncForPC(fn.Pointer()).Name()
 	if len(extname) > 24 && extname[:25] == "github.com/eudore/eudore." {
 		extname = extname[25:]
 	}
 	// 保存新函数名称
-	var name string
-	if iValue.Kind() == reflect.Func {
-		name = runtime.FuncForPC(iValue.Pointer()).Name()
-	} else {
-		// 其他类型输出就这样吧，不想想了。
-		name = fmt.Sprintf("%#v", iValue.Interface())
+	var name string = contextFuncName[reflect.ValueOf(h).Pointer()]
+	if name == "" {
+		iType := iValue.Type()
+		if iType.Kind() == reflect.Ptr {
+			iType = iType.Elem()
+			name = fmt.Sprintf("*%s.%s", iType.PkgPath(), iType.Name())
+		} else {
+			name = fmt.Sprintf("%s.%s", iType.PkgPath(), iType.Name())
+		}
 	}
 	contextFuncName[reflect.ValueOf(h).Pointer()] = fmt.Sprintf("%s(%s)", name, extname)
 	return h
 }
 
+// NewHandlerExtendWarp function creates a chained HandlerExtender object.
+//
+// All objects are registered and created using base. If base cannot create a function handler, use last to create a function handler.
+//
 // NewHandlerExtendWarp 函数创建一个链式HandlerExtender对象。
-func NewHandlerExtendWarp(last HandlerExtender) HandlerExtender {
+//
+// The NewHandlerExtendWarp(base, last).RegisterHandlerExtend method uses the base object to register extension functions.
+//
+// The NewHandlerExtendWarp(base, last).NewHandlerFuncs method first uses the base object to create multiple request processing functions. If it returns nil, it uses the last object to create multiple request processing functions.
+//
+// 所有对象注册和创建均使用base，如果base无法创建函数处理者则使用last创建函数处理者。
+//
+// NewHandlerExtendWarp(base, last).RegisterHandlerExtend 方法使用base对象注册扩展函数。
+//
+// NewHandlerExtendWarp(base, last).NewHandlerFuncs 方法先使用base对象创建多个请求处理函数，如果返回nil，则使用last对象创建多个请求处理函数。
+func NewHandlerExtendWarp(base, last HandlerExtender) HandlerExtender {
 	return &handlerExtendWarp{
-		HandlerExtender: NewHandlerExtendBase(),
+		HandlerExtender: base,
 		LastExtender:    last,
 	}
 }
 
+// The NewHandlerFuncs method implements the NewHandlerFuncs function. If the current HandlerExtender cannot create HandlerFuncs, it calls the superior HandlerExtender to process.
+//
 // NewHandlerFuncs 方法实现NewHandlerFuncs函数，如果当前HandlerExtender无法创建HandlerFuncs，则调用上级HandlerExtender处理。
-func (ext *handlerExtendWarp) NewHandlerFuncs(i interface{}) HandlerFuncs {
-	hs := ext.HandlerExtender.NewHandlerFuncs(i)
+func (ext *handlerExtendWarp) NewHandlerFuncs(path string, i interface{}) HandlerFuncs {
+	hs := ext.HandlerExtender.NewHandlerFuncs(path, i)
 	if hs != nil {
 		return hs
 	}
-	return ext.LastExtender.NewHandlerFuncs(i)
+	return ext.LastExtender.NewHandlerFuncs(path, i)
 }
 
 // ListExtendHandlerNames 方法返回全部注册的函数名称。
@@ -227,29 +297,114 @@ func (ext *handlerExtendWarp) ListExtendHandlerNames() []string {
 	return append(ext.HandlerExtender.ListExtendHandlerNames(), ext.LastExtender.ListExtendHandlerNames()...)
 }
 
-// HandlerFuncsFilter 函数过滤掉多个请求上下文处理函数中的空对象。
-func HandlerFuncsFilter(hs HandlerFuncs) HandlerFuncs {
-	var num int
-	for _, h := range hs {
-		if h != nil {
-			num++
-		}
-	}
-	if num == len(hs) {
-		return hs
-	}
-
-	// 返回新过滤空的处理函数。
-	nhs := make(HandlerFuncs, 0, num)
-	for _, h := range hs {
-		if h != nil {
-			nhs = append(nhs, h)
-		}
-	}
-	return nhs
+// NewHandlerExtendTree function creates a path-based function extender.
+//
+// Mainly implement path matching. All actions are processed by the node's HandlerExtender, and the NewHandlerExtendBase () object is used.
+//
+// All registration and creation actions will be performed by matching the lowest node of the tree. If it cannot be created, the tree nodes will be processed upwards in order.
+//
+// The NewHandlerExtendTree().RegisterHandlerExtend method registers a handler function based on the path, and initializes to NewHandlerExtendBase () if the HandlerExtender is empty.
+//
+// The NewHandlerExtendTree().NewHandlerFuncs method matches the child nodes of the tree based on the path, and then executes the NewHandlerFuncs method from the most child node up. If it returns non-null, it returns directly.
+//
+// NewHandlerExtendTree 函数创建一个基于路径的函数扩展者。
+//
+// 主要实现路径匹配，所有行为使用节点的HandlerExtender处理，使用NewHandlerExtendBase()对象。
+//
+// 所有注册和创建行为都会匹配树最下级节点执行，如果无法创建则在树节点依次向上处理。
+//
+// NewHandlerExtendTree().RegisterHandlerExtend 方法基于路径注册一个处理函数，如果HandlerExtender为空则初始化为NewHandlerExtendBase()。
+//
+// NewHandlerExtendTree().NewHandlerFuncs 方法基于路径向树子节点匹配，后从最子节点依次向上执行NewHandlerFuncs方法，如果返回非空直接返回，否在会依次执行注册行为。
+func NewHandlerExtendTree() HandlerExtender {
+	return &handlerExtendTree{}
 }
 
-// HandlerFuncsCombine 函数将两个HandlerFuncs合并成一个，默认现在最大长度63，超过过panic
+// RegisterHandlerExtend 方法基于路径注册一个扩展函数。
+func (ext *handlerExtendTree) RegisterHandlerExtend(path string, i interface{}) error {
+	// 匹配当前节点注册
+	if path == "" {
+		if ext.HandlerExtender == nil {
+			ext.HandlerExtender = NewHandlerExtendBase()
+		}
+		return ext.HandlerExtender.RegisterHandlerExtend("", i)
+	}
+
+	// 寻找对应的子节点注册
+	for pos := range ext.childs {
+		subStr, find := getSubsetPrefix(path, ext.childs[pos].path)
+		if find {
+			if subStr != ext.childs[pos].path {
+				ext.childs[pos].path = strings.TrimPrefix(ext.childs[pos].path, subStr)
+				ext.childs[pos] = &handlerExtendTree{
+					path:   subStr,
+					childs: []*handlerExtendTree{ext.childs[pos]},
+				}
+			}
+			return ext.childs[pos].RegisterHandlerExtend(strings.TrimPrefix(path, subStr), i)
+		}
+	}
+
+	// 追加一个新的子节点
+	newnode := &handlerExtendTree{
+		path:            path,
+		HandlerExtender: NewHandlerExtendBase(),
+	}
+	ext.childs = append(ext.childs, newnode)
+	return newnode.HandlerExtender.RegisterHandlerExtend(path, i)
+}
+
+// NewHandlerFuncs 函数基于路径创建多个对象处理函数。
+//
+// 递归依次寻找子节点，然后返回时创建多个对象处理函数，如果子节点返回不为空就直接返回。
+func (ext *handlerExtendTree) NewHandlerFuncs(path string, i interface{}) HandlerFuncs {
+	for _, i := range ext.childs {
+		if strings.HasPrefix(path, i.path) {
+			hs := i.NewHandlerFuncs(path[len(i.path):], i)
+			if hs != nil {
+				return hs
+			}
+			break
+		}
+	}
+
+	if ext.HandlerExtender != nil {
+		return ext.HandlerExtender.NewHandlerFuncs(path, i)
+	}
+	return nil
+}
+
+// listExtendHandlerNamesByPrefix 方法递归添加路径前缀返回扩展函数名称。
+func (ext *handlerExtendTree) listExtendHandlerNamesByPrefix(prefix string) []string {
+	prefix += ext.path
+	var names []string
+	if ext.HandlerExtender != nil {
+		names = ext.HandlerExtender.ListExtendHandlerNames()
+		if prefix != "" {
+			for i := range names {
+				names[i] = prefix + " " + names[i]
+			}
+		}
+	}
+
+	for i := range ext.childs {
+		names = append(names, ext.childs[i].listExtendHandlerNamesByPrefix(prefix)...)
+	}
+	return names
+}
+
+// ListExtendHandlerNames 方法返回全部注册的函数名称。
+func (ext *handlerExtendTree) ListExtendHandlerNames() []string {
+	return ext.listExtendHandlerNamesByPrefix("")
+}
+
+// HandlerFuncsCombine function merges two HandlerFuncs into one. The default maximum length is now 63, which exceeds panic.
+//
+// Used to reconstruct the slice and prevent the appended data from being confused.
+//
+// HandlerFuncsCombine 函数将两个HandlerFuncs合并成一个，默认现在最大长度63，超过过panic。
+//
+// 用于重构切片，防止切片append数据混乱。
 func HandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	// if nil
 	if len(hs1) == 0 {
@@ -259,9 +414,8 @@ func HandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 		return hs1
 	}
 	// combine
-	const abortIndex int8 = 63
 	finalSize := len(hs1) + len(hs2)
-	if finalSize >= int(abortIndex) {
+	if finalSize >= 63 {
 		panic("HandlerFuncsCombine: too many handlers")
 	}
 	hs := make(HandlerFuncs, finalSize)
@@ -270,12 +424,24 @@ func HandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	return hs
 }
 
+// SetHandlerFuncName is really the name of a request context handler.
+//
+// Note: functions are not comparable, the method names of objects are overwritten by other method names.
+//
 // SetHandlerFuncName 实在一个请求上下文处理函数的名称。
-func SetHandlerFuncName(i HandlerFunc, name string) {
+//
+// 注意：函数不具有可比性，对象的方法的名称会被其他方法名称覆盖。
+func SetHandlerFuncName(i interface{}, name string) {
 	contextFuncName[reflect.ValueOf(i).Pointer()] = name
 }
 
-// String 实现fmt.Stringer接口，实现输出函数名称。
+// String method implements the fmt.Stringer interface and implements the output function name.
+//
+// If the processing function has set the function name, use the set value, or use the runtime to get the default value.
+//
+// String 方法实现fmt.Stringer接口，实现输出函数名称。
+//
+// 如果处理函数设置过函数名称，使用设置的值，否在使用runtime获取默认值。
 func (h HandlerFunc) String() string {
 	ptr := reflect.ValueOf(h).Pointer()
 	name, ok := contextFuncName[ptr]
@@ -285,7 +451,9 @@ func (h HandlerFunc) String() string {
 	return runtime.FuncForPC(ptr).Name()
 }
 
-// MarshalText 实现encoding.TextMarshaler接口。
+// MarshalText method implements the encoding.TextMarshaler interface and returns a String () value.
+//
+// MarshalText 方法实现encoding.TextMarshaler接口，返回String()值。
 func (h HandlerFunc) MarshalText() ([]byte, error) {
 	return []byte(h.String()), nil
 }
@@ -322,6 +490,38 @@ func NewExtendFuncNetHTTP1(fn func(http.ResponseWriter, *http.Request)) HandlerF
 func NewExtendFuncNetHTTP2(fn http.HandlerFunc) HandlerFunc {
 	return func(ctx Context) {
 		fn(ctx.Response(), ctx.Request())
+	}
+}
+
+// NewExtendFunc 函数处理func()。
+func NewExtendFunc(fn func()) HandlerFunc {
+	return func(Context) {
+		fn()
+	}
+}
+
+// NewExtendFuncRender 函数处理func() interface{}。
+func NewExtendFuncRender(fn func() interface{}) HandlerFunc {
+	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
+	return func(ctx Context) {
+		data := fn()
+		if ctx.Response().Size() == 0 {
+			err := ctx.Render(data)
+			if err != nil {
+				ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
+			}
+		}
+	}
+}
+
+// NewExtendFuncError 函数处理func() error返回的error处理。
+func NewExtendFuncError(fn func() error) HandlerFunc {
+	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
+	return func(ctx Context) {
+		err := fn()
+		if err != nil {
+			ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
+		}
 	}
 }
 
@@ -364,9 +564,13 @@ func NewExtendFuncContextRenderError(fn func(Context) (interface{}, error)) Hand
 	}
 }
 
+// NewExtendFuncRPCMap defines a fixed request and response to function processing of type map [string] interface {}.
+//
+// is a subset of NewRPCHandlerFunc and has type restrictions, but using map [string] interface {} to save requests does not use reflection.
+//
 // NewExtendFuncRPCMap 定义了固定请求和响应为map[string]interface{}类型的函数处理。
 //
-// 是NewRPCHandlerFunc的一种子集，拥有类型限制，但是没有使用反射。
+// 是NewRPCHandlerFunc的一种子集，拥有类型限制，但是使用map[string]interface{}保存请求没用使用反射。
 func NewExtendFuncRPCMap(fn func(Context, map[string]interface{}) (interface{}, error)) HandlerFunc {
 	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
 	return func(ctx Context) {
@@ -386,6 +590,12 @@ func NewExtendFuncRPCMap(fn func(Context, map[string]interface{}) (interface{}, 
 	}
 }
 
+// NewExtendHandlerRPC function needs to pass in a function that returns a request for processing and is dynamically called by reflection.
+//
+// Function form: func (Context, Request) (Response, error)
+//
+// The types of Request and Response can be map or struct or pointer to struct. All 4 parameters need to exist, and the order cannot be changed.
+//
 // NewExtendHandlerRPC 函数需要传入一个函数，返回一个请求处理，通过反射来动态调用。
 //
 // 函数形式： func(Context, Request) (Response, error)
@@ -466,6 +676,20 @@ func NewExtendFuncString(fn func() string) HandlerFunc {
 func NewExtendHandlerInterfaceRender(i interface{}) HandlerFunc {
 	return func(ctx Context) {
 		ctx.Render(i)
+	}
+}
+
+// NewStaticHandler 函数更加目标创建一个静态文件处理函数。
+func NewStaticHandler(dir string) HandlerFunc {
+	if dir == "" {
+		dir = "."
+	}
+	return func(ctx Context) {
+		upath := ctx.GetParam("path")
+		if upath == "" {
+			upath = ctx.Path()
+		}
+		ctx.WriteFile(filepath.Join(dir, filepath.Clean("/"+upath)))
 	}
 }
 

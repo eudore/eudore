@@ -13,8 +13,8 @@ import (
 )
 
 type (
-	// GzipResponse 定义Gzip响应，实现ResponseWriter接口
-	GzipResponse struct {
+	// gzipResponse 定义Gzip响应，实现ResponseWriter接口
+	gzipResponse struct {
 		eudore.ResponseWriter
 		writer *gzip.Writer
 	}
@@ -33,7 +33,7 @@ func NewGzip(level int) *Gzip {
 				if err != nil {
 					return err
 				}
-				return &GzipResponse{
+				return &gzipResponse{
 					writer: gz,
 				}
 			},
@@ -44,11 +44,11 @@ func NewGzip(level int) *Gzip {
 
 // NewGzipFunc 函数返回一个gzip处理函数。
 func NewGzipFunc(level int) eudore.HandlerFunc {
-	return NewGzip(level).Handle
+	return NewGzip(level).HandleHTTP
 }
 
-// Handle 方法定义eudore请求处理函数。
-func (g *Gzip) Handle(ctx eudore.Context) {
+// HandleHTTP 方法定义eudore请求处理函数。
+func (g *Gzip) HandleHTTP(ctx eudore.Context) {
 	// 检查是否使用Gzip
 	if !shouldCompress(ctx) {
 		ctx.Next()
@@ -75,25 +75,25 @@ func (g *Gzip) Handle(ctx eudore.Context) {
 }
 
 // NewGzipResponse 创建一个gzip响应。
-func (g *Gzip) NewGzipResponse(w eudore.ResponseWriter) (*GzipResponse, error) {
+func (g *Gzip) NewGzipResponse(w eudore.ResponseWriter) (*gzipResponse, error) {
 	switch val := g.pool.Get().(type) {
-	case *GzipResponse:
+	case *gzipResponse:
 		val.ResponseWriter = w
 		val.writer.Reset(w)
 		return val, nil
 	case error:
 		return nil, val
 	}
-	return nil, fmt.Errorf("Create GzipResponse exception")
+	return nil, fmt.Errorf("Create gzipResponse exception")
 }
 
 // Write 实现ResponseWriter中的Write方法。
-func (w *GzipResponse) Write(data []byte) (int, error) {
+func (w *gzipResponse) Write(data []byte) (int, error) {
 	return w.writer.Write(data)
 }
 
 // Flush 实现ResponseWriter中的Flush方法。
-func (w *GzipResponse) Flush() {
+func (w *gzipResponse) Flush() {
 	w.writer.Flush()
 	w.ResponseWriter.Flush()
 }
@@ -128,7 +128,7 @@ func shouldCompress(ctx eudore.Context) bool {
 // Push initiates an HTTP/2 server push.
 // Push returns ErrNotSupported if the client has disabled push or if push
 // is not supported on the underlying connection.
-func (w *GzipResponse) Push(target string, opts *http.PushOptions) error {
+func (w *gzipResponse) Push(target string, opts *http.PushOptions) error {
 	return w.ResponseWriter.Push(target, setAcceptEncodingForPushOptions(opts))
 }
 

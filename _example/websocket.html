@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<title></title>
+	<meta charset="utf-8">
+	<meta name="author" content="Webdesigntuts+">
+	<meta name="referrer" content="always">
+	<meta name="viewport" content="width=device-width,user-scalable=no">
+	<link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+	<!-- <link href="/css/base.css" rel="stylesheet" type="text/css"> -->
+	<style type="text/css">
+		#ulShow li {list-style:none; padding: 10px 15px; border: 1px solid #ddd;}
+		#txtUserName {width: 30%; margin-bottom: 15px;}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div>
+			内容：<br/>
+			<ul id="ulShow">
+			</ul>
+		</div>
+		<div>
+			昵称：<input id="txtUserName" value="红领巾" type="text" maxlength="20" style="" />
+			<textarea id="txtContent" autofocus rows="6" placeholder="想聊的内容" maxlength="200" required style="width: 100%; "></textarea>
+			<button id="btnSend" style="margin-top:15px">发 送</button>
+		</div>
+	</div>
+</body>
+</html>
+
+<script>
+	var wss = null
+	function getWss(code){
+		if(wss==null){ 
+			var wsUrl = "ws://"+location.host+"/example/wsio";
+			wss = new WebSocket(wsUrl);
+			try {
+				wss.onopen = function () {
+					console.log("服务器-连接")
+				}
+
+				wss.onclose = function () {
+					console.log("服务器-关闭")
+				}
+
+				wss.onmessage = function (result) {
+					console.log(result)
+				}
+
+				wss.onerror = function () {
+					console.log("服务器-错误")
+				}
+			} catch (e) {
+				alert(e.message);
+			}
+		}else if(code){
+			code()
+		}
+	}
+
+	void function(){
+		var obj = document.getElementById("btnSend")
+		obj.addEventListener("click", function(){
+			var name = document.getElementById("txtUserName").value || "匿名"
+			var msg = document.getElementById("txtContent").value
+			msg && getWss(function(){
+				var request = JSON.stringify({"UserName":name, "DataType": "send", "Msg": msg})
+				wss.send(request);
+			})
+		})
+		getWss()
+	}();
+</script>
+

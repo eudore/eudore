@@ -1,6 +1,6 @@
 # example
 
-本部分为演示例子目录功能导航，详细文档查看[wike文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
+本部分为演示例子目录功能导航,保存eudore、component、middleware三个实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
 
 - Application
 	- [Core](appCore.go)
@@ -36,7 +36,7 @@
 	- [Raidx路由器](routerRadix.go)
 	- [Full路由器](routerFull.go)
 	- [Host路由器](routerHost.go)
-	- [radix树](radixtre.go)
+	- [radix树](radixtree.go)
 - Context
 	- [Request Info](contextRequestInfo.go)
 	- [Response Write](contextResponsWrite.go)
@@ -55,10 +55,13 @@
 	- [Send Json](contextRenderJson.go)
 	- [Send Template](contextRenderTemplate.go)
 - Context处理扩展
+	- [默认处理](handlerDefault.go)
 	- [处理ContextData扩展](handlerContextData.go)
 	- [处理自定义函数类型](handlerFunc.go)
 	- [处理自定义请求上下文](handlerMyContext.go)
 	- [新增函数处理扩展](handlerAddExtend.go)
+	- [路径匹配扩展](handlerTree.go)
+	- [分级匹配扩展](handlerWarp.go)
 	- [Rpc式请求](handlerRpc.go)
 	- [map Rpc式请求](handlerRpcMap.go)
 	- [使用jwt](handlerJwt.go)
@@ -92,6 +95,7 @@
 	- [map保存session](sessionMap.go)
 	- [数据库保存session](sessionSql.go)
 - Websocket
+	- [使用websocket Stream](websocketStream.go)
 	- [使用github.com/gobwas/ws库](websocketGobwas.go)
 	- [使用github.com/gorilla/websocket库](websocketGorilla.go)
 - tool

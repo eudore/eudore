@@ -22,6 +22,10 @@ func main() {
 	}()
 	time.Sleep(100 * time.Millisecond)
 	app := eudore.NewCore()
+	err := app.Parse()
+	if err != nil {
+		panic(err)
+	}
 	httptest.NewClient(app).Stop(0)
 	app.Set("keys.config", "http://127.0.0.1:8089/xxx")
 	app.Set("keys.help", true)

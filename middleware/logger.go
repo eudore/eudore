@@ -9,43 +9,34 @@ import (
 func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
 		now := time.Now()
-		f := eudore.Fields{
-			"method": ctx.Method(),
-			"path":   ctx.Path(),
-			"remote": ctx.RealIP(),
-			"proto":  ctx.Request().Proto,
-			"host":   ctx.Host(),
-		}
 		ctx.Next()
 		status := ctx.Response().Status()
-		f["status"] = status
-		f["time"] = time.Now().Sub(now).String()
-		f["size"] = ctx.Response().Size()
+		out := app.WithField("method", ctx.Method()).WithField("path", ctx.Path()).WithField("remote", ctx.RealIP()).WithField("proto", ctx.Request().Proto).WithField("host", ctx.Host()).WithField("status", status).WithField("time", time.Now().Sub(now).String()).WithField("size", ctx.Response().Size())
 
 		for _, param := range params {
 			val := ctx.GetParam(param)
 			if val != "" {
-				f[param] = val
+				out = out.WithField(param, val)
 			}
 		}
 
 		if requestID := ctx.GetHeader(eudore.HeaderXRequestID); len(requestID) > 0 {
-			f["x-request-id"] = requestID
+			out = out.WithField("x-request-id", requestID)
 		}
 		if parentID := ctx.GetHeader(eudore.HeaderXParentID); len(parentID) > 0 {
-			f["x-parent-id"] = parentID
+			out = out.WithField("x-parent-id", parentID)
 		}
 
 		if 300 < status && status < 400 && status != 304 {
-			f["location"] = ctx.Response().Header().Get(eudore.HeaderLocation)
+			out = out.WithField("location", ctx.Response().Header().Get(eudore.HeaderLocation))
 		}
 		if status < 400 {
-			app.Logger.WithFields(f).Info()
+			out.Info()
 		} else {
 			if err := ctx.Err(); err != nil {
-				f["error"] = err.Error()
+				out = out.WithField("error", err.Error())
 			}
-			app.Logger.WithFields(f).Error()
+			out.Error()
 		}
 	}
 }

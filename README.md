@@ -13,7 +13,7 @@ eudore是轻而全的http框架，高度解耦而轻，功能丰富而全。
 - 简单：对象语义明确，框架代码量少复杂度低，无依赖库。
 - 易用：支持各种Appcation和Context扩展添加功能。
 - 高性能：各部分在同类库中没有明显性能问题。
-- 两项创新：[新Radix路由实现](https://github.com/eudore/erouter)和[处理函数扩展机制](https://github.com/eudore/eudore/wiki/4.5-eudore-handler)
+- 两项创新：[新Radix路由实现](https://github.com/eudore/eudore/wiki/4.5.1-eudore-router-radix)和[处理函数扩展机制](https://github.com/eudore/eudore/wiki/4.7-eudore-handler)
 
 ## 安装
 
@@ -26,8 +26,8 @@ go get -v -u github.com/eudore/eudore
 ## 文档
 
 - [源码](https://github.com/eudore/eudore)
-- [godoc](https://godoc.org/github.com/eudore/eudore)
-- [演示例子 80+](_example#example)
+- [godoc](https://pkg.go.dev/github.com/eudore/eudore?tab=doc)
+- [演示例子 90+](_example#example)
 - [wiki文档](https://github.com/eudore/eudore/wiki)
 - [实践](https://github.com/eudore/website)
 

@@ -31,9 +31,9 @@ func init() {
 	}
 }
 
-// NewRouterDebug 函数创建一个debug路由器，默认使用RouterCoreFull为核心。
+// NewRouterDebug 函数创建一个debug路由器，默认使用eudore.RouterCoreRadix为核心。
 func NewRouterDebug() eudore.Router {
-	return NewRouterDebugWithCore(eudore.NewRouterFull())
+	return NewRouterDebugWithCore(eudore.NewRouterRadix())
 }
 
 // NewRouterDebugWithCore 函数指定路由核心创建一个debug路由器。
@@ -41,16 +41,16 @@ func NewRouterDebugWithCore(core eudore.RouterCore) eudore.Router {
 	r := &RouterCoreDebug{
 		RouterCore: core,
 	}
-	r.RegisterHandler("GET", "/eudore/debug/router/data", eudore.HandlerFuncs{r.getData})
-	r.RegisterHandler("GET", "/eudore/debug/router/ui", eudore.HandlerFuncs{r.showUI})
+	r.HandleFunc("GET", "/eudore/debug/router/data", eudore.HandlerFuncs{r.getData})
+	r.HandleFunc("GET", "/eudore/debug/router/ui", eudore.HandlerFuncs{r.showUI})
 	return eudore.NewRouterStd(r)
 }
 
-// RegisterHandler 实现eudore.RouterCore接口，记录全部路由路径。
-func (r *RouterCoreDebug) RegisterHandler(method, path string, hs eudore.HandlerFuncs) {
+// HandleFunc 实现eudore.RouterCore接口，记录全部路由路径。
+func (r *RouterCoreDebug) HandleFunc(method, path string, hs eudore.HandlerFuncs) {
 	r.Methods = append(r.Methods, method)
 	r.Paths = append(r.Paths, path)
-	r.RouterCore.RegisterHandler(method, path, hs)
+	r.RouterCore.HandleFunc(method, path, hs)
 }
 
 // getData 方法返回debug路由信息数据。

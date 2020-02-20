@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -28,7 +30,7 @@ type (
 	}
 )
 
-// NewClient 方法插件一个httptest客户端。
+// NewClient 方法创建一个httptest客户端。
 func NewClient(handler http.Handler) *Client {
 	return &Client{
 		Handler: handler,
@@ -91,7 +93,7 @@ func (clt *Client) WithHeaderValue(key, val string) *Client {
 	return clt
 }
 
-// Stop 方法指定时间后停止app，默认3秒。
+// Stop 方法指定时间后停止app，默认1秒。
 //
 // 如果Handler实现Shutdown(ctx context.Context) error方法。
 func (clt *Client) Stop(t time.Duration) {
@@ -120,4 +122,22 @@ func (clt *Client) Stop(t time.Duration) {
 			}()
 		}
 	}
+}
+
+// logFormatFileLine 函数获得调用的文件位置，默认层数加三。
+//
+// 文件位置会从第一个src后开始截取，处理gopath下文件位置。
+func logFormatFileLine(depth int) (string, int) {
+	_, file, line, ok := runtime.Caller(depth)
+	if !ok {
+		file = "???"
+		line = 1
+	} else {
+		// slash := strings.LastIndex(file, "/")
+		slash := strings.Index(file, "src")
+		if slash >= 0 {
+			file = file[slash+4:]
+		}
+	}
+	return file, line
 }

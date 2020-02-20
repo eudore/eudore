@@ -17,6 +17,10 @@ import (
 
 func main() {
 	app := eudore.NewCore()
+	err := app.Parse()
+	if err != nil {
+		panic(err)
+	}
 	httptest.NewClient(app).Stop(0)
 	app.Listen(":8088")
 	app.Run()

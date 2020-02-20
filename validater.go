@@ -18,8 +18,8 @@ type (
 		Validate(interface{}) error
 		ValidateVar(interface{}, string) error
 	}
-	// ValidateFace 接口定义对象自己验证的方法。
-	ValidateFace interface {
+	// validateFace 接口定义对象自己验证的方法。
+	validateFace interface {
 		Validate() error
 	}
 	validaterBase struct {
@@ -41,7 +41,7 @@ var (
 	typeBool         = reflect.TypeOf((*bool)(nil)).Elem()
 	typeString       = reflect.TypeOf((*string)(nil)).Elem()
 	typeInterface    = reflect.TypeOf((*interface{})(nil)).Elem()
-	typeValidateFace = reflect.TypeOf((*ValidateFace)(nil)).Elem()
+	typeValidateFace = reflect.TypeOf((*validateFace)(nil)).Elem()
 	// DefaultValidater 定义默认的验证器
 	DefaultValidater = NewvalidaterBase()
 	// DefaultRouterValidater 为RouterFull提供生成ValidateStringFunc功能,需要实现interface{GetValidateStringFunc(string) ValidateStringFunc}接口。
@@ -147,7 +147,7 @@ func checkValidateFunc(iType reflect.Type) bool {
 
 func (v *validaterBase) Validate(i interface{}) error {
 	// 检测接口
-	vf, ok := i.(ValidateFace)
+	vf, ok := i.(validateFace)
 	if ok {
 		return vf.Validate()
 	}
