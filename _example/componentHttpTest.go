@@ -16,16 +16,10 @@ func main() {
 
 	// 请求测试
 	client := httptest.NewClient(app)
-	client.NewRequest("GET", "/get").Do().CheckStatus(200).CheckBodyContainString("get", "/*path")
-	client.NewRequest("GET", "/get/ha").Do().CheckStatus(200).CheckBodyContainString("/get/:name")
-	client.NewRequest("GET", "/get/eudore").Do().CheckStatus(200).CheckBodyContainString("/get/eudore")
-	client.NewRequest("PUT", "/get/eudore").Do().CheckStatus(200).CheckBodyContainString("any", "/*path")
+	client.NewRequest("GET", "/get").Do().CheckStatus(404)
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
-	// 启动server
-	app.Listen(":8088")
 	app.Run()
 }

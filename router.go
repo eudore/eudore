@@ -11,9 +11,7 @@ Router对象用于定义请求的路由器
 import (
 	"fmt"
 	"reflect"
-	"runtime"
 	"strings"
-	"sync"
 )
 
 type (
@@ -67,18 +65,11 @@ type (
 	//
 	// 需要指定一个路由核心，处理函数扩展者默认为DefaultHandlerExtend。
 	RouterStd struct {
-		RouterCore
-		params          *ParamsArray
-		HandlerExtender HandlerExtender
-		Middlewares     *trieNode
-		Print           func(...interface{}) `set:"print"`
-	}
-	// RouterCoreLock object provides read-write lock function for RouterCore registration
-	//
-	// RouterCoreLock 对象给RouterCore注册提供读写锁功能
-	RouterCoreLock struct {
-		RouterCore
-		sync.RWMutex
+		RouterCore      `alias:"routercore"`
+		HandlerExtender `alias:"handlerextender"`
+		params          *ParamsArray         `alias:"params"`
+		Middlewares     *trieNode            `alias:"middlewares"`
+		Print           func(...interface{}) `alias:"print"`
 	}
 	// trieNode 存储中间件信息的前缀树。
 	//
@@ -88,15 +79,6 @@ type (
 		vals   HandlerFuncs
 		childs []*trieNode
 	}
-)
-
-// check RouterStd has Router interface
-var (
-	_ Router     = &RouterStd{}
-	_ RouterCore = &RouterCoreRadix{}
-	_ RouterCore = &RouterCoreFull{}
-	// RouterAllMethod 定义全部的方法，影响Any方法的注册。
-	RouterAllMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions}
 )
 
 // HandlerRouter405 函数定义默认405处理
@@ -174,31 +156,7 @@ func (m *RouterStd) PrintError(depth int, err error) {
 
 // PrintPanic 方法输出一个err，附加当前stack。
 func (m *RouterStd) PrintPanic(err error) {
-	pc := make([]uintptr, 20)
-	n := runtime.Callers(0, pc)
-	if n == 0 {
-		m.Print(err)
-	}
-
-	pc = pc[:n] // pass only valid pcs to runtime.CallersFrames
-	frames := runtime.CallersFrames(pc)
-	stack := make([]string, 0, 20)
-
-	frame, more := frames.Next()
-	for more {
-		pos := strings.Index(frame.File, "src")
-		if pos >= 0 {
-			frame.File = frame.File[pos+4:]
-		}
-		pos = strings.LastIndex(frame.Function, "/")
-		if pos >= 0 {
-			frame.Function = frame.Function[pos+1:]
-		}
-		stack = append(stack, fmt.Sprintf("%s:%d %s", frame.File, frame.Line, frame.Function))
-
-		frame, more = frames.Next()
-	}
-	m.Print(Fields{"stack": stack}, err)
+	m.Print(Fields{"stack": getPanicStakc(4)}, err)
 }
 
 // Params 方法返回当前路由参数，路由参数值为空字符串不会被使用。
@@ -244,9 +202,12 @@ func (m *RouterStd) ParamsCombine(path string) *ParamsArray {
 	args := strings.Split(path, " ")
 	params := m.params.Clone()
 	key, val := split2byte(args[0], '=')
-	switch key {
-	case "", "route":
-		params.Set("route", params.Get("route")+val)
+	if key != "" {
+		if val != "" {
+			params.Set("route", params.Get("route")+val)
+		} else {
+			params.Set("route", params.Get("route")+key)
+		}
 		args = args[1:]
 	}
 	for _, str := range args {
@@ -382,9 +343,9 @@ func (m *RouterStd) AddMiddleware(hs ...interface{}) error {
 
 	path := m.GetParam("route")
 	if len(hs) > 1 {
-		perfix, ok := hs[0].(string)
+		route, ok := hs[0].(string)
 		if ok {
-			path = perfix + path
+			path = path + route
 			hs = hs[1:]
 		}
 	}
@@ -415,9 +376,9 @@ func (m *RouterStd) AddHandlerExtend(hs ...interface{}) error {
 
 	path := m.GetParam("route")
 	if len(hs) > 1 {
-		perfix, ok := hs[0].(string)
+		route, ok := hs[0].(string)
 		if ok {
-			path = perfix + path
+			path = path + route
 			hs = hs[1:]
 		}
 	}
@@ -432,23 +393,6 @@ func (m *RouterStd) AddHandlerExtend(hs ...interface{}) error {
 		}
 	}
 	return errs.GetError()
-}
-
-// Set 方法允许设置Print属性，设置日志输出信息。
-func (m *RouterStd) Set(key string, value interface{}) error {
-	switch val := value.(type) {
-	case RouterCore:
-		m.RouterCore = val
-	case *ParamsArray:
-		m.params = val
-	case HandlerExtender:
-		m.HandlerExtender = val
-	case func(...interface{}):
-		m.Print = val
-	default:
-		return ErrSeterNotSupportField
-	}
-	return nil
 }
 
 // AnyFunc 方法实现注册一个Any方法的http请求处理函数。
@@ -489,28 +433,6 @@ func (m *RouterStd) PatchFunc(path string, h ...interface{}) {
 // OptionsFunc 方法实现注册一个Options方法的http请求处理函数。
 func (m *RouterStd) OptionsFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodOptions, path, h...)
-}
-
-// NewRouterCoreLock 函数创建一个带锁的路由核心，通常路由不需要使用到锁。
-func NewRouterCoreLock(core RouterCore) RouterCore {
-	return &RouterCoreLock{
-		RouterCore: core,
-	}
-}
-
-// HandleFunc 方法调用路由核心注册路由路径请求。
-func (r *RouterCoreLock) HandleFunc(method string, path string, hs HandlerFuncs) {
-	r.RWMutex.Lock()
-	r.RouterCore.HandleFunc(method, path, hs)
-	r.RWMutex.Unlock()
-}
-
-// Match 方法调用路由核心匹配路由路径请求。
-func (r *RouterCoreLock) Match(method string, path string, params Params) HandlerFuncs {
-	r.RWMutex.RLock()
-	hs := r.RouterCore.Match(method, path, params)
-	r.RWMutex.RUnlock()
-	return hs
 }
 
 func newTrieNode() *trieNode {

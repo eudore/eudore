@@ -46,10 +46,10 @@ type (
 	}
 	// LoggerStdConfig 定义LoggerStd配置信息。
 	LoggerStdConfig struct {
-		Std        bool        `json:"std" set:"std"`
-		Path       string      `json:"path" set:"path"`
-		Level      LoggerLevel `json:"level" set:"level"`
-		TimeFormat string      `json:"timeformat" set:"timeformat"`
+		Std        bool        `json:"std" alias:"std"`
+		Path       string      `json:"path" alias:"path"`
+		Level      LoggerLevel `json:"level" alias:"level"`
+		TimeFormat string      `json:"timeformat" alias:"timeformat"`
 	}
 	// 标准日志条目
 	entryStd struct {
@@ -62,7 +62,7 @@ type (
 )
 
 // NewLoggerStd 创建一个标准日志处理器。
-func NewLoggerStd(arg interface{}) (*LoggerStd, error) {
+func NewLoggerStd(arg interface{}) Logger {
 	// 解析配置
 	config := LoggerStdConfig{
 		TimeFormat: "2006-01-02 15:04:05",
@@ -79,32 +79,36 @@ func NewLoggerStd(arg interface{}) (*LoggerStd, error) {
 			data:   data[0:0],
 		}
 	}
-	return log, log.initOut()
+	log.initOut()
+	return log
 }
 
 // initOut 方法初始化输出流。
-func (log *LoggerStd) initOut() error {
+func (log *LoggerStd) initOut() {
 	log.Path = strings.TrimSpace(log.Path)
 	if len(log.Path) == 0 {
 		log.out = bufio.NewWriter(os.Stdout)
-		return nil
+		return
 	}
 	// init file
 	file, err := os.OpenFile(log.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
-		return err
+		log.out = bufio.NewWriter(os.Stdout)
+		log.Error(err)
+		return
 	}
 	if log.Std {
 		log.out = bufio.NewWriter(io.MultiWriter(os.Stdout, file))
 	} else {
 		log.out = bufio.NewWriter(file)
 	}
-	return nil
 }
 
 // SetLevel 方法设置日志输出级别。
 func (log *LoggerStd) SetLevel(level LoggerLevel) {
+	log.mu.Lock()
 	log.Level = level
+	log.mu.Unlock()
 }
 
 // Sync 方法将缓冲写入到输出流。
@@ -329,31 +333,36 @@ func (entry *entryStd) WithField(key string, value interface{}) Logout {
 
 // WriteValue 方法写入值。
 func (entry *entryStd) WriteValue(value interface{}) {
-	iType := reflect.TypeOf(value)
 	iValue := reflect.ValueOf(value)
-	entry.writeReflect(iType, iValue)
+	entry.writeReflect(iValue)
 }
 
 // writeReflect 方法写入值。
-func (entry *entryStd) writeReflect(iType reflect.Type, iValue reflect.Value) {
+func (entry *entryStd) writeReflect(iValue reflect.Value) {
+	if iValue.Kind() == reflect.Invalid {
+		entry.data = append(entry.data, '"', '"')
+		return
+	}
 	// 检查接口
 	switch val := iValue.Interface().(type) {
 	case json.Marshaler:
 		body, err := val.MarshalJSON()
-		if err != nil {
-			panic(err)
-		}
 		entry.data = append(entry.data, '"')
-		entry.writeBytes(body)
+		if err == nil {
+			entry.writeBytes(body)
+		} else {
+			entry.writeString(err.Error())
+		}
 		entry.data = append(entry.data, '"')
 		return
 	case encoding.TextMarshaler:
 		body, err := val.MarshalText()
-		if err != nil {
-			panic(err)
-		}
 		entry.data = append(entry.data, '"')
-		entry.writeBytes(body)
+		if err == nil {
+			entry.writeBytes(body)
+		} else {
+			entry.writeString(err.Error())
+		}
 		entry.data = append(entry.data, '"')
 		return
 	case fmt.Stringer:
@@ -363,7 +372,7 @@ func (entry *entryStd) writeReflect(iType reflect.Type, iValue reflect.Value) {
 		return
 	}
 	// 写入类型
-	switch iType.Kind() {
+	switch iValue.Kind() {
 	case reflect.Bool:
 		entry.data = strconv.AppendBool(entry.data, iValue.Bool())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -388,37 +397,36 @@ func (entry *entryStd) writeReflect(iType reflect.Type, iValue reflect.Value) {
 	case reflect.Array, reflect.Slice:
 		entry.data = append(entry.data, '[')
 		for i := 0; i < iValue.Len(); i++ {
-			entry.WriteValue(iValue.Index(i).Interface())
+			entry.writeReflect(iValue.Index(i))
 			entry.data = append(entry.data, ',')
 		}
 		entry.data[len(entry.data)-1] = ']'
 	case reflect.Map:
 		entry.data = append(entry.data, '{')
 		for _, key := range iValue.MapKeys() {
-			entry.WriteValue(key.Interface())
+			entry.writeReflect(key)
 			entry.data = append(entry.data, ':')
-			entry.WriteValue(iValue.MapIndex(key).Interface())
+			entry.writeReflect(iValue.MapIndex(key))
 			entry.data = append(entry.data, ',')
 		}
 		entry.data[len(entry.data)-1] = '}'
 	case reflect.Struct:
 		entry.data = append(entry.data, '{')
+		iType := iValue.Type()
 		for i := 0; i < iValue.NumField(); i++ {
 			if iValue.Field(i).CanInterface() {
-				entry.WriteValue(iType.Field(i).Name)
+				entry.writeString(iType.Field(i).Name)
 				entry.data = append(entry.data, ':')
-				entry.writeReflect(iType.Field(i).Type, iValue.Field(i))
+				entry.writeReflect(iValue.Field(i))
 				entry.data = append(entry.data, ',')
 			}
 		}
 		entry.data[len(entry.data)-1] = '}'
 	case reflect.Ptr, reflect.Interface:
-		entry.WriteValue(iValue.Elem().Interface())
+		entry.writeReflect(iValue.Elem())
 	case reflect.Func, reflect.Chan, reflect.UnsafePointer:
 		entry.data = append(entry.data, '0', 'x')
 		entry.data = strconv.AppendUint(entry.data, uint64(iValue.Pointer()), 16)
-	default:
-		entry.data = append(entry.data, '"', '"')
 	}
 }
 

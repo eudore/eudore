@@ -29,9 +29,7 @@ func main() {
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }
 

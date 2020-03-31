@@ -23,13 +23,13 @@ type RequestReader = http.Request
 */
 
 import (
+	"fmt"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
 )
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteString("host: " + ctx.Host())
 		ctx.WriteString("\nmethod: " + ctx.Method())
@@ -37,11 +37,15 @@ func main() {
 		ctx.WriteString("\nreal ip: " + ctx.RealIP())
 		ctx.WriteString("\nreferer: " + ctx.Referer())
 		ctx.WriteString("\ncontext type: " + ctx.ContentType())
+		ctx.WriteString("\nistls: " + fmt.Sprint(ctx.Istls()))
 		body := ctx.Body()
 		if len(body) > 0 {
 			ctx.WriteString("\nbody: " + string(body))
 		}
 	})
-	app.Listen(":8088")
+
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/").Do().Out()
+
 	app.Run()
 }

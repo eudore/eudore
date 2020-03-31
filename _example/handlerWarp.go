@@ -12,7 +12,7 @@ func main() {
 			ctx.Debugf("%s extend: %v", ctx.Path(), "default")
 		}
 	})
-	
+
 	g1 := app.Group("")
 	g1.AddHandlerExtend(func(interface{}) eudore.HandlerFunc {
 		return func(ctx eudore.Context) {
@@ -38,6 +38,5 @@ func main() {
 	client.NewRequest("GET", "/api/v2/11").Do()
 	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }

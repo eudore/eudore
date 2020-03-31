@@ -18,7 +18,7 @@ type userRequest struct {
 
 func main() {
 	app := eudore.NewCore()
-	app.Binder = eudore.NewValidateBinder(app.Binder)
+	app.Binder = eudore.NewBinderValidate(app.Binder)
 
 	// 上传文件信息
 	app.PutFunc("/file/data/:path", func(ctx eudore.Context) {
@@ -33,8 +33,6 @@ func main() {
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }

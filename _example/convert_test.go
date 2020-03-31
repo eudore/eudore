@@ -1,4 +1,4 @@
-package test
+package eudore_test
 
 import (
 	"fmt"
@@ -31,12 +31,17 @@ type (
 
 func TestConvertTo1(*testing.T) {
 	{
-
 		var s ST = ST{A: 1}
 		var s1 ST
 		var m1 = make(map[string]int)
 		eudore.ConvertTo(&s, &s1)
 		eudore.ConvertTo(&s, m1)
+
+		var i map[string]interface{}
+		eudore.ConvertTo(&s, i)
+		eudore.ConvertTo(nil, nil)
+		eudore.ConvertTo(&s, nil)
+		eudore.ConvertTo(&s, 99)
 		fmt.Printf("struct: %# v\n", pretty.Formatter(s1))
 		fmt.Printf("struct: %# v\n", pretty.Formatter(m1))
 	}

@@ -35,9 +35,8 @@ func main() {
 	client.NewRequest("PUT", "/").WithBodyJSON(map[string]interface{}{
 		"name": "eudore",
 		"num":  44,
-	}).WithHeaderValue("Accept", "application/json").Do().Out()
+	}).WithHeaderValue("Accept", " application/json").Do().Out()
 	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }

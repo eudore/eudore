@@ -2,6 +2,10 @@
 
 本部分为演示例子目录功能导航,保存eudore、component、middleware三个实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
 
+单元测试执行gotest.sh脚本
+
+go version go1.10.1 linux/amd64 coverage: 96.6% of statements
+
 - Application
 	- [Core](appCore.go)
 	- [Core监听代码自动编译重启](appCoreNotify.go)
@@ -20,6 +24,7 @@
 	- [map配置](configMap.go)
 	- [map差异化配置](configMapMods.go)
 	- [eudore差异化配置](configEudoreMods.go)
+	- [配置解析选择](configOption.go)
 	- [读取文件配置](configReadFile.go)
 	- [读取http远程配置](configReadHttp.go)
 - Logger
@@ -28,11 +33,12 @@
 - Server
 	- [使用https](serverHttps.go)
 	- [eudore server启动服务](serverEudore.go)
-	- [fastcgi启动服务](serveFcgi.go)
+	- [fastcgi启动服务](serverFcgi.go)
 	- [服务监听](serverListen.go)
 - Router
 	- [组路由和中间件](routerGroupAndMiddleware.go)
 	- [路由参数](routerParams.go)
+	- [Any方法注册](routerAny.go)
 	- [Raidx路由器](routerRadix.go)
 	- [Full路由器](routerFull.go)
 	- [Host路由器](routerHost.go)
@@ -44,7 +50,9 @@
 	- [Bind Body](contextBindBody.go)
 	- [Bind Form](contextBindForm.go)
 	- [Bind Url](contextBindUrl.go)
+	- [Bind Header](contextBindHeader.go)
 	- [Bind并校验结构体数据](contextBindValid.go)
+	- [Query url参数](contextQuerys.go)
 	- [Header](contextHeader.go)
 	- [Cookie](contextCookie.go)
 	- [Params](contexParams.go)

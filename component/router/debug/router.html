@@ -473,7 +473,9 @@
 					routes[method].insert(data.paths[i].split(" ")[0])
 				}
 			}else {
-				routes[data.methods[i]].insert(data.paths[i].split(" ")[0])
+				if (routes[data.methods[i]]) {
+					routes[data.methods[i]].insert(data.paths[i].split(" ")[0])	
+				}
 			}
 		}
 		pointdata["request-uri"] = routes

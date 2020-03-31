@@ -12,7 +12,7 @@ import (
 type (
 	// Controllerwebsite 是基础方法的控制器
 	Controllerwebsite struct {
-		eudore.ControllerBase
+		eudore.ControllerData
 	}
 	myMethodController struct {
 		// Controllerwebsite 因名称前缀为Controller所以不会注册Hello方法为路由。
@@ -29,9 +29,7 @@ func main() {
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }
 

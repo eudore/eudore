@@ -23,7 +23,7 @@ import (
 
 func main() {
 	app := eudore.NewEudore()
-	httptest.NewClient(app).Stop(0)
+	app.Set("workdir", ".")
 	app.RegisterInit("init-router", 0x015, func(app *eudore.Eudore) error {
 		app.GetFunc("/*", func(ctx eudore.Context) {
 			ctx.WriteString("hello eudore")
@@ -31,7 +31,10 @@ func main() {
 		return nil
 	})
 	app.RegisterInit("init-listen", 0x016, func(app *eudore.Eudore) error {
+		httptest.NewClient(app).Stop(0)
 		return app.Listen(":8088")
 	})
+	// 最后启动Server
+	app.RegisterInit("eudore-server", 0xf0f, eudore.InitServer)
 	app.Run()
 }

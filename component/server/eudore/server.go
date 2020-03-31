@@ -25,7 +25,7 @@ type (
 		httpHandle    http.Handler
 		defaultHandle func(context.Context, net.Conn, http.Handler)
 		nextHandle    func(context.Context, *tls.Conn, http.Handler)
-		Print         func(...interface{}) `set:"print"`
+		Print         func(...interface{}) `alias:"print"`
 	}
 	// SetTimeouter 定义设置超时的接口
 	SetTimeouter interface {

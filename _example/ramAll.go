@@ -56,9 +56,9 @@ func main() {
 	})
 	app.AddMiddleware(ram.NewMiddleware(acl, rbac, pbac))
 	for _, i := range []int{1, 2, 3, 4, 5, 6} {
-		app.AnyFunc(fmt.Sprintf("/%d action=%d", i, i), fmt.Sprintf("hello %d", i))
+		app.AnyFunc(fmt.Sprintf("/%d action=%d", i, i), eudore.HandlerEmpty)
 	}
-	app.AnyFunc("/* action=hello", "hello")
+	app.AnyFunc("/* action=hello", eudore.HandlerEmpty)
 
 	client := httptest.NewClient(app)
 	client.NewRequest("PUT", "/hello").Do().CheckStatus(200)
@@ -73,6 +73,5 @@ func main() {
 	}
 	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }

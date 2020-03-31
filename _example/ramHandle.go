@@ -54,9 +54,9 @@ func main() {
 		}
 	})
 	for _, i := range []int{1, 2, 3, 4, 5, 6} {
-		app.AnyFunc(fmt.Sprintf("/%d", i), fmt.Sprintf("hello %d", i))
+		app.AnyFunc(fmt.Sprintf("/%d", i), eudore.HandlerEmpty)
 	}
-	app.AnyFunc("/*", "hello")
+	app.AnyFunc("/*", eudore.HandlerEmpty)
 
 	client := httptest.NewClient(app)
 	client.NewRequest("PUT", "/1").Do().CheckStatus(200)
@@ -70,6 +70,5 @@ func main() {
 	}
 	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }

@@ -10,18 +10,23 @@ import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
 	"html/template"
+	"os"
 )
 
-var viewpath = "view/index.html"
+var viewpath = "index.html"
 var viewdata = map[string]interface{}{
 	"name":    "eudore",
 	"message": "hello eudore",
 }
 
 func main() {
+	content := []byte(`name: {{.name}} message: {{.message}}`)
+	tmpfile, _ := os.Create(viewpath)
+	defer os.Remove(tmpfile.Name())
+	tmpfile.Write(content)
+
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
-	app.Renderer = eudore.NewHTMLRenderWithTemplate(app.Renderer, nil)
+	app.Renderer = eudore.NewRenderHTMLWithTemplate(app.Renderer, nil)
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.SetParam("template", viewpath)
 		ctx.Render(viewdata)
@@ -37,6 +42,11 @@ func main() {
 		}
 		return t.Execute(ctx, viewdata)
 	})
-	app.Listen(":8088")
+
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/1").WithHeaderValue("Accept", "application/json").Do().Out()
+	client.NewRequest("GET", "/1").WithHeaderValue("Accept", eudore.MimeTextHTML).Do().Out()
+	client.NewRequest("GET", "/1").WithHeaderValue("Accept", eudore.MimeTextPlain).Do().Out()
+
 	app.Run()
 }

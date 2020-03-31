@@ -11,7 +11,7 @@ import (
 
 type newUserRequest struct {
 	Username string `validate:"regexp:^[a-zA-Z]*$"`
-	Name     string `validate:"nonzero"`
+	Name     string `validate:"nozero"`
 	Age      int    `validate:"min:21,max:40"`
 	Password string `validate:"lenmin:8"`
 }

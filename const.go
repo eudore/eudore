@@ -1,5 +1,161 @@
 package eudore
 
+import (
+	"errors"
+	"net"
+	"reflect"
+	"time"
+)
+
+var (
+	// AppContextKey 定义从context.Value中获取app实例对象的key，如果app支持的话。
+	AppContextKey = struct{}{}
+	// AppServerGrace 定义从context.Value中获取是否进行热重启的key。
+	AppServerGrace = struct{}{}
+	// DefaultBodyMaxMemory 默认Body解析占用内存。
+	DefaultBodyMaxMemory int64 = 32 << 20 // 32 MB
+	// DefaultConvertTags 定义默认转换使用的结构体tags。
+	DefaultConvertTags = []string{"alias"}
+	// DefaultConvertFormTags 定义bind form使用tags。
+	DefaultConvertFormTags = []string{"form", "alias"}
+	// DefaultConvertURLTags 定义bind url使用tags。
+	DefaultConvertURLTags = []string{"url", "alias"}
+	// LogLevelString 定义日志级别输出字符串。
+	LogLevelString = [5]string{"DEBUG", "INFO", "WARNING", "ERROR", "FATAL"}
+	// RouterAllMethod 定义全部的方法，影响Any方法的注册。
+	RouterAllMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions}
+)
+
+// 定义各种类型的反射类型。
+var (
+	typeBool      = reflect.TypeOf((*bool)(nil)).Elem()
+	typeString    = reflect.TypeOf((*string)(nil)).Elem()
+	typeError     = reflect.TypeOf((*error)(nil)).Elem()
+	typeInterface = reflect.TypeOf((*interface{})(nil)).Elem()
+
+	typeContext           = reflect.TypeOf((*Context)(nil)).Elem()
+	typeController        = reflect.TypeOf((*Controller)(nil)).Elem()
+	typeHandlerFunc       = reflect.TypeOf((*HandlerFunc)(nil)).Elem()
+	typeValidateInterface = reflect.TypeOf((*validateInterface)(nil)).Elem()
+
+	typeNetListener  = reflect.TypeOf((*net.Listener)(nil)).Elem()
+	typeTimeDuration = reflect.TypeOf((*time.Duration)(nil)).Elem()
+	typeTimeTime     = reflect.TypeOf((*time.Time)(nil)).Elem()
+)
+
+// 检测各类接口
+var (
+	_ Context    = (*ContextBase)(nil)
+	_ Config     = (*ConfigMap)(nil)
+	_ Config     = (*ConfigEudore)(nil)
+	_ Logger     = (*LoggerInit)(nil)
+	_ Logger     = (*LoggerStd)(nil)
+	_ Server     = (*ServerStd)(nil)
+	_ Server     = (*ServerFcgi)(nil)
+	_ Server     = (*ServerGrace)(nil)
+	_ Router     = (*RouterStd)(nil)
+	_ RouterCore = (*RouterCoreRadix)(nil)
+	_ RouterCore = (*RouterCoreFull)(nil)
+
+	_ ResponseWriter  = (*ResponseWriterHTTP)(nil)
+	_ Controller      = (*ControllerBase)(nil)
+	_ Controller      = (*ControllerData)(nil)
+	_ Controller      = (*ControllerSingleton)(nil)
+	_ Controller      = (*ControllerView)(nil)
+	_ ControllerPool  = (*controllerPoolSync)(nil)
+	_ ControllerPool  = (*controllerPoolSingleton)(nil)
+	_ HandlerExtender = (*handlerExtendBase)(nil)
+	_ HandlerExtender = (*handlerExtendWarp)(nil)
+	_ HandlerExtender = (*handlerExtendTree)(nil)
+	_ Validater       = (*validaterBase)(nil)
+	_ Params          = (*ParamsArray)(nil)
+)
+
+// 定义默认错误
+var (
+	// ErrApplicationStop 在app正常退出时返回。
+	ErrApplicationStop = errors.New("stop application success")
+	// ErrConverterInputDataNil 在Converter方法时，输出参数是空。
+	ErrConverterInputDataNil = errors.New("Converter input value is nil")
+	// ErrConverterInputDataNotPtr 在Converter方法时，输出参数是空。
+	ErrConverterInputDataNotPtr = errors.New("Converter input value not is ptr")
+	// ErrConverterTargetDataNil 在Converter方法时，目标参数是空。
+	ErrConverterTargetDataNil = errors.New("Converter target data is nil")
+	// ErrEudoreInitIgnore 在Eudore的Init函数返回该错误，忽略执行后续init函数。
+	ErrEudoreInitIgnore = errors.New("eudore ignore the remaining init function")
+	// ErrHandlerInvalidRange 在http使用range分开请求文件出现错误时返回。
+	ErrHandlerInvalidRange = errors.New("invalid range: failed to overlap")
+	// ErrHandlerProxyBackNotWriter HandlerProxy函数处理101时，后端连接不支持io.Writer。
+	ErrHandlerProxyBackNotWriter = errors.New("HandlerProxy error: Back conn ResponseReader not suppert io.Writer, Need to implement the io.ReadWriteCloser interface")
+	// ErrListenerNotImplementsServerListenFiler 在获取net.Listener的fd文件时，没有实现serverListenFiler接口，无法获得fd文件。
+	ErrListenerNotImplementsServerListenFiler = errors.New("Listener is not implements ServerListenFiler")
+	// ErrLoggerLevelUnmarshalText 日志级别解码错误，请检查输出的[]byte是否有效。
+	ErrLoggerLevelUnmarshalText = errors.New("logger level UnmarshalText error")
+	// ErrNewHandlerFuncParamNotFunc 调用NewHandlerFunc函数时参数错误，参数必须是一个函数对象。
+	ErrNewHandlerFuncParamNotFunc = errors.New("NewHandlerFuncs input parameter must be a function")
+	// ErrNotToServerListener newServerListens函数参数异常，无法解析并转换成serverListener类型。
+	ErrNotToServerListener = errors.New("Parameters cannot be converted to serverListener type")
+	// ErrRegisterControllerHandlerFuncParamNotFunc RegisterControllerHandlerFunc第一个参数必须是一个函数。
+	ErrRegisterControllerHandlerFuncParamNotFunc = errors.New("The parameter type of RegisterControllerHandlerFunc must be a function")
+	// ErrRegisterNewHandlerParamNotFunc 调用RegisterHandlerExtend函数时，参数必须是一个函数。
+	ErrRegisterNewHandlerParamNotFunc = errors.New("The parameter type of RegisterNewHandler must be a function")
+	// ErrResponseWriterHTTPNotHijacker ResponseWriterHTTP对象没有实现http.Hijacker接口。
+	ErrResponseWriterHTTPNotHijacker = errors.New("http.Hijacker interface is not supported")
+	// ErrResponseWriterTestNotSupportHijack ResponseWriterTest对象的Hijack不支持。
+	ErrResponseWriterTestNotSupportHijack = errors.New("ResponseWriterTest no support hijack")
+	// ErrServerStdStateException Server启动状态检查异常，需要启动时状态为ServerStateInit，该Server可能已经启动导致状态异常。
+	ErrServerStdStateException = errors.New("ServerStd state not is ServerStateInit")
+	// ErrServerNotAddListener Server没有添加net.Listner监听对象。
+	ErrServerNotAddListener = errors.New("Server not add net.Listener")
+	// ErrSeterNotSupportField Seter对象不支持设置当前属性。
+	ErrSeterNotSupportField = errors.New("Converter seter not support set field")
+
+	// ErrFormatBindDefaultNotSupportContentType BindDefault函数不支持当前的Content-Type Header。
+	ErrFormatBindDefaultNotSupportContentType = "BindDefault not support content type header: %s"
+	// ErrFormatControllerBaseParseFuncNotSupport ControllerBaseParseFunc函数解析的控制器不支持ControllerRoute接口，无法解析。
+	ErrFormatControllerBaseParseFuncNotSupport = "%s not support ControllerBaseParseFunc, ControllerRoute interface is not implemented"
+	// ErrFormatConverterCheckZeroUnknownType checkValueIsZero方法处理未定义的类型。
+	ErrFormatConverterCheckZeroUnknownType = "reflect: call of reflect.Value.IsZero on %s Value"
+	// ErrFormatConverterGetWithTags 在Get方法时，无法或到值，返回错误描述。
+	ErrFormatConverterGetWithTags = "Get or GetWithTags func cannot get the value of the attribute '%s', error description: %v"
+	// ErrFormatConverterNotGetValue 在Get方法时，getValue无法继续查找新的属性值。
+	ErrFormatConverterNotGetValue = "The getValue method cannot continue to obtain a value, the current type is %s, and the remaining path is: %v"
+	// ErrFormatConverterNotCanset 在Set方法时，结构体不支持该项属性。
+	ErrFormatConverterNotCanset = "The attribute '%s' of structure %s is not set, please use public field"
+	// ErrFormatConverterSetArrayIndexInvalid 在Set方法时，设置数组的索引的无效
+	ErrFormatConverterSetArrayIndexInvalid = "the Set function obtained array index '%s' is invalid, array len is %d"
+	// ErrFormatConverterSetStringUnknownType setWithString函数遇到未定义的反射类型
+	ErrFormatConverterSetStringUnknownType = "setWithString unknown type %s"
+	// ErrFormatConverterSetStructNotField 在Set时，结构体没有当前属性。
+	ErrFormatConverterSetStructNotField = "Setting the structure has no attribute '%s', or this attribute is not exportable"
+	// ErrFormatConverterSetTypeError 在Set时，类型异常，无法继续设置值。
+	ErrFormatConverterSetTypeError = "The type of the set value is %s, which is not configurable, key: %v, val: %s"
+	// ErrFormatConverterSetWithValue setWithValue函数中类型无法赋值。
+	ErrFormatConverterSetWithValue = "The setWithValue method type %s cannot be assigned to type %s"
+	// ErrFormatHandlerProxyConnHijack HandlerProxy函数处理101时，请求连接不支持hijack，返回当前错误。
+	ErrFormatHandlerProxyConnHijack = "HandlerProxy error: Conn hijack error: %v"
+	// ErrFormatNewContrllerExecFuncTypeNotFunc NewContrllerExecFunc函数的参数类型函数为注册，需要先使用RegisterControllerExecFunc注册函数类型。
+	ErrFormatNewContrllerExecFuncTypeNotFunc = "The NewContrllerExecFunc parameter type is %s, which is an unregistered handler type"
+	// ErrFormatRegisterHandlerExtendInputParamError RegisterHandlerExtend函数注册的函数参数错误。
+	ErrFormatRegisterHandlerExtendInputParamError = "The '%s' input parameter is illegal and should be one"
+	// ErrFormatRegisterHandlerExtendOutputParamError RegisterHandlerExtend函数注册的函数返回值错误。
+	ErrFormatRegisterHandlerExtendOutputParamError = "The '%s' output parameter is illegal and should be a HandlerFunc object"
+	// ErrFormatRouterStdAddController RouterStd控制器路由注入错误
+	ErrFormatRouterStdAddController = "The RouterStd.AddController Inject error: %v"
+	// ErrFormatRouterStdAddHandlerExtend RouterStd添加扩展错误
+	ErrFormatRouterStdAddHandlerExtend = "The RouterStd.AddHandlerExtend path is '%s' RegisterHandlerExtend error: %v"
+	// ErrFormatRouterStdRegisterHandlersMethodInvalid RouterStd.registerHandlers 的添加的是无效的，全部有效方法为RouterAllMethod。
+	ErrFormatRouterStdRegisterHandlersMethodInvalid = "The RouterStd.registerHandlers arg method '%s' is invalid, complete method: '%s', add fullpath: '%s'"
+	// ErrFormatRouterStdRegisterHandlersRecover RouterStd出现panic。
+	ErrFormatRouterStdRegisterHandlersRecover = "The RouterStd.registerHandlers arg method is '%s' and path is '%s', recover error: %v"
+	// ErrFormatRouterStdNewHandlerFuncsUnregisterType RouterStd添加处理对象或中间件的第n个参数类型未注册，需要先使用RegisterHandlerExtend或AddHandlerExtend注册该函数类型。
+	ErrFormatRouterStdNewHandlerFuncsUnregisterType = "The RouterStd.newHandlerFuncs path is '%s', %dth handler parameter type is '%s', this is the unregistered handler type"
+	// ErrFormatStartNewProcessError 在StartNewProcess函数fork启动新进程错误。
+	ErrFormatStartNewProcessError = "StartNewProcess failed to forkexec error: %v"
+	// ErrFormatUnknownTypeBody 在transbody函数解析参数成io.Reader时，参数类型是非法的。
+	ErrFormatUnknownTypeBody = "unknown type used for body: %+v"
+)
+
 // 定义eudore定义各种常量。
 const (
 	// Eudore environ
@@ -12,6 +168,8 @@ const (
 	EnvEudoreDisablePidfile = "EUDORE_DISABLE_PIDFILE"
 	// EnvEudoreDisableSignal 用于InitSignal不启用，Notify组件启动的子程序不注册信号。
 	EnvEudoreDisableSignal = "EUDORE_DISABLE_SIGNAL"
+	// EnvEudoreGracefulAddrs 按顺序记录fork多端口fd对应的地址。
+	EnvEudoreGracefulAddrs = "EnvEudoreGracefulAddrs"
 
 	// Response statue
 

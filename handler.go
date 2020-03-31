@@ -44,18 +44,12 @@ type (
 	handlerHTTP interface {
 		HandleHTTP(Context)
 	}
-	handlerClone interface {
-		handlerHTTP
-		CloneHandler() handlerHTTP
-	}
 )
 
 var (
-	typeError       = reflect.TypeOf((*error)(nil)).Elem()
-	typeContext     = reflect.TypeOf((*Context)(nil)).Elem()
-	typeHandlerFunc = reflect.TypeOf((*HandlerFunc)(nil)).Elem()
-	// contextFuncName key类型一定为HandlerFunc类型
-	contextFuncName = make(map[uintptr]string)
+	// contextFuncName key类型一定为HandlerFunc类型，保存函数可能正确的名称。
+	contextFuncName  = make(map[uintptr]string)
+	contextAliasName = make(map[reflect.Value]string)
 	// DefaultHandlerExtend 为默认的函数扩展处理者，是RouterStd使用的最顶级的函数扩展处理者。
 	DefaultHandlerExtend = NewHandlerExtendBase()
 )
@@ -64,7 +58,6 @@ var (
 func init() {
 	// 路由方法扩展
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendContextData)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerHTTPClone)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerHTTP)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerNetHTTP)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncNetHTTP1)
@@ -93,9 +86,6 @@ func init() {
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncMapStringRender)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncMapStringError)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncMapStringRenderError)
-
-	// 默认不注册了，匹配了一切，如果有未匹配就不会触发errorr。
-	// DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerInterfaceRender)
 }
 
 // NewHandlerExtendBase method returns a basic function extension processing object.
@@ -244,11 +234,18 @@ func (ext *handlerExtendBase) createHandlerFunc(fn, iValue reflect.Value) Handle
 	if len(extname) > 24 && extname[:25] == "github.com/eudore/eudore." {
 		extname = extname[25:]
 	}
-	// 保存新函数名称
-	var name string = contextFuncName[reflect.ValueOf(h).Pointer()]
+	// 获取新函数名称
+	name := contextFuncName[reflect.ValueOf(h).Pointer()]
 	if name == "" {
+		// 使用原值名称
+		name = contextAliasName[iValue]
+	}
+	if name == "" || name[len(name)-1] == ')' {
+		// 推断名称
 		iType := iValue.Type()
-		if iType.Kind() == reflect.Ptr {
+		if iType.Kind() == reflect.Func {
+			name = runtime.FuncForPC(iValue.Pointer()).Name()
+		} else if iType.Kind() == reflect.Ptr {
 			iType = iType.Elem()
 			name = fmt.Sprintf("*%s.%s", iType.PkgPath(), iType.Name())
 		} else {
@@ -294,7 +291,7 @@ func (ext *handlerExtendWarp) NewHandlerFuncs(path string, i interface{}) Handle
 
 // ListExtendHandlerNames 方法返回全部注册的函数名称。
 func (ext *handlerExtendWarp) ListExtendHandlerNames() []string {
-	return append(ext.HandlerExtender.ListExtendHandlerNames(), ext.LastExtender.ListExtendHandlerNames()...)
+	return append(ext.LastExtender.ListExtendHandlerNames(), ext.HandlerExtender.ListExtendHandlerNames()...)
 }
 
 // NewHandlerExtendTree function creates a path-based function extender.
@@ -415,7 +412,7 @@ func HandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	}
 	// combine
 	finalSize := len(hs1) + len(hs2)
-	if finalSize >= 63 {
+	if finalSize >= 127 {
 		panic("HandlerFuncsCombine: too many handlers")
 	}
 	hs := make(HandlerFuncs, finalSize)
@@ -424,24 +421,35 @@ func HandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	return hs
 }
 
-// SetHandlerFuncName is really the name of a request context handler.
+// SetHandlerFuncName function sets the name of a request context handler.
 //
 // Note: functions are not comparable, the method names of objects are overwritten by other method names.
 //
-// SetHandlerFuncName 实在一个请求上下文处理函数的名称。
+// SetHandlerFuncName 函数设置一个请求上下文处理函数的名称。
 //
 // 注意：函数不具有可比性，对象的方法的名称会被其他方法名称覆盖。
-func SetHandlerFuncName(i interface{}, name string) {
+func SetHandlerFuncName(i HandlerFunc, name string) {
 	contextFuncName[reflect.ValueOf(i).Pointer()] = name
+}
+
+// SetHandlerAliasName 函数设置一个函数处理对象原始名称，如果扩展未生成名称，使用此值。
+//
+// 在handlerExtendBase对象和ControllerInjectSingleton函数中使用到，用于传递控制器函数名称。
+func SetHandlerAliasName(i interface{}, name string) {
+	iValue, ok := i.(reflect.Value)
+	if !ok {
+		iValue = reflect.ValueOf(i)
+	}
+	contextAliasName[iValue] = name
 }
 
 // String method implements the fmt.Stringer interface and implements the output function name.
 //
-// If the processing function has set the function name, use the set value, or use the runtime to get the default value.
+// If the processing function has set the function name, use the set value, or use the runtime to get the default value. Method names may be confusing.
 //
 // String 方法实现fmt.Stringer接口，实现输出函数名称。
 //
-// 如果处理函数设置过函数名称，使用设置的值，否在使用runtime获取默认值。
+// 如果处理函数设置过函数名称，使用设置的值，否在使用runtime获取默认值，方法名称可能混乱。
 func (h HandlerFunc) String() string {
 	ptr := reflect.ValueOf(h).Pointer()
 	name, ok := contextFuncName[ptr]
@@ -451,21 +459,9 @@ func (h HandlerFunc) String() string {
 	return runtime.FuncForPC(ptr).Name()
 }
 
-// MarshalText method implements the encoding.TextMarshaler interface and returns a String () value.
-//
-// MarshalText 方法实现encoding.TextMarshaler接口，返回String()值。
-func (h HandlerFunc) MarshalText() ([]byte, error) {
-	return []byte(h.String()), nil
-}
-
 // NewExtendHandlerHTTP 函数handlerHTTP接口转换成HandlerFunc。
 func NewExtendHandlerHTTP(h handlerHTTP) HandlerFunc {
 	return h.HandleHTTP
-}
-
-// NewExtendHandlerHTTPClone 函数handlerClone接口转换成一个复制后的HandlerFunc。
-func NewExtendHandlerHTTPClone(h handlerClone) HandlerFunc {
-	return h.CloneHandler().HandleHTTP
 }
 
 // NewExtendHandlerNetHTTP 函数转换处理http.Handler对象。
@@ -669,13 +665,6 @@ func NewExtendHandlerStringer(fn fmt.Stringer) HandlerFunc {
 func NewExtendFuncString(fn func() string) HandlerFunc {
 	return func(ctx Context) {
 		ctx.WriteString(fn())
-	}
-}
-
-// NewExtendHandlerInterfaceRender 函数闭包一个返回指定字符串对象的HandlerFunc。
-func NewExtendHandlerInterfaceRender(i interface{}) HandlerFunc {
-	return func(ctx Context) {
-		ctx.Render(i)
 	}
 }
 

@@ -30,6 +30,5 @@ func main() {
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.Debug("route:", ctx.GetParam("route"))
 	})
-	app.Listen(":8088")
 	app.Run()
 }

@@ -23,6 +23,10 @@ import (
 	"github.com/eudore/eudore/middleware"
 )
 
+type Parmaser interface {
+	Params() eudore.Params
+}
+
 func main() {
 	app := eudore.NewCore()
 	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
@@ -31,6 +35,8 @@ func main() {
 	apiv1.AnyFunc("/*", starParam)
 	apiv1.GetFunc("/get/:name action=getParamName", getParamName)
 	app.Debug("all param keys:", apiv1.GetParam(eudore.ParamAllKeys))
+	app.Debug("all param vals:", apiv1.GetParam(eudore.ParamAllVals))
+	app.Debugf("parmas: %#v", apiv1.(Parmaser).Params())
 
 	// 默认路由
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
@@ -48,7 +54,6 @@ func main() {
 	client.Stop(0)
 
 	// 启动server
-	app.Listen(":8088")
 	app.Run()
 }
 

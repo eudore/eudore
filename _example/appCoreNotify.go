@@ -13,6 +13,10 @@ import (
 	"os"
 )
 
+type loggerInitHandler3 interface {
+	NextHandler(eudore.Logger)
+}
+
 func main() {
 	app := eudore.NewCore()
 	httptest.NewClient(app).Stop(0)
@@ -26,8 +30,8 @@ func main() {
 	// 如果是启动的notify，则阻塞主进程等待。
 	if !eudore.GetStringBool(os.Getenv(eudore.EnvEudoreIsNotify)) {
 		defer app.Logger.Sync()
-		if initlog, ok := app.Logger.(eudore.LoggerInitHandler); ok {
-			app.Logger, _ = eudore.NewLoggerStd(nil)
+		if initlog, ok := app.Logger.(loggerInitHandler3); ok {
+			app.Logger = eudore.NewLoggerStd(nil)
 			initlog.NextHandler(app.Logger)
 		}
 		<-app.Done()

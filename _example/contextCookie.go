@@ -45,6 +45,14 @@ func main() {
 			fmt.Fprintf(ctx, "%s: %s\n", i.Name, i.Value)
 		}
 	})
-	app.Listen(":8088")
+
+	client := httptest.NewClient(app)
+	client.WithHeaderValue("Cookie", "age=22; name=eudore; =00; tag=\007hs; aa=\"bb\"; ")
+	client.NewRequest("PUT", "/get").Do().CheckStatus(200).Out()
+	client.NewRequest("PUT", "/set").Do().CheckStatus(200).Out()
+	for client.Next() {
+		app.Error(client.Error())
+	}
+
 	app.Run()
 }

@@ -38,8 +38,8 @@ func (app *Core) Run() (err error) {
 	}()
 
 	defer app.Logger.Sync()
-	if initlog, ok := app.Logger.(LoggerInitHandler); ok {
-		app.Logger, _ = NewLoggerStd(nil)
+	if initlog, ok := app.Logger.(loggerInitHandler); ok {
+		app.Logger = NewLoggerStd(nil)
 		initlog.NextHandler(app.Logger)
 		app.Logger.Sync()
 	}
@@ -47,6 +47,7 @@ func (app *Core) Run() (err error) {
 	app.Server.SetHandler(app)
 	time.Sleep(time.Millisecond * 100)
 	app.wg.Wait()
+	app.CancelFunc()
 	return nil
 }
 

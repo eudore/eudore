@@ -28,6 +28,5 @@ func main() {
 	client.NewRequest("GET", "/").WithHeaderValue("Accept", "application/json").Do().CheckHeader("Content-Type", "application/json; charset=utf-8").CheckBodyString(`{"a":1,"b":2}`).Out()
 	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }

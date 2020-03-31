@@ -16,7 +16,6 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
 	addr, _ := url.Parse("http://localhost:8089")
 	app.AnyFunc("/*", httputil.NewSingleHostReverseProxy(addr))
 
@@ -29,6 +28,10 @@ func main() {
 		app.Listen(":8089")
 		app.Run()
 	}()
+
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/").Do().Out()
+	client.Stop(0)
 
 	app.Listen(":8088")
 	app.Run()

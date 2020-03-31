@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// RecoverDepth 定义默认显示栈最大层数。
+var RecoverDepth = 20
+
 // NewRecoverFunc 函数创建一个错误捕捉中间件，并返回500。
 func NewRecoverFunc() eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
@@ -22,7 +25,7 @@ func NewRecoverFunc() eudore.HandlerFunc {
 			}
 
 			// Ask runtime.Callers for up to 10 pcs, including runtime.Callers itself.
-			pc := make([]uintptr, 10)
+			pc := make([]uintptr, RecoverDepth)
 			n := runtime.Callers(0, pc)
 			if n == 0 {
 				// No pcs available. Stop now.
@@ -33,7 +36,7 @@ func NewRecoverFunc() eudore.HandlerFunc {
 
 			pc = pc[:n] // pass only valid pcs to runtime.CallersFrames
 			frames := runtime.CallersFrames(pc)
-			stack := make([]string, 0, 10)
+			stack := make([]string, 0, RecoverDepth)
 
 			// Loop to get frames.
 			// A fixed number of pcs can expand to an indefinite number of Frames.

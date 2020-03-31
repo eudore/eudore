@@ -42,7 +42,7 @@ type (
 	sessionStd struct {
 		Store
 		Maxage  int
-		KeyFunc func(eudore.Context) string `set:"keyfunc"`
+		KeyFunc func(eudore.Context) string `alias:"keyfunc"`
 		SetFunc func(eudore.Context, string, int)
 	}
 	// StoreMap 使用sync.Map实现的Store。

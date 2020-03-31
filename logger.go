@@ -14,24 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
-)
-
-// 定义日志级别
-const (
-	LogDebug LoggerLevel = iota
-	LogInfo
-	LogWarning
-	LogError
-	LogFatal
-	numSeverity = 5
-)
-
-var (
-	logLevelString        = [5]string{"DEBUG", "INFO", "WARNING", "ERROR", "FATAL"}
-	_              Logger = (*LoggerInit)(nil)
-	_              Logger = (*LoggerStd)(nil)
 )
 
 type (
@@ -60,8 +43,8 @@ type (
 		Sync() error
 		SetLevel(LoggerLevel)
 	}
-	// LoggerInitHandler 定义初始日志处理器必要接口，使用新日志处理器处理当前记录的全部日志。
-	LoggerInitHandler interface {
+	// loggerInitHandler 定义初始日志处理器必要接口，使用新日志处理器处理当前记录的全部日志。
+	loggerInitHandler interface {
 		NextHandler(Logger)
 	}
 	// LoggerInit the initial log processor only records the log. After setting the log processor,
@@ -83,6 +66,16 @@ type (
 	}
 )
 
+// 定义日志级别
+const (
+	LogDebug LoggerLevel = iota
+	LogInfo
+	LogWarning
+	LogError
+	LogFatal
+	LogClose
+)
+
 // NewLoggerInit 函数创建一个初始化日志处理器。
 func NewLoggerInit() Logger {
 	return &LoggerInit{}
@@ -100,11 +93,8 @@ func (l *LoggerInit) putEntry(entry *entryInit) {
 	}
 }
 
-// NextHandler 方法实现LoggerInitHandler接口，设置当然Logger的存储日志的处理者。
+// NextHandler 方法实现loggerInitHandler接口。
 func (l *LoggerInit) NextHandler(logger Logger) {
-	if l.level != LogDebug {
-		logger.SetLevel(l.level)
-	}
 	for _, e := range l.data {
 		switch e.Level {
 		case LogDebug:
@@ -283,12 +273,12 @@ func (e *entryInit) WithFields(fields Fields) Logout {
 }
 
 // String 方法实现ftm.Stringer接口，格式化输出日志级别。
-func (l *LoggerLevel) String() string {
-	return logLevelString[atomic.LoadInt32((*int32)(l))]
+func (l LoggerLevel) String() string {
+	return LogLevelString[l]
 }
 
 // MarshalText 方法实现encoding.TextMarshaler接口，用于编码日志级别。
-func (l *LoggerLevel) MarshalText() (text []byte, err error) {
+func (l LoggerLevel) MarshalText() (text []byte, err error) {
 	text = []byte(l.String())
 	return
 }
@@ -296,15 +286,16 @@ func (l *LoggerLevel) MarshalText() (text []byte, err error) {
 // UnmarshalText 方法实现encoding.TextUnmarshaler接口，用于解码日志级别。
 func (l *LoggerLevel) UnmarshalText(text []byte) error {
 	str := strings.ToUpper(string(text))
-	for i, s := range logLevelString {
+	for i, s := range LogLevelString {
 		if s == str {
-			atomic.StoreInt32((*int32)(l), int32(i))
+			*l = LoggerLevel(i)
 			return nil
 		}
 	}
 	n, err := strconv.Atoi(str)
+	fmt.Println(n, err)
 	if err == nil && n < 5 && n > -1 {
-		atomic.StoreInt32((*int32)(l), int32(n))
+		*l = LoggerLevel(n)
 		return nil
 	}
 	return ErrLoggerLevelUnmarshalText
@@ -377,4 +368,32 @@ func logFormatNameFileLine(depth int) (string, string, int) {
 		name = runtime.FuncForPC(ptr).Name()
 	}
 	return name, file, line
+}
+
+func getPanicStakc(depth int) []string {
+	pc := make([]uintptr, 20)
+	n := runtime.Callers(depth, pc)
+	if n == 0 {
+		return nil
+	}
+
+	pc = pc[:n] // pass only valid pcs to runtime.CallersFrames
+	frames := runtime.CallersFrames(pc)
+	stack := make([]string, 0, 20)
+
+	frame, more := frames.Next()
+	for more {
+		pos := strings.Index(frame.File, "src")
+		if pos >= 0 {
+			frame.File = frame.File[pos+4:]
+		}
+		pos = strings.LastIndex(frame.Function, "/")
+		if pos >= 0 {
+			frame.Function = frame.Function[pos+1:]
+		}
+		stack = append(stack, fmt.Sprintf("%s:%d %s", frame.File, frame.Line, frame.Function))
+
+		frame, more = frames.Next()
+	}
+	return stack
 }

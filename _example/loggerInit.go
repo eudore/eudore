@@ -12,6 +12,10 @@ import (
 	"github.com/eudore/eudore"
 )
 
+type loggerInitHandler interface {
+	NextHandler(eudore.Logger)
+}
+
 func main() {
 	app := eudore.NewCore()
 	app.Info(1)
@@ -20,9 +24,9 @@ func main() {
 	app.AnyFunc("/*path", eudore.HandlerEmpty)
 
 	// 判断是LoggerInit
-	if initlog, ok := app.Logger.(eudore.LoggerInitHandler); ok {
+	if initlog, ok := app.Logger.(loggerInitHandler); ok {
 		// 创建日志
-		app.Logger, _ = eudore.NewLoggerStd(nil)
+		app.Logger = eudore.NewLoggerStd(nil)
 		// 新日志处理LoggerInit保存的日志。
 		initlog.NextHandler(app.Logger)
 	}

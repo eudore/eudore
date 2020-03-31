@@ -7,8 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
-	"regexp"
 	"strings"
 	"sync"
 )
@@ -20,11 +18,9 @@ type (
 		StreamID() string
 		GetType() int
 		SetType(int)
-		SendMsg(m interface{}) error
-		RecvMsg(m interface{}) error
+		SendMsg(interface{}) error
+		RecvMsg(interface{}) error
 	}
-	// Header 定义eudore.Header为http.Header。
-	Header = http.Header
 	// RequestReader 对象为请求信息的载体。
 	RequestReader = http.Request
 	// ResponseWriter 接口用于写入http请求响应体status、header、body。
@@ -73,13 +69,7 @@ type (
 )
 
 var (
-	sriRegexpScript, _                    = regexp.Compile(`\s*<script.*src=([\"\'])(\S*\.js)([\"\']).*></script>`)
-	sriRegexpCSS, _                       = regexp.Compile(`\s*<link.*href=([\"\'])(\S*\.css)([\"\']).*>`)
-	sriRegexpImg, _                       = regexp.Compile(`\s*<img.*src=([\"\'])(\S*)([\"\']).*>`)
-	sriRegexpIntegrity, _                 = regexp.Compile(`.*\s+integrity=[\"\'](\S*)[\"\'].*`)
-	cachePushFile                         = make(map[string][]string)
-	_                      ResponseWriter = (*ResponseWriterHTTP)(nil)
-	responseWriterHTTPPool                = sync.Pool{
+	responseWriterHTTPPool = sync.Pool{
 		New: func() interface{} {
 			return &ResponseWriterHTTP{}
 		},
@@ -297,63 +287,4 @@ var isTokenTable = [127]bool{
 	'z':  true,
 	'|':  true,
 	'~':  true,
-}
-
-// HandlerPush 根据文件名称自动push其中的资源
-func HandlerPush(ctx Context, path string) {
-	if ctx.Request().Proto != "HTTP/2.0" {
-		return
-	}
-	files, ok := cachePushFile[path]
-	if !ok {
-		files, _ = getStatic(path)
-		cachePushFile[path] = files
-	}
-	// push file
-	for _, file := range files {
-		ctx.Push(file, nil)
-	}
-}
-
-func getStatic(path string) ([]string, error) {
-	// 检测文件大小
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if fileInfo.Size() > 10<<20 {
-		return nil, fmt.Errorf("%s file is to long, size: %d", path, fileInfo.Size())
-	}
-	// 打开文件
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var statics = []string{"/favicon.ico"}
-	br := bufio.NewReader(file)
-	for {
-		line, err := br.ReadString('\n')
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		// match script
-		params := sriRegexpScript.FindStringSubmatch(line)
-		// match css
-		if len(params) == 0 {
-			params = sriRegexpCSS.FindStringSubmatch(line)
-		}
-		if len(params) == 0 {
-			params = sriRegexpImg.FindStringSubmatch(line)
-		}
-		// 判断是否匹配数据
-		if len(params) > 1 {
-			statics = append(statics, params[2])
-		}
-	}
-	return statics, nil
 }

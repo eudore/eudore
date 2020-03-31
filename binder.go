@@ -23,10 +23,6 @@ Binder对象用于请求数据反序列化，
 
 */
 
-const (
-	defaultMaxMemory = 32 << 20 // 32 MB
-)
-
 type (
 	// Binder 定义Bind函数处理请求。
 	Binder func(Context, io.Reader, interface{}) error
@@ -56,15 +52,15 @@ func BindDefault(ctx Context, r io.Reader, i interface{}) error {
 // BindURL 函数使用url参数实现bind。
 func BindURL(ctx Context, _ io.Reader, i interface{}) error {
 	for key, vals := range ctx.Querys() {
-		Set(i, key, vals[0])
+		SetWithTags(i, key, vals[0], DefaultConvertURLTags)
 	}
 	return nil
 }
 
 // BindForm 函数使用form格式body实现bind。
 func BindForm(ctx Context, _ io.Reader, i interface{}) error {
-	ConvertTo(ctx.FormFiles(), i)
-	return ConvertTo(ctx.FormValues(), i)
+	ConvertToWithTags(ctx.FormFiles(), i, DefaultConvertFormTags)
+	return ConvertToWithTags(ctx.FormValues(), i, DefaultConvertFormTags)
 }
 
 // BindURLBody 函数使用url格式body实现bind，body读取限制32kb。
@@ -77,7 +73,7 @@ func BindURLBody(_ Context, r io.Reader, i interface{}) error {
 	if err != nil {
 		return err
 	}
-	return ConvertTo(uri, i)
+	return ConvertToWithTags(uri, i, DefaultConvertURLTags)
 }
 
 // BindJSON 函数使用json格式body实现bind。
@@ -98,16 +94,16 @@ func BindHeader(ctx Context, _ io.Reader, i interface{}) error {
 	return nil
 }
 
-// NewHeaderBinder 实现Binder额外封装bind header。
-func NewHeaderBinder(fn Binder) Binder {
+// NewBinderHeader 实现Binder额外封装bind header。
+func NewBinderHeader(fn Binder) Binder {
 	return func(ctx Context, r io.Reader, i interface{}) error {
 		BindHeader(ctx, r, i)
 		return fn(ctx, r, i)
 	}
 }
 
-// NewURLBinder 实现Binder在非get和head方法下实现BindURL。
-func NewURLBinder(fn Binder) Binder {
+// NewBinderURL 实现Binder在非get和head方法下实现BindURL。
+func NewBinderURL(fn Binder) Binder {
 	return func(ctx Context, r io.Reader, i interface{}) error {
 		if ctx.Method() != MethodGet && ctx.Method() != MethodHead {
 			BindURL(ctx, r, i)
@@ -116,8 +112,8 @@ func NewURLBinder(fn Binder) Binder {
 	}
 }
 
-// NewValidateBinder 实际Binder后调用ValidateStruct检测结构体对象数据是否有效。
-func NewValidateBinder(fn Binder) Binder {
+// NewBinderValidate 实际Binder后调用ValidateStruct检测结构体对象数据是否有效。
+func NewBinderValidate(fn Binder) Binder {
 	return func(ctx Context, r io.Reader, i interface{}) error {
 		err := fn(ctx, r, i)
 		if err == nil {

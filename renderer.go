@@ -69,8 +69,8 @@ func RenderXML(ctx Context, data interface{}) error {
 	return xml.NewEncoder(ctx).Encode(data)
 }
 
-// NewHTMLRender 函数使用模板创建一个模板Renderer
-func NewHTMLRender(temp *template.Template) Renderer {
+// NewRenderHTML 函数使用模板创建一个模板Renderer
+func NewRenderHTML(temp *template.Template) Renderer {
 	if temp == nil {
 		temp = template.Must(template.New("").Parse(""))
 	}
@@ -91,9 +91,9 @@ func NewHTMLRender(temp *template.Template) Renderer {
 	}
 }
 
-// NewHTMLRenderWithTemplate 函数使用Renderer支持html Renderer。
-func NewHTMLRenderWithTemplate(r Renderer, temp *template.Template) Renderer {
-	htmlRender := NewHTMLRender(temp)
+// NewRenderHTMLWithTemplate 函数使用Renderer支持html Renderer。
+func NewRenderHTMLWithTemplate(r Renderer, temp *template.Template) Renderer {
+	htmlRender := NewRenderHTML(temp)
 	return func(ctx Context, data interface{}) error {
 		path := ctx.GetParam("template")
 		if path != "" && strings.Contains(ctx.GetHeader(HeaderAccept), MimeTextHTML) {

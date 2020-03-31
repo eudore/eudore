@@ -7,13 +7,18 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.Redirect(302, "/hello")
 	})
 	app.GetFunc("/hello", func(ctx eudore.Context) {
 		ctx.WriteString("hello eudore")
 	})
-	app.Listen(":8088")
+
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/").Do().CheckStatus(200).Out()
+	for client.Next() {
+		app.Error(client.Error())
+	}
+
 	app.Run()
 }

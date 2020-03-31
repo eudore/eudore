@@ -21,14 +21,12 @@ type (
 	Eudore struct {
 		*App
 		GetWarp
-		cancel      context.CancelFunc
-		err         error
-		mu          sync.Mutex
-		inits       map[string]initInfo
-		handlers    HandlerFuncs
-		listeners   []net.Listener
-		signalChan  chan os.Signal
-		signalFuncs map[os.Signal][]EudoreFunc
+		Signaler
+		err       error
+		mu        sync.Mutex
+		inits     map[string]initInfo
+		Handlers  HandlerFuncs
+		listeners []net.Listener
 	}
 	// EudoreFunc 定义Eudore app处理函数。
 	EudoreFunc func(*Eudore) error
@@ -38,21 +36,40 @@ type (
 		index int
 		fn    EudoreFunc
 	}
+	// Signaler 定义一个信号处理对象。
+	Signaler struct {
+		signalChan  chan os.Signal
+		signalFuncs map[os.Signal][]func() error
+	}
 )
 
-// NewEudore Create a new Eudore.
+// NewEudore Create a new Eudore app.
+//
+// 默认注册Eudore初始化函数，建议重新注册修改eudore-server为最后一个Init函数。
+//
+// app.RegisterInit("eudore-config", 0x003, InitConfig)
+//
+// app.RegisterInit("eudore-workdir", 0x006, InitWorkdir)
+//
+// app.RegisterInit("eudore-signal", 0x009, InitSignal)
+//
+// app.RegisterInit("eudore-logger", 0x00c, InitLogger)
+//
+// app.RegisterInit("eudore-server", 0x00f, InitServer)
+//
 func NewEudore(options ...interface{}) *Eudore {
 	app := &Eudore{
-		App:         NewApp(),
-		inits:       make(map[string]initInfo),
-		signalChan:  make(chan os.Signal),
-		signalFuncs: make(map[os.Signal][]EudoreFunc),
+		App:   NewApp(),
+		inits: make(map[string]initInfo),
+		Signaler: Signaler{
+			signalChan:  make(chan os.Signal),
+			signalFuncs: make(map[os.Signal][]func() error),
+		},
 	}
-	app.initOptions(options...)
+	app.Options(options...)
 	app.GetWarp = NewGetWarpWithApp(app.App)
-	app.Context, app.cancel = context.WithCancel(app.Context)
 	app.Context = context.WithValue(app.Context, AppContextKey, app)
-	app.handlers = HandlerFuncs{app.HandleContext}
+	app.Handlers = HandlerFuncs{app.HandleContext}
 
 	Set(app.Config, "print", NewPrintFunc(app.App))
 	Set(app.Router, "print", NewPrintFunc(app.App))
@@ -61,40 +78,11 @@ func NewEudore(options ...interface{}) *Eudore {
 	// Register eudore default reload func
 	app.RegisterInit("eudore-config", 0x003, InitConfig)
 	app.RegisterInit("eudore-workdir", 0x006, InitWorkdir)
-	app.RegisterInit("eudore-logger", 0x009, InitLoggerStd)
-	app.RegisterInit("eudore-signal", 0x00c, InitSignal)
-	app.RegisterInit("eudore-start", 0xff0, InitStart)
+	app.RegisterInit("eudore-signal", 0x009, InitSignal)
+	app.RegisterInit("eudore-logger", 0x00c, InitLogger)
+	app.RegisterInit("eudore-server", 0x00f, InitServer)
 	go app.handlerChannel()
 	return app
-}
-
-func (app *Eudore) initOptions(options ...interface{}) {
-	// init options
-	for _, i := range options {
-		switch val := i.(type) {
-		case context.Context:
-			app.Context = val
-		case Config:
-			app.Config = val
-		case Logger:
-			app.Logger = val
-		case Server:
-			app.Server = val
-		case Router:
-			app.Router = val
-		case Binder:
-			app.Binder = val
-		case Renderer:
-			app.Renderer = val
-		case PoolGetFunc:
-			app.ContextPool.New = val
-		case error:
-			app.HandleError(val)
-		default:
-			app.Logger.Warningf("eudore app unid option: %v", i)
-
-		}
-	}
 }
 
 func (app *Eudore) handlerChannel() {
@@ -105,9 +93,41 @@ func (app *Eudore) handlerChannel() {
 		case <-app.Done():
 			return
 		case sig := <-app.signalChan:
-			app.HandleSignal(sig)
+			err := app.HandleSignal(sig)
+			if err != nil {
+				app.Error(err)
+			}
 		case <-ticker.C:
 			app.Logger.Sync()
+		}
+	}
+}
+
+// Options 方法加载eudore app组件。
+func (app *Eudore) Options(options ...interface{}) {
+	// init options
+	for _, i := range options {
+		switch val := i.(type) {
+		case context.Context:
+			app.Context = val
+			app.Context, app.CancelFunc = context.WithCancel(app.Context)
+		case Config:
+			app.Config = val
+			Set(app.Config, "print", NewPrintFunc(app.App))
+		case Logger:
+			app.Logger = val
+		case Server:
+			app.Server = val
+			Set(app.Server, "print", NewPrintFunc(app.App))
+		case Router:
+			app.Router = val
+			Set(app.Router, "print", NewPrintFunc(app.App))
+		case Binder:
+			app.Binder = val
+		case Renderer:
+			app.Renderer = val
+		default:
+			app.Logger.Warningf("eudore app init invalid option: %v", i)
 		}
 	}
 }
@@ -118,8 +138,8 @@ func (app *Eudore) Run() error {
 	<-app.Done()
 
 	// 处理后续日志
-	if initlog, ok := app.Logger.(LoggerInitHandler); ok {
-		app.Logger, _ = NewLoggerStd(nil)
+	if initlog, ok := app.Logger.(loggerInitHandler); ok {
+		app.Logger = NewLoggerStd(nil)
 		initlog.NextHandler(app.Logger)
 	}
 	time.Sleep(100 * time.Millisecond)
@@ -139,21 +159,30 @@ func (app *Eudore) InitAll() error {
 	return err
 }
 
-// Init execute the eudore reload function.
-// names are a list of function names that need to be executed; if the list is empty, execute all reload functions.
+// Init execute the eudore init function.
 //
-// Init 执行eudore重新加载函数。
-// names是需要执行的函数名称列表；如果列表为空，执行全部重新加载函数。
-func (app *Eudore) Init(names ...string) (err error) {
+// Init 方法执行eudore全部初始函数。
+func (app *Eudore) Init() (err error) {
 	app.mu.Lock()
 	defer app.mu.Unlock()
 	// get names and exec
-	names = app.getInitNames(names)
-	num := len(names)
-	for i, name := range names {
+	names := app.getInitNames()
+	var (
+		i    int
+		name string
+		num  = len(names)
+	)
+	defer func() {
+		rerr := recover()
+		if rerr != nil {
+			err = fmt.Errorf("eudore init %d/%d %s recover error: %v", i+1, num, name, rerr)
+			app.WithField("stack", getPanicStakc(3)).Error(err)
+		}
+	}()
+	for i, name = range names {
 		err = app.inits[name].fn(app)
 		if err != nil {
-			if err == ErrEudoreIgnoreInit {
+			if err == ErrEudoreInitIgnore {
 				app.Logger.Errorf("eudore init %d/%d %s ignore the remaining init function.", i+1, num, name)
 				return nil
 			}
@@ -164,48 +193,12 @@ func (app *Eudore) Init(names ...string) (err error) {
 	return nil
 }
 
-// getInitNames 处理名称并对reloads排序。
-func (app *Eudore) getInitNames(names []string) []string {
-	// get not names
-	notnames := stringeach(names, func(name string) string {
-		if len(name) > 0 && name[0] == '!' {
-			return name[1:]
-		}
-		return ""
-	})
-
-	// get names
-	names = stringeach(names, func(name string) string {
-		if len(name) == 0 || name[0] == '!' {
-			return ""
-		}
-		return name
-	})
-
-	// set default name
-	if len(names) == 0 {
-		names = make([]string, 0, len(app.inits))
-		for k := range app.inits {
-			names = append(names, k)
-		}
+// getInitNames 方法获得全部names并排序。
+func (app *Eudore) getInitNames() []string {
+	names := make([]string, 0, len(app.inits))
+	for k := range app.inits {
+		names = append(names, k)
 	}
-
-	// filter
-	names = stringeach(names, func(name string) string {
-		// filter not name
-		for _, i := range notnames {
-			if i == name {
-				return ""
-			}
-		}
-		// filter invalid name
-		if _, ok := app.inits[name]; !ok {
-			app.Warning("Invalid overloaded function name: ", name)
-			return ""
-		}
-		return name
-	})
-
 	// sort index
 	sort.Slice(names, func(i, j int) bool {
 		return app.inits[names[i]].index < app.inits[names[j]].index
@@ -221,7 +214,7 @@ func (app *Eudore) Restart() error {
 	err := startNewProcess(app.listeners)
 	if err == nil {
 		app.Logger.Info("eudore restart success.")
-		app.Server.Shutdown(context.Background())
+		app.Server.Shutdown(app.Context)
 		app.HandleError(ErrApplicationStop)
 	}
 	return err
@@ -232,7 +225,7 @@ func (app *Eudore) Shutdown() error {
 	app.mu.Lock()
 	defer app.mu.Unlock()
 	defer app.HandleError(ErrApplicationStop)
-	return app.Server.Shutdown(context.Background())
+	return app.Server.Shutdown(app.Context)
 }
 
 // RegisterInit method register a Init function, index determines the function loading order, and name is used for a specific load function.
@@ -248,34 +241,6 @@ func (app *Eudore) RegisterInit(name string, index int, fn EudoreFunc) {
 	}
 }
 
-// HandleSignal 方法执行对应信号应该函数。
-func (app *Eudore) HandleSignal(sig os.Signal) {
-	fns, ok := app.signalFuncs[sig]
-	if ok {
-		for _, fn := range fns {
-			err := fn(app)
-			if err != nil {
-				app.Logger.Error(err)
-			}
-		}
-	}
-}
-
-// RegisterSignal 方法给Eudore app注册一个信号响应函数。
-func (app *Eudore) RegisterSignal(sig os.Signal, fn EudoreFunc) {
-	fns, ok := app.signalFuncs[sig]
-	app.signalFuncs[sig] = append(fns, fn)
-	if !ok {
-		sigs := make([]os.Signal, 0, len(app.signalFuncs))
-		for i := range app.signalFuncs {
-			sigs = append(sigs, i)
-		}
-
-		signal.Stop(app.signalChan)
-		signal.Notify(app.signalChan, sigs...)
-	}
-}
-
 // HandleError 定义Eudore App处理一个error，如果err非空则结束app，当err为ErrApplicationStop正常退出。
 func (app *Eudore) HandleError(err error) {
 	if err != nil && app.err == nil {
@@ -285,7 +250,7 @@ func (app *Eudore) HandleError(err error) {
 		} else {
 			app.Logger.Info("eudore stop success.")
 		}
-		app.cancel()
+		app.CancelFunc()
 	}
 }
 
@@ -307,7 +272,7 @@ func (app *Eudore) Listen(addr string) error {
 		app.Error(err)
 		return err
 	}
-	app.AddListener(ln)
+	app.Serve(ln)
 	return nil
 }
 
@@ -325,12 +290,12 @@ func (app *Eudore) ListenTLS(addr, key, cert string) error {
 		app.Error(err)
 		return err
 	}
-	app.AddListener(ln)
+	app.Serve(ln)
 	return nil
 }
 
-// AddListener 方式给Server添加一个net.Listener,同时会记录net.Listener对象，用于热重启传递fd。
-func (app *Eudore) AddListener(ln net.Listener) {
+// Serve 方式给Server添加一个net.Listener,同时会记录net.Listener对象，用于热重启传递fd。
+func (app *Eudore) Serve(ln net.Listener) {
 	app.Logger.Infof("listen %s %s", ln.Addr().Network(), ln.Addr().String())
 	app.listeners = append(app.listeners, ln)
 	go func() {
@@ -338,15 +303,10 @@ func (app *Eudore) AddListener(ln net.Listener) {
 	}()
 }
 
-// AddStatic method register a static file Handle.
-func (app *Eudore) AddStatic(route, dir string) {
-	app.Router.GetFunc(route, NewStaticHandler(dir))
-}
-
 // AddGlobalMiddleware 给eudore添加全局中间件，会在Router.Match前执行。
 func (app *Eudore) AddGlobalMiddleware(hs ...HandlerFunc) {
-	app.handlers = HandlerFuncsCombine(app.handlers[0:len(app.handlers)-1], hs)
-	app.handlers = HandlerFuncsCombine(app.handlers, HandlerFuncs{app.HandleContext})
+	app.Handlers = HandlerFuncsCombine(app.Handlers[0:len(app.Handlers)-1], hs)
+	app.Handlers = HandlerFuncsCombine(app.Handlers, HandlerFuncs{app.HandleContext})
 }
 
 // HandleContext 实现处理请求上下文函数。
@@ -363,7 +323,7 @@ func (app *Eudore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// handle
 	response.Reset(w)
 	ctx.Reset(r.Context(), response, r)
-	ctx.SetHandler(-1, app.handlers)
+	ctx.SetHandler(-1, app.Handlers)
 	ctx.Next()
 	ctx.End()
 	// release
@@ -395,7 +355,8 @@ func (app *Eudore) Error(args ...interface{}) {
 func (app *Eudore) Fatal(args ...interface{}) {
 	app.logReset().Fatal(args...)
 	time.Sleep(90 * time.Millisecond)
-	panic(fmt.Sprintln(args...))
+	err := fmt.Sprintln(args...)
+	panic(err[:len(err)-1])
 }
 
 // Debugf 方法输出Debug级别日志。
@@ -432,4 +393,54 @@ func (app *Eudore) logReset() Logout {
 		"line": line,
 	}
 	return app.Logger.WithFields(f)
+}
+
+// NewSignaler 函数创建一个信号处理者。
+func NewSignaler() *Signaler {
+	return &Signaler{
+		signalChan:  make(chan os.Signal),
+		signalFuncs: make(map[os.Signal][]func() error),
+	}
+}
+
+// HandleSignal 方法执行对应信号应该函数。
+func (s *Signaler) HandleSignal(sig os.Signal) error {
+	fns, ok := s.signalFuncs[sig]
+	if ok {
+		for _, fn := range fns {
+			err := fn()
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// RegisterSignal 方法注册一个信号响应函数。
+func (s *Signaler) RegisterSignal(sig os.Signal, fn func() error) {
+	fns, ok := s.signalFuncs[sig]
+	s.signalFuncs[sig] = append(fns, fn)
+	if !ok {
+		sigs := make([]os.Signal, 0, len(s.signalFuncs))
+		for i := range s.signalFuncs {
+			sigs = append(sigs, i)
+		}
+
+		signal.Stop(s.signalChan)
+		signal.Notify(s.signalChan, sigs...)
+	}
+}
+
+// Run 方法执行Signaler信号响应处理。
+func (s *Signaler) Run(ctx context.Context) {
+	defer signal.Stop(s.signalChan)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case sig := <-s.signalChan:
+			s.HandleSignal(sig)
+		}
+	}
 }

@@ -14,16 +14,15 @@ go run configArgs.go --keys.help=true --k=0 --key=value
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
+	"os"
 )
 
 func main() {
 	app := eudore.NewCore()
+	os.Args = append(os.Args, "--name=eudoreName")
 	err := app.Parse()
 	if err != nil {
 		panic(err)
 	}
-	httptest.NewClient(app).Stop(0)
-	app.Listen(":8088")
 	app.Run()
 }

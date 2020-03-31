@@ -4,12 +4,14 @@ import (
 	"fmt"
 
 	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/component/httptest"
 	"github.com/eudore/eudore/component/websocket/gobwas"
 	"github.com/eudore/eudore/component/websocket/gorilla"
 )
 
 func main() {
 	app := eudore.NewCore()
+	httptest.NewClient(app).Stop(0)
 	// gorilla和gobwas两种Stream扩展均可使用，只需要注册一个就可支持eudore.Stream处理websocket。
 	app.AddHandlerExtend(gorilla.NewExtendFuncStream)
 	app.AddHandlerExtend(gobwas.NewExtendFuncStream)

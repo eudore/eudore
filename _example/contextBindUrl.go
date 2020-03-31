@@ -15,22 +15,29 @@ import (
 
 type (
 	urlPutFileInfo struct {
-		Name         string `json:"name" set:"name"`
-		Type         string `json:"type" set:"type"`
-		Size         int    `json:"size" set:"size"`
-		LastModified int64  `json:"lastModified" set:"lastModified"`
+		Name         string `json:"name" alias:"name"`
+		Type         string `json:"type" alias:"type"`
+		Size         int    `json:"size" alias:"size"`
+		LastModified int64  `json:"lastModified" alias:"lastModified"`
 	}
 )
 
 func main() {
 	app := eudore.NewCore()
 	// 附加非GET和HEAD方法下使用url参数绑定。
-	app.Binder = eudore.NewURLBinder(app.Binder)
+	app.Binder = eudore.NewBinderURL(app.Binder)
 
 	app.AnyFunc("/file/data/:path", func(ctx eudore.Context) {
 		var info urlPutFileInfo
 		ctx.Bind(&info)
 		ctx.RenderWith(&info, eudore.RenderIndentJSON)
+	})
+	app.GetFunc("/binderr", func(ctx eudore.Context) {
+		// 设置测试数据
+		ctx.Request().URL.RawQuery = "%gh&%ij"
+
+		var info urlPutFileInfo
+		ctx.Bind(&info)
 	})
 
 	client := httptest.NewClient(app)
@@ -38,13 +45,15 @@ func main() {
 	client.NewRequest("GET", "/file/data/2?name=eudore&type=2&size=722").WithHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationForm).Do().CheckStatus(200).Out()
 	// put方法使用url参数绑定，需要BinderURLWithBinder函数支持。
 	client.NewRequest("PUT", "/file/data/2?name=eudore&type=2&size=722").WithHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationForm).Do().CheckStatus(200).Out()
+	// url error
+	client.NewRequest("PUT", "/file/data/2?%gh&%ij").WithHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationForm).Do().CheckStatus(200).Out()
+	client.NewRequest("PUT", "/file/data/2").WithHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationForm).WithBodyString("%gh&%ij").Do().CheckStatus(200).Out()
+	client.NewRequest("GET", "/binderr").Do().CheckStatus(200).Out()
 	// url body绑定
 	client.NewRequest("PUT", "/file/data/2").WithBodyString("name=eudore&type=2&size=722").WithHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationForm).Do().CheckStatus(200).Out()
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }

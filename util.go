@@ -2,20 +2,10 @@ package eudore
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 )
-
-// Each string strs handle element, if return is null, then delete this a elem.
-func stringeach(strs []string, fn func(string) string) (s []string) {
-	for _, i := range strs {
-		i = fn(i)
-		if i != "" {
-			s = append(s, i)
-		}
-	}
-	return
-}
 
 // split2byte internal function, splits two strings into two segments using the first specified byte, and returns "", str if there is no split symbol.
 //
@@ -23,20 +13,9 @@ func stringeach(strs []string, fn func(string) string) (s []string) {
 func split2byte(str string, b byte) (string, string) {
 	pos := strings.IndexByte(str, b)
 	if pos == -1 {
-		return "", str
+		return str, ""
 	}
 	return str[:pos], str[pos+1:]
-}
-
-// The env2arg internal function converts environment variables into parameter format.
-//
-// env2arg 内部函数，将环境变量转换成参数格式。
-//
-// ENV_CONFIG_PATH=xxxx -> config.path=xxx
-func env2arg(str string) string {
-	k, v := split2byte(str, '=')
-	k = strings.ToLower(strings.Replace(k, "_", ".", -1))[4:]
-	return fmt.Sprintf("--%s=%s", k, v)
 }
 
 // GetBool 使用GetDefaultBool，默认false。
@@ -44,12 +23,17 @@ func GetBool(i interface{}) bool {
 	return GetDefaultBool(i, false)
 }
 
-// GetDefaultBool 函数先检查断言，再使用GetDefaultString转换字符串，使用strconv.ParseBool解析。
+// GetDefaultBool 函数转换bool、int、uint、float、string成bool。
 func GetDefaultBool(i interface{}, b bool) bool {
 	if v, ok := i.(bool); ok {
 		return v
 	}
-	if v, err := strconv.ParseBool(GetDefaultString(i, "")); err == nil {
+
+	i = isNum(i)
+	if i == nil {
+		return b
+	}
+	if v, err := strconv.ParseBool(fmt.Sprint(i)); err == nil {
 		return v
 	}
 	return b
@@ -60,16 +44,25 @@ func GetInt(i interface{}) int {
 	return GetDefaultInt(i, 0)
 }
 
-// GetDefaultInt 函数先检查断言，再使用GetDefaultString转换字符串，使用strconv.Atoi解析。
+// GetDefaultInt 函数转换一个int、uint、float、string类型成int。
 func GetDefaultInt(i interface{}, n int) int {
-	if v, ok := i.(int); ok {
-		return v
+	i = isNum(i)
+	if i == nil {
+		return n
 	}
 	if v, ok := i.(int64); ok {
 		return int(v)
 	}
-	if v, err := strconv.Atoi(GetDefaultString(i, "")); err == nil {
-		return v
+	if v, ok := i.(uint64); ok {
+		return int(v)
+	}
+	if v, ok := i.(float64); ok {
+		return int(v)
+	}
+	if s, ok := i.(string); ok {
+		if v, err := strconv.Atoi(s); err == nil {
+			return int(v)
+		}
 	}
 	return n
 }
@@ -79,16 +72,25 @@ func GetInt64(i interface{}) int64 {
 	return GetDefaultInt64(i, 0)
 }
 
-// GetDefaultInt64 函数先检查断言，再使用GetDefaultString转换字符串，使用strconv.ParseInt解析。
+// GetDefaultInt64 函数转换一个int、uint、float、string类型成int64。
 func GetDefaultInt64(i interface{}, n int64) int64 {
+	i = isNum(i)
+	if i == nil {
+		return n
+	}
 	if v, ok := i.(int64); ok {
 		return v
 	}
-	if v, ok := i.(int); ok {
+	if v, ok := i.(uint64); ok {
 		return int64(v)
 	}
-	if v, err := strconv.ParseInt(GetDefaultString(i, ""), 10, 64); err == nil {
-		return v
+	if v, ok := i.(float64); ok {
+		return int64(v)
+	}
+	if s, ok := i.(string); ok {
+		if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return v
+		}
 	}
 	return n
 }
@@ -98,13 +100,25 @@ func GetUint(i interface{}) uint {
 	return GetDefaultUint(i, 0)
 }
 
-// GetDefaultUint 函数先检查断言，再使用GetDefaultString转换字符串，使用strconv.ParseUint解析。
+// GetDefaultUint 函数转换一个int、uint、float、string类型成uint。
 func GetDefaultUint(i interface{}, n uint) uint {
-	if v, ok := i.(uint); ok {
-		return v
+	i = isNum(i)
+	if i == nil {
+		return n
 	}
-	if v, err := strconv.ParseUint(GetDefaultString(i, ""), 10, 64); err == nil {
+	if v, ok := i.(uint64); ok {
 		return uint(v)
+	}
+	if v, ok := i.(int64); ok {
+		return uint(v)
+	}
+	if v, ok := i.(float64); ok {
+		return uint(v)
+	}
+	if s, ok := i.(string); ok {
+		if v, err := strconv.ParseUint(s, 10, 64); err == nil {
+			return uint(v)
+		}
 	}
 	return n
 }
@@ -114,13 +128,25 @@ func GetUint64(i interface{}) uint64 {
 	return GetDefaultUint64(i, 0)
 }
 
-// GetDefaultUint64 函数先检查断言，再使用GetDefaultString转换字符串，使用strconv.ParseInt解析。
+// GetDefaultUint64 函数转换一个int、uint、float、string类型成uint64。
 func GetDefaultUint64(i interface{}, n uint64) uint64 {
+	i = isNum(i)
+	if i == nil {
+		return n
+	}
 	if v, ok := i.(uint64); ok {
 		return v
 	}
-	if v, err := strconv.ParseUint(GetDefaultString(i, ""), 10, 64); err == nil {
-		return v
+	if v, ok := i.(int64); ok {
+		return uint64(v)
+	}
+	if v, ok := i.(float64); ok {
+		return uint64(v)
+	}
+	if s, ok := i.(string); ok {
+		if v, err := strconv.ParseUint(s, 10, 64); err == nil {
+			return v
+		}
 	}
 	return n
 }
@@ -130,13 +156,25 @@ func GetFloat32(i interface{}) float32 {
 	return GetDefaultFloat32(i, 0)
 }
 
-// GetDefaultFloat32 函数先检查断言，再使用GetDefaultString转换字符串，使用strconv.ParseFloat解析。
+// GetDefaultFloat32 函数转换一个int、uint、float、string类型成float32。
 func GetDefaultFloat32(i interface{}, n float32) float32 {
-	if v, ok := i.(float32); ok {
-		return v
+	i = isNum(i)
+	if i == nil {
+		return n
 	}
-	if v, err := strconv.ParseFloat(GetDefaultString(i, ""), 32); err == nil {
+	if v, ok := i.(float64); ok {
 		return float32(v)
+	}
+	if v, ok := i.(int64); ok {
+		return float32(v)
+	}
+	if v, ok := i.(uint64); ok {
+		return float32(v)
+	}
+	if s, ok := i.(string); ok {
+		if v, err := strconv.ParseFloat(s, 32); err == nil {
+			return float32(v)
+		}
 	}
 	return n
 }
@@ -146,13 +184,26 @@ func GetFloat64(i interface{}) float64 {
 	return GetDefaultFloat64(i, 0)
 }
 
-// GetDefaultFloat64 函数先检查断言，再使用GetDefaultString转换字符串，使用strconv.ParseFloat解析。
+// GetDefaultFloat64 函数转换一个int、uint、float、string类型成float64。
 func GetDefaultFloat64(i interface{}, n float64) float64 {
+	i = isNum(i)
+	if i == nil {
+		return n
+	}
 	if v, ok := i.(float64); ok {
 		return v
 	}
-	if v, err := strconv.ParseFloat(GetDefaultString(i, ""), 64); err == nil {
-		return v
+	if v, ok := i.(int64); ok {
+		return float64(v)
+	}
+	if v, ok := i.(uint64); ok {
+		return float64(v)
+	}
+
+	if s, ok := i.(string); ok {
+		if v, err := strconv.ParseFloat(s, 64); err == nil {
+			return v
+		}
 	}
 	return n
 }
@@ -164,17 +215,54 @@ func GetString(i interface{}) string {
 
 // GetDefaultString 通过断言string类型实现转换。
 func GetDefaultString(i interface{}, str string) string {
-	if i == nil {
-		return str
+	if v, ok := i.(bool); ok {
+		return fmt.Sprint(v)
 	}
-	if v, ok := i.(string); ok && v != "" {
-		return v
+	i = isNum(i)
+	if i != nil {
+		return fmt.Sprint(i)
 	}
 	return str
 }
 
+func isNum(i interface{}) interface{} {
+	switch val := i.(type) {
+	case string, int64, uint64, float64:
+		return val
+	case int:
+		return int64(val)
+	case int8:
+		return int64(val)
+	case int16:
+		return int64(val)
+	case int32:
+		return int64(val)
+	case uint:
+		return uint64(val)
+	case uint8:
+		return uint64(val)
+	case uint16:
+		return uint64(val)
+	case uint32:
+		return uint64(val)
+	case []byte:
+		return string(val)
+	case float32:
+		return float64(val)
+	case bool:
+		if val {
+			return int64(1)
+		}
+		return int64(0)
+	}
+	return nil
+}
+
 // GetArrayString 转换成[]string
 func GetArrayString(i interface{}) []string {
+	if i == nil {
+		return nil
+	}
 	str, ok := i.(string)
 	if ok {
 		return []string{str}
@@ -183,11 +271,12 @@ func GetArrayString(i interface{}) []string {
 	if ok {
 		return strs
 	}
-	is, ok := i.([]interface{})
-	if ok {
-		strs = make([]string, len(is))
-		for i := range is {
-			strs[i] = fmt.Sprint(is[i])
+	iType := reflect.TypeOf(i)
+	if iType.Kind() == reflect.Slice || iType.Kind() == reflect.Array {
+		iValue := reflect.ValueOf(i)
+		strs = make([]string, iValue.Len())
+		for i := 0; i < iValue.Len(); i++ {
+			strs[i] = fmt.Sprintf("%#v", iValue.Index(i))
 		}
 		return strs
 	}
@@ -304,37 +393,45 @@ func GetStringsDefault(strs ...string) string {
 }
 
 // GetWarp 对象封装Get函数提供类型转换功能。
-type GetWarp struct {
-	Get func(string) interface{}
-}
+type GetWarp func(string) interface{}
 
 // NewGetWarp 函数创建一个getwarp处理类型转换。
 func NewGetWarp(fn func(string) interface{}) GetWarp {
-	return GetWarp{Get: fn}
+	return fn
 }
 
-// NewGetWarpWithConfig 函数使用Config.Get创建getwarp
+// NewGetWarpWithConfig 函数使用Config.Get创建getwarp。
 func NewGetWarpWithConfig(c Config) GetWarp {
-	return GetWarp{Get: c.Get}
+	return c.Get
 }
 
-// NewGetWarpWithApp 函数使用App创建getwarp
+// NewGetWarpWithApp 函数使用App创建getwarp。
 func NewGetWarpWithApp(app *App) GetWarp {
-	return GetWarp{
-		Get: func(key string) interface{} {
-			return app.Get(key)
-		},
+	return func(key string) interface{} {
+		return app.Get(key)
 	}
 }
 
+// NewGetWarpWithObject 函数使用map或创建getwarp。
+func NewGetWarpWithObject(obj interface{}) GetWarp {
+	return func(key string) interface{} {
+		return Get(obj, key)
+	}
+}
+
+// GetInterface 方法获取interface类型的配置值。
+func (fn GetWarp) GetInterface(key string) interface{} {
+	return fn(key)
+}
+
 // GetBool 方法获取bool类型的配置值。
-func (c GetWarp) GetBool(key string, vals ...bool) bool {
-	return GetBool(c.Get(key))
+func (fn GetWarp) GetBool(key string, vals ...bool) bool {
+	return GetBool(fn(key))
 }
 
 // GetInt 方法获取int类型的配置值。
-func (c GetWarp) GetInt(key string, vals ...int) int {
-	num := GetInt(c.Get(key))
+func (fn GetWarp) GetInt(key string, vals ...int) int {
+	num := GetInt(fn(key))
 	if num != 0 {
 		return num
 	}
@@ -347,8 +444,8 @@ func (c GetWarp) GetInt(key string, vals ...int) int {
 }
 
 // GetUint 方法取获取uint类型的配置值。
-func (c GetWarp) GetUint(key string, vals ...uint) uint {
-	num := GetUint(c.Get(key))
+func (fn GetWarp) GetUint(key string, vals ...uint) uint {
+	num := GetUint(fn(key))
 	if num != 0 {
 		return num
 	}
@@ -361,8 +458,8 @@ func (c GetWarp) GetUint(key string, vals ...uint) uint {
 }
 
 // GetInt64 方法int64类型的配置值。
-func (c GetWarp) GetInt64(key string, vals ...int64) int64 {
-	num := GetInt64(c.Get(key))
+func (fn GetWarp) GetInt64(key string, vals ...int64) int64 {
+	num := GetInt64(fn(key))
 	if num != 0 {
 		return num
 	}
@@ -375,8 +472,8 @@ func (c GetWarp) GetInt64(key string, vals ...int64) int64 {
 }
 
 // GetUint64 方法取获取uint64类型的配置值。
-func (c GetWarp) GetUint64(key string, vals ...uint64) uint64 {
-	num := GetUint64(c.Get(key))
+func (fn GetWarp) GetUint64(key string, vals ...uint64) uint64 {
+	num := GetUint64(fn(key))
 	if num != 0 {
 		return num
 	}
@@ -389,8 +486,8 @@ func (c GetWarp) GetUint64(key string, vals ...uint64) uint64 {
 }
 
 // GetFloat32 方法取获取float32类型的配置值。
-func (c GetWarp) GetFloat32(key string, vals ...float32) float32 {
-	num := GetFloat32(c.Get(key))
+func (fn GetWarp) GetFloat32(key string, vals ...float32) float32 {
+	num := GetFloat32(fn(key))
 	if num != 0 {
 		return num
 	}
@@ -403,8 +500,8 @@ func (c GetWarp) GetFloat32(key string, vals ...float32) float32 {
 }
 
 // GetFloat64 方法取获取float64类型的配置值。
-func (c GetWarp) GetFloat64(key string, vals ...float64) float64 {
-	num := GetFloat64(c.Get(key))
+func (fn GetWarp) GetFloat64(key string, vals ...float64) float64 {
+	num := GetFloat64(fn(key))
 	if num != 0 {
 		return num
 	}
@@ -417,8 +514,8 @@ func (c GetWarp) GetFloat64(key string, vals ...float64) float64 {
 }
 
 // GetString 方法获取一个字符串，如果字符串为空返回其他默认非空字符串，
-func (c GetWarp) GetString(key string, vals ...string) string {
-	str := GetString(c.Get(key))
+func (fn GetWarp) GetString(key string, vals ...string) string {
+	str := GetString(fn(key))
 	if str != "" {
 		return str
 	}
@@ -431,8 +528,8 @@ func (c GetWarp) GetString(key string, vals ...string) string {
 }
 
 // GetBytes 方法获取[]byte类型的配置值，如果是字符串类型会转换成[]byte。
-func (c GetWarp) GetBytes(key string) []byte {
-	val := c.Get(key)
+func (fn GetWarp) GetBytes(key string) []byte {
+	val := fn(key)
 	body, ok := val.([]byte)
 	if ok {
 		return body
@@ -447,6 +544,49 @@ func (c GetWarp) GetBytes(key string) []byte {
 }
 
 // GetStrings 方法获取[]string值
-func (c GetWarp) GetStrings(key string) []string {
-	return GetArrayString(c.Get(key))
+func (fn GetWarp) GetStrings(key string) []string {
+	return GetArrayString(fn(key))
+}
+
+// Errors 实现多个error组合。
+type Errors struct {
+	errs []error
+}
+
+// NewErrors 创建Errors对象。
+func NewErrors() *Errors {
+	return &Errors{}
+}
+
+// HandleError 实现处理多个错误，如果非空则保存错误。
+func (err *Errors) HandleError(errs ...error) {
+	for _, e := range errs {
+		if e != nil {
+			err.errs = append(err.errs, e)
+		}
+	}
+}
+
+// Error 方法实现error接口，返回错误描述。
+func (err *Errors) Error() string {
+	switch len(err.errs) {
+	case 0:
+		return ""
+	case 1:
+		return err.errs[0].Error()
+	default:
+		return fmt.Sprint(err.errs)
+	}
+}
+
+// GetError 方法返回错误，如果没有保存的错误则返回空。
+func (err *Errors) GetError() error {
+	switch len(err.errs) {
+	case 0:
+		return nil
+	case 1:
+		return err.errs[0]
+	default:
+		return err
+	}
 }

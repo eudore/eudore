@@ -52,7 +52,7 @@ type (
 		tags []string
 		vals []string
 		// 校验函数
-		check ValidateStringFunc
+		check func(string) bool
 		// 正则捕获名称和函数
 		// names		[]string
 		// find		RouterFindFunc
@@ -153,19 +153,6 @@ func (r *RouterCoreFull) Match(method, path string, params Params) HandlerFuncs 
 	return r.node404.handlers
 }
 
-// Create a 405 response radixNode.
-//
-// 创建一个405响应的radixNode。
-func newFullNode405(args string, h HandlerFunc) *fullNode {
-	newNode := &fullNode{
-		Wchildren: &fullNode{
-			handlers: HandlerFuncs{h},
-		},
-	}
-	newNode.Wchildren.SetTags(strings.Split(args, " "))
-	return newNode
-}
-
 // 创建一个Radix树Node，会根据当前路由设置不同的节点类型和名称。
 //
 // '*'前缀为通配符节点，':'前缀为参数节点，其他未常量节点,如果通配符和参数结点后带有符号'|'则为校验结点。
@@ -209,17 +196,12 @@ func newFullNode(path string) *fullNode {
 // Load the checksum function by name.
 //
 // 根据名称加载校验函数。
-func loadCheckFunc(path string) (string, ValidateStringFunc) {
-	// invalid path
-	// 无效路径
-	if len(path) == 0 || (path[0] != ':' && path[0] != '*') {
-		return "", nil
-	}
+func loadCheckFunc(path string) (string, func(string) bool) {
 	path = path[1:]
 	// Intercept parameter name and check function name
 	// 截取参数名称和校验函数名称
 	name, fname := split2byte(path, '|')
-	if len(name) == 0 {
+	if name == "" || fname == "" {
 		return "", nil
 	}
 
@@ -282,8 +264,8 @@ func (r *fullNode) InsertNode(path string, nextNode *fullNode) *fullNode {
 		// Set the wildcard Node data.
 		// 设置通配符Node数据。
 		r.Wchildren = nextNode
-	default:
-		panic("Undefined radix node type from router full.")
+		// default:
+		// 	panic("Undefined radix node type from router full.")
 	}
 	return nextNode
 }
@@ -318,9 +300,6 @@ func (r *fullNode) InsertNodeConst(path string, nextNode *fullNode) *fullNode {
 //
 // 给当前Node设置tags
 func (r *fullNode) SetTags(args []string) {
-	if len(args) == 0 {
-		return
-	}
 	r.tags = make([]string, len(args))
 	r.vals = make([]string, len(args))
 	// The first parameter name defaults to route

@@ -31,6 +31,11 @@ func main() {
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.WriteString("any path: /" + ctx.GetParam("path") + "\n")
 	})
+	app.GetFunc("", func(ctx eudore.Context) {
+		ctx.WriteString("root request: path is /")
+	})
+	app.AddHandler("404", "", eudore.HandlerRouter404)
+	app.AddHandler("405", "", eudore.HandlerRouter405)
 
 	// 请求测试
 	client := httptest.NewClient(app)
@@ -44,6 +49,5 @@ func main() {
 	client.Stop(0)
 
 	// 启动server
-	app.Listen(":8088")
 	app.Run()
 }

@@ -6,7 +6,6 @@ package main
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 	"os"
 	"time"
 )
@@ -32,9 +31,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	httptest.NewClient(app).Stop(0)
 	app.Set("keys.config", filepath)
 	app.Set("keys.help", true)
-	app.Listen(":8088")
 	app.Run()
 }

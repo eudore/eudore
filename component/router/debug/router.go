@@ -8,13 +8,13 @@ import (
 type (
 	// RouterCoreDebug 定义debug路由器。
 	RouterCoreDebug struct {
-		eudore.RouterCore `json:"-" xml:"-" set:"-"`
+		eudore.RouterCore `json:"-" xml:"-" alias:"-"`
 		Methods           []string `json:"methods"`
 		Paths             []string `json:"paths"`
 	}
 	// RouterDebugCore 定义debug路由器核心。
 	RouterDebugCore struct {
-		eudore.RouterCore `json:"-" set:"-"`
+		eudore.RouterCore `json:"-" alias:"-"`
 	}
 )
 

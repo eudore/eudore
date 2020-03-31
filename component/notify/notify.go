@@ -128,7 +128,7 @@ func (n *Notify) Run() error {
 		}
 	}(n)
 
-	return eudore.ErrEudoreIgnoreInit
+	return eudore.ErrEudoreInitIgnore
 }
 
 // WatchAll 方法添加一个文件或目录，如果/结尾的目录会递归监听子目录。

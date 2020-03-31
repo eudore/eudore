@@ -14,45 +14,50 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
 	app.PostFunc("/file/data/:path", postFile)
-	app.Listen(":8088")
+
+	client := httptest.NewClient(app)
+	client.NewRequest("POST", "/file/data/content.text").WithBodyFormValue("name", "my name").WithBodyFormFile("file", "contextBindForm.go", "contextBindForm file content").Do()
+	for client.Next() {
+		app.Error(client.Error())
+	}
+
 	app.Run()
 }
 
 type (
 	postFileRequest struct {
-		File *multipart.FileHeader `set:"file"`
+		Name string                `alias:"name" json:"name"`
+		File *multipart.FileHeader `alias:"file"`
 		// 如果上传多个文件，使用下面一行File定义，同时读取多个表单文件,表达多值一样。
-		// File	[]*multipart.FileHeader	`set:"file"`
+		// File	[]*multipart.FileHeader	`alias:"file"`
 	}
 )
 
 // 上传文件
-func postFile(ctx eudore.Context) {
+func postFile(ctx eudore.Context) (err error) {
 	// 读取表达文件
 	var file postFileRequest
 	ctx.Bind(&file)
 
-	// 创建接入文件，没有检查目录存在
-	newfile, err := os.Create("/tmp/eudore/" + ctx.GetParam("path"))
-	if err != nil {
-		ctx.Fatal(err)
-		return
-	}
-	defer newfile.Close()
+	ctx.Debugf("name: %s", ctx.FormValue("name"))
+	ctx.Debugf("%#v", file)
 
 	// 读取文件
 	upfile, err := file.File.Open()
 	if err != nil {
-		ctx.Fatal(err)
-		return
+		return err
 	}
 	defer upfile.Close()
 
+	// 创建接入文件，没有检查目录存在
+	newfile, err := os.Create("/tmp/eudore/" + ctx.GetParam("path"))
+	if err != nil {
+		return err
+	}
+	defer newfile.Close()
+
 	// 文件写入
 	_, err = io.Copy(newfile, upfile)
-	if err != nil {
-		ctx.Fatal(err)
-	}
+	return
 }

@@ -44,8 +44,6 @@ func main() {
 	client.NewRequest("GET", "/set").Do()
 	// 如果第二次get还是nil，是httptest库还未正确处理cookie，请使用阅览器测试。
 	client.NewRequest("GET", "/get").Do()
-	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }

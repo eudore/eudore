@@ -4,11 +4,12 @@ import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
 	"net"
+	"time"
 )
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
+	httptest.NewClient(app).Stop(3 * time.Second)
 
 	// 方式1: net.Listen获得net.Listener然后启动server。
 	ln, err := net.Listen("tcp", ":8086")

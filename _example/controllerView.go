@@ -18,24 +18,27 @@ import (
 func main() {
 	app := eudore.NewCore()
 	// 支持渲染模板
-	app.Renderer = eudore.NewHTMLRenderWithTemplate(app.Renderer, nil)
+	app.Renderer = eudore.NewRenderHTMLWithTemplate(app.Renderer, nil)
 	app.AddController(new(myUserController))
+	app.AddController(new(myUser2controller))
 
 	// 请求测试
 	client := httptest.NewClient(app)
 	// 请求必须是Accept: text/html 这样才会渲染模板
 	client.NewRequest("GET", "/myuser/").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/myuser/").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
+	client.NewRequest("GET", "/myuser/name").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }
 
 type myUserController struct {
+	eudore.ControllerView
+}
+type myUser2controller struct {
 	eudore.ControllerView
 }
 
@@ -46,8 +49,15 @@ func (ctl *myUserController) Get() {
 func (*myUserController) GetInfoByIdName() {}
 func (*myUserController) GetIndex()        {}
 func (*myUserController) GetContent()      {}
+func (ctl *myUserController) GetName() {
+	ctl.WriteString("myUserController")
+}
 
-func (ctl *myUserController) Release() (err error) {
+func (ctl *myUserController) Release(ctx eudore.Context) (err error) {
 	ctl.Data["method"] = ctl.Method()
-	return ctl.ControllerView.Release()
+	return ctl.ControllerView.Release(ctx)
+}
+
+func (ctl *myUser2controller) Hello() interface{} {
+	return "hello"
 }

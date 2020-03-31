@@ -8,8 +8,14 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
+	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
 	app.AddMiddleware(middleware.NewRecoverFunc())
-	app.Listen(":8088")
+	app.AnyFunc("/*", func(eudore.Context) {
+		panic("test error")
+	})
+
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/").Do()
+
 	app.Run()
 }

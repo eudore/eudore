@@ -1,4 +1,4 @@
-package test
+package eudore_test
 
 import (
 	"fmt"
@@ -53,8 +53,8 @@ func runCheck(hs eudore.HandlerFuncs, ctx *Context) {
 	}
 }
 
-func TestRadixRouter(*testing.T) {
-	tree := eudore.NewRouterRadix()
+func TestRadixRouter2(*testing.T) {
+	tree := eudore.NewRouterCoreRadix()
 	tree.HandleFunc(newNodeData("/api/v1/node/"))
 	tree.HandleFunc(newNodeData("/api/v1/:list/11"))
 	tree.HandleFunc(newNodeData("/api/v1/:list/22"))
@@ -85,7 +85,7 @@ func TestRadixRouter(*testing.T) {
 }
 
 func TestRadixPath1(*testing.T) {
-	tree := eudore.NewRouterRadix()
+	tree := eudore.NewRouterCoreRadix()
 	tree.HandleFunc(newNodeData("/"))
 	ctx := &Context{}
 	tree.HandleFunc("404", "", eudore.HandlerFuncs{echoRoute("404")})
@@ -96,7 +96,7 @@ func TestRadixPath1(*testing.T) {
 }
 
 func TestRadixPath2(*testing.T) {
-	tree := eudore.NewRouterRadix()
+	tree := eudore.NewRouterCoreRadix()
 	tree.HandleFunc(newNodeData("/authorizations"))
 	tree.HandleFunc(newNodeData("/authorizations/:id"))
 	ctx := &Context{}
@@ -107,8 +107,8 @@ func TestRadixPath2(*testing.T) {
 	runCheck(tree.Match("11", "/", ctx), ctx)
 }
 
-func TestFullRouter(*testing.T) {
-	tree := eudore.NewRouterFull()
+func TestFullRouter2(*testing.T) {
+	tree := eudore.NewRouterCoreFull()
 	tree.HandleFunc(newNodeData("/"))
 	tree.HandleFunc(newNodeData("/*"))
 	tree.HandleFunc(newNodeData("/:id|^[a-z]*$"))

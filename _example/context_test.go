@@ -1,0 +1,75 @@
+package eudore_test
+
+import (
+	"context"
+	"errors"
+	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/component/httptest"
+	"net/http"
+	"testing"
+)
+
+func TestContext2(t *testing.T) {
+	app := eudore.NewCore()
+	app.AnyFunc("/ctx", func(ctx eudore.Context) {
+		ctx.WithContext(context.WithValue(ctx.Context(), "num", 66666))
+		ctx.Debug("context:", ctx.Context())
+	})
+
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/ctx").Do()
+	client.NewRequest("GET", "/err").Do()
+
+	app.Run()
+}
+
+type noReadRequest struct{}
+
+func (noReadRequest) Read([]byte) (int, error) {
+	return 0, errors.New("test disable read")
+}
+func (noReadRequest) Close() error {
+	return nil
+}
+
+type noWriteResponse struct {
+	eudore.ResponseWriter
+}
+
+func (noWriteResponse) Write([]byte) (int, error) {
+	return 0, errors.New("test disable write")
+}
+
+func (noWriteResponse) Push(target string, opts *http.PushOptions) error {
+	return errors.New("test error no push")
+}
+
+func TestReadWriteError2(t *testing.T) {
+	app := eudore.NewCore()
+	app.AnyFunc("/r", func(ctx eudore.Context) {
+		req := ctx.Request()
+		req = req.WithContext(ctx.Context())
+		req.Body = &noReadRequest{}
+		ctx.SetRequest(req)
+
+		ctx.Body()
+
+		var data map[string]interface{}
+		ctx.Bind(&data)
+	})
+	app.AnyFunc("/w", func(ctx eudore.Context) {
+		ctx.Push("/index", nil)
+		ctx.SetResponse(&noWriteResponse{ctx.Response()})
+
+		ctx.Write([]byte("wirte byte"))
+		ctx.WriteString("wirte string")
+		ctx.Push("/index", nil)
+	})
+
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/w").Do().Out()
+	client.NewRequest("PUT", "/r").WithHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationForm).Do()
+	client.NewRequest("PUT", "/r").WithBodyFormValue("name", "eudore").Do()
+
+	app.Run()
+}

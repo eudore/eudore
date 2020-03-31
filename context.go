@@ -126,11 +126,6 @@ type (
 	}
 )
 
-// Convert nil to type *ContextBase, detect ContextBase object to implement Context interface
-//
-// 将nil强制类型转换成*ContextBase，检测ContextBase对象实现Context接口
-var _ Context = (*ContextBase)(nil)
-
 // NewContextBase 创建ContextBase对象，实现Context接口。
 func NewContextBase(app *App) *ContextBase {
 	return &ContextBase{
@@ -436,12 +431,15 @@ func (ctx *ContextBase) parseForm() error {
 		return nil
 	}
 	_, params, err := mime.ParseMediaType(ctx.GetHeader(HeaderContentType))
+	if params == nil || params["boundary"] == "" {
+		err = errors.New("content-type Header parse boundary is empty")
+	}
 	if err != nil {
 		ctx.logReset(4).WithField(ParamCaller, "Context.Form...").WithField("check", "request content-type header: "+ctx.ContentType()).Error(err)
 		return err
 	}
 
-	f, err := multipart.NewReader(ctx, params["boundary"]).ReadForm(defaultMaxMemory)
+	f, err := multipart.NewReader(ctx, params["boundary"]).ReadForm(DefaultBodyMaxMemory)
 	if f != nil {
 		ctx.RequestReader.MultipartForm = f
 	}
@@ -555,7 +553,7 @@ func (ctx *ContextBase) Fatal(args ...interface{}) {
 	}
 	msg := fmt.Sprintln(args...)
 	ctx.err = msg[:len(msg)-1]
-	ctx.logReset(3).Fatal(ctx.err)
+	ctx.logReset(3).Error(ctx.err)
 	ctx.logFatal()
 }
 
@@ -584,7 +582,7 @@ func (ctx *ContextBase) Errorf(format string, args ...interface{}) {
 // 注意：如果err中存在敏感信息会被写入到响应中。
 func (ctx *ContextBase) Fatalf(format string, args ...interface{}) {
 	ctx.err = fmt.Sprintf(format, args...)
-	ctx.logReset(3).Fatal(ctx.err)
+	ctx.logReset(3).Errorf(ctx.err)
 	ctx.logFatal()
 }
 
@@ -649,7 +647,7 @@ func (ctx *ContextBase) Logger() Logout {
 func (e *entryContextBase) Fatal(args ...interface{}) {
 	msg := fmt.Sprintln(args...)
 	e.Context.err = msg[:len(msg)-1]
-	e.Logout.Fatal(msg)
+	e.Logout.Error(msg)
 	e.Context.logFatal()
 
 }
@@ -657,7 +655,7 @@ func (e *entryContextBase) Fatal(args ...interface{}) {
 // Fatalf 方法重写Context的Fatalf方法，不执行panic，http返回500和请求id。
 func (e *entryContextBase) Fatalf(format string, args ...interface{}) {
 	e.Context.err = fmt.Sprintf(format, args...)
-	e.Logout.Fatal(e.Context.err)
+	e.Logout.Error(e.Context.err)
 	e.Context.logFatal()
 }
 

@@ -12,8 +12,12 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
 	app.GetFunc("/eudore/debug/vars", expvar.Expvar)
-	app.Listen(":8088")
+
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/eudore/debug/vars").WithHeaderValue(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do().OutBody()
+	for client.Next() {
+		app.Error(client.Error())
+	}
 	app.Run()
 }

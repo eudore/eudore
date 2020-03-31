@@ -26,7 +26,6 @@ func main() {
 	httptest.NewClient(app).Stop(0)
 	app.AddController(new(ramBaseController))
 
-	app.Listen(":8088")
 	app.Run()
 }
 

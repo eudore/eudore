@@ -20,10 +20,14 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
 	show.RoutesInject(app.Group("/eudore/debug"))
 	show.RegisterObject("app", app.App)
 
-	app.Listen(":8088")
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/eudore/debug/show/").Do().OutBody()
+	client.NewRequest("GET", "/eudore/debug/show/app/config").Do().OutBody()
+	for client.Next() {
+		app.Error(client.Error())
+	}
 	app.Run()
 }

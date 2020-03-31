@@ -24,7 +24,11 @@ type (
 		*http.Request
 		json      interface{}
 		formValue map[string][]string
-		formFile  map[string][]string
+		formFile  map[string][]fileContent
+	}
+	fileContent struct {
+		Name string
+		io.Reader
 	}
 )
 
@@ -153,8 +157,8 @@ func (r *RequestReaderTest) WithBodyJSONValue(key string, val interface{}, args 
 	return r
 }
 
-// WithBodyFromValue 方法使用Form表单，添加一条键值数据。
-func (r *RequestReaderTest) WithBodyFromValue(key, val string, args ...string) *RequestReaderTest {
+// WithBodyFormValue 方法使用Form表单，添加一条键值数据。
+func (r *RequestReaderTest) WithBodyFormValue(key, val string, args ...string) *RequestReaderTest {
 	if r.formValue == nil {
 		r.formValue = make(map[string][]string)
 	}
@@ -167,8 +171,8 @@ func (r *RequestReaderTest) WithBodyFromValue(key, val string, args ...string) *
 	return r
 }
 
-// WithBodyFromValues 方法使用Form表单，添加多条键值数据。
-func (r *RequestReaderTest) WithBodyFromValues(data map[string][]string) *RequestReaderTest {
+// WithBodyFormValues 方法使用Form表单，添加多条键值数据。
+func (r *RequestReaderTest) WithBodyFormValues(data map[string][]string) *RequestReaderTest {
 	if r.formValue == nil {
 		r.formValue = make(map[string][]string)
 	}
@@ -178,17 +182,35 @@ func (r *RequestReaderTest) WithBodyFromValues(data map[string][]string) *Reques
 	return r
 }
 
-// WithBodyFromFile 方法设置请求body Form的文件，值为实际文件路径
-func (r *RequestReaderTest) WithBodyFromFile(key, val string, args ...string) *RequestReaderTest {
+// WithBodyFormFile 方法使用Form表单，添加一个文件名称和内容。
+func (r *RequestReaderTest) WithBodyFormFile(key, name string, val interface{}) *RequestReaderTest {
 	if r.formFile == nil {
-		r.formFile = make(map[string][]string)
+		r.formFile = make(map[string][]fileContent)
 	}
-	r.formFile[key] = append(r.formFile[key], val)
 
-	args = initSliceSrting(args)
-	for i := 0; i < len(args); i += 2 {
-		r.formFile[args[i]] = append(r.formFile[args[i]], args[i+1])
+	body, err := transbody(val)
+	if err != nil {
+		r.Error(err)
+		return r
 	}
+
+	r.formFile[key] = append(r.formFile[key], fileContent{name, body})
+	return r
+}
+
+// WithBodyFormLocalFile 方法设置请求body Form的文件，值为实际文件路径
+func (r *RequestReaderTest) WithBodyFormLocalFile(key, name, path string) *RequestReaderTest {
+	if r.formFile == nil {
+		r.formFile = make(map[string][]fileContent)
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		r.Error(err)
+		return r
+	}
+
+	r.formFile[key] = append(r.formFile[key], fileContent{name, file})
 	return r
 }
 
@@ -231,13 +253,11 @@ func (r *RequestReaderTest) Do() *ResponseWriterTest {
 			}
 			for key, vals := range r.formFile {
 				for _, val := range vals {
-					file, err := os.Open(val)
-					if err != nil {
-						r.Error(err)
-					} else {
-						part, _ := w.CreateFormFile(key, file.Name())
-						io.Copy(part, file)
-						file.Close()
+					part, _ := w.CreateFormFile(key, val.Name)
+					io.Copy(part, val)
+					cr, ok := val.Reader.(io.Closer)
+					if ok {
+						cr.Close()
 					}
 				}
 			}

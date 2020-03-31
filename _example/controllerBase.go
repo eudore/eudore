@@ -11,9 +11,16 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
 	app.AddController(new(myBaseController))
-	app.Listen(":8088")
+
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/index").Do()
+	client.NewRequest("GET", "/info/22").Do()
+	client.NewRequest("POST", "/").Do()
+	for client.Next() {
+		app.Error(client.Error())
+	}
+
 	app.Run()
 }
 
@@ -29,4 +36,13 @@ func (*myBaseController) Get() interface{} {
 }
 func (ctl *myBaseController) GetInfoById() interface{} {
 	return ctl.GetParam("id")
+}
+
+func (ctl *myBaseController) Help(ctx eudore.Context) {}
+
+func (*myBaseController) ControllerRoute() map[string]string {
+	return map[string]string{
+		// 修改Path方法的路由注册
+		"Help": "",
+	}
 }

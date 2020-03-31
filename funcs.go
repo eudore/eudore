@@ -19,10 +19,8 @@ import (
 	// etcd "github.com/coreos/etcd/client"
 )
 
-// 保存全局函数
-var (
-	GlobalConfigReadFunc = make(map[string]ConfigReadFunc)
-)
+// GlobalConfigReadFunc 保存全部配置读取函数。
+var GlobalConfigReadFunc = make(map[string]ConfigReadFunc)
 
 func init() {
 	// ConfigReadFunc
@@ -111,18 +109,7 @@ func ConfigParseEnvs(c Config) error {
 //
 // 默认会加载OS mod,如果是docker环境下使用docker模式。
 func ConfigParseMods(c Config) error {
-	mod, ok := c.Get("enable").([]string)
-	if !ok {
-		modi, ok := c.Get("enable").([]interface{})
-		if ok {
-			mod = make([]string, len(modi))
-			for i, s := range modi {
-				mod[i] = fmt.Sprint(s)
-			}
-		} else {
-			return nil
-		}
-	}
+	mod := GetArrayString(c.Get("enable"))
 	mod = append([]string{getOS()}, mod...)
 	configPrint(c, "config load mods: ", mod)
 	for _, i := range mod {
@@ -183,7 +170,6 @@ func ConfigReadHTTP(path string) (string, []byte, error) {
 	}
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
-	fmt.Println(resp.Header.Get(HeaderContentType))
 	var typ string
 	switch resp.Header.Get(HeaderContentType) {
 	case MimeApplicationJSON, MimeApplicationJSONUtf8:
@@ -192,30 +178,6 @@ func ConfigReadHTTP(path string) (string, []byte, error) {
 		typ = "xml"
 	}
 	return typ, data, err
-}
-
-// InitSignal 函数定义初始化系统信号。
-func InitSignal(app *Eudore) error {
-	if runtime.GOOS == "windows" || GetStringBool(os.Getenv(EnvEudoreDisableSignal)) {
-		return nil
-	}
-
-	const strsignal = "signal"
-	// Register signal
-	app.RegisterSignal(syscall.Signal(0x2), func(app *Eudore) error {
-		app.WithField(strsignal, 2).Info("eudore received SIGINT, eudore shutting down HTTP server.")
-		return app.Shutdown()
-	})
-	app.RegisterSignal(syscall.Signal(0xc), func(app *Eudore) error {
-		app.WithField(strsignal, 12).Info("eudore received SIGUSR2, eudore restarting HTTP server.")
-		return app.Restart()
-	})
-	app.RegisterSignal(syscall.Signal(0xf), func(app *Eudore) error {
-		app.WithField(strsignal, 15).Info("eudore received SIGTERM, eudore shutting down HTTP server.")
-		return app.Shutdown()
-	})
-
-	return nil
 }
 
 // InitConfig 函数定义解析配置。
@@ -233,32 +195,43 @@ func InitWorkdir(app *Eudore) error {
 	return nil
 }
 
-// InitLoggerStd 初始化日志组件。
-func InitLoggerStd(app *Eudore) error {
-	initlog, ok := app.Logger.(LoggerInitHandler)
+// InitSignal 函数定义初始化系统信号。
+func InitSignal(app *Eudore) error {
+	if runtime.GOOS == "windows" || GetStringBool(os.Getenv(EnvEudoreDisableSignal)) {
+		return nil
+	}
+
+	const strsignal = "signal"
+	// Register signal
+	app.RegisterSignal(syscall.Signal(0xc), func() error {
+		app.WithField(strsignal, 12).Info("eudore received SIGUSR2, eudore restarting HTTP server.")
+		return app.Restart()
+	})
+	app.RegisterSignal(syscall.Signal(0xf), func() error {
+		app.WithField(strsignal, 15).Info("eudore received SIGTERM, eudore shutting down HTTP server.")
+		return app.Shutdown()
+	})
+
+	return nil
+}
+
+// InitLogger 初始化日志组件。
+func InitLogger(app *Eudore) error {
+	initlog, ok := app.Logger.(loggerInitHandler)
 	if !ok {
 		return nil
 	}
 
 	// 创建LoggerStd
 	key := GetDefaultString(app.Config.Get("keys.logger"), "component.logger")
-	log, err := NewLoggerStd(app.Config.Get(key))
-	if err != nil {
-		return err
-	}
-
-	// 设置Logger
-	app.Logger = log
+	app.Logger = NewLoggerStd(app.Config.Get(key))
 	initlog.NextHandler(app.Logger)
 	return nil
 }
 
-// InitStart 函数启动Eudore Server。
-func InitStart(app *Eudore) error {
-	// 更新context func，设置server处理者。
-	if fn, ok := app.Config.Get("keys.context").(PoolGetFunc); ok {
-		app.ContextPool.New = fn
-	}
+// InitServer 函数启动配置并启动服务。
+func InitServer(app *Eudore) error {
+	// 设置server处理者。
 	if h, ok := app.Config.Get("keys.handler").(http.Handler); ok {
 		app.Server.SetHandler(h)
 	} else {
@@ -270,17 +243,15 @@ func InitStart(app *Eudore) error {
 	})
 
 	// 监听全部配置
-	lns, err := newServerListens(app.Config.Get("listeners"))
-	if err != nil {
-		return err
-	}
+	var lns []ServerListenConfig
+	ConvertTo(app.Config.Get("listeners"), &lns)
 	for i := range lns {
 		ln, err := lns[i].Listen()
 		if err != nil {
 			app.Error(err)
 			continue
 		}
-		app.AddListener(ln)
+		app.Serve(ln)
 	}
 	return nil
 }

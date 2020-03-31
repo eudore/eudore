@@ -12,7 +12,6 @@ ENV_KEY=value go run configArgs.go --keys.help=true
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 )
 
 func main() {
@@ -21,7 +20,5 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	httptest.NewClient(app).Stop(0)
-	app.Listen(":8088")
 	app.Run()
 }

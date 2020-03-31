@@ -7,7 +7,6 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
 	app.GetFunc("/*", func(ctx eudore.Context) {
 		ctx.Push("/css/1.css", nil)
 		ctx.Push("/css/2.css", nil)
@@ -30,6 +29,11 @@ push test
 		ctx.WriteString("*{}")
 	})
 
-	app.ListenTLS(":8088", "", "")
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/").Do().CheckStatus(200).Out()
+	for client.Next() {
+		app.Error(client.Error())
+	}
+
 	app.Run()
 }

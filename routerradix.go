@@ -153,19 +153,6 @@ func (r *RouterCoreRadix) Match(method, path string, params Params) HandlerFuncs
 	return r.node404.handlers
 }
 
-// Create a 405 response radixNode.
-//
-// 创建一个405响应的radixNode。
-func newRadixNode405(args string, h HandlerFunc) *radixNode {
-	newNode := &radixNode{
-		Wchildren: &radixNode{
-			handlers: HandlerFuncs{h},
-		},
-	}
-	newNode.Wchildren.SetTags(strings.Split(args, " "))
-	return newNode
-}
-
 // Create a Radix tree Node that will set different node types based on the current route.
 //
 // '*' prefix is a wildcard node, ':' prefix is a parameter node, and other non-constant nodes.
@@ -246,9 +233,12 @@ func (r *radixNode) InsertNode(path string, nextNode *radixNode) *radixNode {
 		}
 		r.Pchildren = append(r.Pchildren, nextNode)
 	case radixNodeKindWildcard:
+		if r.Wchildren != nil {
+			return r.Wchildren
+		}
 		r.Wchildren = nextNode
-	default:
-		panic("Undefined radix node type")
+		// default:
+		// 	panic("Undefined radix node type from router radix.")
 	}
 	return nextNode
 }
@@ -257,9 +247,6 @@ func (r *radixNode) InsertNode(path string, nextNode *radixNode) *radixNode {
 //
 // 给当前Node设置tags
 func (r *radixNode) SetTags(args []string) {
-	if len(args) == 0 {
-		return
-	}
 	r.tags = make([]string, len(args))
 	r.vals = make([]string, len(args))
 	// The first parameter name defaults to route

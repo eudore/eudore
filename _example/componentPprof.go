@@ -14,9 +14,10 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
 	pprof.RoutesInject(app.Group("/eudore/debug"))
 
-	app.Listen(":8088")
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/eudore/debug/pprof/goroutine?debug=1").Do().OutBody()
+
 	app.Run()
 }

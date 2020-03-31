@@ -36,17 +36,26 @@ type ResponseWriter interface {
 */
 
 import (
+	"time"
+
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
 )
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteHeader(201)
 		ctx.WriteString("host: " + ctx.Host())
+
+		// 等待
+		ctx.Response().Flush()
+		time.Sleep(1 * time.Second)
+		ctx.WriteString("end")
 	})
-	app.Listen(":8088")
+
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/").Do().Out()
+
 	app.Run()
 }

@@ -15,9 +15,9 @@ import (
 )
 
 type conf struct {
-	Keys   map[string]interface{} `set:"keys"`
-	Enable []string               `set:"enable"`
-	Mods   map[string]*conf       `set:"mods"`
+	Keys   map[string]interface{} `alias:"keys"`
+	Enable []string               `alias:"enable"`
+	Mods   map[string]*conf       `alias:"mods"`
 }
 
 var configfilepath = "example.json"

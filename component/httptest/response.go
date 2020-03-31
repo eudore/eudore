@@ -151,11 +151,6 @@ func (rw *ResponseWriterTest) Hijack() (net.Conn, error) {
 	return nil, ErrResponseWriterTestNotSupportHijack
 }
 
-// Push 方法实现http2 push操作，改方法始终为空操作。
-func (rw *ResponseWriterTest) Push(string, *http.PushOptions) error {
-	return nil
-}
-
 // Size 方法返回写入的body的长度。
 func (rw *ResponseWriterTest) Size() int {
 	return rw.Body.Len()
@@ -226,14 +221,14 @@ func (rw *ResponseWriterTest) Out() *ResponseWriterTest {
 
 // OutStatus 方法输出状态码。
 func (rw *ResponseWriterTest) OutStatus() *ResponseWriterTest {
-	rw.Client.Printf("httptest request %s %s status: %d", rw.Request.Method, rw.Request.RequestURI, rw.Code)
+	rw.Client.Printf("httptest request %s %s status: %d\n", rw.Request.Method, rw.Request.RequestURI, rw.Code)
 	return rw
 }
 
 // OutHeader 方法输出全部header。
 func (rw *ResponseWriterTest) OutHeader() *ResponseWriterTest {
 	var b bytes.Buffer
-	b.WriteString(fmt.Sprintf("httptest request %s %s status: %d", rw.Request.Method, rw.Request.RequestURI, rw.Code))
+	b.WriteString(fmt.Sprintf("httptest request %s %s status: %d\n", rw.Request.Method, rw.Request.RequestURI, rw.Code))
 	for k, v := range rw.HeaderMap {
 		b.WriteString(fmt.Sprintf("\n%s: %s", k, v))
 	}
@@ -243,6 +238,6 @@ func (rw *ResponseWriterTest) OutHeader() *ResponseWriterTest {
 
 // OutBody 方法输出body字符串信息。
 func (rw *ResponseWriterTest) OutBody() *ResponseWriterTest {
-	rw.Client.Printf("httptest request %s %s body: %s", rw.Request.Method, rw.Request.RequestURI, rw.Body.String())
+	rw.Client.Printf("httptest request %s %s body: %s\n", rw.Request.Method, rw.Request.RequestURI, rw.Body.String())
 	return rw
 }

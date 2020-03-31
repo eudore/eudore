@@ -33,6 +33,5 @@ func main() {
 	client.NewRequest("GET", "/api/v2/11").Do()
 	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }

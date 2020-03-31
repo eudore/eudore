@@ -10,23 +10,24 @@ import (
 )
 
 type (
-	// ValidateStringFunc 函数由RouterFull使用，检测字符串规则。
-	ValidateStringFunc func(string) bool
 	// Validater 接口定义验证器。
 	Validater interface {
 		RegisterValidations(string, ...interface{})
 		Validate(interface{}) error
 		ValidateVar(interface{}, string) error
 	}
-	// validateFace 接口定义对象自己验证的方法。
-	validateFace interface {
+	// validateInterface 接口定义对象自己验证的方法。
+	validateInterface interface {
 		Validate() error
 	}
 	validaterBase struct {
-		ValidateMutex    sync.RWMutex
-		ValidateTypes    map[reflect.Type]validateBaseFields
-		ValidateFuncs    map[string]map[reflect.Type]interface{}
-		ValidateNewFuncs map[string]map[reflect.Type]interface{}
+		sync.RWMutex
+		// 结构体类型 - 验证信息
+		ValidateTypes map[reflect.Type]validateBaseFields
+		// 验证规则 - 验证类型 - 验证函数
+		ValidateFuncs map[string]map[reflect.Type]reflect.Value
+		// 验证规则 - 验证生成函数
+		ValidateNewFuncs map[string][]interface{}
 	}
 	validateBaseFields []validateBaseField
 	validateBaseField  struct {
@@ -38,10 +39,6 @@ type (
 )
 
 var (
-	typeBool         = reflect.TypeOf((*bool)(nil)).Elem()
-	typeString       = reflect.TypeOf((*string)(nil)).Elem()
-	typeInterface    = reflect.TypeOf((*interface{})(nil)).Elem()
-	typeValidateFace = reflect.TypeOf((*validateFace)(nil)).Elem()
 	// DefaultValidater 定义默认的验证器
 	DefaultValidater = NewvalidaterBase()
 	// DefaultRouterValidater 为RouterFull提供生成ValidateStringFunc功能,需要实现interface{GetValidateStringFunc(string) ValidateStringFunc}接口。
@@ -49,7 +46,7 @@ var (
 )
 
 func init() {
-	RegisterValidations("nonzero", validateNozeroInt, validateNozeroString, validateNozeroInterface)
+	RegisterValidations("nozero", validateNozeroInt, validateNozeroString, validateNozeroInterface)
 	RegisterValidations("isnum", validateIsnumString)
 	RegisterValidations("min", validateNewMinInt, validateNewMinString)
 	RegisterValidations("max", validateNewMaxInt, validateNewMaxString)
@@ -73,9 +70,9 @@ func ValidateVar(i interface{}, tag string) error {
 }
 
 // GetValidateStringFunc 函数获得一个ValidateStringFunc对象。
-func GetValidateStringFunc(name string) ValidateStringFunc {
+func GetValidateStringFunc(name string) func(string) bool {
 	v, ok := DefaultRouterValidater.(interface {
-		GetValidateStringFunc(string) ValidateStringFunc
+		GetValidateStringFunc(string) func(string) bool
 	})
 	if ok {
 		return v.GetValidateStringFunc(name)
@@ -86,10 +83,9 @@ func GetValidateStringFunc(name string) ValidateStringFunc {
 // NewvalidaterBase 函数创建一个默认的Validater。
 func NewvalidaterBase() Validater {
 	return &validaterBase{
-		ValidateMutex:    sync.RWMutex{},
 		ValidateTypes:    make(map[reflect.Type]validateBaseFields),
-		ValidateFuncs:    make(map[string]map[reflect.Type]interface{}),
-		ValidateNewFuncs: make(map[string]map[reflect.Type]interface{}),
+		ValidateFuncs:    make(map[string]map[reflect.Type]reflect.Value),
+		ValidateNewFuncs: make(map[string][]interface{}),
 	}
 }
 
@@ -114,21 +110,17 @@ func (v *validaterBase) registerValidateFunc(name string, fn interface{}) {
 	// ValidateFunc
 	if iType.Out(0) == typeBool {
 		if v.ValidateFuncs[name] == nil {
-			v.ValidateFuncs[name] = make(map[reflect.Type]interface{})
+			v.ValidateFuncs[name] = make(map[reflect.Type]reflect.Value)
 		}
-		v.ValidateFuncs[name][iType.In(0)] = fn
+		v.ValidateFuncs[name][iType.In(0)] = reflect.ValueOf(fn)
 	}
 
 	// ValidateNewFunc
-	if iType.In(0) == typeString && (checkValidateFunc(iType.Out(0)) || iType.Out(0) == typeInterface) {
-		if v.ValidateNewFuncs[name] == nil {
-			v.ValidateNewFuncs[name] = make(map[reflect.Type]interface{})
-		}
-		if iType.Out(0) == typeInterface {
-			v.ValidateNewFuncs[name][iType.Out(0)] = fn
-		} else {
-			v.ValidateNewFuncs[name][iType.Out(0).In(0)] = fn
-		}
+	if iType.In(0) != typeString {
+		return
+	}
+	if iType.Out(0) == typeInterface || checkValidateFunc(iType.Out(0)) {
+		v.ValidateNewFuncs[name] = append(v.ValidateNewFuncs[name], fn)
 	}
 }
 
@@ -147,20 +139,16 @@ func checkValidateFunc(iType reflect.Type) bool {
 
 func (v *validaterBase) Validate(i interface{}) error {
 	// 检测接口
-	vf, ok := i.(validateFace)
+	vf, ok := i.(validateInterface)
 	if ok {
 		return vf.Validate()
 	}
 
-	iValue := reflect.ValueOf(i)
-	for iValue.Type().Kind() == reflect.Ptr || iValue.Type().Kind() == reflect.Interface {
-		iValue = iValue.Elem()
-	}
-	iType := iValue.Type()
-	if iType.Kind() != reflect.Struct {
+	iValue := reflect.Indirect(reflect.ValueOf(i))
+	if iValue.Kind() != reflect.Struct {
 		return nil
 	}
-	vfs, err := v.ParseValidateFields(iType)
+	vfs, err := v.ParseValidateFields(iValue.Type())
 	if err != nil {
 		return err
 	}
@@ -170,7 +158,14 @@ func (v *validaterBase) Validate(i interface{}) error {
 		field := iValue.Field(i.Index)
 		// 调用Validater接口
 		if i.IsImple {
-			field.Interface().(Validater).Validate(i)
+			if field.IsNil() {
+				return fmt.Errorf(i.Format, "field is nil")
+			}
+			err := field.Interface().(validateInterface).Validate()
+			if err != nil {
+				return fmt.Errorf(i.Format, err)
+			}
+			continue
 		}
 		// 反射调用Validater检测函数
 		out := i.Value.Call([]reflect.Value{field})
@@ -182,30 +177,42 @@ func (v *validaterBase) Validate(i interface{}) error {
 }
 
 func (v *validaterBase) ParseValidateFields(iType reflect.Type) (validateBaseFields, error) {
-	v.ValidateMutex.RLock()
+	v.RLock()
 	vfs, ok := v.ValidateTypes[iType]
-	v.ValidateMutex.RUnlock()
+	v.RUnlock()
 	if ok {
 		return vfs, nil
 	}
 
-	v.ValidateMutex.Lock()
-	defer v.ValidateMutex.Unlock()
+	v.Lock()
+	defer v.Unlock()
 	for i := 0; i < iType.NumField(); i++ {
 		field := iType.Field(i)
 		tags := field.Tag.Get("validate")
+		isImple := field.Type.Implements(typeValidateInterface)
+
+		if isImple && tags != "-" {
+			vfs = append(vfs, validateBaseField{
+				Index:   i,
+				IsImple: isImple,
+				Format:  fmt.Sprintf("validate %s.%s field '%s' type is '%s', check Validate method error: %%v", iType.PkgPath(), iType.Name(), field.Name, field.Type),
+			})
+			continue
+		}
+
 		for _, tag := range strings.Split(tags, ",") {
+			if tag == "" {
+				continue
+			}
 			fn := v.GetValidateFunc(tag, field.Type)
-			if fn == nil {
+			if !fn.IsValid() {
 				return nil, fmt.Errorf("validate %s.%s field %s not create rule %s", iType.PkgPath(), iType.Name(), field.Name, tag)
 			}
-			vf := validateBaseField{
-				Index:   i,
-				Value:   reflect.ValueOf(fn),
-				IsImple: field.Type.Implements(typeValidateFace),
-			}
-			vf.Format = fmt.Sprintf("validate %s.%s field %s check %%#v rule %s fatal", iType.PkgPath(), iType.Name(), field.Name, tag)
-			vfs = append(vfs, vf)
+			vfs = append(vfs, validateBaseField{
+				Index:  i,
+				Value:  fn,
+				Format: fmt.Sprintf("validate %s.%s field %s check %%#v rule %s fatal", iType.PkgPath(), iType.Name(), field.Name, tag),
+			})
 		}
 	}
 	v.ValidateTypes[iType] = vfs
@@ -215,40 +222,32 @@ func (v *validaterBase) ParseValidateFields(iType reflect.Type) (validateBaseFie
 func (v *validaterBase) ValidateVar(i interface{}, tag string) error {
 	iType := reflect.TypeOf(i)
 	fn := v.GetValidateFunc(tag, iType)
-	if fn == nil {
+	if !fn.IsValid() {
 		return fmt.Errorf("validate variable %s %#v not create rule %s", iType.Kind(), i, tag)
 	}
-	fValue := reflect.ValueOf(fn)
-	out := fValue.Call([]reflect.Value{reflect.ValueOf(i)})
-	if fValue.Type().Out(0) == typeBool {
-		if !out[0].Bool() {
-			return fmt.Errorf("validate variable %s %#v check rule %s fatal", iType.Kind(), i, tag)
-		}
-	} else {
-		if !out[0].IsNil() {
-			return fmt.Errorf("validate variable %s %#v check rule %s fatal, return error: %v", iType.Kind(), i, tag, out[0].Interface())
+	out := fn.Call([]reflect.Value{reflect.ValueOf(i)})
+	if !out[0].Bool() {
+		return fmt.Errorf("validate variable %s %#v check rule %s fatal", iType.Kind(), i, tag)
+	}
+	return nil
+}
+
+func (v *validaterBase) GetValidateStringFunc(name string) func(string) bool {
+	rfn := v.GetValidateFunc(name, typeString)
+	if rfn.IsValid() {
+		switch fn := rfn.Interface().(type) {
+		case func(string) bool:
+			return fn
+		case func(interface{}) bool:
+			return func(str string) bool {
+				return fn(str)
+			}
 		}
 	}
 	return nil
 }
 
-func (v *validaterBase) GetValidateStringFunc(name string) ValidateStringFunc {
-	rfn := v.GetValidateFunc(name, typeString)
-	switch fn := rfn.(type) {
-	case func(string) bool:
-		return fn
-	case ValidateStringFunc:
-		return fn
-	case func(interface{}) bool:
-		return func(str string) bool {
-			return fn(str)
-		}
-	default:
-		return nil
-	}
-}
-
-func (v *validaterBase) GetValidateFunc(name string, iType reflect.Type) interface{} {
+func (v *validaterBase) GetValidateFunc(name string, iType reflect.Type) reflect.Value {
 	fns, ok := v.ValidateFuncs[name]
 	if ok {
 		fn, ok := fns[iType]
@@ -261,40 +260,40 @@ func (v *validaterBase) GetValidateFunc(name string, iType reflect.Type) interfa
 		}
 	}
 	pos := strings.IndexByte(name, ':')
-	if pos != -1 {
-		fType, fn := v.GetValidateNewFunc(name[:pos], name[pos+1:], iType)
-		fmt.Println(name, fn, fType)
-		if fn != nil && (fType == iType || fType == typeInterface) {
-			if v.ValidateFuncs[name] == nil {
-				v.ValidateFuncs[name] = make(map[reflect.Type]interface{})
-			}
-			v.ValidateFuncs[name][fType] = fn
-			return fn
-		}
+	if pos == -1 {
+		return reflect.ValueOf(nil)
 	}
-	return nil
+	fn := v.GetValidateNewFunc(name[:pos], name[pos+1:], iType)
+	if fn.IsValid() {
+		return fn
+	}
+	return v.GetValidateNewFunc(name[:pos], name[pos+1:], typeInterface)
 }
 
-func (v *validaterBase) GetValidateNewFunc(name, args string, iType reflect.Type) (reflect.Type, interface{}) {
+func (v *validaterBase) GetValidateNewFunc(name, args string, iType reflect.Type) reflect.Value {
 	fns, ok := v.ValidateNewFuncs[name]
 	if !ok {
-		return nil, nil
+		return reflect.ValueOf(nil)
 	}
-	fn, ok := fns[iType]
-	if !ok {
-		fn, ok = fns[typeInterface]
+	vargs := []reflect.Value{reflect.ValueOf(args)}
+	for _, fn := range fns {
+		newfn := reflect.Indirect(reflect.ValueOf(fn).Call(vargs)[0])
+		if newfn.Type() == typeInterface {
+			newfn = newfn.Elem()
+		}
+		if !newfn.IsValid() {
+			continue
+		}
+		if checkValidateFunc(newfn.Type()) && newfn.Type().In(0) == iType {
+			name = name + ":" + args
+			if v.ValidateFuncs[name] == nil {
+				v.ValidateFuncs[name] = make(map[reflect.Type]reflect.Value)
+			}
+			v.ValidateFuncs[name][iType] = newfn
+			return newfn
+		}
 	}
-	if !ok {
-		return nil, nil
-	}
-	rfn := reflect.ValueOf(fn).Call([]reflect.Value{reflect.ValueOf(args)})[0]
-	if rfn.IsNil() {
-		return nil, nil
-	}
-	if rfn.Type() == typeInterface {
-		rfn = rfn.Elem()
-	}
-	return rfn.Type().In(0), rfn.Interface()
+	return reflect.ValueOf(nil)
 }
 
 // validateNozeroString 函数验证一个字符串是否为空
@@ -377,7 +376,7 @@ func validateNewMaxString(str string) interface{} {
 // validateNewLenString 函数生一个验证字符串长度'>','<','='指定长度的验证函数。
 func validateNewLenString(str string) interface{} {
 	var flag string
-	for _, i := range []string{">", "<", "", "="} {
+	for _, i := range []string{">", "<", "=", ""} {
 		if strings.HasPrefix(str, i) {
 			flag = i
 			str = str[len(i):]
@@ -399,13 +398,11 @@ func validateNewLenString(str string) interface{} {
 		return func(s string) bool {
 			return len(s) < intlength
 		}
-	case "", "=":
+	default:
 		return func(s string) bool {
 			return len(s) == intlength
 		}
 	}
-	return nil
-
 }
 
 // validateNewRegexpString 函数生成一个正则检测字符串的验证函数。

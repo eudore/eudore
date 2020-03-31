@@ -8,12 +8,19 @@ import (
 
 func main() {
 	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
 	// map保存用户密码
+	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
 	app.AddMiddleware(middleware.NewBasicAuthFunc("", map[string]string{
 		"user": "pw",
 	}))
+	app.AnyFunc("/*", eudore.HandlerEmpty)
 
-	app.Listen(":8088")
+	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/1").Do()
+	client.NewRequest("GET", "/2").WithHeaderValue("Authorization", "Basic dXNlcjpwdw==").Do()
+	for client.Next() {
+		app.Error(client.Error())
+	}
+
 	app.Run()
 }

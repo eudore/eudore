@@ -6,20 +6,17 @@ package main
 
 import (
 	"fmt"
-
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
 )
 
 func main() {
-	// 该注册无效，被github.com/eudore/eudore.NewExtendHandlerInterfaceRender(interface {})覆盖
-	eudore.DefaultHandlerExtend.RegisterHandlerExtend("", func(i interface{}) eudore.HandlerFunc {
+	app := eudore.NewCore()
+	app.AddHandlerExtend("", func(i interface{}) eudore.HandlerFunc {
 		return func(ctx eudore.Context) {
 			ctx.WriteString("我是全局扩展 " + fmt.Sprint(i))
 		}
 	})
-
-	app := eudore.NewCore()
 	app.GetFunc("/*", 1)
 
 	// Group创建新的Router拥有独立的处理扩展，有效使用。 链式逆向匹配类型
@@ -39,6 +36,5 @@ func main() {
 	}
 	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }

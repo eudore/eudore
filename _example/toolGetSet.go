@@ -12,21 +12,21 @@ import (
 
 type (
 	setConfig struct {
-		Name       string         `set:"name" json:"name"`
-		Num        int            `set:"num" json:"num"`
-		Now        time.Time      `set:"now" json:"now"`
-		Fields     []gField       `set:"fields" json:"fields"`
-		ConfigAuth gConfigAuth    `set:"configauth" json:"configauth"`
-		Map        map[int]string `set:"map" json:"map"`
+		Name       string         `alias:"name" json:"name"`
+		Num        int            `alias:"num" json:"num"`
+		Now        time.Time      `alias:"now" json:"now"`
+		Fields     []gField       `alias:"fields" json:"fields"`
+		ConfigAuth gConfigAuth    `alias:"configauth" json:"configauth"`
+		Map        map[int]string `alias:"map" json:"map"`
 	}
 	gField struct {
-		Index int    `set:"index" json:"index"`
-		Name  string `set:"name" json:"name"`
+		Index int    `alias:"index" json:"index"`
+		Name  string `alias:"name" json:"name"`
 	}
 	gConfigAuth struct {
-		Path   string `set:"path" json:"path"`
-		Key    string `set:"key" json:"key"`
-		Secret string `set:"secret" json:"secret"`
+		Path   string `alias:"path" json:"path"`
+		Key    string `alias:"key" json:"key"`
+		Secret string `alias:"secret" json:"secret"`
 	}
 )
 

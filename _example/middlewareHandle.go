@@ -29,15 +29,13 @@ func main() {
 		ctx.Next()
 		ctx.WriteString("\npost")
 	})
-	app.AnyFunc("/*", "hello")
+	app.AnyFunc("/*", eudore.HandlerEmpty)
 
 	client := httptest.NewClient(app)
 	client.NewRequest("PUT", "/1").Do().Out()
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
-	app.Listen(":8088")
 	app.Run()
 }

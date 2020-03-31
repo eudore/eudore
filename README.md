@@ -1,7 +1,7 @@
 # Eudore
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/eudore/eudore)](https://goreportcard.com/report/github.com/eudore/eudore)
-[![GoDoc](https://godoc.org/github.com/eudore/eudore?status.svg)](https://godoc.org/github.com/eudore/eudore)
+[![GoDoc](https://godoc.org/github.com/eudore/eudore?status.svg)](https://pkg.go.dev/github.com/eudore/eudore?tab=doc)
 
 eudore是轻而全的http框架，高度解耦而轻，功能丰富而全。
 

@@ -15,15 +15,15 @@ import (
 
 type (
 	eudoreConfig struct {
-		Bool   bool        `set:"bool"`
-		Int    int         `set:"int"`
-		String string      `set:"string"`
-		User   user        `set:"user"`
-		Struct interface{} `set:"struct"`
+		Bool   bool        `alias:"bool"`
+		Int    int         `alias:"int"`
+		String string      `alias:"string"`
+		User   user        `alias:"user"`
+		Struct interface{} `alias:"struct"`
 	}
 	user struct {
-		Name string `set:"name"`
-		Mail string `set:"mail"`
+		Name string `alias:"name"`
+		Mail string `alias:"mail"`
 	}
 )
 
