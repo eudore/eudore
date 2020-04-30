@@ -21,80 +21,81 @@ import (
 	"time"
 )
 
-type (
-	// Server 定义启动http服务的对象。
-	Server interface {
-		SetHandler(http.Handler)
-		Serve(net.Listener) error
-		Shutdown(context.Context) error
-	}
-	// ServerStdConfig 定义ServerStd使用的配置
-	ServerStdConfig struct {
-		// ReadTimeout is the maximum duration for reading the entire
-		// request, including the body.
-		//
-		// Because ReadTimeout does not let Handlers make per-request
-		// decisions on each request body's acceptable deadline or
-		// upload rate, most users will prefer to use
-		// ReadHeaderTimeout. It is valid to use them both.
-		ReadTimeout time.Duration `alias:"readtimeout" description:"Http server read timeout."`
+// Server 定义启动http服务的对象。
+type Server interface {
+	SetHandler(http.Handler)
+	Serve(net.Listener) error
+	Shutdown(context.Context) error
+}
 
-		// ReadHeaderTimeout is the amount of time allowed to read
-		// request headers. The connection's read deadline is reset
-		// after reading the headers and the Handler can decide what
-		// is considered too slow for the body.
-		ReadHeaderTimeout time.Duration // Go 1.8
+// ServerStdConfig 定义ServerStd使用的配置
+type ServerStdConfig struct {
+	// ReadTimeout is the maximum duration for reading the entire request, including the body.
+	//
+	// Because ReadTimeout does not let Handlers make per-request decisions on each request body's acceptable deadline or upload rate,
+	// most users will prefer to use ReadHeaderTimeout. It is valid to use them both.
+	ReadTimeout time.Duration `alias:"readtimeout" description:"Http server read timeout."`
 
-		// WriteTimeout is the maximum duration before timing out
-		// writes of the response. It is reset whenever a new
-		// request's header is read. Like ReadTimeout, it does not
-		// let Handlers make decisions on a per-request basis.
-		WriteTimeout time.Duration `alias:"writetimeout" description:"Http server write timeout."`
+	// ReadHeaderTimeout is the amount of time allowed to read request headers.
+	// The connection's read deadline is reset after reading the headers and the Handler can decide what is considered too slow for the body.
+	ReadHeaderTimeout time.Duration `alias:"readheaderTimeout"` // Go 1.8
 
-		// IdleTimeout is the maximum amount of time to wait for the
-		// next request when keep-alives are enabled. If IdleTimeout
-		// is zero, the value of ReadTimeout is used. If both are
-		// zero, ReadHeaderTimeout is used.
-		IdleTimeout time.Duration // Go 1.8
+	// WriteTimeout is the maximum duration before timing out writes of the response.
+	// It is reset whenever a new request's header is read.
+	// Like ReadTimeout, it does not let Handlers make decisions on a per-request basis.
+	WriteTimeout time.Duration `alias:"writetimeout" description:"Http server write timeout."`
 
-		// MaxHeaderBytes controls the maximum number of bytes the
-		// server will read parsing the request header's keys and
-		// values, including the request line. It does not limit the
-		// size of the request body.
-		// If zero, DefaultMaxHeaderBytes is used.
-		MaxHeaderBytes int
-	}
-	// ServerStd 定义使用net/http启动http server。
-	ServerStd struct {
-		*http.Server
-		Print func(...interface{}) `alias:"print"`
-	}
-	// netHTTPLog 实现一个函数处理log.Logger的内容，用于捕捉net/http.Server输出的error内容。
-	netHTTPLog struct {
-		print func(...interface{})
-	}
+	// IdleTimeout is the maximum amount of time to wait for the next request when keep-alives are enabled.
+	// If IdleTimeout is zero, the value of ReadTimeout is used. If both are zero, ReadHeaderTimeout is used.
+	IdleTimeout time.Duration `alias:"idleTimeout"` // Go 1.8
 
-	// ServerFcgi 定义fastcgi server
-	ServerFcgi struct {
-		http.Handler
-		listeners []net.Listener
-	}
-	// ServerGrace 定义热重启服务。
-	ServerGrace struct {
-		Server
-		listeners []net.Listener
-	}
-	// ServerListenConfig 定义一个通用的端口监听配置。
-	ServerListenConfig struct {
-		Addr      string `alias:"addr" description:"Listen addr."`
-		HTTPS     bool   `alias:"https" description:"Is https."`
-		HTTP2     bool   `alias:"http2" description:"Is http2."`
-		Mutual    bool   `alias:"mutual" description:"Is mutual tls."`
-		Certfile  string `alias:"certfile" description:"Http server cert file."`
-		Keyfile   string `alias:"keyfile" description:"Http server key file."`
-		TrustFile string `alias:"trustfile" description:"Http client ca file."`
-	}
-)
+	// MaxHeaderBytes controls the maximum number of bytes the server will read parsing the request header's keys and values, including the request line.
+	// It does not limit the size of the request body. If zero, DefaultMaxHeaderBytes is used.
+	MaxHeaderBytes int `alias:"maxheaderbytes"`
+
+	// BaseContext optionally specifies a function that returns the base context for incoming requests on this server.
+	// The provided Listener is the specific Listener that's about to start accepting requests.
+	// If BaseContext is nil, the default is context.Background(). If non-nil, it must return a non-nil context.
+	BaseContext func(net.Listener) context.Context `alias:"basecontext"` // Go 1.13
+
+	// ConnContext optionally specifies a function that modifies the context used for a new connection c.
+	// The provided ctx is derived from the base context and has a ServerContextKey value.
+	ConnContext func(context.Context, net.Conn) context.Context `alias:"conncontext"` // Go 1.13
+}
+
+// ServerStd 定义使用net/http启动http server。
+type ServerStd struct {
+	*http.Server
+	Print func(...interface{}) `alias:"print"`
+}
+
+// netHTTPLog 实现一个函数处理log.Logger的内容，用于捕捉net/http.Server输出的error内容。
+type netHTTPLog struct {
+	print func(...interface{})
+}
+
+// ServerFcgi 定义fastcgi server
+type ServerFcgi struct {
+	http.Handler
+	listeners []net.Listener
+}
+
+// ServerGrace 定义热重启服务。
+type ServerGrace struct {
+	Server
+	listeners []net.Listener
+}
+
+// ServerListenConfig 定义一个通用的端口监听配置。
+type ServerListenConfig struct {
+	Addr      string `alias:"addr" description:"Listen addr."`
+	HTTPS     bool   `alias:"https" description:"Is https."`
+	HTTP2     bool   `alias:"http2" description:"Is http2."`
+	Mutual    bool   `alias:"mutual" description:"Is mutual tls."`
+	Certfile  string `alias:"certfile" description:"Http server cert file."`
+	Keyfile   string `alias:"keyfile" description:"Http server key file."`
+	TrustFile string `alias:"trustfile" description:"Http client ca file."`
+}
 
 // NewServerStd 创建一个标准server。
 func NewServerStd(arg interface{}) Server {
@@ -124,7 +125,9 @@ func (srv *ServerStd) Set(key string, value interface{}) error {
 	case ServerStdConfig, *ServerStdConfig:
 		ConvertTo(value, srv.Server)
 	default:
-		return ErrSeterNotSupportField
+		cf := new(ServerStdConfig)
+		Set(cf, key, value)
+		ConvertTo(cf, srv.Server)
 	}
 	return nil
 }
@@ -160,7 +163,7 @@ func (srv *ServerFcgi) Serve(ln net.Listener) error {
 
 // Shutdown 方法关闭fcgi关闭监听。
 func (srv *ServerFcgi) Shutdown(ctx context.Context) error {
-	var errs Errors
+	var errs muliterror
 	for _, ln := range srv.listeners {
 		err := ln.Close()
 		errs.HandleError(err)
@@ -181,7 +184,7 @@ func (srv *ServerGrace) Serve(ln net.Listener) error {
 
 // Shutdown 方法关闭服务，如果context.Context包含AppServerGrace则使用热重启。
 func (srv *ServerGrace) Shutdown(ctx context.Context) error {
-	val := ctx.Value(AppServerGrace)
+	val := ctx.Value(ServerGraceContextKey)
 	if val != nil {
 		err := startNewProcess(srv.listeners)
 		if err != nil {
@@ -189,6 +192,11 @@ func (srv *ServerGrace) Shutdown(ctx context.Context) error {
 		}
 	}
 	return srv.Server.Shutdown(ctx)
+}
+
+// Set 方法传递Set数据。
+func (srv *ServerGrace) Set(key string, value interface{}) error {
+	return Set(srv.Server, key, value)
 }
 
 // startNewProcess 函数启动一个新的服务。
@@ -274,8 +282,9 @@ func ListenWithFD(network, address string) (net.Listener, error) {
 }
 
 func listenWithFD(network, address string) (net.Listener, error) {
+	proaddr := fmt.Sprintf("%s://%s", network, address)
 	for i, str := range strings.Split(os.Getenv(EnvEudoreGracefulAddrs), ",") {
-		if str != address {
+		if str != proaddr {
 			continue
 		}
 		file := os.NewFile(uintptr(i+3), "")
@@ -294,14 +303,10 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 			slc.Addr = ":443"
 		}
 	}
-	ln, err := ListenWithFD("tcp", slc.Addr)
-
-	if err != nil {
-		return nil, err
-	}
 	if !slc.HTTPS {
-		return ln, nil
+		return ListenWithFD("", slc.Addr)
 	}
+
 	// set tls
 	config := &tls.Config{
 		NextProtos:   []string{"http/1.1"},
@@ -311,6 +316,7 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 		config.NextProtos = []string{"h2"}
 	}
 
+	var err error
 	config.Certificates[0], err = loadCertificate(slc.Certfile, slc.Keyfile)
 	if err != nil {
 		return nil, err
@@ -318,14 +324,19 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 
 	// set mutual tls
 	if slc.Mutual {
-		config.ClientAuth = tls.RequireAndVerifyClientCert
-		pool := x509.NewCertPool()
 		data, err := ioutil.ReadFile(slc.TrustFile)
 		if err != nil {
 			return nil, err
 		}
+		pool := x509.NewCertPool()
 		pool.AppendCertsFromPEM(data)
 		config.ClientCAs = pool
+		config.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	ln, err := ListenWithFD("", slc.Addr)
+	if err != nil {
+		return nil, err
 	}
 	return tls.NewListener(ln, config), nil
 }
@@ -355,10 +366,7 @@ func loadCertificate(cret, key string) (tls.Certificate, error) {
 	pool := x509.NewCertPool()
 	pool.AddCert(ca)
 
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
+	priv, _ := rsa.GenerateMultiPrimeKey(rand.Reader, 2, 2048)
 	caByte, err := x509.CreateCertificate(rand.Reader, ca, ca, &priv.PublicKey, priv)
 
 	return tls.Certificate{

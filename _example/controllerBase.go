@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddController(new(myBaseController))
 
 	client := httptest.NewClient(app)
@@ -21,6 +21,7 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }
 

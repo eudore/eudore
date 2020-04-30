@@ -116,11 +116,11 @@ func TestUtilGetString2(t *testing.T) {
 }
 
 func TestUtilGetWarp2(t *testing.T) {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	eudore.NewGetWarp(func(key string) interface{} {
 		return app.Get(key)
 	})
-	eudore.NewGetWarpWithApp(app.App).GetBool("key")
+	eudore.NewGetWarpWithApp(app).GetBool("key")
 	eudore.NewGetWarpWithConfig(app.Config).GetBool("key")
 	eudore.NewGetWarpWithObject(app).GetBool("key")
 

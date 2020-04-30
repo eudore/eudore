@@ -21,7 +21,7 @@ type (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddController(new(myMethodController))
 
 	client := httptest.NewClient(app)
@@ -30,6 +30,7 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }
 

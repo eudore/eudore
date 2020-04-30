@@ -11,13 +11,13 @@ import (
 
 type userRequest struct {
 	Username string `validate:"regexp:^[a-zA-Z]*$"`
-	Name     string `validate:"nonzero"`
+	Name     string `validate:"nozero"`
 	Age      int    `validate:"min:21,max:40"`
 	Password string `validate:"len:>7"`
 }
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.Binder = eudore.NewBinderValidate(app.Binder)
 
 	// 上传文件信息
@@ -34,5 +34,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

@@ -37,12 +37,12 @@ func NewExtendFuncStream(fn func(eudore.Stream)) eudore.HandlerFunc {
 				break
 			}
 		}
-		fn(NewStreamWebsocket(conn, id))
+		fn(NewStreamWebsocketServer(conn, id))
 	}
 }
 
-// NewStreamWebsocket 函数创建一个StreamWebsocket，默认初始读写类型均为1，即ws.OpText。
-func NewStreamWebsocket(conn net.Conn, id string) eudore.Stream {
+// NewStreamWebsocketServer 函数创建一个服务端StreamWebsocket，默认初始读写类型均为1，即ws.OpText。
+func NewStreamWebsocketServer(conn net.Conn, id string) eudore.Stream {
 	return &StreamWebsocket{
 		Conn:      conn,
 		streamid:  id,
@@ -50,6 +50,18 @@ func NewStreamWebsocket(conn net.Conn, id string) eudore.Stream {
 		writeType: 1,
 		reader:    wsutil.NewReader(conn, ws.StateServerSide),
 		writer:    wsutil.NewWriter(conn, ws.StateServerSide, 1),
+	}
+}
+
+// NewStreamWebsocketClient 函数创建一个客户端StreamWebsocket，默认初始读写类型均为1，即ws.OpText。
+func NewStreamWebsocketClient(conn net.Conn, id string) eudore.Stream {
+	return &StreamWebsocket{
+		Conn:      conn,
+		streamid:  id,
+		readType:  1,
+		writeType: 1,
+		reader:    wsutil.NewReader(conn, ws.StateClientSide),
+		writer:    wsutil.NewWriter(conn, ws.StateClientSide, 1),
 	}
 }
 

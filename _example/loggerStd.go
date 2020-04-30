@@ -21,14 +21,12 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
-	// 创建日志
-	app.Logger = eudore.NewLoggerStd(map[string]interface{}{
+	app := eudore.NewApp(eudore.NewLoggerStd(map[string]interface{}{
 		"std":        false,
 		"path":       "",
 		"Level":      "1",
 		"TimeFormat": "Mon Jan 2 15:04:05 -0700 MST 2006",
-	})
+	}))
 
 	app.Debug("debug")
 	app.Info("info")
@@ -38,5 +36,6 @@ func main() {
 	app.Debug("debug")
 	app.Info("info")
 
-	app.Logger.Sync()
+	app.CancelFunc()
+	app.Run()
 }

@@ -24,7 +24,7 @@ type (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/*", func(ctx eudore.Context, req Request) (Response, error) {
 		ctx.Debugf("%#v", req)
 		return Response{200, "Success"}, nil
@@ -36,7 +36,7 @@ func main() {
 		"name": "eudore",
 		"num":  44,
 	}).WithHeaderValue("Accept", " application/json").Do().Out()
-	client.Stop(0)
 
+	app.CancelFunc()
 	app.Run()
 }

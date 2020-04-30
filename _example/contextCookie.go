@@ -28,8 +28,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
+	app := eudore.NewApp()
 	app.AnyFunc("/set", func(ctx eudore.Context) {
 		ctx.SetCookie(&eudore.SetCookie{
 			Name:     "set1",
@@ -54,5 +53,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

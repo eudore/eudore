@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/*", func(eudore.Context, map[string]interface{}) (map[string]interface{}, error) {
 		return map[string]interface{}{
 			"a": 1,
@@ -26,7 +26,7 @@ func main() {
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/").Do().CheckBodyString("map[a:1 b:2]").Out()
 	client.NewRequest("GET", "/").WithHeaderValue("Accept", "application/json").Do().CheckHeader("Content-Type", "application/json; charset=utf-8").CheckBodyString(`{"a":1,"b":2}`).Out()
-	client.Stop(0)
 
+	app.CancelFunc()
 	app.Run()
 }

@@ -21,8 +21,10 @@ done
 # 复制文件
 cp -rf *_test.go $dir/
 cd $dir
-rm -f appCoreNotify_test.go appEudoreDaemon_test.go appEudoreNotify_test.go
+rm -f appNotify_test.go appDaemon_test.go 
 
+export ENV_KEYS_NAME=eudore
+export GODOC=https://golang.org
 # 运行测试
 if [ $# -ne 0 ];then
 	$*

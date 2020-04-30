@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/eudore/eudore"
@@ -17,7 +19,6 @@ import (
 var notifyArgs = []string{
 	fmt.Sprintf("%s=%d", eudore.EnvEudoreIsNotify, 1),
 	fmt.Sprintf("%s=%d", eudore.EnvEudoreDisablePidfile, 1),
-	fmt.Sprintf("%s=%d", eudore.EnvEudoreDisableSignal, 1),
 }
 var startcmd string
 
@@ -29,21 +30,16 @@ func init() {
 	}
 }
 
-// Init 函数是eudpre.ReloadFunc, Eudore初始化内容。
-//
-// 	app.RegisterInit("eudore-notify", 0x00e, notify.Init)
-func Init(app *eudore.Eudore) error {
-	return NewNotify(app.App).Run()
-}
-
 // Notify 定义监听重启对象。
 type Notify struct {
-	app      *eudore.App
-	cmd      *exec.Cmd
-	watcher  *fsnotify.Watcher
-	buildCmd []string
-	startCmd []string
-	watchDir []string
+	sync.Mutex
+	app         *eudore.App
+	watcher     *fsnotify.Watcher
+	buildCmd    []string
+	startCmd    []string
+	watchDir    []string
+	lastBuild   context.CancelFunc
+	lastProcess context.CancelFunc
 }
 
 // NewNotify 函数创建一个Notify对象。
@@ -88,47 +84,93 @@ func (n *Notify) Run() error {
 	if eudore.GetStringBool(os.Getenv(eudore.EnvEudoreIsNotify)) || n == nil {
 		return nil
 	}
+	n.app.Info("notify buildCmd", n.buildCmd)
+	n.app.Info("notify startCmd", n.startCmd)
 	for _, i := range n.watchDir {
 		n.WatchAll(i)
 	}
 
 	n.buildAndRestart()
 
-	go func(n *Notify) {
-		var timer = time.AfterFunc(1000*time.Hour, n.buildAndRestart)
-		defer func() {
-			timer.Stop()
-			if n.cmd != nil {
-				n.cmd.Process.Kill()
-			}
-		}()
-
-		for {
-			select {
-			case event, ok := <-n.watcher.Events:
-				if !ok {
-					break
-				}
-
-				// 监听go文件写入
-				if event.Name[len(event.Name)-3:] == ".go" && event.Op&fsnotify.Write == fsnotify.Write {
-					n.app.Debug("modified file:", event.Name)
-
-					// 等待0.1秒执行更新，防止短时间大量触发
-					timer.Reset(100 * time.Millisecond)
-				}
-			case err, ok := <-n.watcher.Errors:
-				if !ok {
-					break
-				}
-				n.app.Error("notify watcher error:", err)
-			case <-n.app.Done():
-				return
-			}
+	var timer = time.AfterFunc(1000*time.Hour, n.buildAndRestart)
+	defer func() {
+		timer.Stop()
+		if n.lastBuild != nil {
+			n.lastBuild()
 		}
-	}(n)
+		if n.lastProcess != nil {
+			n.lastProcess()
+		}
+	}()
 
-	return eudore.ErrEudoreInitIgnore
+	for {
+		select {
+		case event, ok := <-n.watcher.Events:
+			if !ok {
+				break
+			}
+
+			// 监听go文件写入
+			if event.Name[len(event.Name)-3:] == ".go" && event.Op&fsnotify.Write == fsnotify.Write {
+				n.app.Debug("modified file:", event.Name)
+
+				// 等待0.1秒执行更新，防止短时间大量触发
+				timer.Reset(100 * time.Millisecond)
+			}
+		case err, ok := <-n.watcher.Errors:
+			if !ok {
+				break
+			}
+			n.app.Error("notify watcher error:", err)
+		case <-n.app.Done():
+			return eudore.ErrApplicationStop
+		}
+	}
+}
+
+func (n *Notify) buildAndRestart() {
+	// 取消上传编译
+	n.Lock()
+	if n.lastBuild != nil {
+		n.lastBuild()
+	}
+	ctx, cannel := context.WithCancel(n.app.Context)
+	n.lastBuild = cannel
+	n.Unlock()
+	// 执行编译命令
+	cmd := exec.CommandContext(ctx, startcmd, "-c", strings.Join(n.buildCmd, " "))
+	cmd.Env = os.Environ()
+	body, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("notify build error: \n%s", body)
+		n.app.Errorf("notify build error: %s", body)
+	} else {
+		n.app.Info("notify build success, restart process...")
+		time.Sleep(10 * time.Millisecond)
+		// 重启子进程
+		n.restart()
+	}
+}
+
+func (n *Notify) restart() {
+	// 关闭旧进程
+	n.Lock()
+	if n.lastProcess != nil {
+		n.lastProcess()
+	}
+	ctx, cannel := context.WithCancel(n.app.Context)
+	n.lastProcess = cannel
+	n.Unlock()
+	// 启动新进程
+	cmd := exec.CommandContext(ctx, n.startCmd[0], n.startCmd[1:]...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), notifyArgs...)
+	err := cmd.Start()
+	if err != nil {
+		n.app.Error("notify start error:", err)
+	}
 }
 
 // WatchAll 方法添加一个文件或目录，如果/结尾的目录会递归监听子目录。
@@ -148,38 +190,15 @@ func (n *Notify) watch(path string) {
 	}
 }
 
-func (n *Notify) buildAndRestart() {
-	// 执行编译命令
-	cmd := exec.CommandContext(n.app.Context, startcmd, "-c", strings.Join(n.buildCmd, " "))
-	cmd.Env = os.Environ()
-	body, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("notify build error: \n%s", body)
-		n.app.Errorf("notify build error: %s", body)
-	} else {
-		n.app.Info("notify build success, restart process...")
-		time.Sleep(10 * time.Millisecond)
-		// 重启子进程
-		n.restart()
-	}
-}
-
-func (n *Notify) restart() {
-	// 关闭旧进程
-	if n.cmd != nil {
-		n.cmd.Process.Kill()
-		n.cmd.Process.Wait()
-	}
-
-	// 启动新进程
-	n.cmd = exec.CommandContext(n.app.Context, n.startCmd[0], n.startCmd[1:]...)
-	n.cmd.Stdin = os.Stdin
-	n.cmd.Stdout = os.Stdout
-	n.cmd.Stderr = os.Stderr
-	n.cmd.Env = append(os.Environ(), notifyArgs...)
-	err := n.cmd.Start()
-	if err != nil {
-		n.app.Error("notify start error:", err)
+func listDir(path string, fn func(string)) {
+	files, _ := ioutil.ReadDir(path)
+	for _, f := range files {
+		// 忽略隐藏目录，例如: .git
+		if f.IsDir() && f.Name()[0] != '.' {
+			path := filepath.Join(path, f.Name())
+			fn(path)
+			listDir(path, fn)
+		}
 	}
 }
 
@@ -192,16 +211,4 @@ func getArgs(i interface{}) []string {
 		return strings.Split(strs, " ")
 	}
 	return nil
-}
-
-func listDir(path string, fn func(string)) {
-	files, _ := ioutil.ReadDir(path)
-	for _, f := range files {
-		// 忽略隐藏目录，例如: .git
-		if f.IsDir() && f.Name()[0] != '.' {
-			path := filepath.Join(path, f.Name())
-			fn(path)
-			listDir(path, fn)
-		}
-	}
 }

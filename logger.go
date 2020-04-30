@@ -17,54 +17,57 @@ import (
 	"time"
 )
 
-type (
-	// LoggerLevel 定义日志级别
-	LoggerLevel int32
-	// Fields 定义多个日志属性
-	Fields map[string]interface{}
-	// Logout 日志输出接口
-	Logout interface {
-		Debug(...interface{})
-		Info(...interface{})
-		Warning(...interface{})
-		Error(...interface{})
-		Fatal(...interface{})
-		Debugf(string, ...interface{})
-		Infof(string, ...interface{})
-		Warningf(string, ...interface{})
-		Errorf(string, ...interface{})
-		Fatalf(string, ...interface{})
-		WithField(key string, value interface{}) Logout
-		WithFields(fields Fields) Logout
-	}
-	// Logger 定义日志处理器定义
-	Logger interface {
-		Logout
-		Sync() error
-		SetLevel(LoggerLevel)
-	}
-	// loggerInitHandler 定义初始日志处理器必要接口，使用新日志处理器处理当前记录的全部日志。
-	loggerInitHandler interface {
-		NextHandler(Logger)
-	}
-	// LoggerInit the initial log processor only records the log. After setting the log processor,
-	// it will forward the log of the current record to the new log processor for processing the log generated before the program is initialized.
-	//
-	// LoggerInit 初始日志处理器仅记录日志，再设置日志处理器后，
-	// 会将当前记录的日志交给新日志处理器处理，用于处理程序初始化之前产生的日志。
-	LoggerInit struct {
-		level LoggerLevel
-		mu    sync.Mutex
-		data  []*entryInit
-	}
-	entryInit struct {
-		logger  *LoggerInit
-		Level   LoggerLevel `json:"level"`
-		Fields  Fields      `json:"fields,omitempty"`
-		Time    time.Time   `json:"time"`
-		Message string      `json:"message,omitempty"`
-	}
-)
+// LoggerLevel 定义日志级别
+type LoggerLevel int32
+
+// Fields 定义多个日志属性
+type Fields map[string]interface{}
+
+// Logout 日志输出接口
+type Logout interface {
+	Debug(...interface{})
+	Info(...interface{})
+	Warning(...interface{})
+	Error(...interface{})
+	Fatal(...interface{})
+	Debugf(string, ...interface{})
+	Infof(string, ...interface{})
+	Warningf(string, ...interface{})
+	Errorf(string, ...interface{})
+	Fatalf(string, ...interface{})
+	WithField(key string, value interface{}) Logout
+	WithFields(fields Fields) Logout
+}
+
+// Logger 定义日志处理器定义
+type Logger interface {
+	Logout
+	Sync() error
+	SetLevel(LoggerLevel)
+}
+
+// loggerInitHandler 定义初始日志处理器必要接口，使用新日志处理器处理当前记录的全部日志。
+type loggerInitHandler interface {
+	NextHandler(Logger)
+}
+
+// LoggerInit the initial log processor only records the log. After setting the log processor,
+// it will forward the log of the current record to the new log processor for processing the log generated before the program is initialized.
+//
+// LoggerInit 初始日志处理器仅记录日志，再设置日志处理器后，
+// 会将当前记录的日志交给新日志处理器处理，用于处理程序初始化之前产生的日志。
+type LoggerInit struct {
+	level LoggerLevel
+	mu    sync.Mutex
+	data  []*entryInit
+}
+type entryInit struct {
+	logger  *LoggerInit
+	Level   LoggerLevel `json:"level"`
+	Fields  Fields      `json:"fields,omitempty"`
+	Time    time.Time   `json:"time"`
+	Message string      `json:"message,omitempty"`
+}
 
 // 定义日志级别
 const (
@@ -309,9 +312,6 @@ func (l *LoggerLevel) UnmarshalText(text []byte) error {
 func NewPrintFunc(app *App) func(...interface{}) {
 	var log Logout = app
 	return func(args ...interface{}) {
-		if len(args) == 0 {
-			return
-		}
 		fields, ok := args[0].(Fields)
 		if ok {
 			printLogout(log.WithFields(fields), args[1:])
@@ -330,24 +330,6 @@ func printLogout(log Logout, args []interface{}) {
 		}
 	}
 	log.Info(args...)
-}
-
-// logFormatFileLine 函数获得调用的文件位置。
-//
-// 文件位置会从第一个src后开始截取，处理gopath下文件位置。
-func logFormatFileLine(depth int) (string, int) {
-	_, file, line, ok := runtime.Caller(depth)
-	if !ok {
-		file = "???"
-		line = 1
-	} else {
-		// slash := strings.LastIndex(file, "/")
-		slash := strings.Index(file, "src")
-		if slash >= 0 {
-			file = file[slash+4:]
-		}
-	}
-	return file, line
 }
 
 // logFormatNameFileLine 函数获得调用的文件位置和函数名称。
@@ -396,4 +378,8 @@ func getPanicStakc(depth int) []string {
 		frame, more = frames.Next()
 	}
 	return stack
+}
+
+func printEmpty(...interface{}) {
+	// Do nothing because  not print message.
 }

@@ -38,13 +38,6 @@ type (
 	}
 )
 
-var (
-	// DefaultValidater 定义默认的验证器
-	DefaultValidater = NewvalidaterBase()
-	// DefaultRouterValidater 为RouterFull提供生成ValidateStringFunc功能,需要实现interface{GetValidateStringFunc(string) ValidateStringFunc}接口。
-	DefaultRouterValidater = DefaultValidater
-)
-
 func init() {
 	RegisterValidations("nozero", validateNozeroInt, validateNozeroString, validateNozeroInterface)
 	RegisterValidations("isnum", validateIsnumString)

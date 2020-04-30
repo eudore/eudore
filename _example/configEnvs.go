@@ -15,10 +15,9 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
-	err := app.Parse()
-	if err != nil {
-		panic(err)
-	}
+	app := eudore.NewApp()
+	app.Options(app.Parse())
+
+	app.CancelFunc()
 	app.Run()
 }

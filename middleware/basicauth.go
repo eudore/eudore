@@ -15,15 +15,16 @@ func NewBasicAuthFunc(realm string, names map[string]string) eudore.HandlerFunc 
 	} else {
 		realm = fmt.Sprintf("Basic realm=\"%s\"", realm)
 	}
-	checks := make(map[string]struct{}, len(names))
+	checks := make(map[string]string, len(names))
 	for name, pass := range names {
-		checks[base64.StdEncoding.EncodeToString([]byte(name+":"+pass))] = struct{}{}
+		checks[base64.StdEncoding.EncodeToString([]byte(name+":"+pass))] = name
 	}
 	return func(ctx eudore.Context) {
 		auth := ctx.GetHeader("Authorization")
 		if len(auth) > 5 && auth[:6] == "Basic " {
-			_, ok := checks[auth[6:]]
+			name, ok := checks[auth[6:]]
 			if ok {
+				ctx.SetParam("basicauth", name)
 				return
 			}
 		}

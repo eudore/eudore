@@ -12,8 +12,8 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
-	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
+	app := eudore.NewApp()
+	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 
 	// 创建组路由
 	apiv1 := app.Group("/api/v1")
@@ -37,9 +37,8 @@ func main() {
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
-	// 启动server
+	app.CancelFunc()
 	app.Run()
 }
 

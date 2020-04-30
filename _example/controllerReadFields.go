@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddController(&myFieldsController{
 		Name: "eudore",
 		Num:  10,
@@ -29,6 +29,7 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }
 

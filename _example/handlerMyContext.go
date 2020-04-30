@@ -15,7 +15,7 @@ type MyContext struct {
 }
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddHandlerExtend(func(fn func(MyContext)) eudore.HandlerFunc {
 		return func(ctx eudore.Context) {
 			fn(MyContext{ctx})
@@ -30,8 +30,8 @@ func main() {
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
+	app.CancelFunc()
 	app.Run()
 }
 

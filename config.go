@@ -2,38 +2,42 @@ package eudore
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
+	"runtime"
+	"strings"
 	"sync"
 )
 
-type (
-	// ConfigReadFunc 定义配置数据读取参数。
-	ConfigReadFunc func(string) (string, []byte, error)
-	// ConfigParseFunc 定义配置解析函数。
-	ConfigParseFunc func(Config) error
-	// ConfigParseOption 定义配置解析选项，用于修改配置解析函数。
-	ConfigParseOption func([]ConfigParseFunc) []ConfigParseFunc
-	// Config 定义配置管理，使用配置读写和解析功能。
-	Config interface {
-		Get(string) interface{}
-		Set(string, interface{}) error
-		ParseOption(ConfigParseOption)
-		Parse() error
-	}
-	// ConfigMap 使用map保存配置。
-	ConfigMap struct {
-		Keys  map[string]interface{} `alias:"keys"`
-		Print func(...interface{})   `alias:"print"`
-		funcs []ConfigParseFunc      `alias:"-"`
-		mu    sync.RWMutex           `alias:"-"`
-	}
-	// ConfigEudore 使用结构体或map保存配置，通过反射来读写属性。
-	ConfigEudore struct {
-		Keys  interface{}          `alias:"keys"`
-		Print func(...interface{}) `alias:"print"`
-		funcs []ConfigParseFunc    `alias:"-"`
-		mu    sync.RWMutex         `alias:"-"`
-	}
-)
+// ConfigParseFunc 定义配置解析函数。
+type ConfigParseFunc func(Config) error
+
+// ConfigParseOption 定义配置解析选项，用于修改配置解析函数。
+type ConfigParseOption func([]ConfigParseFunc) []ConfigParseFunc
+
+// Config 定义配置管理，使用配置读写和解析功能。
+type Config interface {
+	Get(string) interface{}
+	Set(string, interface{}) error
+	ParseOption(ConfigParseOption)
+	Parse() error
+}
+
+// ConfigMap 使用map保存配置。
+type ConfigMap struct {
+	Keys  map[string]interface{} `alias:"keys"`
+	Print func(...interface{})   `alias:"print"`
+	funcs []ConfigParseFunc      `alias:"-"`
+	mu    sync.RWMutex           `alias:"-"`
+}
+
+// ConfigEudore 使用结构体或map保存配置，通过反射来读写属性。
+type ConfigEudore struct {
+	Keys  interface{}          `alias:"keys"`
+	Print func(...interface{}) `alias:"print"`
+	funcs []ConfigParseFunc    `alias:"-"`
+	mu    sync.RWMutex         `alias:"-"`
+}
 
 // NewConfigMap 创建一个ConfigMap，如果传入参数为map[string]interface{},则作为初始化数据。
 func NewConfigMap(arg interface{}) Config {
@@ -44,18 +48,9 @@ func NewConfigMap(arg interface{}) Config {
 		keys = make(map[string]interface{})
 	}
 	return &ConfigMap{
-		Keys: keys,
-		Print: func(...interface{}) {
-			// Do nothing because not print message.
-		},
-		funcs: []ConfigParseFunc{
-			ConfigParseRead,
-			ConfigParseConfig,
-			ConfigParseArgs,
-			ConfigParseEnvs,
-			ConfigParseMods,
-			ConfigParseHelp,
-		},
+		Keys:  keys,
+		Print: printEmpty,
+		funcs: ConfigAllParseFunc,
 	}
 }
 
@@ -124,18 +119,9 @@ func NewConfigEudore(i interface{}) Config {
 		i = make(map[string]interface{})
 	}
 	return &ConfigEudore{
-		Keys: i,
-		Print: func(...interface{}) {
-			// Do nothing because not print message.
-		},
-		funcs: []ConfigParseFunc{
-			ConfigParseRead,
-			ConfigParseConfig,
-			ConfigParseArgs,
-			ConfigParseEnvs,
-			ConfigParseMods,
-			ConfigParseHelp,
-		},
+		Keys:  i,
+		Print: printEmpty,
+		funcs: ConfigAllParseFunc,
 	}
 }
 
@@ -194,4 +180,96 @@ func (c *ConfigEudore) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON 实现json.Unmarshaler接口，试json反序列化直接操作保存的数据。
 func (c *ConfigEudore) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &c.Keys)
+}
+
+func configPrint(c Config, args ...interface{}) {
+	c.Set("print", fmt.Sprint(args...))
+}
+
+// ConfigParseJSON 方法解析json文件配置。
+func ConfigParseJSON(c Config) error {
+	configPrint(c, "config read paths: ", c.Get("keys.config"))
+	for _, path := range GetArrayString(c.Get("keys.config")) {
+		file, err := os.Open(path)
+		if err == nil {
+			err = json.NewDecoder(file).Decode(c)
+			file.Close()
+		}
+		if err == nil {
+			configPrint(c, "config load path: ", path)
+			return nil
+		}
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("config load %s error: %s", path, err.Error())
+		}
+	}
+	return nil
+}
+
+// ConfigParseArgs 函数使用参数设置配置，参数使用--为前缀。
+func ConfigParseArgs(c Config) (err error) {
+	for _, str := range os.Args[1:] {
+		if !strings.HasPrefix(str, "--") {
+			continue
+		}
+		configPrint(c, "config set arg: ", str)
+		c.Set(split2byte(str[2:], '='))
+	}
+	return
+}
+
+// ConfigParseEnvs 函数使用环境变量设置配置，环境变量使用'ENV_'为前缀,'_'下划线相当于'.'的作用。
+func ConfigParseEnvs(c Config) error {
+	for _, value := range os.Environ() {
+		if strings.HasPrefix(value, "ENV_") {
+			configPrint(c, "config set env: ", value)
+			k, v := split2byte(value, '=')
+			k = strings.ToLower(strings.Replace(k, "_", ".", -1))[4:]
+			c.Set(k, v)
+		}
+	}
+	return nil
+}
+
+// ConfigParseMods 函数从'enable'项获得使用的模式的数组字符串，从'mods.xxx'加载配置。
+//
+// 默认会加载OS mod,如果是docker环境下使用docker模式。
+func ConfigParseMods(c Config) error {
+	mod := GetArrayString(c.Get("enable"))
+	mod = append([]string{getOS()}, mod...)
+	configPrint(c, "config load mods: ", mod)
+	for _, i := range mod {
+		ConvertTo(c.Get("mods."+i), c.Get(""))
+	}
+	return nil
+}
+
+func getOS() string {
+	// check docker
+	_, err := os.Stat("/.dockerenv")
+	if err == nil || !os.IsNotExist(err) {
+		return "docker"
+	}
+	// 返回默认OS
+	return runtime.GOOS
+}
+
+// ConfigParseWorkdir 函数初始化工作空间，从config获取workdir的值为工作空间，然后切换目录。
+func ConfigParseWorkdir(c Config) error {
+	dir := GetString(c.Get("workdir"))
+	if dir != "" {
+		configPrint(c, "changes working directory to: "+dir)
+		return os.Chdir(dir)
+	}
+	return nil
+}
+
+// ConfigParseHelp 函数测试配置内容，如果存在'keys.help'项会使用JSON标准化输出配置到标准输出。
+func ConfigParseHelp(c Config) error {
+	ok := c.Get("keys.help") != nil
+	if ok {
+		indent, err := json.MarshalIndent(&c, "", "\t")
+		fmt.Println(string(indent), err)
+	}
+	return nil
 }

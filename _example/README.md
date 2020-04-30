@@ -2,21 +2,17 @@
 
 本部分为演示例子目录功能导航,保存eudore、component、middleware三个实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
 
-单元测试执行gotest.sh脚本
+exmaple都默认使用httptest测试，可以注释代码`app.CancelFunc()`不终止程序并添加`app.Listen(":8088")`后使用阅览器访问，单元测试执行gotest.sh脚本,当前测试覆盖率98.4%,剩余热重启、runtime、switch异常无法覆盖。
 
-go version go1.10.1 linux/amd64 coverage: 96.6% of statements
+go version go1.10.1 linux/amd64 coverage: 98.4% of statements
 
 - Application
-	- [Core](appCore.go)
-	- [Core监听代码自动编译重启](appCoreNotify.go)
-	- [Eudore](appEudore.go)
-	- [Eudore使用全局中间件](appEudoreGlobalMiddleware.go)
-	- [Eudore处理信号](appEudoreSignal.go)
-	- [Eudore注册静态文件路由](appEudoreStatic.go)
-	- [Eudore监听代码自动编译重启](appEudoreNotify.go)
-	- [Eudore后台启动](appEudoreDaemon.go)
-	- [Eudore启动命令解析](appEudoreCommand.go)
-	- [自定义app](appExtend.go)
+	- [New](appCore.go)
+	- [后台启动](appEudoreDaemon.go)
+	- [启动命令解析](appEudoreCommand.go)
+	- [监听代码自动编译重启](appEudoreNotify.go)
+	- [静态文件](appStatic.go)
+	- [自定义app添加全局中间件](appExtend.go)
 - Config
 	- [解析命令行参数](configArgs.go)
 	- [解析环境变量](configEnvs.go)
@@ -27,14 +23,18 @@ go version go1.10.1 linux/amd64 coverage: 96.6% of statements
 	- [配置解析选择](configOption.go)
 	- [读取文件配置](configReadFile.go)
 	- [读取http远程配置](configReadHttp.go)
+	- viper Config适配
 - Logger
 	- [LoggerInit](loggerInit.go)
 	- [LoggerStd](loggerStd.go)
+	- logrus Logger适配
 - Server
-	- [使用https](serverHttps.go)
-	- [eudore server启动服务](serverEudore.go)
-	- [fastcgi启动服务](serverFcgi.go)
 	- [服务监听](serverListen.go)
+	- [使用https](serverHttps.go)
+	- [双向https](serverMutualTLS.go)
+	- [eudore server启动服务](serverEudore.go)
+	- [ServerGrace平滑重启](serverGrace.gp)
+	- [fastcgi启动服务](serverFcgi.go)
 - Router
 	- [组路由和中间件](routerGroupAndMiddleware.go)
 	- [路由参数](routerParams.go)
@@ -99,9 +99,10 @@ go version go1.10.1 linux/amd64 coverage: 96.6% of statements
 	- [混合权限控制](ramAll.go)
 	- [自定义ram处理请求](ramHandle.go)
 	- [控制器生成action参数](ramControllerAction.go)
+	- casbin处理逻辑
 - Session
-	- [map保存session](sessionMap.go)
-	- [数据库保存session](sessionSql.go)
+	- [gorilla session](sessionGorilla.go)
+	- [beego session](sessionBeego.go)
 - Websocket
 	- [使用websocket Stream](websocketStream.go)
 	- [使用github.com/gobwas/ws库](websocketGobwas.go)
@@ -112,12 +113,10 @@ go version go1.10.1 linux/amd64 coverage: 96.6% of statements
 	- [基于路径读写对象](toolGetSet.go)
 	- [结构体和变量校验](toolValidate.go)
 - 组件
-	- [pprof](componentPprof.go)
-	- [expvar](componentExpver.go)
-	- [http代理实现](componentProxy.go)
-	- [运行时对象数据显示](componentShow.go)
 	- [httptest组件](componentHttpTest.go)
+	- [pprof](componentPprof.go)
+	- [http代理实现](componentProxy.go)
+	- [运行时对象数据显示](componentLook.go)
+	- 生成对象帮助信息
 	- SRI值自动设置
 	- 自动http2 push
-	- api模拟工具
-	- 生成对象帮助信息

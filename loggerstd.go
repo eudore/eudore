@@ -35,31 +35,31 @@ var (
 	part7 = []byte("}\n")
 )
 
-type (
-	// LoggerStd 标准日志处理实现，将日志输出到标准输出或者文件。
-	LoggerStd struct {
-		LoggerStdConfig
-		out    *bufio.Writer
-		ticker *time.Ticker
-		pool   sync.Pool
-		mu     sync.Mutex
-	}
-	// LoggerStdConfig 定义LoggerStd配置信息。
-	LoggerStdConfig struct {
-		Std        bool        `json:"std" alias:"std"`
-		Path       string      `json:"path" alias:"path"`
-		Level      LoggerLevel `json:"level" alias:"level"`
-		TimeFormat string      `json:"timeformat" alias:"timeformat"`
-	}
-	// 标准日志条目
-	entryStd struct {
-		level   LoggerLevel
-		time    time.Time
-		message string
-		data    []byte
-		logger  *LoggerStd
-	}
-)
+// LoggerStd 标准日志处理实现，将日志输出到标准输出或者文件。
+type LoggerStd struct {
+	LoggerStdConfig
+	out    *bufio.Writer
+	ticker *time.Ticker
+	pool   sync.Pool
+	mu     sync.Mutex
+}
+
+// LoggerStdConfig 定义LoggerStd配置信息。
+type LoggerStdConfig struct {
+	Std        bool        `json:"std" alias:"std"`
+	Path       string      `json:"path" alias:"path"`
+	Level      LoggerLevel `json:"level" alias:"level"`
+	TimeFormat string      `json:"timeformat" alias:"timeformat"`
+}
+
+// 标准日志条目
+type entryStd struct {
+	level   LoggerLevel
+	time    time.Time
+	message string
+	data    []byte
+	logger  *LoggerStd
+}
 
 // NewLoggerStd 创建一个标准日志处理器。
 func NewLoggerStd(arg interface{}) Logger {

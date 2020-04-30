@@ -16,8 +16,9 @@ type (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddController(new(myParamsController))
+	app.CancelFunc()
 	app.Run()
 }
 

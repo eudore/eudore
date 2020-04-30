@@ -7,9 +7,9 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	// map保存用户密码
-	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
+	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware(middleware.NewBasicAuthFunc("", map[string]string{
 		"user": "pw",
 	}))
@@ -22,5 +22,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

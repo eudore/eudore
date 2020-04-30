@@ -2,8 +2,10 @@ package eudore_test
 
 import (
 	"errors"
-	"github.com/eudore/eudore"
+	"os"
 	"testing"
+
+	"github.com/eudore/eudore"
 )
 
 func TestConfigMapPrint2(t *testing.T) {
@@ -19,7 +21,9 @@ func TestConfigMapPrint2(t *testing.T) {
 func TestConfigEudore2(t *testing.T) {
 	// 默认 map[string]interface{}
 	conf := eudore.NewConfigEudore(nil)
+	conf.Set("print", nil)
 	conf.Set("print", t.Log)
+	conf.Set("print", "nil2")
 	t.Log(conf.Set("hh", "aa"))
 	t.Logf("%#v", conf.Get(""))
 
@@ -32,4 +36,24 @@ func TestConfigEudore2(t *testing.T) {
 		}}
 	})
 	conf.Parse()
+}
+
+func TestConfigNoread2(t *testing.T) {
+	conf := eudore.NewConfigEudore(nil)
+	conf.Set("print", t.Log)
+	conf.Set("keys.config", "notfound-file")
+	conf.Parse()
+}
+
+func TestConfigReadError2(t *testing.T) {
+	filename := "testconfig.json"
+	os.OpenFile(filename, os.O_CREATE|os.O_RDONLY, 0644)
+	defer os.Remove(filename)
+
+	app := eudore.NewApp()
+	app.Set("keys.config", filename)
+	app.Set("keys.help", true)
+	app.Options(app.Parse())
+	app.CancelFunc()
+	app.Run()
 }

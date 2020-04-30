@@ -14,72 +14,74 @@ import (
 	"strings"
 )
 
-type (
-	// Router interface needs to implement the router method and the router core two interfaces.
-	//
-	// RouterCore implements route matching details. RouterMethod calls RouterCore to provide methods for external use.
-	//
-	// Do not use the RouterCore method to register routes directly at any time. You should use the Add ... method of RouterMethod.
-	//
-	// Router 接口，需要实现路由器方法、路由器核心两个接口。
-	//
-	// RouterCore实现路由匹配细节，RouterMethod调用RouterCore提供对外使用的方法。
-	//
-	// 任何时候请不要使用RouterCore的方法直接注册路由，应该使用RouterMethod的Add...方法。
-	Router interface {
-		RouterCore
-		RouterMethod
-	}
-	// The RouterCore interface performs registration of the route and matches a request and returns the handler.
-	//
-	// RouterCore mainly implements routing matching related details.
-	//
-	// RouterCore接口，执行路由的注册和匹配一个请求并返回处理者。
-	//
-	// RouterCore主要实现路由匹配相关细节。
-	RouterCore interface {
-		HandleFunc(string, string, HandlerFuncs)
-		Match(string, string, Params) HandlerFuncs
-	}
-	// RouterMethod The default directly registered interface of the route. Set the routing parameters, group routing, middleware, function extensions, controllers and other behaviors.
-	//
-	// RouterMethod 路由默认直接注册的接口，设置路由参数、组路由、中间件、函数扩展、控制器等行为。
-	RouterMethod interface {
-		Group(string) Router
-		GetParam(string) string
-		SetParam(string, string) Router
-		AddHandler(string, string, ...interface{}) error
-		AddController(...Controller) error
-		AddMiddleware(...interface{}) error
-		AddHandlerExtend(...interface{}) error
-		AnyFunc(string, ...interface{})
-		GetFunc(string, ...interface{})
-		PostFunc(string, ...interface{})
-		PutFunc(string, ...interface{})
-		DeleteFunc(string, ...interface{})
-		HeadFunc(string, ...interface{})
-		PatchFunc(string, ...interface{})
-		OptionsFunc(string, ...interface{})
-	}
-	// RouterStd 默认路由器注册实现。
-	//
-	// 需要指定一个路由核心，处理函数扩展者默认为DefaultHandlerExtend。
-	RouterStd struct {
-		RouterCore      `alias:"routercore"`
-		HandlerExtender `alias:"handlerextender"`
-		params          *ParamsArray         `alias:"params"`
-		Middlewares     *trieNode            `alias:"middlewares"`
-		Print           func(...interface{}) `alias:"print"`
-	}
-	// trieNode 存储中间件信息的前缀树。
-	//
-	// 用于内存存储路由器中间件注册信息，并根据注册路由返回对应的中间件。
-	trieNode struct {
-		path   string
-		vals   HandlerFuncs
-		childs []*trieNode
-	}
-)
+// Router interface needs to implement the router method and the router core two interfaces.
+//
+// RouterCore implements route matching details. RouterMethod calls RouterCore to provide methods for external use.
+//
+// Do not use the RouterCore method to register routes directly at any time. You should use the Add ... method of RouterMethod.
+//
+// Router 接口，需要实现路由器方法、路由器核心两个接口。
+//
+// RouterCore实现路由匹配细节，RouterMethod调用RouterCore提供对外使用的方法。
+//
+// 任何时候请不要使用RouterCore的方法直接注册路由，应该使用RouterMethod的Add...方法。
+type Router interface {
+	RouterCore
+	RouterMethod
+}
+
+// The RouterCore interface performs registration of the route and matches a request and returns the handler.
+//
+// RouterCore mainly implements routing matching related details.
+//
+// RouterCore接口，执行路由的注册和匹配一个请求并返回处理者。
+//
+// RouterCore主要实现路由匹配相关细节。
+type RouterCore interface {
+	HandleFunc(string, string, HandlerFuncs)
+	Match(string, string, Params) HandlerFuncs
+}
+
+// RouterMethod The default directly registered interface of the route. Set the routing parameters, group routing, middleware, function extensions, controllers and other behaviors.
+//
+// RouterMethod 路由默认直接注册的接口，设置路由参数、组路由、中间件、函数扩展、控制器等行为。
+type RouterMethod interface {
+	Group(string) Router
+	GetParam(string) string
+	SetParam(string, string) Router
+	AddHandler(string, string, ...interface{}) error
+	AddController(...Controller) error
+	AddMiddleware(...interface{}) error
+	AddHandlerExtend(...interface{}) error
+	AnyFunc(string, ...interface{})
+	GetFunc(string, ...interface{})
+	PostFunc(string, ...interface{})
+	PutFunc(string, ...interface{})
+	DeleteFunc(string, ...interface{})
+	HeadFunc(string, ...interface{})
+	PatchFunc(string, ...interface{})
+	OptionsFunc(string, ...interface{})
+}
+
+// RouterStd 默认路由器注册实现。
+//
+// 需要指定一个路由核心，处理函数扩展者默认为DefaultHandlerExtend。
+type RouterStd struct {
+	RouterCore      `alias:"routercore"`
+	HandlerExtender `alias:"handlerextender"`
+	params          *ParamsArray         `alias:"params"`
+	Middlewares     *trieNode            `alias:"middlewares"`
+	Print           func(...interface{}) `alias:"print"`
+}
+
+// trieNode 存储中间件信息的前缀树。
+//
+// 用于内存存储路由器中间件注册信息，并根据注册路由返回对应的中间件。
+type trieNode struct {
+	path   string
+	vals   HandlerFuncs
+	childs []*trieNode
+}
 
 // HandlerRouter405 函数定义默认405处理
 func HandlerRouter405(ctx Context) {
@@ -106,9 +108,7 @@ func NewRouterStd(core RouterCore) Router {
 		},
 		HandlerExtender: NewHandlerExtendWarp(NewHandlerExtendTree(), DefaultHandlerExtend),
 		Middlewares:     newTrieNode(),
-		Print: func(...interface{}) {
-			// Do nothing because default router not print message.
-		},
+		Print:           printEmpty,
 	}
 }
 
@@ -261,7 +261,7 @@ func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 	handlers = HandlerFuncsCombine(m.Middlewares.Lookup(path), handlers)
 
 	// 处理多方法
-	var errs Errors
+	var errs muliterror
 	for _, i := range strings.Split(method, ",") {
 		if checkMethod(i) {
 			m.RouterCore.HandleFunc(i, fullpath, handlers)
@@ -283,7 +283,7 @@ func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 // RouterStd先调用当前HandlerExtender.NewHandlerFuncs创建多个函数处理者，如果返回空会从上级HandlerExtender创建。
 func (m *RouterStd) newHandlerFuncs(path string, hs []interface{}) (HandlerFuncs, error) {
 	var handlers HandlerFuncs
-	var errs Errors
+	var errs muliterror
 	// 转换处理函数
 	for i, h := range hs {
 		handler := m.HandlerExtender.NewHandlerFuncs(path, h)
@@ -317,7 +317,7 @@ func checkMethod(method string) bool {
 //
 // 如果控制器实现了RoutesInjecter接口，调用控制器自身注入路由。
 func (m *RouterStd) AddController(cs ...Controller) error {
-	var errs Errors
+	var errs muliterror
 	for _, c := range cs {
 		err := c.Inject(c, m)
 		if err != nil {
@@ -383,7 +383,7 @@ func (m *RouterStd) AddHandlerExtend(hs ...interface{}) error {
 		}
 	}
 
-	var errs Errors
+	var errs muliterror
 	for _, h := range hs {
 		err := m.HandlerExtender.RegisterHandlerExtend(path, h)
 		if err != nil {

@@ -25,7 +25,7 @@ func main() {
 	defer os.Remove(tmpfile.Name())
 	tmpfile.Write(content)
 
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.Renderer = eudore.NewRenderHTMLWithTemplate(app.Renderer, nil)
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.SetParam("template", viewpath)
@@ -48,5 +48,6 @@ func main() {
 	client.NewRequest("GET", "/1").WithHeaderValue("Accept", eudore.MimeTextHTML).Do().Out()
 	client.NewRequest("GET", "/1").WithHeaderValue("Accept", eudore.MimeTextPlain).Do().Out()
 
+	app.CancelFunc()
 	app.Run()
 }

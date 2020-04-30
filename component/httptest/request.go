@@ -1,57 +1,80 @@
 package httptest
 
 import (
+	"bufio"
 	"bytes"
+	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 )
 
-type (
-	// RequestReaderTest 实现protocol.RequestReader接口，用于执行测试请求。
-	RequestReaderTest struct {
-		//
-		Client *Client
-		File   string
-		Line   int
-		// data
-		*http.Request
-		json      interface{}
-		formValue map[string][]string
-		formFile  map[string][]fileContent
-	}
-	fileContent struct {
-		Name string
-		io.Reader
-	}
-)
+// RequestReaderTest 实现protocol.RequestReader接口，用于执行测试请求。
+type RequestReaderTest struct {
+	//
+	Client *Client
+	File   string
+	Line   int
+	err    error
+	// data
+	*http.Request
+	websocketHandle func(net.Conn)
+	websocketClient net.Conn
+	websocketServer net.Conn
+	json            interface{}
+	formValue       map[string][]string
+	formFile        map[string][]fileContent
+}
+type fileContent struct {
+	Name string
+	io.Reader
+}
 
 // NewRequestReaderTest 函数创建一个测试http请求。
 func NewRequestReaderTest(client *Client, method, path string) *RequestReaderTest {
 	r := &RequestReaderTest{
 		Client: client,
-		Request: &http.Request{
-			Method:     method,
-			RequestURI: path,
-			Header:     make(http.Header),
-			Proto:      "HTTP/1.0",
-			ProtoMajor: 1,
-			Host:       "eudore-httptest",
-			RemoteAddr: "192.0.2.1:1234",
-		},
 	}
-	var err error
-	r.Request.URL, err = url.ParseRequestURI(path)
+	r.File, r.Line = logFormatFileLine(3)
+	u, err := url.ParseRequestURI(path)
 	if err != nil {
-		r.Error(err)
+		u = new(url.URL)
 	}
-	r.Form, err = url.ParseQuery(r.Request.URL.RawQuery)
+	if u.Host == "" {
+		u.Host = HTTPTestHost
+	}
+	r.Request = &http.Request{
+		Method:     method,
+		RequestURI: u.RequestURI(),
+		URL:        u,
+		Proto:      "HTTP/1.1",
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header:     make(http.Header),
+		Host:       HTTPTestHost,
+	}
+	if method == "ws" || method == "wss" {
+		if u.Scheme == "" {
+			u.Scheme = method
+		}
+		r.Method = "GET"
+		r.Header.Set("Host", r.Host)
+		r.Header.Add("Upgrade", "websocket")
+		r.Header.Add("Connection", "Upgrade")
+		r.Header.Add("Sec-WebSocket-Key", "x3JJHMbDL1EzLkh9GBhXDw==")
+		r.Header.Add("Sec-WebSocket-Version", "13")
+		r.Header.Add("Origin", "http://"+r.Host)
+		r.Body = http.NoBody
+	}
+	r.Form, _ = url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
 		r.Error(err)
 	}
@@ -59,6 +82,9 @@ func NewRequestReaderTest(client *Client, method, path string) *RequestReaderTes
 }
 
 func (r *RequestReaderTest) Error(err error) {
+	if r.err == nil {
+		r.err = err
+	}
 	r.Errorf("%s", err.Error())
 }
 
@@ -140,14 +166,12 @@ func (r *RequestReaderTest) WithBodyJSON(data interface{}) *RequestReaderTest {
 
 // WithBodyJSONValue 方法设置一条json数据，使用map[string]interface{}保存json数据。
 func (r *RequestReaderTest) WithBodyJSONValue(key string, val interface{}, args ...interface{}) *RequestReaderTest {
+	if r.json == nil {
+		r.json = make(map[string]interface{})
+	}
 	data, ok := r.json.(map[string]interface{})
 	if !ok {
-		if r.json == nil {
-			data = make(map[string]interface{})
-			r.json = data
-		} else {
-			return r
-		}
+		return r
 	}
 	data[key] = val
 	args = initSlice(args)
@@ -214,8 +238,51 @@ func (r *RequestReaderTest) WithBodyFormLocalFile(key, name, path string) *Reque
 	return r
 }
 
+// WithWebsocket 方法定义websock处理函数。
+func (r *RequestReaderTest) WithWebsocket(fn func(net.Conn)) *RequestReaderTest {
+	r.websocketHandle = fn
+	return r
+}
+
 // Do 方法发送这个请求，使用客户端处理这个请求返回响应。
 func (r *RequestReaderTest) Do() *ResponseWriterTest {
+	if r.err != nil {
+		resp := NewResponseWriterTest(r.Client, r)
+		resp.Code = 500
+		resp.Body = bytes.NewBufferString(r.err.Error())
+		return resp
+	}
+	r.initArgs()
+	r.initBody()
+	ctx, cancel := context.WithCancel(r.Request.Context())
+	defer cancel()
+	r.Request = r.Request.WithContext(ctx)
+
+	// 创建响应并处理
+	resp := NewResponseWriterTest(r.Client, r)
+	if r.URL.Host == HTTPTestHost {
+		if r.URL.Scheme == "ws" || r.URL.Scheme == "wss" {
+			r.websocketServer, r.websocketClient = net.Pipe()
+		}
+		r.RemoteAddr = "192.0.2.1:1234"
+		r.Client.Handler.ServeHTTP(resp, r.Request)
+		r.Client.CookieJar.SetCookies(r.URL, (&http.Response{Header: resp.Header()}).Cookies())
+	} else {
+		r.RequestURI = ""
+		httpResp, err := r.sendResponse()
+		if err == nil {
+			resp.HandleRespone(httpResp)
+		} else {
+			r.Error(err)
+			resp.Code = 500
+			resp.Body = bytes.NewBufferString(r.err.Error())
+		}
+
+	}
+	return resp
+}
+
+func (r *RequestReaderTest) initArgs() {
 	// 附加客户端公共参数
 	for key, vals := range r.Client.Args {
 		for _, val := range vals {
@@ -230,7 +297,19 @@ func (r *RequestReaderTest) Do() *ResponseWriterTest {
 			r.Request.Header.Add(key, val)
 		}
 	}
+	// set host
+	host := r.Header.Get("Host")
+	if host != "" {
+		r.Request.Host = host
+		r.Header.Del("Host")
+	}
+	// set cookie header
+	for _, cookie := range r.Client.CookieJar.Cookies(r.URL) {
+		r.Request.Header.Add("Cookie", cookie.String())
+	}
+}
 
+func (r *RequestReaderTest) initBody() {
 	switch {
 	case r.json != nil:
 		r.Request.Header.Add("Content-Type", "application/json")
@@ -268,12 +347,53 @@ func (r *RequestReaderTest) Do() *ResponseWriterTest {
 		r.Request.Body = http.NoBody
 		r.Request.ContentLength = -1
 	}
-	// defer r.Body.Close()
+}
 
-	// 创建响应并处理
-	resp := NewResponseWriterTest(r.Client, r)
-	r.Client.Handler.ServeHTTP(resp, r.Request)
-	return resp
+func (r *RequestReaderTest) sendResponse() (*http.Response, error) {
+	if r.URL.Scheme != "ws" && r.URL.Scheme != "wss" {
+		return r.Client.Do(r.Request)
+	}
+
+	conn, err := r.dialConn()
+	if err != nil {
+		return nil, err
+	}
+	err = r.Request.Write(conn)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(conn), r.Request)
+	if err == nil {
+		r.websocketHandle(conn)
+	}
+	return resp, err
+}
+
+var zeroDialer net.Dialer
+
+func (r *RequestReaderTest) dialConn() (net.Conn, error) {
+	ts := new(http.Transport)
+	if r.Client.Transport != nil {
+		ts = r.Client.Transport.(*http.Transport)
+	}
+
+	if r.URL.Scheme == "ws" {
+		if ts.DialContext != nil {
+			return ts.DialContext(r.Request.Context(), "tcp", r.Request.URL.Host)
+		}
+		if ts.Dial != nil {
+			return ts.Dial("tcp", r.Request.URL.Host)
+		}
+		return zeroDialer.DialContext(r.Request.Context(), "tcp", r.Request.URL.Host)
+	}
+	// by go1.14
+	// if ts.DialTLSContext  != nil {
+	// 	return ts.DialTLSContext(r.Request.Context(), "tcp", r.Request.Host)
+	// }
+	if ts.DialTLS != nil {
+		return ts.DialTLS("tcp", r.Request.URL.Host)
+	}
+	return tls.Dial("tcp", r.Request.URL.Host, &tls.Config{InsecureSkipVerify: true})
 }
 
 func initSlice(args []interface{}) []interface{} {

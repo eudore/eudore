@@ -11,7 +11,6 @@ enable获得到的数组为需要加载的模式，额外会加载为当前操�
 import (
 	"github.com/eudore/eudore"
 	"os"
-	"time"
 )
 
 var configmapfilepath = "example.json"
@@ -28,15 +27,15 @@ func main() {
 	tmpfile, _ := os.Create(configmapfilepath)
 	defer os.Remove(tmpfile.Name())
 	tmpfile.Write(content)
+	// 模拟docker系统模式
+	os.Create("/.dockerenv")
+	defer os.Remove("/.dockerenv")
 
-	app := eudore.NewCore()
-	err := app.Parse()
-	if err != nil {
-		panic(err)
-	}
+	app := eudore.NewApp()
 	app.Config.Set("keys.config", configmapfilepath)
 	app.Config.Set("enable", []string{"debug"})
+	app.Options(app.Parse())
 
-	app.Info(app.Parse())
-	time.Sleep(100 * time.Millisecond)
+	app.CancelFunc()
+	app.Run()
 }

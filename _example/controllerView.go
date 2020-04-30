@@ -16,7 +16,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	// 支持渲染模板
 	app.Renderer = eudore.NewRenderHTMLWithTemplate(app.Renderer, nil)
 	app.AddController(new(myUserController))
@@ -32,6 +32,7 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }
 

@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddMiddleware(func(ctx eudore.Context) {
 		ctx.WriteString("route: " + ctx.GetParam("route") + "\n")
 	})
@@ -46,8 +46,7 @@ func main() {
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
-	// 启动server
+	app.CancelFunc()
 	app.Run()
 }

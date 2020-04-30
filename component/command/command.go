@@ -27,11 +27,13 @@ type Command struct {
 	ctx     context.Context
 	pidfile string
 	cmd     string
+	Args    []string
+	Envs    []string
 	file    *os.File
 }
 
-// InitCommand 函数初始化定义程序启动命令。
-func InitCommand(app *eudore.Eudore) error {
+// Init 函数初始化定义程序启动命令。
+func Init(app *eudore.App) error {
 	cmd := eudore.GetDefaultString(app.Config.Get("command"), "start")
 	pid := eudore.GetDefaultString(app.Config.Get("pidfile"), "/var/run/eudore.pid")
 	app.Logger.Infof("current command is %s, pidfile in %s, process pid is %d.", cmd, pid, os.Getpid())
@@ -118,7 +120,10 @@ func (c *Command) Daemon() error {
 	}
 
 	cmd := exec.Command(os.Args[0], os.Args[1:]...)
+	cmd.Args = append(cmd.Args, c.Args...)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", eudore.EnvEudoreIsDaemon, 1))
+	cmd.Env = append(cmd.Env, c.Envs...)
+	cmd.Stdout = os.Stdout
 	return cmd.Start()
 }
 
@@ -221,13 +226,15 @@ func (c *Command) Release() {
 }
 
 // Daemon 函数直接后台启动程序。
-func Daemon() {
+func Daemon(envs ...string) {
 	if eudore.GetStringBool(os.Getenv(eudore.EnvEudoreIsDaemon)) {
 		return
 	}
 
 	cmd := exec.Command(os.Args[0], os.Args[1:]...)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", eudore.EnvEudoreIsDaemon, 1))
+	cmd.Env = append(cmd.Env, envs...)
+	cmd.Stdout = os.Stdout
 	cmd.Start()
 	os.Exit(0)
 }

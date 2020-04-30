@@ -23,8 +23,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
+	app := eudore.NewApp()
 	app.AnyFunc("/get", func(ctx eudore.Context) {
 		// 遍历请求header
 		for k, v := range ctx.Request().Header {
@@ -42,5 +41,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

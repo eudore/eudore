@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.WriteJSON(map[string]interface{}{
 			"name":    "eudore",
@@ -21,5 +21,6 @@ func main() {
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/").Do().Out()
 
+	app.CancelFunc()
 	app.Run()
 }

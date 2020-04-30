@@ -9,49 +9,52 @@ import (
 	"strings"
 )
 
-type (
-	// HandlerFunc 是处理一个Context的函数
-	HandlerFunc func(Context)
-	// HandlerFuncs 是HandlerFunc的集合，表示多个请求处理函数。
-	HandlerFuncs []HandlerFunc
-	// HandlerExtender 定义函数扩展处理者的方法。
-	//
-	// HandlerExtender默认拥有Base、Warp、Tree三种实现，具体参数三种对象的文档。
-	HandlerExtender interface {
-		RegisterHandlerExtend(string, interface{}) error
-		NewHandlerFuncs(string, interface{}) HandlerFuncs
-		ListExtendHandlerNames() []string
-	}
-	// handlerExtendBase 定义基础的函数扩展。
-	handlerExtendBase struct {
-		ExtendNewType       []reflect.Type
-		ExtendNewFunc       []reflect.Value
-		ExtendInterfaceType []reflect.Type
-		ExtendInterfaceFunc []reflect.Value
-		// ExtendNewFunc       map[reflect.Type]reflect.Value
-	}
-	// handlerExtendWarp 定义链式函数扩展。
-	handlerExtendWarp struct {
-		HandlerExtender
-		LastExtender HandlerExtender
-	}
-	// handlerExtendTree 定义基于路径匹配的函数扩展。
-	handlerExtendTree struct {
-		HandlerExtender
-		path   string
-		childs []*handlerExtendTree
-	}
-	handlerHTTP interface {
-		HandleHTTP(Context)
-	}
-)
+// HandlerFunc 是处理一个Context的函数
+type HandlerFunc func(Context)
+
+// HandlerFuncs 是HandlerFunc的集合，表示多个请求处理函数。
+type HandlerFuncs []HandlerFunc
+
+// HandlerExtender 定义函数扩展处理者的方法。
+//
+// HandlerExtender默认拥有Base、Warp、Tree三种实现，具体参数三种对象的文档。
+type HandlerExtender interface {
+	RegisterHandlerExtend(string, interface{}) error
+	NewHandlerFuncs(string, interface{}) HandlerFuncs
+	ListExtendHandlerNames() []string
+}
+
+// handlerExtendBase 定义基础的函数扩展。
+type handlerExtendBase struct {
+	ExtendNewType       []reflect.Type
+	ExtendNewFunc       []reflect.Value
+	ExtendInterfaceType []reflect.Type
+	ExtendInterfaceFunc []reflect.Value
+	// ExtendNewFunc       map[reflect.Type]reflect.Value
+}
+
+// handlerExtendWarp 定义链式函数扩展。
+type handlerExtendWarp struct {
+	HandlerExtender
+	LastExtender HandlerExtender
+}
+
+// handlerExtendTree 定义基于路径匹配的函数扩展。
+type handlerExtendTree struct {
+	HandlerExtender
+	path   string
+	childs []*handlerExtendTree
+}
+
+type handlerHTTP interface {
+	HandleHTTP(Context)
+}
 
 var (
 	// contextFuncName key类型一定为HandlerFunc类型，保存函数可能正确的名称。
 	contextFuncName  = make(map[uintptr]string)
-	contextAliasName = make(map[reflect.Value]string)
-	// DefaultHandlerExtend 为默认的函数扩展处理者，是RouterStd使用的最顶级的函数扩展处理者。
-	DefaultHandlerExtend = NewHandlerExtendBase()
+	contextSaveName  = make(map[uintptr]string)
+	contextAliasName = make(map[uintptr]string)
 )
 
 // init 函数初始化内置扩展的请求上下文处理函数。
@@ -137,7 +140,7 @@ func (ext *handlerExtendBase) RegisterHandlerExtend(_ string, fn interface{}) er
 
 // NewHandlerFuncs 函数根据参数返回一个HandlerFuncs。
 func (ext *handlerExtendBase) NewHandlerFuncs(_ string, i interface{}) HandlerFuncs {
-	return ext.newHandlerFuncs(reflect.ValueOf(i))
+	return HandlerFuncsFilter(ext.newHandlerFuncs(reflect.ValueOf(i)))
 }
 
 func (ext *handlerExtendBase) newHandlerFuncs(iValue reflect.Value) HandlerFuncs {
@@ -221,8 +224,6 @@ func (ext *handlerExtendBase) ListExtendHandlerNames() []string {
 	return names
 }
 
-var lastfn reflect.Value
-
 // createHandlerFunc 函数使用转换函数和对象创建一个HandlerFunc，并保存HandlerFunc的名称和使用的扩展函数名称。
 func (ext *handlerExtendBase) createHandlerFunc(fn, iValue reflect.Value) HandlerFunc {
 	h := fn.Call([]reflect.Value{iValue})[0].Interface().(HandlerFunc)
@@ -234,21 +235,22 @@ func (ext *handlerExtendBase) createHandlerFunc(fn, iValue reflect.Value) Handle
 	if len(extname) > 24 && extname[:25] == "github.com/eudore/eudore." {
 		extname = extname[25:]
 	}
-	// 获取新函数名称
-	name := contextFuncName[reflect.ValueOf(h).Pointer()]
-	if name == "" {
-		// 使用原值名称
-		name = contextAliasName[iValue]
+	// 获取新函数名称,一般来源于函数扩展返回的函数名称。
+	name := contextSaveName[reflect.ValueOf(h).Pointer()]
+	// 使用原值名称
+	if name == "" && iValue.Kind() != reflect.Struct {
+		name = contextAliasName[iValue.Pointer()]
 	}
-	if name == "" || name[len(name)-1] == ')' {
-		// 推断名称
+	// 推断名称
+	if name == "" {
 		iType := iValue.Type()
-		if iType.Kind() == reflect.Func {
+		switch iType.Kind() {
+		case reflect.Func:
 			name = runtime.FuncForPC(iValue.Pointer()).Name()
-		} else if iType.Kind() == reflect.Ptr {
+		case reflect.Ptr:
 			iType = iType.Elem()
 			name = fmt.Sprintf("*%s.%s", iType.PkgPath(), iType.Name())
-		} else {
+		case reflect.Struct:
 			name = fmt.Sprintf("%s.%s", iType.PkgPath(), iType.Name())
 		}
 	}
@@ -395,6 +397,28 @@ func (ext *handlerExtendTree) ListExtendHandlerNames() []string {
 	return ext.listExtendHandlerNamesByPrefix("")
 }
 
+// HandlerFuncsFilter 函数过滤掉多个请求上下文处理函数中的空对象。
+func HandlerFuncsFilter(hs HandlerFuncs) HandlerFuncs {
+	var num int
+	for _, h := range hs {
+		if h != nil {
+			num++
+		}
+	}
+	if num == len(hs) {
+		return hs
+	}
+
+	// 返回新过滤空的处理函数。
+	nhs := make(HandlerFuncs, 0, num)
+	for _, h := range hs {
+		if h != nil {
+			nhs = append(nhs, h)
+		}
+	}
+	return nhs
+}
+
 // HandlerFuncsCombine function merges two HandlerFuncs into one. The default maximum length is now 63, which exceeds panic.
 //
 // Used to reconstruct the slice and prevent the appended data from being confused.
@@ -429,7 +453,7 @@ func HandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 //
 // 注意：函数不具有可比性，对象的方法的名称会被其他方法名称覆盖。
 func SetHandlerFuncName(i HandlerFunc, name string) {
-	contextFuncName[reflect.ValueOf(i).Pointer()] = name
+	contextSaveName[reflect.ValueOf(i).Pointer()] = name
 }
 
 // SetHandlerAliasName 函数设置一个函数处理对象原始名称，如果扩展未生成名称，使用此值。
@@ -440,7 +464,9 @@ func SetHandlerAliasName(i interface{}, name string) {
 	if !ok {
 		iValue = reflect.ValueOf(i)
 	}
-	contextAliasName[iValue] = name
+	if iValue.Kind() == reflect.Func || iValue.Kind() == reflect.Ptr {
+		contextAliasName[iValue.Pointer()] = name
+	}
 }
 
 // String method implements the fmt.Stringer interface and implements the output function name.
@@ -453,6 +479,10 @@ func SetHandlerAliasName(i interface{}, name string) {
 func (h HandlerFunc) String() string {
 	ptr := reflect.ValueOf(h).Pointer()
 	name, ok := contextFuncName[ptr]
+	if ok {
+		return name
+	}
+	name, ok = contextSaveName[ptr]
 	if ok {
 		return name
 	}

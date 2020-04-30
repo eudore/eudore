@@ -7,11 +7,9 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
-
+	app := eudore.NewApp()
 	// 创建熔断器并注入管理路由
-	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
+	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware(middleware.NewCircuitBreaker(app.Group("/eudore/debug/breaker")).NewBreakFunc())
 	app.GetFunc("/*", echo)
 
@@ -28,6 +26,7 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }
 

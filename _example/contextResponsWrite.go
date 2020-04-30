@@ -43,7 +43,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteHeader(201)
 		ctx.WriteString("host: " + ctx.Host())
@@ -57,5 +57,6 @@ func main() {
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/").Do().Out()
 
+	app.CancelFunc()
 	app.Run()
 }

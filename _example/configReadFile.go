@@ -7,7 +7,6 @@ package main
 import (
 	"github.com/eudore/eudore"
 	"os"
-	"time"
 )
 
 var filepath = "example.json"
@@ -25,13 +24,10 @@ func main() {
 	defer os.Remove(tmpfile.Name())
 	tmpfile.Write(content)
 
-	time.Sleep(100 * time.Millisecond)
-	app := eudore.NewCore()
-	err := app.Parse()
-	if err != nil {
-		panic(err)
-	}
+	app := eudore.NewApp()
 	app.Set("keys.config", filepath)
 	app.Set("keys.help", true)
+	app.Options(app.Parse())
+	app.CancelFunc()
 	app.Run()
 }

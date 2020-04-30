@@ -23,10 +23,8 @@ Binder对象用于请求数据反序列化，
 
 */
 
-type (
-	// Binder 定义Bind函数处理请求。
-	Binder func(Context, io.Reader, interface{}) error
-)
+// Binder 定义Bind函数处理请求。
+type Binder func(Context, io.Reader, interface{}) error
 
 // BindDefault 函数实现默认Binder。
 func BindDefault(ctx Context, r io.Reader, i interface{}) error {

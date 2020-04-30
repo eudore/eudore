@@ -50,13 +50,14 @@ func (ctl *mysGroupController) Release(ctx eudore.Context) error {
 }
 
 func TestControllerGroup2(*testing.T) {
-	app := eudore.NewCore()
-	app.SetParam("controllergroup", "g1").AddController(new(mybGroupcontroller))
+	app := eudore.NewApp()
+	app.SetParam("controllergroup", "/g1").AddController(new(mybGroupcontroller))
 	app.AddController(new(mybGroupcontroller))
 	app.AddController(new(mybGroupController))
 	app.AddController(new(mysGroup))
 	app.AddController(new(mysGroupcontroller))
 	app.AddController(new(mysGroupController))
+	app.CancelFunc()
 	app.Run()
 }
 
@@ -127,7 +128,7 @@ func (ctl *myexecConrtoller) MapStringRenderError2(map[string]interface{}) (inte
 	return "hello", nil
 }
 func TestControllerExtendExec2(*testing.T) {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddController(new(eudore.ControllerBase))
 	app.AddController(new(myexecConrtoller))
 	app.SetParam("controllergroup", "name").SetParam("enable-route-extend", "0").AddController(new(mysGroupController))
@@ -180,5 +181,6 @@ func TestControllerExtendExec2(*testing.T) {
 	for client.Next() {
 		app.Error(client.Error())
 	}
+	app.CancelFunc()
 	app.Run()
 }

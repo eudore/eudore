@@ -16,12 +16,11 @@ import (
 func main() {
 	command.Daemon()
 
-	app := eudore.NewEudore()
-	app.RegisterInit("init-listen", 0x016, func(app *eudore.Eudore) error {
-		app.GetFunc("/*", func(ctx eudore.Context) {
-			ctx.WriteString("server daemon")
-		})
-		return app.Listen(":8088")
+	app := eudore.NewApp()
+	app.GetFunc("/*", func(ctx eudore.Context) {
+		ctx.WriteString("server daemon")
 	})
+	app.Listen(":8088")
+	app.CancelFunc()
 	app.Run()
 }

@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	// eudore Render 返回的数据
 	app.GetFunc("/*", func(eudore.Context) interface{} {
 		return "hello eudore"
@@ -25,7 +25,7 @@ func main() {
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
+	app.CancelFunc()
 	app.Run()
 }

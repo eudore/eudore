@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddMiddleware(middleware.NewRateFunc(app, 1, 3))
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
@@ -21,5 +21,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

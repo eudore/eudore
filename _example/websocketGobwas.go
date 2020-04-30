@@ -8,14 +8,12 @@ eudore.UpgradeHttp获取net.Conn链接并写入建立请求响应，然后wsutil
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 )
 
 func main() {
-	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
+	app := eudore.NewApp()
 	app.AnyFunc("/*", eudore.HandlerFunc(func(ctx eudore.Context) {
 		conn, _, _, err := ws.UpgradeHTTP(ctx.Request(), ctx.Response())
 		if err != nil {
@@ -47,5 +45,6 @@ func main() {
 	}))
 
 	app.Listen(":8088")
+	app.CancelFunc()
 	app.Run()
 }

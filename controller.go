@@ -7,73 +7,80 @@ import (
 	"sync"
 )
 
-type (
-	// Controller 定义控制器必要的接口。
-	//
-	// 控制器默认具有Base、Data、Singleton、View四种实现。
-	//
-	// Base是最基本的控制器实现；
-	// Data在Base基础上使用ContextData作为请求上下文，默认具有更多的方法；
-	// Singleton是单例控制器，每次请求公用一个控制器；
-	// View在Base基础上会使用Data和推断的模板渲染view。
-	Controller interface {
-		Init(Context) error
-		Release(Context) error
-		Inject(Controller, Router) error
-	}
-	// controllerRoute 定义获得路由和方法映射的接口。
-	controllerRoute interface {
-		ControllerRoute() map[string]string
-	}
-	// controllerRouteParam 定义获得一个路由参数的接口，转入pkg、controllername、methodname获得需要添加的路由参数。
-	controllerRouteParam interface {
-		GetRouteParam(string, string, string) string
-	}
+// Controller 定义控制器必要的接口。
+//
+// 控制器默认具有Base、Data、Singleton、View四种实现。
+//
+// Base是最基本的控制器实现；
+// Data在Base基础上使用ContextData作为请求上下文，默认具有更多的方法；
+// Singleton是单例控制器，每次请求公用一个控制器；
+// View在Base基础上会使用Data和推断的模板渲染view。
+type Controller interface {
+	Init(Context) error
+	Release(Context) error
+	Inject(Controller, Router) error
+}
 
-	// ControllerFuncExtend 定义控制器函数扩展使用的信息，需要在处理函数扩展中注册对应的处理函数
-	//
-	// ControllerInjectStateful和ControllerInjectSingleton 函数都会使用ControllerFuncExtend对象注册扩展函数。
-	ControllerFuncExtend struct {
-		Name       string
-		Index      int
-		Controller Controller
-		Pool       ControllerPool
-	}
-	// ControllerPool 定义控制器池，使ControllerFuncExtend兼容有状态和单例使用的控制器对象。
-	ControllerPool interface {
-		Get() Controller
-		Put(Controller)
-	}
-	// controllerPoolSync 定义sync控制器池，用于有状态控制器使用。
-	controllerPoolSync struct {
-		sync.Pool
-	}
-	// controllerPoolSingleton 定义单例控制器池，用于单例控制器返回单例对象。
-	controllerPoolSingleton struct {
-		Controller
-	}
-	// ControllerBase 实现基本控制器。
-	ControllerBase struct {
-		Context
-	}
-	// ControllerData 实现基于ContextData的控制器,基于ControllerBase扩展了额外的控制器方法。
-	ControllerData struct {
-		ContextData
-	}
-	// ControllerSingleton 实现单例控制器。
-	ControllerSingleton struct{}
-	// ControllerView 基于ControllerBase额外增加了控制器自动渲染数据。
-	//
-	// 默认模板路由可以通过重写GetRouteParam方法，重新定义template参数。
-	//
-	// 如果Data不为空且未写入数据，会调用Render渲染数据。
-	//
-	// 如果渲染出html需要app.Renderer支持。
-	ControllerView struct {
-		ContextData
-		Data map[string]interface{}
-	}
-)
+// controllerRoute 定义获得路由和方法映射的接口。
+type controllerRoute interface {
+	ControllerRoute() map[string]string
+}
+
+// controllerRouteParam 定义获得一个路由参数的接口，转入pkg、controllername、methodname获得需要添加的路由参数。
+type controllerRouteParam interface {
+	GetRouteParam(string, string, string) string
+}
+
+// ControllerFuncExtend 定义控制器函数扩展使用的信息，需要在处理函数扩展中注册对应的处理函数
+//
+// ControllerInjectStateful和ControllerInjectSingleton 函数都会使用ControllerFuncExtend对象注册扩展函数。
+type ControllerFuncExtend struct {
+	Name       string
+	Index      int
+	Controller Controller
+	Pool       ControllerPool
+}
+
+// ControllerPool 定义控制器池，使ControllerFuncExtend兼容有状态和单例使用的控制器对象。
+type ControllerPool interface {
+	Get() Controller
+	Put(Controller)
+}
+
+// controllerPoolSync 定义sync控制器池，用于有状态控制器使用。
+type controllerPoolSync struct {
+	sync.Pool
+}
+
+// controllerPoolSingleton 定义单例控制器池，用于单例控制器返回单例对象。
+type controllerPoolSingleton struct {
+	Controller
+}
+
+// ControllerBase 实现基本控制器。
+type ControllerBase struct {
+	Context
+}
+
+// ControllerData 实现基于ContextData的控制器,基于ControllerBase扩展了额外的控制器方法。
+type ControllerData struct {
+	ContextData
+}
+
+// ControllerSingleton 实现单例控制器。
+type ControllerSingleton struct{}
+
+// ControllerView 基于ControllerBase额外增加了控制器自动渲染数据。
+//
+// 默认模板路由可以通过重写GetRouteParam方法，重新定义template参数。
+//
+// 如果Data不为空且未写入数据，会调用Render渲染数据。
+//
+// 如果渲染出html需要app.Renderer支持。
+type ControllerView struct {
+	ContextData
+	Data map[string]interface{}
+}
 
 // ControllerInjectStateful 定义基本的控制器实现函数。
 //
@@ -109,14 +116,7 @@ func ControllerInjectStateful(controller Controller, router Router) error {
 	// 添加控制器组。
 	cname := iType.Name()
 	cpkg := iType.PkgPath()
-	group := router.GetParam("controllergroup")
-	if group != "" {
-		router = router.SetParam("controllergroup", "").Group("/" + group)
-	} else if strings.HasSuffix(cname, "Controller") {
-		router = router.Group("/" + strings.ToLower(strings.TrimSuffix(cname, "Controller")))
-	} else if strings.HasSuffix(cname, "controller") {
-		router = router.Group("/" + strings.ToLower(strings.TrimSuffix(cname, "controller")))
-	}
+	router = router.Group(getContrllerRouterGroup(cname, router))
 
 	// 获取路由参数函数
 	pfn := defaultRouteParam
@@ -155,26 +155,9 @@ func ControllerInjectSingleton(controller Controller, router Router) error {
 	// 添加控制器组。
 	cname := iType.Name()
 	cpkg := iType.PkgPath()
-
-	switch {
-	case router.GetParam("controllergroup") != "":
-		group := router.GetParam("controllergroup")
-		router = router.SetParam("controllergroup", "").Group("/" + group)
-	case strings.HasSuffix(cname, "Controller"):
-		router = router.Group("/" + strings.ToLower(strings.TrimSuffix(cname, "Controller")))
-	case strings.HasSuffix(cname, "controller"):
-		router = router.Group("/" + strings.ToLower(strings.TrimSuffix(cname, "controller")))
-	default:
-		router = router.Group("")
-	}
-
-	enableextend := router.GetParam("enable-route-extend") != ""
-	router.SetParam("enable-route-extend", "")
-	var fnInit, fnRelease HandlerFunc
-	if enableextend {
-		fnInit = newControllerSingletionInit(controller, fmt.Sprintf("%s.%s.Init", cpkg, cname))
-		fnRelease = newControllerSingletionRelease(controller, fmt.Sprintf("%s.%s.Release", cpkg, cname))
-	}
+	fnNewHandler := newControllerSingletionHandle(fmt.Sprintf("%s.%s", cpkg, cname), controller, router)
+	router.SetParam("enable-route-extend", "").SetParam("ignore-init", "").SetParam("ignore-release", "")
+	router = router.Group(getContrllerRouterGroup(cname, router))
 
 	// 获取路由参数函数
 	pfn := defaultRouteParam
@@ -190,11 +173,11 @@ func ControllerInjectSingleton(controller Controller, router Router) error {
 			continue
 		}
 
-		if enableextend {
+		if fnNewHandler != nil {
 			// 使用路由扩展
 			h := reflect.ValueOf(controller).Method(m.Index)
 			SetHandlerAliasName(h, fmt.Sprintf("%s.%s.%s", cpkg, cname, method))
-			router.AddHandler(getRouteMethod(method), path+" "+pfn(cpkg, cname, method), fnInit, h.Interface(), fnRelease)
+			router.AddHandler(getRouteMethod(method), path+" "+pfn(cpkg, cname, method), fnNewHandler(h.Interface())...)
 		} else {
 			// 使用控制器扩展
 			router.AddHandler(getRouteMethod(method), path+" "+pfn(cpkg, cname, method), ControllerFuncExtend{
@@ -231,6 +214,50 @@ func newControllerSingletionRelease(controller Controller, name string) HandlerF
 	}
 	SetHandlerFuncName(h, name)
 	return h
+}
+
+func newControllerSingletionHandle(name string, controller Controller, router Router) func(interface{}) []interface{} {
+	if router.GetParam("enable-route-extend") == "" {
+		return nil
+	}
+	enableInit := router.GetParam("ignore-init") == ""
+	enableRelease := router.GetParam("ignore-release") == ""
+	var fnInit, fnRelease HandlerFunc
+	if enableInit {
+		fnInit = newControllerSingletionInit(controller, fmt.Sprintf("%s.Init", name))
+	}
+	if enableRelease {
+		fnRelease = newControllerSingletionRelease(controller, fmt.Sprintf("%s.Release", name))
+	}
+
+	return func(i interface{}) (hs []interface{}) {
+		if enableInit {
+			hs = append(hs, fnInit)
+		}
+		hs = append(hs, i)
+		if enableRelease {
+			hs = append(hs, fnRelease)
+		}
+		return
+	}
+}
+
+func getContrllerRouterGroup(name string, router Router) string {
+	switch {
+	case router.GetParam("controllergroup") != "":
+		group := router.GetParam("controllergroup")
+		router.SetParam("controllergroup", "")
+		if group[0] == '/' {
+			return group
+		}
+		return "/" + group
+	case strings.HasSuffix(name, "Controller"):
+		return "/" + strings.ToLower(strings.TrimSuffix(name, "Controller"))
+	case strings.HasSuffix(name, "controller"):
+		return "/" + strings.ToLower(strings.TrimSuffix(name, "controller"))
+	default:
+		return ""
+	}
 }
 
 // defaultRouteParam 函数定义默认的控制器参数，可以通过实现controllerRouteParam来覆盖该函数。

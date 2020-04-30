@@ -1,8 +1,10 @@
 package host
 
 import (
-	"github.com/eudore/eudore"
+	"net/http"
 	"strings"
+
+	"github.com/eudore/eudore"
 )
 
 // RouterHost 使用Host匹配执行路由行为，仅对RouterCore部分方法有效。
@@ -21,9 +23,22 @@ type RouterCoreHost struct {
 var _ eudore.Router = (*RouterHost)(nil)
 var _ eudore.RouterCore = (*RouterCoreHost)(nil)
 
-// InitAddHost 定义添加host参数的全局中间件函数，需要使用Eudore，Core无法使用该功能。
-func InitAddHost(ctx eudore.Context) {
-	ctx.AddParam("host", ctx.Host())
+// NewHandler 函数实现一个添加host参数的http.Handler。
+func NewHandler(app *eudore.App) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// init
+		ctx := app.ContextPool.Get().(eudore.Context)
+		response := new(eudore.ResponseWriterHTTP)
+		// handle
+		response.Reset(w)
+		ctx.Reset(r.Context(), response, r)
+		ctx.AddParam("host", ctx.Host())
+		ctx.SetHandler(-1, app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params()))
+		ctx.Next()
+		ctx.End()
+		// release
+		app.ContextPool.Put(ctx)
+	})
 }
 
 // NewRouterHost 函数创建一个默认的hst路由。

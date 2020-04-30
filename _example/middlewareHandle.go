@@ -22,8 +22,8 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
-	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
+	app := eudore.NewApp()
+	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware(func(ctx eudore.Context) {
 		ctx.WriteString("pre\n")
 		ctx.Next()
@@ -37,5 +37,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

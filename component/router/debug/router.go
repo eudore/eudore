@@ -12,10 +12,6 @@ type (
 		Methods           []string `json:"methods"`
 		Paths             []string `json:"paths"`
 	}
-	// RouterDebugCore 定义debug路由器核心。
-	RouterDebugCore struct {
-		eudore.RouterCore `json:"-" alias:"-"`
-	}
 )
 
 var _ eudore.RouterCore = (*RouterCoreDebug)(nil)

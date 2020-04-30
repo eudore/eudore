@@ -10,8 +10,9 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddController(new(myErrController))
+	app.CancelFunc()
 	app.Run()
 }
 

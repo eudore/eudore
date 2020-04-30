@@ -9,9 +9,9 @@ import (
 )
 
 func TestRouterFullAny2(t *testing.T) {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.Router = eudore.NewRouterFull()
-	eudore.Set(app.Router, "print", eudore.NewPrintFunc(app.App))
+	eudore.Set(app.Router, "print", eudore.NewPrintFunc(app))
 	// 遍历覆盖
 	app.GetFunc("/get/:val", func(ctx eudore.Context) {
 		ctx.WriteString("method is get\n")
@@ -40,14 +40,14 @@ func TestRouterFullAny2(t *testing.T) {
 		app.Error(client.Error())
 	}
 
-	// 启动server
+	app.CancelFunc()
 	app.Run()
 }
 
 func TestRouterFullCheck2(t *testing.T) {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.Router = eudore.NewRouterFull()
-	eudore.Set(app.Router, "print", eudore.NewPrintFunc(app.App))
+	eudore.Set(app.Router, "print", eudore.NewPrintFunc(app))
 
 	app.AnyFunc("/1/:num|isnum version=1", eudore.HandlerEmpty)
 	app.AnyFunc("/1/222", eudore.HandlerEmpty)
@@ -74,22 +74,24 @@ func TestRouterFullCheck2(t *testing.T) {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }
 
 func TestRouterMiddleware2(t *testing.T) {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddMiddleware()
 	app.AddMiddleware(func(int) {})
 	app.AddHandlerExtend()
+	app.CancelFunc()
 	app.Run()
 }
 
 func TestRouter2(t *testing.T) {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddMiddleware("/api/user", eudore.HandlerEmpty)
 	app.AddMiddleware("/api/", eudore.HandlerEmpty)
-	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
+	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 
 	api1 := app.Group("/api/v1")
 	api1.AnyFunc("/any", eudore.HandlerEmpty)
@@ -97,5 +99,6 @@ func TestRouter2(t *testing.T) {
 	api1.HeadFunc("/head", eudore.HandlerEmpty)
 	api1.PatchFunc("/patch", eudore.HandlerEmpty)
 	api1.OptionsFunc("route=/options", eudore.HandlerEmpty)
+	app.CancelFunc()
 	app.Run()
 }

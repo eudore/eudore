@@ -15,7 +15,7 @@ type bindHeader struct {
 }
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.Binder = eudore.NewBinderHeader(app.Binder)
 
 	// 上传文件信息
@@ -30,5 +30,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

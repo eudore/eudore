@@ -13,19 +13,19 @@ import (
 
 type handlerHttp1 struct{}
 type handlerHttp2 struct{}
+type handlerHttp3 struct{}
 
 func (handlerHttp1) HandleHTTP(eudore.Context)                      {}
 func (h handlerHttp2) CloneHandler() http.Handler                   { return h }
 func (h handlerHttp2) ServeHTTP(http.ResponseWriter, *http.Request) {}
+func (handlerHttp3) String() string                                 { return "hello" }
 
 func TestHandlerReister2(t *testing.T) {
-	app := eudore.NewCore()
-	app.AddHandlerExtend(00)
-	app.AddHandlerExtend(func(int) {})
-	app.AddHandlerExtend(func(interface{}) {})
-	app.AddHandlerExtend(func(eudore.Errors) eudore.HandlerFunc {
-		return eudore.HandlerEmpty
-	})
+	app := eudore.NewApp()
+	t.Log(app.AddHandlerExtend(00))
+	t.Log(app.AddHandlerExtend(00, 00))
+	t.Log(app.AddHandlerExtend(func(int) {}))
+	t.Log(app.AddHandlerExtend(func(interface{}) {}))
 
 	app.AnyFunc("/1/1", func(eudore.Context) {})
 	app.AnyFunc("/1/2", eudore.HandlerFunc(eudore.HandlerEmpty))
@@ -33,7 +33,6 @@ func TestHandlerReister2(t *testing.T) {
 	app.AnyFunc("/1/4", eudore.HandlerFuncs{eudore.HandlerEmpty})
 	app.AnyFunc("/1/5", eudore.HandlerEmpty, eudore.HandlerEmpty)
 	app.AnyFunc("/1/6", [3]eudore.HandlerFunc{eudore.HandlerEmpty, eudore.HandlerEmpty})
-	app.AnyFunc("/1/7", error(&eudore.Errors{}))
 	app.AnyFunc("/1/8", eudore.LogDebug)
 	app.AnyFunc("/1/9", func(http.ResponseWriter, *http.Request) {})
 	app.AnyFunc("/1/10", http.NotFoundHandler())
@@ -42,7 +41,8 @@ func TestHandlerReister2(t *testing.T) {
 		return nil, nil
 	})
 	app.AnyFunc("/1/13", new(handlerHttp1))
-	app.AnyFunc("/1/13", new(handlerHttp2))
+	app.AnyFunc("/1/14", new(handlerHttp2))
+	app.AnyFunc("/1/15", handlerHttp3{})
 
 	app.AnyFunc("/2/1", func(eudore.Context) error {
 		return errors.New("test handler error")
@@ -74,6 +74,9 @@ func TestHandlerReister2(t *testing.T) {
 	client.NewRequest("GET", "/1/8").Do()
 	client.NewRequest("GET", "/1/9").Do()
 	client.NewRequest("GET", "/1/10").Do()
+	client.NewRequest("GET", "/1/13").Do()
+	client.NewRequest("GET", "/1/14").Do()
+	client.NewRequest("GET", "/1/15").Do()
 	client.NewRequest("GET", "/2/1").Do()
 	client.NewRequest("GET", "/2/2").Do()
 	client.NewRequest("GET", "/2/3").Do()
@@ -97,11 +100,12 @@ func TestHandlerReister2(t *testing.T) {
 	for client.Next() {
 		app.Error(client.Error())
 	}
+	app.CancelFunc()
 	app.Run()
 }
 
 func TestHandlerList2(t *testing.T) {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddHandlerExtend("/api/user", func(interface{}) eudore.HandlerFunc {
 		return eudore.HandlerEmpty
 	})
@@ -114,6 +118,7 @@ func TestHandlerList2(t *testing.T) {
 	})
 	api.AnyFunc("/user/info", "hello")
 	t.Log(strings.Join(api.(eudore.HandlerExtender).ListExtendHandlerNames(), "\n"))
+	app.CancelFunc()
 	app.Run()
 }
 
@@ -127,7 +132,7 @@ type (
 )
 
 func TestHandlerRPC2(t *testing.T) {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/1/1", func(eudore.Context, *rpcrequest) (rpcresponse, error) {
 		return rpcresponse{Messahe: "success"}, nil
 	})
@@ -150,6 +155,7 @@ func TestHandlerRPC2(t *testing.T) {
 	for client.Next() {
 		app.Error(client.Error())
 	}
+	app.CancelFunc()
 	app.Run()
 }
 

@@ -13,11 +13,13 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
-	pprof.RoutesInject(app.Group("/eudore/debug"))
+	app := eudore.NewApp()
+	pprof.Init(app.Group("/eudore/debug"))
 
 	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/eudore/debug/pprof/expvar").WithHeaderValue(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do().OutBody()
 	client.NewRequest("GET", "/eudore/debug/pprof/goroutine?debug=1").Do().OutBody()
 
+	app.CancelFunc()
 	app.Run()
 }

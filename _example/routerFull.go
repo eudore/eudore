@@ -26,11 +26,11 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 
 	// 修改路由
 	app.Router = eudore.NewRouterFull()
-	eudore.Set(app.Router, "print", eudore.NewPrintFunc(app.App))
+	eudore.Set(app.Router, "print", eudore.NewPrintFunc(app))
 
 	app.AddMiddleware(func(ctx eudore.Context) {
 		ctx.WriteString("route: " + ctx.GetParam("route") + "\n")
@@ -88,8 +88,7 @@ func main() {
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
-	// 启动server
+	app.CancelFunc()
 	app.Run()
 }

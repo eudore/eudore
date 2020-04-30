@@ -29,7 +29,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.Info("hello")
 		ctx.Infof("hello path is %s", ctx.GetParam("*"))
@@ -74,5 +74,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

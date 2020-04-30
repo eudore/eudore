@@ -548,18 +548,13 @@ func (fn GetWarp) GetStrings(key string) []string {
 	return GetArrayString(fn(key))
 }
 
-// Errors 实现多个error组合。
-type Errors struct {
+// muliterror 实现多个error组合。
+type muliterror struct {
 	errs []error
 }
 
-// NewErrors 创建Errors对象。
-func NewErrors() *Errors {
-	return &Errors{}
-}
-
 // HandleError 实现处理多个错误，如果非空则保存错误。
-func (err *Errors) HandleError(errs ...error) {
+func (err *muliterror) HandleError(errs ...error) {
 	for _, e := range errs {
 		if e != nil {
 			err.errs = append(err.errs, e)
@@ -568,19 +563,12 @@ func (err *Errors) HandleError(errs ...error) {
 }
 
 // Error 方法实现error接口，返回错误描述。
-func (err *Errors) Error() string {
-	switch len(err.errs) {
-	case 0:
-		return ""
-	case 1:
-		return err.errs[0].Error()
-	default:
-		return fmt.Sprint(err.errs)
-	}
+func (err *muliterror) Error() string {
+	return fmt.Sprint(err.errs)
 }
 
 // GetError 方法返回错误，如果没有保存的错误则返回空。
-func (err *Errors) GetError() error {
+func (err *muliterror) GetError() error {
 	switch len(err.errs) {
 	case 0:
 		return nil

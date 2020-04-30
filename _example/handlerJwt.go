@@ -8,7 +8,6 @@ import (
 	"fmt"
 	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 )
 
 type contextJwt struct {
@@ -16,8 +15,7 @@ type contextJwt struct {
 }
 
 func main() {
-	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
+	app := eudore.NewApp()
 	app.AddHandlerExtend(func(fn func(contextJwt)) eudore.HandlerFunc {
 		return func(ctx eudore.Context) {
 			fn(contextJwt{ctx})
@@ -26,6 +24,9 @@ func main() {
 	app.GetFunc("/*", func(ctx contextJwt) {
 		fmt.Println(ctx.parseJwt())
 	})
+
+	app.CancelFunc()
+	app.Run()
 }
 
 var hmacSampleSecret = []byte("secret")

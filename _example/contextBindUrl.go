@@ -23,7 +23,7 @@ type (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	// 附加非GET和HEAD方法下使用url参数绑定。
 	app.Binder = eudore.NewBinderURL(app.Binder)
 
@@ -55,5 +55,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

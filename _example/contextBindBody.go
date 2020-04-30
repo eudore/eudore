@@ -38,7 +38,7 @@ type (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	// 上传文件信息
 	app.PutFunc("/file/data/:path", func(ctx eudore.Context) {
 		var info putFileInfo
@@ -90,5 +90,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

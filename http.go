@@ -11,62 +11,65 @@ import (
 	"sync"
 )
 
-type (
-	// Stream 定义请求流，抽象websocket处理。
-	Stream interface {
-		io.ReadWriteCloser
-		StreamID() string
-		GetType() int
-		SetType(int)
-		SendMsg(interface{}) error
-		RecvMsg(interface{}) error
-	}
-	// RequestReader 对象为请求信息的载体。
-	RequestReader = http.Request
-	// ResponseWriter 接口用于写入http请求响应体status、header、body。
-	//
-	// net/http.response实现了flusher、hijacker、pusher接口。
-	ResponseWriter interface {
-		// http.ResponseWriter
-		Header() http.Header
-		Write([]byte) (int, error)
-		WriteHeader(int)
-		// http.Flusher
-		Flush()
-		// http.Hijacker
-		Hijack() (net.Conn, *bufio.ReadWriter, error)
-		// http.Pusher
-		Push(string, *http.PushOptions) error
-		Size() int
-		Status() int
-	}
-	// ResponseWriterHTTP 是对net/http.ResponseWriter接口封装
-	ResponseWriterHTTP struct {
-		http.ResponseWriter
-		code int
-		size int
-	}
+// Stream 定义请求流，抽象websocket处理。
+type Stream interface {
+	StreamID() string
+	GetType() int
+	SetType(int)
+	SendMsg(interface{}) error
+	RecvMsg(interface{}) error
+	io.ReadWriteCloser
+}
 
-	// SetCookie 定义响应返回的set-cookie header的数据生成
-	SetCookie = http.Cookie
-	// Cookie 定义请求读取的cookie header的键值对数据存储
-	Cookie struct {
-		Name  string
-		Value string
-	}
+// RequestReader 对象为请求信息的载体。
+type RequestReader = http.Request
 
-	// Params 定义请求上下文中的参数接口。
-	Params interface {
-		Get(string) string
-		Add(string, string)
-		Set(string, string)
-	}
-	// ParamsArray 使用数组实现Params
-	ParamsArray struct {
-		Keys []string
-		Vals []string
-	}
-)
+// ResponseWriter 接口用于写入http请求响应体status、header、body。
+//
+// net/http.response实现了flusher、hijacker、pusher接口。
+type ResponseWriter interface {
+	// http.ResponseWriter
+	Header() http.Header
+	Write([]byte) (int, error)
+	WriteHeader(int)
+	// http.Flusher
+	Flush()
+	// http.Hijacker
+	Hijack() (net.Conn, *bufio.ReadWriter, error)
+	// http.Pusher
+	Push(string, *http.PushOptions) error
+	Size() int
+	Status() int
+}
+
+// ResponseWriterHTTP 是对net/http.ResponseWriter接口封装
+type ResponseWriterHTTP struct {
+	http.ResponseWriter
+	code int
+	size int
+}
+
+// SetCookie 定义响应返回的set-cookie header的数据生成
+type SetCookie = http.Cookie
+
+// Cookie 定义请求读取的cookie header的键值对数据存储
+type Cookie struct {
+	Name  string
+	Value string
+}
+
+// Params 定义请求上下文中的参数接口。
+type Params interface {
+	Get(string) string
+	Add(string, string)
+	Set(string, string)
+}
+
+// ParamsArray 使用数组实现Params
+type ParamsArray struct {
+	Keys []string
+	Vals []string
+}
 
 var (
 	responseWriterHTTPPool = sync.Pool{
@@ -165,7 +168,7 @@ func (w *ResponseWriterHTTP) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 // Push 方法实现http Psuh，如果ResponseWriterHTTP实现http.Push接口，则Push资源。
 func (w *ResponseWriterHTTP) Push(target string, opts *http.PushOptions) error {
 	if pusher, ok := w.ResponseWriter.(http.Pusher); ok {
-		return pusher.Push(target, &http.PushOptions{})
+		return pusher.Push(target, opts)
 	}
 	return nil
 }

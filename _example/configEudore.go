@@ -10,7 +10,6 @@ config的Get & Set方法使用eudore.Get & eudore.Set方法实现。
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 )
 
 type (
@@ -29,11 +28,7 @@ type (
 
 func main() {
 	conf := &eudoreConfig{}
-	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
-	// 设置config
-	app.Config = eudore.NewConfigEudore(conf)
-	eudore.Set(app.Config, "print", eudore.NewPrintFunc(app.App))
+	app := eudore.NewApp(eudore.NewConfigEudore(conf))
 
 	// 设属性
 	app.Set("int", 20)
@@ -57,5 +52,7 @@ func main() {
 	// 输出全部配置信息
 	app.Debugf("%#v", conf)
 	app.Debugf("%#v", app.Get(""))
+
+	app.CancelFunc()
 	app.Run()
 }

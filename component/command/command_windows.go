@@ -1,5 +1,3 @@
-// +build windows
-
 package command
 
 /*
@@ -16,8 +14,8 @@ import (
 // Command 对象是一个命令解析器，根据当前命令执行对应行为。
 type Command struct{}
 
-// InitCommand 函数初始化定义程序启动命令。
-func InitCommand(*eudore.Eudore) error {
+// Init 函数初始化定义程序启动命令。
+func Init(*eudore.App) error {
 	return nil
 }
 

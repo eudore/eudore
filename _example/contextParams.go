@@ -21,14 +21,13 @@ type Params interface {
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 )
 
 func main() {
-	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
+	app := eudore.NewApp()
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.Debug("route:", ctx.GetParam("route"))
 	})
+	app.CancelFunc()
 	app.Run()
 }

@@ -17,18 +17,15 @@ command包解析启动命令，支持start、daemon、status、stop、restart五
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/command"
-	"github.com/eudore/eudore/component/httptest"
 )
 
 func main() {
-	app := eudore.NewEudore()
-	httptest.NewClient(app).Stop(0)
-	app.RegisterInit("eudore-command", 0x007, command.InitCommand)
-	app.RegisterInit("init-listen", 0x016, func(app *eudore.Eudore) error {
-		app.GetFunc("/*", func(ctx eudore.Context) {
-			ctx.WriteString("hello eudore")
-		})
-		return app.Listen(":8088")
+	app := eudore.NewApp()
+	app.Options(app.Parse())
+	command.Init(app)
+	app.GetFunc("/*", func(ctx eudore.Context) {
+		ctx.WriteString("hello eudore")
 	})
+	app.CancelFunc()
 	app.Run()
 }

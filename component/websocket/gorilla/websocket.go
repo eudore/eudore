@@ -1,11 +1,9 @@
 package gorilla
 
 import (
-	"fmt"
-	"io"
-
 	"github.com/eudore/eudore"
 	"github.com/gorilla/websocket"
+	"io"
 )
 
 // StreamWebsocket 定义gorilla websocket实现eudore.Stream。
@@ -57,7 +55,6 @@ func (stream *StreamWebsocket) StreamID() string {
 func (stream *StreamWebsocket) Read(b []byte) (int, error) {
 	if stream.reader == nil {
 		msgType, reader, err := stream.NextReader()
-		fmt.Println(1, err)
 		if err != nil {
 			return 0, err
 		}

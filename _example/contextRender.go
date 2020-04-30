@@ -17,7 +17,7 @@ type renderData struct {
 }
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/*path", func(ctx eudore.Context) interface{} {
 		return renderData{
 			Name:    "eudore",
@@ -31,5 +31,6 @@ func main() {
 	client.NewRequest("GET", "/1").WithHeaderValue("Accept", eudore.MimeTextHTML).Do().Out()
 	client.NewRequest("GET", "/1").WithHeaderValue("Accept", eudore.MimeTextPlain).Do().Out()
 
+	app.CancelFunc()
 	app.Run()
 }

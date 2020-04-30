@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.FormValue("haha")
 		ctx.FormValue("name")
@@ -41,5 +41,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

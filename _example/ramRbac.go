@@ -9,8 +9,8 @@ import (
 
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
+	"github.com/eudore/eudore/component/ram"
 	"github.com/eudore/eudore/middleware"
-	"github.com/eudore/eudore/middleware/ram"
 )
 
 func main() {
@@ -29,8 +29,8 @@ func main() {
 	// 用户id 绑定 角色id1
 	rbac.BindRole(2, 1)
 
-	app := eudore.NewCore()
-	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "action", "ram", "route", "resource", "browser"))
+	app := eudore.NewApp()
+	app.AddMiddleware(middleware.NewLoggerFunc(app, "action", "ram", "route", "resource", "browser"))
 	// 测试给予参数 UID=2  即用户id为2，实际应由jwt、seession、token、cookie等方法计算得到UID。
 	app.AddMiddleware(func(ctx eudore.Context) {
 		ctx.SetParam(eudore.ParamUID, "2")
@@ -52,7 +52,7 @@ func main() {
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
+	app.CancelFunc()
 	app.Run()
 }

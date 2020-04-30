@@ -1,4 +1,4 @@
-package expvar
+package pprof
 
 import (
 	"encoding/json"

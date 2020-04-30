@@ -10,11 +10,11 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.ParseOption(func([]eudore.ConfigParseFunc) []eudore.ConfigParseFunc {
 		return []eudore.ConfigParseFunc{parseError}
 	})
-	app.Parse()
+	app.Options(app.Parse())
 	app.Run()
 }
 

@@ -11,8 +11,8 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
-	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
+	app := eudore.NewApp()
+	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AddController(new(mySingletonController))
 	// enable-route-extend 参数启用使用请求上下文扩展
 	app.SetParam("controllergroup", "name").SetParam("enable-route-extend", "0").AddController(new(mySingletonController))
@@ -32,6 +32,7 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }
 

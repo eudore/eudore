@@ -10,7 +10,7 @@ import (
 )
 
 func TestContext2(t *testing.T) {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/ctx", func(ctx eudore.Context) {
 		ctx.WithContext(context.WithValue(ctx.Context(), "num", 66666))
 		ctx.Debug("context:", ctx.Context())
@@ -20,6 +20,7 @@ func TestContext2(t *testing.T) {
 	client.NewRequest("GET", "/ctx").Do()
 	client.NewRequest("GET", "/err").Do()
 
+	app.CancelFunc()
 	app.Run()
 }
 
@@ -45,7 +46,7 @@ func (noWriteResponse) Push(target string, opts *http.PushOptions) error {
 }
 
 func TestReadWriteError2(t *testing.T) {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/r", func(ctx eudore.Context) {
 		req := ctx.Request()
 		req = req.WithContext(ctx.Context())
@@ -71,5 +72,6 @@ func TestReadWriteError2(t *testing.T) {
 	client.NewRequest("PUT", "/r").WithHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationForm).Do()
 	client.NewRequest("PUT", "/r").WithBodyFormValue("name", "eudore").Do()
 
+	app.CancelFunc()
 	app.Run()
 }

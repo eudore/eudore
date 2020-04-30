@@ -16,19 +16,19 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 
-	app.Config.Set("component.notify.buildcmd", "go build -o server coreNotify.go")
+	app.Config.Set("component.notify.buildcmd", "go build -o server app.go")
 	app.Config.Set("component.notify.startcmd", "./server")
 	app.Config.Set("component.notify.watchdir", ".")
-	notify.NewNotify(app.App).Run()
+	app.Options(notify.NewNotify(app).Run())
 
 	app.Listen(":8088")
 	app.Run()
 }
 ```
 
-然后`go build -o server coreNotify.go`编译，`./server`启动程序，在当前目录创建一个`.go`后缀的文件并写入内容，就会触发编译重启。
+然后`go build -o server app.go`编译，`./server`启动程序，在当前目录创建一个`.go`后缀的文件并写入内容，就会触发编译重启。
 
 **coreNotify.go是文件名称，默认实现监控.go后缀文件的写入事件**
 

@@ -18,11 +18,10 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	os.Args = append(os.Args, "--name=eudoreName")
-	err := app.Parse()
-	if err != nil {
-		panic(err)
-	}
+	app.Options(app.Parse())
+
+	app.CancelFunc()
 	app.Run()
 }

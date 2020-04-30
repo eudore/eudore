@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.Debugf("querys: %v", ctx.Querys())
 		ctx.Debugf("name: %s", ctx.GetQuery("name"))
@@ -19,5 +19,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

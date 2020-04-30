@@ -11,7 +11,6 @@ enable获得到的数组为需要加载的模式，额外会加载为当前操�
 import (
 	"github.com/eudore/eudore"
 	"os"
-	"time"
 )
 
 type conf struct {
@@ -41,15 +40,11 @@ func main() {
 	defer os.Remove(tmpfile.Name())
 	tmpfile.Write(content)
 
-	app := eudore.NewCore()
-	err := app.Parse()
-	if err != nil {
-		panic(err)
-	}
-	app.Config = eudore.NewConfigEudore(new(conf))
+	app := eudore.NewApp(eudore.NewConfigEudore(new(conf)))
 	app.Config.Set("keys.config", configfilepath)
 	app.Config.Set("enable", []string{"debug"})
+	app.Options(app.Parse())
 
-	app.Info(app.Parse())
-	time.Sleep(100 * time.Millisecond)
+	app.CancelFunc()
+	app.Run()
 }

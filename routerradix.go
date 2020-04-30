@@ -15,45 +15,44 @@ const (
 	radixNodeKindAnyMethod
 )
 
-type (
-	// RouterCoreRadix basic function router based on radix tree implementation.
-	//
-	// There are three basic functions: path parameter, wildcard parameter, default parameter, and parameter verification.
-	// RouterRadix基于基数树实现的基本功能路由器。
-	//
-	// 具有路径参数、通配符参数、默认参数三项基本功能。
-	RouterCoreRadix struct {
-		// exception handling method
-		// 异常处理方法
-		node404 radixNode
-		node405 radixNode
-		// various methods routing tree
-		// 各种方法路由树
-		root    radixNode
-		get     radixNode
-		post    radixNode
-		put     radixNode
-		delete  radixNode
-		options radixNode
-		head    radixNode
-		patch   radixNode
-	}
-	// radix节点的定义
-	radixNode struct {
-		// 基本信息
-		kind uint8
-		path string
-		name string
-		// 每次类型子节点
-		Cchildren []*radixNode
-		Pchildren []*radixNode
-		Wchildren *radixNode
-		// 当前节点的数据
-		tags     []string
-		vals     []string
-		handlers HandlerFuncs
-	}
-)
+// RouterCoreRadix basic function router based on radix tree implementation.
+//
+// There are three basic functions: path parameter, wildcard parameter, default parameter, and parameter verification.
+// RouterRadix基于基数树实现的基本功能路由器。
+//
+// 具有路径参数、通配符参数、默认参数三项基本功能。
+type RouterCoreRadix struct {
+	// exception handling method
+	// 异常处理方法
+	node404 radixNode
+	node405 radixNode
+	// various methods routing tree
+	// 各种方法路由树
+	root    radixNode
+	get     radixNode
+	post    radixNode
+	put     radixNode
+	delete  radixNode
+	options radixNode
+	head    radixNode
+	patch   radixNode
+}
+
+// radix节点的定义
+type radixNode struct {
+	// 基本信息
+	kind uint8
+	path string
+	name string
+	// 每次类型子节点
+	Cchildren []*radixNode
+	Pchildren []*radixNode
+	Wchildren *radixNode
+	// 当前节点的数据
+	tags     []string
+	vals     []string
+	handlers HandlerFuncs
+}
 
 // NewRouterRadix 创建一个Radix路由器。
 func NewRouterRadix() Router {

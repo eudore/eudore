@@ -8,8 +8,8 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
-	app.AddMiddleware(middleware.NewLoggerFunc(app.App, "route"))
+	app := eudore.NewApp()
+	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware(middleware.NewTimeoutFunc(3 * time.Second / 10))
 	app.AnyFunc("/*", func(ctx eudore.ContextData) {
 		time.Sleep(time.Duration(ctx.GetParamInt64("*")) * time.Second / 10)
@@ -25,5 +25,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

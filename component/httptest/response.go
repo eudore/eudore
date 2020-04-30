@@ -1,8 +1,10 @@
 package httptest
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -146,9 +148,22 @@ func (rw *ResponseWriterTest) Flush() {
 	rw.Flushed = true
 }
 
-// Hijack 方法返回劫持的连接，该方法始终返回空连接和不支持该方法的错误。
-func (rw *ResponseWriterTest) Hijack() (net.Conn, error) {
-	return nil, ErrResponseWriterTestNotSupportHijack
+// Hijack 方法返回劫持的连接。
+func (rw *ResponseWriterTest) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if rw.Request.websocketServer != nil {
+		go func() {
+			resp, err := http.ReadResponse(bufio.NewReader(rw.Request.websocketClient), rw.Request.Request)
+			if err != nil {
+				rw.Request.websocketClient.Close()
+				rw.Request.Error(err)
+				return
+			}
+			rw.HandleRespone(resp)
+			rw.Request.websocketHandle(rw.Request.websocketClient)
+		}()
+		return rw.Request.websocketServer, bufio.NewReadWriter(bufio.NewReader(rw.Request.websocketServer), bufio.NewWriter(rw.Request.websocketServer)), nil
+	}
+	return nil, nil, ErrResponseWriterTestNotSupportHijack
 }
 
 // Size 方法返回写入的body的长度。
@@ -161,11 +176,23 @@ func (rw *ResponseWriterTest) Status() int {
 	return rw.Code
 }
 
+// HandleRespone 方法处理一个http.Response对象数据。
+func (rw *ResponseWriterTest) HandleRespone(resp *http.Response) *ResponseWriterTest {
+	rw.Code = resp.StatusCode
+	rw.HeaderMap = resp.Header
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		rw.Request.Error(err)
+		return rw
+	}
+	rw.Body = bytes.NewBuffer(body)
+	return rw
+}
+
 // CheckStatus 方法检查状态码。
 func (rw *ResponseWriterTest) CheckStatus(status ...int) *ResponseWriterTest {
 	for _, i := range status {
 		if i == rw.Code {
-			// fmt.Printf("response status succeeds. status is %d", rw.Code)
 			return rw
 		}
 	}

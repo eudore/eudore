@@ -6,14 +6,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"runtime"
 	"strings"
-	"time"
 )
 
 var (
+	// HTTPTestHost 定义默认使用的测试Host header。
+	HTTPTestHost = "eudore-httptest"
 	// ErrResponseWriterTestNotSupportHijack ResponseWriterTest对象的Hijack不支持。
 	ErrResponseWriterTestNotSupportHijack = errors.New("ResponseWriterTest no support hijack")
 )
@@ -21,7 +23,10 @@ var (
 type (
 	// Client 定义httptest客户端。
 	Client struct {
+		context.Context
 		http.Handler
+		*http.Client
+		http.CookieJar
 		Args    url.Values
 		Headers http.Header
 		Index   int
@@ -32,19 +37,21 @@ type (
 
 // NewClient 方法创建一个httptest客户端。
 func NewClient(handler http.Handler) *Client {
+	jar, _ := cookiejar.New(nil)
 	return &Client{
-		Handler: handler,
-		Args:    make(url.Values),
-		Headers: make(http.Header),
-		Out:     os.Stdout,
+		Context:   context.Background(),
+		Handler:   handler,
+		Client:    http.DefaultClient,
+		CookieJar: jar,
+		Args:      make(url.Values),
+		Headers:   make(http.Header),
+		Out:       os.Stdout,
 	}
 }
 
 // NewRequest 方法创建一个新请求。
 func (clt *Client) NewRequest(method, path string) *RequestReaderTest {
-	r := NewRequestReaderTest(clt, method, path)
-	r.File, r.Line = logFormatFileLine(2)
-	return r
+	return NewRequestReaderTest(clt, method, path)
 }
 
 // Next 方法检查是否存在下一个错误。
@@ -91,37 +98,6 @@ func (clt *Client) WithHeaders(headers http.Header) *Client {
 func (clt *Client) WithHeaderValue(key, val string) *Client {
 	clt.Headers.Add(key, val)
 	return clt
-}
-
-// Stop 方法指定时间后停止app，默认1秒。
-//
-// 如果Handler实现Shutdown(ctx context.Context) error方法。
-func (clt *Client) Stop(t time.Duration) {
-	if t == 0 {
-		t = 1 * time.Second
-	}
-	{
-		app, ok := clt.Handler.(interface {
-			Shutdown() error
-		})
-		if ok {
-			go func() {
-				time.Sleep(t)
-				app.Shutdown()
-			}()
-		}
-	}
-	{
-		app, ok := clt.Handler.(interface {
-			Shutdown(ctx context.Context) error
-		})
-		if ok {
-			go func() {
-				time.Sleep(t)
-				app.Shutdown(context.Background())
-			}()
-		}
-	}
 }
 
 // logFormatFileLine 函数获得调用的文件位置，默认层数加三。

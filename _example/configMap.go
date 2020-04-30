@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.Set("int", 20)
 	app.Set("string", "app set string")
 	app.Set("bool", true)
@@ -32,5 +32,7 @@ func main() {
 		"nil data": nil,
 	})
 	app.Debugf("%#v", app.Get(""))
+
+	app.CancelFunc()
 	app.Run()
 }

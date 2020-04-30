@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.Redirect(302, "/hello")
 	})
@@ -20,5 +20,6 @@ func main() {
 		app.Error(client.Error())
 	}
 
+	app.CancelFunc()
 	app.Run()
 }

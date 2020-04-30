@@ -17,49 +17,47 @@ const (
 	fullNodeKindAnyMethod
 )
 
-type (
-	// RouterCoreFull is implemented based on the radix tree to implement all router related features.
-	//
-	// With path parameters, wildcard parameters, default parameters, parameter verification, wildcard verification, multi-parameter regular capture is not implemented.
-	//
-	// RouterFull基于基数树实现，实现全部路由器相关特性。
-	//
-	// 具有路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
-	RouterCoreFull struct {
-		node404 fullNode
-		node405 fullNode
-		root    fullNode
-		get     fullNode
-		post    fullNode
-		put     fullNode
-		delete  fullNode
-		options fullNode
-		head    fullNode
-		patch   fullNode
-	}
-	fullNode struct {
-		path string
-		kind uint8
-		pnum uint8
-		name string
-		// 保存各类子节点
-		Cchildren []*fullNode
-		Rchildren []*fullNode
-		Pchildren []*fullNode
-		Vchildren []*fullNode
-		Wchildren *fullNode
-		// 默认标签的名称和值
-		tags []string
-		vals []string
-		// 校验函数
-		check func(string) bool
-		// 正则捕获名称和函数
-		// names		[]string
-		// find		RouterFindFunc
-		// 路由匹配的处理者
-		handlers HandlerFuncs
-	}
-)
+// RouterCoreFull is implemented based on the radix tree to implement all router related features.
+//
+// With path parameters, wildcard parameters, default parameters, parameter verification, wildcard verification, multi-parameter regular capture is not implemented.
+//
+// RouterFull基于基数树实现，实现全部路由器相关特性。
+//
+// 具有路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
+type RouterCoreFull struct {
+	node404 fullNode
+	node405 fullNode
+	root    fullNode
+	get     fullNode
+	post    fullNode
+	put     fullNode
+	delete  fullNode
+	options fullNode
+	head    fullNode
+	patch   fullNode
+}
+type fullNode struct {
+	path string
+	kind uint8
+	pnum uint8
+	name string
+	// 保存各类子节点
+	Cchildren []*fullNode
+	Rchildren []*fullNode
+	Pchildren []*fullNode
+	Vchildren []*fullNode
+	Wchildren *fullNode
+	// 默认标签的名称和值
+	tags []string
+	vals []string
+	// 校验函数
+	check func(string) bool
+	// 正则捕获名称和函数
+	// names		[]string
+	// find		RouterFindFunc
+	// 路由匹配的处理者
+	handlers HandlerFuncs
+}
 
 // NewRouterFull 函数创建一个Full路由器。
 func NewRouterFull() Router {

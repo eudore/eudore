@@ -2,13 +2,11 @@ package main
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 	"github.com/gorilla/websocket"
 )
 
 func main() {
-	app := eudore.NewCore()
-	httptest.NewClient(app).Stop(0)
+	app := eudore.NewApp()
 	app.AnyFunc("/*", eudore.HandlerFunc(func(ctx eudore.Context) {
 		conn, err := websocket.Upgrade(ctx.Response(), ctx.Request(), nil, 1024, 1024)
 		if err != nil {
@@ -31,5 +29,6 @@ func main() {
 	}))
 
 	app.Listen(":8088")
+	app.CancelFunc()
 	app.Run()
 }

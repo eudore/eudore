@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddHandlerExtend(func(interface{}) eudore.HandlerFunc {
 		return func(ctx eudore.Context) {
 			ctx.Debugf("%s extend: %v", ctx.Path(), 999)
@@ -31,7 +31,7 @@ func main() {
 	client.NewRequest("GET", "/api/11").Do()
 	client.NewRequest("GET", "/api/v1/11").Do()
 	client.NewRequest("GET", "/api/v2/11").Do()
-	client.Stop(0)
 
+	app.CancelFunc()
 	app.Run()
 }

@@ -18,14 +18,14 @@ type loggerInitHandler3 interface {
 }
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	httptest.NewClient(app).Stop(0)
 
 	// 设置编译命令、启动命令、监听目录
 	app.Config.Set("component.notify.buildcmd", "go build -o server appCoreNotify.go")
 	app.Config.Set("component.notify.startcmd", "./server")
 	app.Config.Set("component.notify.watchdir", ".")
-	notify.NewNotify(app.App).Run()
+	notify.NewNotify(app).Run()
 
 	// 如果是启动的notify，则阻塞主进程等待。
 	if !eudore.GetStringBool(os.Getenv(eudore.EnvEudoreIsNotify)) {

@@ -12,7 +12,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddHandlerExtend(func(fn func(eudore.Context, string)) eudore.HandlerFunc {
 		name := "eudore"
 		return func(ctx eudore.Context) {
@@ -28,7 +28,7 @@ func main() {
 	for client.Next() {
 		app.Error(client.Error())
 	}
-	client.Stop(0)
 
+	app.CancelFunc()
 	app.Run()
 }
