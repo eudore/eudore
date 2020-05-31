@@ -340,6 +340,7 @@ func TestSetWithString2(t *testing.T) {
 	t.Log(eudore.Set(data, "duration", ""))
 	t.Log(eudore.Set(data, "duration", "3m"))
 	t.Log(eudore.Set(data, "duration", "30s"))
+	t.Log(eudore.Set(data, "duration", "30sxx"))
 	t.Log(eudore.Set(data, "time", ""))
 	t.Log(eudore.Set(data, "time", "2018-08-12"))
 	t.Log(eudore.Set(data, "interface", "eface"))

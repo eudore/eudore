@@ -21,7 +21,7 @@ done
 # 复制文件
 cp -rf *_test.go $dir/
 cd $dir
-rm -f appNotify_test.go appDaemon_test.go 
+rm -f appDefine_test.go appNotify_test.go appDaemon_test.go 
 
 export ENV_KEYS_NAME=eudore
 export GODOC=https://golang.org
@@ -31,6 +31,6 @@ if [ $# -ne 0 ];then
 elif [ -z $OUT ];then
 	go test -v -timeout=2m -cover $OPTION
 else
-	go test -v -timeout=2m -cover -coverprofile=size_coverage.out $OPTION && go tool cover -html=size_coverage.out -o $OUT && rm -f size_coverage.out
+	go test -v -timeout=22m -cover -coverprofile=size_coverage.out $OPTION && go tool cover -html=size_coverage.out -o $OUT && rm -f size_coverage.out
 fi
 rm -f *_test.go

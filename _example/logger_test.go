@@ -1,10 +1,12 @@
 package eudore_test
 
 import (
+	"bou.ke/monkey"
 	"encoding/json"
 	"errors"
 	"github.com/eudore/eudore"
 	"os"
+	"runtime"
 	"testing"
 )
 
@@ -185,6 +187,66 @@ func TestLoggerStdOut2(t *testing.T) {
 	log.Info("hello")
 	log.Sync()
 	os.Remove(logfile)
+}
+
+func TestLoggerStdOut3(t *testing.T) {
+	log := eudore.NewLoggerStd(&eudore.LoggerStdConfig{
+		Writer: eudore.NewLoggerWriterStd(),
+	})
+	log.Info("hello")
+	log.Sync()
+}
+
+func TestLoggerStdOut4(t *testing.T) {
+	defer func() {
+		os.RemoveAll("logger")
+		t.Log(recover())
+	}()
+	log := eudore.NewLoggerStd(&eudore.LoggerStdConfig{
+		Path: "logger/",
+	})
+	log.Info("hello")
+	log.Sync()
+}
+
+func TestLoggerStdOut5(t *testing.T) {
+	defer os.RemoveAll("logger")
+	log := eudore.NewLoggerStd(&eudore.LoggerStdConfig{
+		Std:     true,
+		Path:    "logger/logger-out-index.log",
+		MaxSize: 16 << 10,
+	})
+	log.Info("hello")
+	log.Sync()
+}
+
+func TestLoggerStdOut6(t *testing.T) {
+	defer func() {
+		os.RemoveAll("logger")
+		t.Log(recover())
+	}()
+	log := eudore.NewLoggerStd(&eudore.LoggerStdConfig{
+		Std:     true,
+		Path:    "logger/log-index/",
+		MaxSize: 16 << 10,
+	})
+	log.Info("hello")
+	log.Sync()
+}
+
+func TestLoggerCaller5(t *testing.T) {
+	patch1 := monkey.Patch(runtime.Caller, func(int) (uintptr, string, int, bool) { return 0, "", 0, false })
+	patch2 := monkey.Patch(runtime.Callers, func(int, []uintptr) int { return 0 })
+	defer patch1.Unpatch()
+	defer patch2.Unpatch()
+
+	app := eudore.NewApp(eudore.NewRouterFull())
+	app.AddMiddleware("8888")
+	app.AnyFunc("/:path|panic", eudore.HandlerEmpty)
+	app.AnyFunc("/*", eudore.HandlerRouter404)
+
+	app.CancelFunc()
+	app.Run()
 }
 
 func BenchmarkLogerStd(b *testing.B) {

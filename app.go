@@ -22,6 +22,7 @@ type App struct {
 	Router             `alias:"router"`
 	Binder             `alias:"binder"`
 	Renderer           `alias:"renderer"`
+	Validater          `alias:"validater"`
 	GetWarp            `alias:"getwarp"`
 	ContextPool        sync.Pool `alias:"contextpool"`
 }
@@ -29,12 +30,13 @@ type App struct {
 // NewApp 函数创建一个App对象。
 func NewApp(options ...interface{}) *App {
 	app := &App{
-		Config:   NewConfigMap(nil),
-		Logger:   NewLoggerStd(nil),
-		Server:   NewServerStd(nil),
-		Router:   NewRouterRadix(),
-		Binder:   BindDefault,
-		Renderer: RenderDefault,
+		Config:    NewConfigMap(nil),
+		Logger:    NewLoggerStd(nil),
+		Server:    NewServerStd(nil),
+		Router:    NewRouterRadix(),
+		Binder:    BindDefault,
+		Renderer:  RenderDefault,
+		Validater: DefaultValidater,
 	}
 	app.Context, app.CancelFunc = context.WithCancel(context.WithValue(context.Background(), AppContextKey, app))
 	app.ContextPool.New = func() interface{} {
@@ -79,8 +81,8 @@ func (app *App) Options(options ...interface{}) {
 			app.Binder = val
 		case Renderer:
 			app.Renderer = val
-		case http.Handler:
-			app.Server.SetHandler(val)
+		case Validater:
+			app.Validater = val
 		case error:
 			app.Error("eudore app cannel context on handler error: " + val.Error())
 			app.CancelFunc()

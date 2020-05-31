@@ -1,8 +1,10 @@
 package eudore_test
 
 import (
-	"github.com/eudore/eudore"
+	"encoding/json"
 	"testing"
+
+	"github.com/eudore/eudore"
 )
 
 func TestUtilGet2(t *testing.T) {
@@ -121,6 +123,9 @@ func TestUtilGetWarp2(t *testing.T) {
 		return app.Get(key)
 	})
 	eudore.NewGetWarpWithApp(app).GetBool("key")
+	eudore.NewGetWarpWithMapString(map[string]interface{}{
+		"key": true,
+	}).GetBool("key")
 	eudore.NewGetWarpWithConfig(app.Config).GetBool("key")
 	eudore.NewGetWarpWithObject(app).GetBool("key")
 
@@ -182,4 +187,10 @@ func TestUtilGetWarp2(t *testing.T) {
 	t.Log(warp.GetStrings("arrayint"))
 	t.Log(warp.GetStrings("arraystr"))
 	t.Log(warp.GetStrings("arraybyte"))
+}
+
+func TestTimeDuration2(t *testing.T) {
+	srv := &eudore.ServerStdConfig{}
+	body := `{"readtimeout":12000000,"readheadertimeout":"6s","writetimeout":"xxx"}`
+	json.Unmarshal([]byte(body), srv)
 }

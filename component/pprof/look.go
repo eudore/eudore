@@ -86,16 +86,9 @@ func (fm *formatter) indent() {
 	fm.buffer.WriteString(strings.Repeat("\t", fm.depth-1))
 }
 
-var typeStringer = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
-
 func (fm *formatter) handle(iValue reflect.Value) {
-	if iValue.CanSet() && iValue.Type().Implements(typeStringer) {
-		val := iValue.MethodByName("String").Call([]reflect.Value{})[0]
-		str := val.String()
-		if str != "" {
-			fm.print(template.HTMLEscapeString(str))
-			return
-		}
+	if fm.handleStringer(iValue) {
+		return
 	}
 	switch iValue.Kind() {
 	case reflect.Bool:
@@ -114,25 +107,17 @@ func (fm *formatter) handle(iValue reflect.Value) {
 		fm.printf("%s(%d)", iValue.Type().String(), iValue.Pointer())
 	case reflect.Invalid:
 		fm.print("nil")
+	default:
+		fm.handleOther(iValue)
+	}
+}
+
+func (fm *formatter) handleOther(iValue reflect.Value) {
+	switch iValue.Kind() {
 	case reflect.Ptr:
-		if !iValue.IsNil() {
-			line, ok := fm.visited[iValue.Pointer()]
-			if ok {
-				fm.printf("jump: <a href='#L%d'>%s</a>", line, iValue.Type().String())
-			} else {
-				fm.print("&")
-				fm.visited[iValue.Pointer()] = fm.line
-				fm.handle(iValue.Elem())
-			}
-		} else {
-			fm.printf("%s(nil)", iValue.Type().String())
-		}
+		fm.handlePtr(iValue)
 	case reflect.Interface:
-		if iValue.Elem().Kind() != reflect.Invalid {
-			fm.handle(iValue.Elem())
-		} else {
-			fm.printf("%s(nil)", iValue.Type().String())
-		}
+		fm.handleInterface(iValue)
 	case reflect.Struct:
 		fm.handleStruct(iValue)
 	case reflect.Slice, reflect.Array:
@@ -140,9 +125,52 @@ func (fm *formatter) handle(iValue reflect.Value) {
 	case reflect.Map:
 		fm.handleMap(iValue)
 	case reflect.Func, reflect.Chan:
-		fm.printf("%s {...}", iValue.Type().String())
+		fm.handleFunc(iValue)
 	default:
 		fmt.Printf("not handle kind %s type %s\n", iValue.Kind().String(), iValue.Type().String())
+	}
+}
+
+var typeStringer = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
+
+func (fm *formatter) handleStringer(iValue reflect.Value) bool {
+	if iValue.CanSet() && iValue.Type().Implements(typeStringer) {
+		val := iValue.MethodByName("String").Call([]reflect.Value{})[0]
+		str := val.String()
+		if str != "" {
+			fm.print(template.HTMLEscapeString(str))
+			return true
+		}
+	}
+	return false
+}
+
+func (fm *formatter) handlePtr(iValue reflect.Value) {
+	if !iValue.IsNil() {
+		line, ok := fm.visited[iValue.Pointer()]
+		if ok {
+			fm.printf("jump: <a href='#L%d'>%s</a>", line, iValue.Type().String())
+		} else {
+			fm.print("&")
+			fm.visited[iValue.Pointer()] = fm.line
+			fm.handle(iValue.Elem())
+		}
+	} else {
+		fm.printf("%s(nil)", iValue.Type().String())
+	}
+}
+
+func (fm *formatter) handleInterface(iValue reflect.Value) {
+	if iValue.Elem().Kind() != reflect.Invalid {
+		iType := iValue.Type()
+		if iType.PkgPath() != "" {
+			fm.printf("<a href='%s/pkg/%s#%s'>%s</a> ", fm.godoc, iType.PkgPath(), iType.Name(), iType.String())
+		} else {
+			fm.print(iType.String() + " ")
+		}
+		fm.handle(iValue.Elem())
+	} else {
+		fm.printf("%s(nil)", iValue.Type().String())
 	}
 }
 
@@ -276,4 +304,18 @@ func (fm *formatter) handleStruct(iValue reflect.Value) {
 	}
 	fm.indent()
 	fm.print("}")
+}
+
+func (fm *formatter) handleFunc(iValue reflect.Value) {
+	iType := iValue.Type()
+	if iType.PkgPath() != "" {
+		fm.printf("<a href='%s/pkg/%s#%s'>%s</a>", fm.godoc, iType.PkgPath(), iType.Name(), iType.String())
+	} else {
+		fm.print(iValue.Type().String())
+	}
+	if iValue.IsNil() {
+		fm.print("(nil)")
+	} else {
+		fm.print(" {...}")
+	}
 }

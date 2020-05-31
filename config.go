@@ -25,18 +25,24 @@ type Config interface {
 
 // ConfigMap 使用map保存配置。
 type ConfigMap struct {
-	Keys  map[string]interface{} `alias:"keys"`
-	Print func(...interface{})   `alias:"print"`
-	funcs []ConfigParseFunc      `alias:"-"`
-	mu    sync.RWMutex           `alias:"-"`
+	Keys   map[string]interface{} `alias:"keys"`
+	Print  func(...interface{})   `alias:"print"`
+	funcs  []ConfigParseFunc      `alias:"-"`
+	Locker sync.RWMutex           `alias:"-"`
 }
 
 // ConfigEudore 使用结构体或map保存配置，通过反射来读写属性。
 type ConfigEudore struct {
-	Keys  interface{}          `alias:"keys"`
-	Print func(...interface{}) `alias:"print"`
-	funcs []ConfigParseFunc    `alias:"-"`
-	mu    sync.RWMutex         `alias:"-"`
+	Keys          interface{}          `alias:"keys"`
+	Print         func(...interface{}) `alias:"print"`
+	funcs         []ConfigParseFunc    `alias:"-"`
+	configRLocker `alias:"-"`
+}
+
+type configRLocker interface {
+	sync.Locker
+	RLock()
+	RUnlock()
 }
 
 // NewConfigMap 创建一个ConfigMap，如果传入参数为map[string]interface{},则作为初始化数据。
@@ -56,8 +62,8 @@ func NewConfigMap(arg interface{}) Config {
 
 // Get 方法获取一个属性，如果键为空字符串，返回保存全部数据的map对象。
 func (c *ConfigMap) Get(key string) interface{} {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.Locker.RLock()
+	defer c.Locker.RUnlock()
 	if len(key) == 0 {
 		return c.Keys
 	}
@@ -66,7 +72,7 @@ func (c *ConfigMap) Get(key string) interface{} {
 
 // Set 方法设置一个属性，如果键为空字符串且值类型是map[string]interface{},则替换保存全部数据的map对象。
 func (c *ConfigMap) Set(key string, val interface{}) error {
-	c.mu.Lock()
+	c.Locker.Lock()
 	if len(key) == 0 {
 		keys, ok := val.(map[string]interface{})
 		if ok {
@@ -82,7 +88,7 @@ func (c *ConfigMap) Set(key string, val interface{}) error {
 	} else {
 		c.Keys[key] = val
 	}
-	c.mu.Unlock()
+	c.Locker.Unlock()
 	return nil
 }
 
@@ -105,11 +111,15 @@ func (c *ConfigMap) Parse() (err error) {
 
 // MarshalJSON 实现json.Marshaler接口，试json序列化直接操作保存的数据。
 func (c *ConfigMap) MarshalJSON() ([]byte, error) {
+	c.Locker.RLock()
+	defer c.Locker.RUnlock()
 	return json.Marshal(c.Keys)
 }
 
 // UnmarshalJSON 实现json.Unmarshaler接口，试json反序列化直接操作保存的数据。
 func (c *ConfigMap) UnmarshalJSON(data []byte) error {
+	c.Locker.Lock()
+	defer c.Locker.Unlock()
 	return json.Unmarshal(data, &c.Keys)
 }
 
@@ -118,10 +128,15 @@ func NewConfigEudore(i interface{}) Config {
 	if i == nil {
 		i = make(map[string]interface{})
 	}
+	mu, ok := i.(configRLocker)
+	if !ok {
+		mu = new(sync.RWMutex)
+	}
 	return &ConfigEudore{
-		Keys:  i,
-		Print: printEmpty,
-		funcs: ConfigAllParseFunc,
+		Keys:          i,
+		Print:         printEmpty,
+		funcs:         ConfigAllParseFunc,
+		configRLocker: mu,
 	}
 }
 
@@ -130,15 +145,15 @@ func (c *ConfigEudore) Get(key string) (i interface{}) {
 	if len(key) == 0 {
 		return c.Keys
 	}
-	c.mu.Lock()
+	c.RLock()
 	i = Get(c.Keys, key)
-	c.mu.Unlock()
+	c.RUnlock()
 	return
 }
 
 // Set 方法实现设置数据的一个属性。
 func (c *ConfigEudore) Set(key string, val interface{}) (err error) {
-	c.mu.RLock()
+	c.Lock()
 	if len(key) == 0 {
 		c.Keys = val
 	} else if key == "print" {
@@ -151,7 +166,7 @@ func (c *ConfigEudore) Set(key string, val interface{}) (err error) {
 	} else {
 		err = Set(c.Keys, key, val)
 	}
-	c.mu.RUnlock()
+	c.Unlock()
 	return
 }
 
@@ -174,11 +189,15 @@ func (c *ConfigEudore) Parse() (err error) {
 
 // MarshalJSON 实现json.Marshaler接口，试json序列化直接操作保存的数据。
 func (c *ConfigEudore) MarshalJSON() ([]byte, error) {
+	c.RLock()
+	defer c.RUnlock()
 	return json.Marshal(c.Keys)
 }
 
 // UnmarshalJSON 实现json.Unmarshaler接口，试json反序列化直接操作保存的数据。
 func (c *ConfigEudore) UnmarshalJSON(data []byte) error {
+	c.Lock()
+	defer c.Unlock()
 	return json.Unmarshal(data, &c.Keys)
 }
 

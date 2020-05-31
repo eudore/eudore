@@ -17,7 +17,7 @@ type newUserRequest struct {
 }
 
 func main() {
-	fmt.Println(eudore.Validate(newUserRequest{
+	fmt.Println(eudore.DefaultValidater.Validate(newUserRequest{
 		Username: "abc",
 		Name:     "eudore",
 		Age:      21,
@@ -25,5 +25,5 @@ func main() {
 	}))
 
 	var name = "8hs8a"
-	fmt.Println(eudore.ValidateVar(name, "regexp:^[a-zA-Z]*$"))
+	fmt.Println(eudore.DefaultValidater.ValidateVar(name, "regexp:^[a-zA-Z]*$"))
 }

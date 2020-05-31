@@ -15,8 +15,13 @@ import (
 
 type conf struct {
 	Keys   map[string]interface{} `alias:"keys"`
+		Component *componentConfig            `alias:"component"`
 	Enable []string               `alias:"enable"`
 	Mods   map[string]*conf       `alias:"mods"`
+}
+type componentConfig struct {
+		Logger *eudore.LoggerStdConfig `json:"logger" alias:"logger"`
+		Server *eudore.ServerStdConfig `json:"server" alias:"server"`
 }
 
 var configfilepath = "example.json"
@@ -31,6 +36,12 @@ func main() {
 		"debug": {
 			"keys": {
 				"debug": true
+			},
+			"component":{
+				"server":{
+					"readtimeout": "12s",
+					"writetimeout": 3000000000
+				}
 			}
 		}
 	}

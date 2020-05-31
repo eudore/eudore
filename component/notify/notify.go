@@ -77,6 +77,11 @@ func NewNotify(app *eudore.App) *Notify {
 	}
 }
 
+// IsRun 方法返回Notify是否可以启动。
+func (n *Notify) IsRun() bool {
+	return !(eudore.GetStringBool(os.Getenv(eudore.EnvEudoreIsNotify)) || n == nil)
+}
+
 // Run 方法启动Notify。
 //
 // 调用App.Logger

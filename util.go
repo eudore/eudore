@@ -412,6 +412,13 @@ func NewGetWarpWithApp(app *App) GetWarp {
 	}
 }
 
+// NewGetWarpWithMapString 函数使用map[string]interface{}创建getwarp。
+func NewGetWarpWithMapString(data map[string]interface{}) GetWarp {
+	return func(key string) interface{} {
+		return data[key]
+	}
+}
+
 // NewGetWarpWithObject 函数使用map或创建getwarp。
 func NewGetWarpWithObject(obj interface{}) GetWarp {
 	return func(key string) interface{} {

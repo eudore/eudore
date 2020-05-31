@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -38,45 +39,43 @@ var (
 // LoggerStd 标准日志处理实现，将日志输出到标准输出或者文件。
 type LoggerStd struct {
 	LoggerStdConfig
-	out    *bufio.Writer
-	ticker *time.Ticker
-	pool   sync.Pool
-	mu     sync.Mutex
+	Writer LoggerWriter `json:"-" alias:"writer"`
+	Pool   sync.Pool    `json:"-" alias:"pool"`
+	Mutex  sync.Mutex   `json:"-" alias:"mutex"`
 }
 
 // LoggerStdConfig 定义LoggerStd配置信息。
 type LoggerStdConfig struct {
-	Std        bool        `json:"std" alias:"std"`
-	Path       string      `json:"path" alias:"path"`
-	Level      LoggerLevel `json:"level" alias:"level"`
-	TimeFormat string      `json:"timeformat" alias:"timeformat"`
+	Writer     LoggerWriter `json:"-" alias:"writer"`
+	Std        bool         `json:"std" alias:"std"`
+	Path       string       `json:"path" alias:"path"`
+	MaxSize    uint64       `json:"maxsize" alias:"maxsize"`
+	Link       string       `json:"link" alias:"link"`
+	Level      LoggerLevel  `json:"level" alias:"level"`
+	TimeFormat string       `json:"timeformat" alias:"timeformat"`
 }
 
 // 标准日志条目
 type entryStd struct {
-	level   LoggerLevel
-	time    time.Time
-	message string
-	data    []byte
-	logger  *LoggerStd
+	level      LoggerLevel
+	time       time.Time
+	message    string
+	data       []byte
+	timeformat string
+	handler    func(*entryStd)
 }
 
 // NewLoggerStd 创建一个标准日志处理器。
 func NewLoggerStd(arg interface{}) Logger {
 	// 解析配置
-	config := LoggerStdConfig{
-		TimeFormat: "2006-01-02 15:04:05",
-	}
-	ConvertTo(arg, &config)
-
-	log := &LoggerStd{
-		LoggerStdConfig: config,
-	}
-	log.pool.New = func() interface{} {
-		data := make([]byte, 2048)
+	log := &LoggerStd{}
+	log.TimeFormat = "2006-01-02 15:04:05"
+	ConvertTo(arg, &log.LoggerStdConfig)
+	log.Pool.New = func() interface{} {
 		return &entryStd{
-			logger: log,
-			data:   data[0:0],
+			timeformat: log.TimeFormat,
+			data:       make([]byte, 0, 2048),
+			handler:    log.handler,
 		}
 	}
 	log.initOut()
@@ -85,44 +84,44 @@ func NewLoggerStd(arg interface{}) Logger {
 
 // initOut 方法初始化输出流。
 func (log *LoggerStd) initOut() {
-	log.Path = strings.TrimSpace(log.Path)
-	if len(log.Path) == 0 {
-		log.out = bufio.NewWriter(os.Stdout)
+	if log.LoggerStdConfig.Writer != nil {
+		log.Writer = log.LoggerStdConfig.Writer
 		return
 	}
-	// init file
-	file, err := os.OpenFile(log.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	var err error
+	log.Writer, err = NewLoggerWriterRotate(strings.TrimSpace(log.Path), log.Std, log.MaxSize, newLoggerLinkName(log.Link))
 	if err != nil {
-		log.out = bufio.NewWriter(os.Stdout)
-		log.Error(err)
-		return
-	}
-	if log.Std {
-		log.out = bufio.NewWriter(io.MultiWriter(os.Stdout, file))
-	} else {
-		log.out = bufio.NewWriter(file)
+		panic(err)
 	}
 }
 
 // SetLevel 方法设置日志输出级别。
 func (log *LoggerStd) SetLevel(level LoggerLevel) {
-	log.mu.Lock()
+	log.Mutex.Lock()
 	log.Level = level
-	log.mu.Unlock()
+	log.Mutex.Unlock()
 }
 
 // Sync 方法将缓冲写入到输出流。
 func (log *LoggerStd) Sync() error {
-	log.mu.Lock()
-	err := log.out.Flush()
-	log.mu.Unlock()
+	log.Mutex.Lock()
+	err := log.Writer.Sync()
+	log.Mutex.Unlock()
 	return err
 }
 
 func (log *LoggerStd) newEntry() *entryStd {
-	entry := log.pool.Get().(*entryStd)
+	entry := log.Pool.Get().(*entryStd)
 	entry.time = time.Now()
+	entry.level = log.Level
 	return entry
+}
+
+func (log *LoggerStd) handler(entry *entryStd) {
+	log.Mutex.Lock()
+	entry.writeTo(log.Writer)
+	log.Mutex.Unlock()
+	log.Pool.Put(entry)
 }
 
 // Debug 方法输出Debug级别日志。
@@ -187,53 +186,40 @@ func (log *LoggerStd) WithFields(fields Fields) Logout {
 
 // Debug 方法条目输出Debug级别日志。
 func (entry *entryStd) Debug(args ...interface{}) {
-	if entry.logger.Level < 1 {
-		entry.level = 0
+	if entry.level < 1 {
 		entry.message = fmt.Sprintln(args...)
 		entry.message = entry.message[:len(entry.message)-1]
-		entry.logger.mu.Lock()
-		entry.writeTo(entry.logger.out)
-		entry.logger.mu.Unlock()
-		entry.logger.pool.Put(entry)
+		entry.handler(entry)
 	}
 }
 
 // Info 方法条目输出Info级别日志。
 func (entry *entryStd) Info(args ...interface{}) {
-	if entry.logger.Level < 2 {
+	if entry.level < 2 {
 		entry.level = 1
 		entry.message = fmt.Sprintln(args...)
 		entry.message = entry.message[:len(entry.message)-1]
-		entry.logger.mu.Lock()
-		entry.writeTo(entry.logger.out)
-		entry.logger.mu.Unlock()
-		entry.logger.pool.Put(entry)
+		entry.handler(entry)
 	}
 }
 
 // Warning 方法条目输出Warning级别日志。
 func (entry *entryStd) Warning(args ...interface{}) {
-	if entry.logger.Level < 3 {
+	if entry.level < 3 {
 		entry.level = 2
 		entry.message = fmt.Sprintln(args...)
 		entry.message = entry.message[:len(entry.message)-1]
-		entry.logger.mu.Lock()
-		entry.writeTo(entry.logger.out)
-		entry.logger.mu.Unlock()
-		entry.logger.pool.Put(entry)
+		entry.handler(entry)
 	}
 }
 
 // Error 方法条目输出Error级别日志。
 func (entry *entryStd) Error(args ...interface{}) {
-	if entry.logger.Level < 4 {
+	if entry.level < 4 {
 		entry.level = 3
 		entry.message = fmt.Sprintln(args...)
 		entry.message = entry.message[:len(entry.message)-1]
-		entry.logger.mu.Lock()
-		entry.writeTo(entry.logger.out)
-		entry.logger.mu.Unlock()
-		entry.logger.pool.Put(entry)
+		entry.handler(entry)
 	}
 }
 
@@ -242,57 +228,42 @@ func (entry *entryStd) Fatal(args ...interface{}) {
 	entry.level = 4
 	entry.message = fmt.Sprintln(args...)
 	entry.message = entry.message[:len(entry.message)-1]
-	entry.logger.mu.Lock()
-	entry.writeTo(entry.logger.out)
-	entry.logger.mu.Unlock()
-	entry.logger.pool.Put(entry)
+	entry.handler(entry)
 }
 
 // Debugf 方法格式化写入流Debug级别日志
 func (entry *entryStd) Debugf(format string, args ...interface{}) {
-	if entry.logger.Level < 1 {
+	if entry.level < 1 {
 		entry.level = 0
 		entry.message = fmt.Sprintf(format, args...)
-		entry.logger.mu.Lock()
-		entry.writeTo(entry.logger.out)
-		entry.logger.mu.Unlock()
-		entry.logger.pool.Put(entry)
+		entry.handler(entry)
 	}
 }
 
 // Infof 方法格式写入流出Info级别日志
 func (entry *entryStd) Infof(format string, args ...interface{}) {
-	if entry.logger.Level < 2 {
+	if entry.level < 2 {
 		entry.level = 1
 		entry.message = fmt.Sprintf(format, args...)
-		entry.logger.mu.Lock()
-		entry.writeTo(entry.logger.out)
-		entry.logger.mu.Unlock()
-		entry.logger.pool.Put(entry)
+		entry.handler(entry)
 	}
 }
 
 // Warningf 方法格式化输出写入流rning级别日志
 func (entry *entryStd) Warningf(format string, args ...interface{}) {
-	if entry.logger.Level < 3 {
+	if entry.level < 3 {
 		entry.level = 2
 		entry.message = fmt.Sprintf(format, args...)
-		entry.logger.mu.Lock()
-		entry.writeTo(entry.logger.out)
-		entry.logger.mu.Unlock()
-		entry.logger.pool.Put(entry)
+		entry.handler(entry)
 	}
 }
 
 // Errorf 方法格式化写入流Error级别日志
 func (entry *entryStd) Errorf(format string, args ...interface{}) {
-	if entry.logger.Level < 4 {
+	if entry.level < 4 {
 		entry.level = 3
 		entry.message = fmt.Sprintf(format, args...)
-		entry.logger.mu.Lock()
-		entry.writeTo(entry.logger.out)
-		entry.logger.mu.Unlock()
-		entry.logger.pool.Put(entry)
+		entry.handler(entry)
 	}
 }
 
@@ -300,10 +271,7 @@ func (entry *entryStd) Errorf(format string, args ...interface{}) {
 func (entry *entryStd) Fatalf(format string, args ...interface{}) {
 	entry.level = 4
 	entry.message = fmt.Sprintf(format, args...)
-	entry.logger.mu.Lock()
-	entry.writeTo(entry.logger.out)
-	entry.logger.mu.Unlock()
-	entry.logger.pool.Put(entry)
+	entry.handler(entry)
 }
 
 // WithFields 方法设置多个条目属性。
@@ -317,9 +285,9 @@ func (entry *entryStd) WithFields(fields Fields) Logout {
 // WithField 方法设置一个日志属性。
 func (entry *entryStd) WithField(key string, value interface{}) Logout {
 	if key == "time" {
-		var ok bool
-		entry.time, ok = value.(time.Time)
+		t, ok := value.(time.Time)
 		if ok {
+			entry.time = t
 			return entry
 		}
 	}
@@ -396,6 +364,9 @@ func (entry *entryStd) writeReflect(iValue reflect.Value) {
 		entry.data = append(entry.data, '"')
 	case reflect.Array, reflect.Slice:
 		entry.data = append(entry.data, '[')
+		if iValue.Len() == 0 {
+			entry.data = append(entry.data, ',')
+		}
 		for i := 0; i < iValue.Len(); i++ {
 			entry.writeReflect(iValue.Index(i))
 			entry.data = append(entry.data, ',')
@@ -506,7 +477,7 @@ func (entry *entryStd) tryAddRuneError(r rune, size int) bool {
 // writeTo 将数据写入到输出。
 func (entry *entryStd) writeTo(w io.Writer) {
 	w.Write(part1)
-	timestr := time.Now().Format(entry.logger.TimeFormat)
+	timestr := time.Now().Format(entry.timeformat)
 	w.Write(*(*[]byte)(unsafe.Pointer(&timestr)))
 	w.Write(part2)
 	w.Write(levels[entry.level])
@@ -528,5 +499,164 @@ func (entry *entryStd) writeTo(w io.Writer) {
 		w.Write(part6)
 	} else {
 		w.Write(part7)
+	}
+}
+
+// LoggerWriter 定义日志写入流，用于写入日志数据。
+type LoggerWriter interface {
+	Sync() error
+	io.Writer
+}
+
+type syncWriterFile struct {
+	*bufio.Writer
+	file *os.File
+}
+
+type syncWriterRotate struct {
+	name      string
+	std       bool
+	MaxSize   uint64
+	nextindex int
+	nexttime  time.Time
+	nbytes    uint64
+	*bufio.Writer
+	file  *os.File
+	newfn []func(string)
+}
+
+// NewLoggerWriterStd 函数返回一个标准输出流的日志写入流。
+func NewLoggerWriterStd() LoggerWriter {
+	return os.Stdout
+}
+
+// NewLoggerWriterFile 函数创建一个文件输出的日志写入流。
+func NewLoggerWriterFile(name string, std bool) (LoggerWriter, error) {
+	if name == "" {
+		return NewLoggerWriterStd(), nil
+	}
+	os.MkdirAll(filepath.Dir(name), 0644)
+	file, err := os.OpenFile(formatDateName(name), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		return nil, err
+	}
+	if std {
+		return &syncWriterFile{bufio.NewWriter(io.MultiWriter(os.Stdout, file)), file}, nil
+	}
+	return &syncWriterFile{bufio.NewWriter(file), file}, nil
+}
+
+// Sync 方法将缓冲数据写入到文件。
+func (w syncWriterFile) Sync() error {
+	w.Flush()
+	return w.file.Sync()
+}
+
+// NewLoggerWriterRotate 函数创建一个支持文件切割的的日志写入流。
+func NewLoggerWriterRotate(name string, std bool, maxsize uint64, fn ...func(string)) (LoggerWriter, error) {
+	if strings.Index(name, "index") == -1 {
+		maxsize = 0
+	}
+	if maxsize <= 0 {
+		if name == formatDateName(name) {
+			return NewLoggerWriterFile(name, std)
+		}
+		maxsize = 0xffffffff
+	}
+	lw := &syncWriterRotate{
+		name:     name,
+		std:      std,
+		MaxSize:  maxsize,
+		nexttime: getNextHour(),
+		newfn:    fn,
+	}
+	return lw, lw.rotateFile()
+}
+
+// Sync 方法将缓冲数据写入到文件。
+func (w *syncWriterRotate) Sync() error {
+	if w.file == nil {
+		return nil
+	}
+	w.Flush()
+	return w.file.Sync()
+}
+
+// Write 方法写入日志数据。
+func (w *syncWriterRotate) Write(p []byte) (n int, err error) {
+	if len(p) == 9 && w.nbytes+uint64(len(p)) >= w.MaxSize && string(p) == string(part1) {
+		// 执行size滚动
+		w.rotateFile()
+	}
+	if time.Now().After(w.nexttime) {
+		w.nexttime = getNextHour()
+		// 检查时间变化
+		if strings.Replace(formatDateName(w.name), "index", fmt.Sprint(w.nextindex-1), -1) != w.file.Name() {
+			w.nextindex = 0
+			w.rotateFile()
+		}
+	}
+	n, err = w.Writer.Write(p)
+	if w.std {
+		os.Stdout.Write(p)
+	}
+	w.nbytes += uint64(n)
+	return
+}
+
+func (w *syncWriterRotate) rotateFile() error {
+	name := formatDateName(w.name)
+	for {
+		name := strings.Replace(name, "index", fmt.Sprint(w.nextindex), -1)
+		os.MkdirAll(filepath.Dir(name), 0644)
+		file, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err != nil {
+			return err
+		}
+		w.nextindex++
+		// 检查open新文件size小于MaxSize
+		stat, _ := file.Stat()
+		w.nbytes = uint64(stat.Size())
+		if w.nbytes < w.MaxSize {
+			w.Sync()
+			w.file.Close()
+			w.Writer = bufio.NewWriter(file)
+			w.file = file
+			for _, fn := range w.newfn {
+				fn(name)
+			}
+			return nil
+		}
+		file.Close()
+	}
+}
+
+func formatDateName(name string) string {
+	now := time.Now()
+	name = strings.Replace(name, "yyyy", "2006", 1)
+	name = strings.Replace(name, "yy", "06", 1)
+	name = strings.Replace(name, "MM", "01", 1)
+	name = strings.Replace(name, "dd", "02", 1)
+	name = strings.Replace(name, "HH", "15", 1)
+	return now.Format(name)
+}
+
+func getNextHour() time.Time {
+	now := time.Now()
+	return time.Date(now.Year(), now.Month(), now.Day(), now.Hour()+1, 0, 0, 0, now.Location())
+}
+
+func newLoggerLinkName(link string) func(string) {
+	os.MkdirAll(filepath.Dir(link), 0644)
+	return func(name string) {
+		if link == "" {
+			return
+		}
+		if name[0] != '/' {
+			pwd, _ := os.Getwd()
+			name = filepath.Join(pwd, name)
+		}
+		os.Remove(link)
+		os.Symlink(name, link)
 	}
 }

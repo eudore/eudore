@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -14,10 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/fcgi"
-	"os"
-	"os/exec"
-	"reflect"
-	"strings"
+	"strconv"
 	"time"
 )
 
@@ -34,20 +32,20 @@ type ServerStdConfig struct {
 	//
 	// Because ReadTimeout does not let Handlers make per-request decisions on each request body's acceptable deadline or upload rate,
 	// most users will prefer to use ReadHeaderTimeout. It is valid to use them both.
-	ReadTimeout time.Duration `alias:"readtimeout" description:"Http server read timeout."`
+	ReadTimeout TimeDuration `alias:"readtimeout" description:"Http server read timeout."`
 
 	// ReadHeaderTimeout is the amount of time allowed to read request headers.
 	// The connection's read deadline is reset after reading the headers and the Handler can decide what is considered too slow for the body.
-	ReadHeaderTimeout time.Duration `alias:"readheaderTimeout"` // Go 1.8
+	ReadHeaderTimeout TimeDuration `alias:"readheadertimeout"` // Go 1.8
 
 	// WriteTimeout is the maximum duration before timing out writes of the response.
 	// It is reset whenever a new request's header is read.
 	// Like ReadTimeout, it does not let Handlers make decisions on a per-request basis.
-	WriteTimeout time.Duration `alias:"writetimeout" description:"Http server write timeout."`
+	WriteTimeout TimeDuration `alias:"writetimeout" description:"Http server write timeout."`
 
 	// IdleTimeout is the maximum amount of time to wait for the next request when keep-alives are enabled.
 	// If IdleTimeout is zero, the value of ReadTimeout is used. If both are zero, ReadHeaderTimeout is used.
-	IdleTimeout time.Duration `alias:"idleTimeout"` // Go 1.8
+	IdleTimeout TimeDuration `alias:"idletimeout"` // Go 1.8
 
 	// MaxHeaderBytes controls the maximum number of bytes the server will read parsing the request header's keys and values, including the request line.
 	// It does not limit the size of the request body. If zero, DefaultMaxHeaderBytes is used.
@@ -56,11 +54,11 @@ type ServerStdConfig struct {
 	// BaseContext optionally specifies a function that returns the base context for incoming requests on this server.
 	// The provided Listener is the specific Listener that's about to start accepting requests.
 	// If BaseContext is nil, the default is context.Background(). If non-nil, it must return a non-nil context.
-	BaseContext func(net.Listener) context.Context `alias:"basecontext"` // Go 1.13
+	BaseContext func(net.Listener) context.Context `alias:"basecontext" json:"-"` // Go 1.13
 
 	// ConnContext optionally specifies a function that modifies the context used for a new connection c.
 	// The provided ctx is derived from the base context and has a ServerContextKey value.
-	ConnContext func(context.Context, net.Conn) context.Context `alias:"conncontext"` // Go 1.13
+	ConnContext func(context.Context, net.Conn) context.Context `alias:"conncontext" json:"-"` // Go 1.13
 }
 
 // ServerStd 定义使用net/http启动http server。
@@ -77,12 +75,6 @@ type netHTTPLog struct {
 // ServerFcgi 定义fastcgi server
 type ServerFcgi struct {
 	http.Handler
-	listeners []net.Listener
-}
-
-// ServerGrace 定义热重启服务。
-type ServerGrace struct {
-	Server
 	listeners []net.Listener
 }
 
@@ -171,128 +163,6 @@ func (srv *ServerFcgi) Shutdown(ctx context.Context) error {
 	return errs.GetError()
 }
 
-// NewServerGrace 函数包装一个热重启服务。
-func NewServerGrace(srv Server) Server {
-	return &ServerGrace{Server: srv}
-}
-
-// Serve 方法记录Serve使用的net.Listener。
-func (srv *ServerGrace) Serve(ln net.Listener) error {
-	srv.listeners = append(srv.listeners, ln)
-	return srv.Server.Serve(ln)
-}
-
-// Shutdown 方法关闭服务，如果context.Context包含AppServerGrace则使用热重启。
-func (srv *ServerGrace) Shutdown(ctx context.Context) error {
-	val := ctx.Value(ServerGraceContextKey)
-	if val != nil {
-		err := startNewProcess(srv.listeners)
-		if err != nil {
-			return err
-		}
-	}
-	return srv.Server.Shutdown(ctx)
-}
-
-// Set 方法传递Set数据。
-func (srv *ServerGrace) Set(key string, value interface{}) error {
-	return Set(srv.Server, key, value)
-}
-
-// startNewProcess 函数启动一个新的服务。
-func startNewProcess(lns []net.Listener) error {
-	addrs, files := getAllListener(lns)
-	envs := []string{}
-	for _, value := range os.Environ() {
-		if !strings.HasPrefix(value, EnvEudoreGracefulAddrs) {
-			envs = append(envs, value)
-		}
-	}
-	envs = append(envs, fmt.Sprintf("%s=%s", EnvEudoreGracefulAddrs, strings.Join(addrs, ",")))
-
-	// fork new process
-	cmd := exec.Command(os.Args[0], os.Args[1:]...)
-	cmd.Env = envs
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.ExtraFiles = files
-	err := cmd.Start()
-	if err != nil {
-		return fmt.Errorf(ErrFormatStartNewProcessError, err)
-	}
-	return nil
-}
-
-// getAllListener 函数获取多个net.Listener的监听地址和fd。
-func getAllListener(lns []net.Listener) ([]string, []*os.File) {
-	var addrs = make([]string, 0, len(lns))
-	var files = make([]*os.File, 0, len(lns))
-	for _, ln := range lns {
-		fd, err := getListenerFile(ln)
-		if fd != nil && err == nil {
-			addrs = append(addrs, fmt.Sprintf("%s://%s", ln.Addr().Network(), ln.Addr().String()))
-			files = append(files, fd)
-		}
-	}
-	return addrs, files
-}
-
-func getListenerFile(ln net.Listener) (*os.File, error) {
-	if ln == nil {
-		return nil, nil
-	}
-	lnf, ok := ln.(interface{ File() (*os.File, error) })
-	if ok {
-		return lnf.File()
-	}
-
-	iValue := reflect.ValueOf(ln)
-	if iValue.Kind() == reflect.Ptr {
-		iValue = iValue.Elem()
-	}
-	iType := iValue.Type()
-	for i := 0; i < iType.NumField(); i++ {
-		if iType.Field(i).Type == typeNetListener {
-			file, err := getListenerFile(iValue.Field(i).Interface().(net.Listener))
-			if file != nil && err == nil {
-				return file, err
-			}
-		}
-	}
-	return nil, nil
-}
-
-// ListenWithFD 创建一个地址监听，同时会从fd里面创建监听。
-func ListenWithFD(network, address string) (net.Listener, error) {
-	var port string
-	pos := strings.IndexByte(address, ':')
-	if pos != -1 {
-		address, port = address[:pos], address[pos:]
-	}
-	switch address {
-	case "", "[::]", "0.0.0.0":
-		address = "[::]" + port
-	case "127.0.0.1", "localhost":
-		address = "127.0.0.1" + port
-	}
-	if network == "" {
-		network = "tcp"
-	}
-	return listenWithFD(network, address)
-}
-
-func listenWithFD(network, address string) (net.Listener, error) {
-	proaddr := fmt.Sprintf("%s://%s", network, address)
-	for i, str := range strings.Split(os.Getenv(EnvEudoreGracefulAddrs), ",") {
-		if str != proaddr {
-			continue
-		}
-		file := os.NewFile(uintptr(i+3), "")
-		return net.FileListener(file)
-	}
-	return net.Listen(network, address)
-}
-
 // Listen 方法使ServerListenConfig实现serverListener接口，用于使用对象创建监听。
 func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 	// set default port
@@ -304,7 +174,7 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 		}
 	}
 	if !slc.HTTPS {
-		return ListenWithFD("", slc.Addr)
+		return net.Listen("tcp", slc.Addr)
 	}
 
 	// set tls
@@ -334,7 +204,7 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 		config.ClientAuth = tls.RequireAndVerifyClientCert
 	}
 
-	ln, err := ListenWithFD("", slc.Addr)
+	ln, err := net.Listen("tcp", slc.Addr)
 	if err != nil {
 		return nil, err
 	}
@@ -373,4 +243,34 @@ func loadCertificate(cret, key string) (tls.Certificate, error) {
 		Certificate: [][]byte{caByte},
 		PrivateKey:  priv,
 	}, err
+}
+
+// TimeDuration 定义time.Duration类型处理json
+type TimeDuration time.Duration
+
+// MarshalJSON 方法实现json序列化输出。
+func (d TimeDuration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Duration(d).String())
+}
+
+// UnmarshalJSON 方法实现解析json格式时间。
+func (d *TimeDuration) UnmarshalJSON(b []byte) error {
+	str := string(b)
+	if str != "" && str[0] == '"' && str[len(str)-1] == '"' {
+		str = str[1 : len(str)-1]
+	}
+	// parse int64
+	val, err := strconv.ParseInt(str, 10, 64)
+	if err == nil {
+		*d = TimeDuration(val)
+		return nil
+	}
+	// parse string
+	t, err := time.ParseDuration(str)
+	if err == nil {
+		*d = TimeDuration(t)
+		return nil
+	}
+	return fmt.Errorf("invalid duration type %T, value: '%s'", b, b)
+
 }

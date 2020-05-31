@@ -2,9 +2,9 @@
 
 本部分为演示例子目录功能导航,保存eudore、component、middleware三个实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
 
-exmaple都默认使用httptest测试，可以注释代码`app.CancelFunc()`不终止程序并添加`app.Listen(":8088")`后使用阅览器访问，单元测试执行gotest.sh脚本,当前测试覆盖率98.4%,剩余热重启、runtime、switch异常无法覆盖。
+exmaple都默认使用httptest测试，可以注释代码`app.CancelFunc()`不终止程序并添加`app.Listen(":8088")`后使用阅览器访问，单元测试执行gotest.sh脚本。
 
-go version go1.10.1 linux/amd64 coverage: 98.4% of statements
+go version go1.10.1 linux/amd64 coverage: 100.0% of statements
 
 - Application
 	- [New](appCore.go)
@@ -27,6 +27,9 @@ go version go1.10.1 linux/amd64 coverage: 98.4% of statements
 - Logger
 	- [LoggerInit](loggerInit.go)
 	- [LoggerStd](loggerStd.go)
+	- [日志切割](loggerStdRotate.go)
+	- [日志清理](loggerStdClean.go)
+	- [写入Elastic](loggerElastic.go)
 	- logrus Logger适配
 - Server
 	- [服务监听](serverListen.go)

@@ -5,14 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
-	"os"
 	"strings"
 
 	"github.com/eudore/eudore"
 )
-
-// GodocServer 定义默认外置godoc server地址，如果为空会启动一个内置godoc(go1.11)或者使用golang.org为默认地址。
-var GodocServer = os.Getenv("GODOC")
 
 type response struct {
 	eudore.ResponseWriter
@@ -31,9 +27,11 @@ func (w *response) Write(p []byte) (int, error) {
 // Init 函数实现注入pprof路由。
 func Init(r eudore.Router) {
 	r = r.Group("/pprof")
-	server := GodocServer
-	route := r.GetParam("route")
+	server := r.GetParam("godoc")
+	r.SetParam("godoc", "")
+
 	if server == "" {
+		route := r.GetParam("route")
 		// go.11创建内置godoc并启动
 		godoc := NewGodoc(route + "/godoc")
 		if godoc != nil {

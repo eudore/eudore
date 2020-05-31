@@ -45,6 +45,7 @@ type Context interface {
 	Body() []byte
 	Bind(interface{}) error
 	BindWith(interface{}, Binder) error
+	Validate(interface{}) error
 
 	// param query header cookie session
 	Params() Params
@@ -71,7 +72,6 @@ type Context interface {
 	Push(string, *http.PushOptions) error
 	Render(interface{}) error
 	RenderWith(interface{}, Renderer) error
-	// render writer
 	WriteString(string) error
 	WriteJSON(interface{}) error
 	WriteFile(string) error
@@ -97,13 +97,10 @@ type ContextBase struct {
 	*RequestReader
 	ResponseWriter
 	ParamsArray
-	// run handler
-	index   int
-	handler HandlerFuncs
-	// ctx
-	ctx context.Context
-	err string
-	// data
+	index      int
+	handler    HandlerFuncs
+	ctx        context.Context
+	err        string
 	querys     url.Values
 	cookies    []Cookie
 	isReadBody bool
@@ -119,7 +116,8 @@ type entryContextBase struct {
 	Context *ContextBase
 }
 
-// NewContextBase 创建ContextBase对象，实现Context接口。
+// NewContextBase 函数创建ContextBase对象，实现Context接口。
+// 依赖app.Logger、app.Binder、app.Validater、app.Render
 func NewContextBase(app *App) *ContextBase {
 	return &ContextBase{
 		app: app,
@@ -285,21 +283,29 @@ func (ctx *ContextBase) getReader() io.Reader {
 }
 
 // BindWith 使用指定Binder解析请求body并绑定数据。
-func (ctx *ContextBase) BindWith(i interface{}, r Binder) (err error) {
-	err = r(ctx, ctx.getReader(), i)
-	if err != nil {
-		ctx.logReset(3).WithField(ParamCaller, "Context.ReadBind").Error(err)
-	}
-	return
+func (ctx *ContextBase) BindWith(i interface{}, r Binder) error {
+	return ctx.bind(i, r)
 }
 
 // Bind 使用app.Binder解析请求body并绑定数据。
-func (ctx *ContextBase) Bind(i interface{}) (err error) {
-	err = ctx.app.Binder(ctx, ctx.getReader(), i)
+func (ctx *ContextBase) Bind(i interface{}) error {
+	return ctx.bind(i, ctx.app.Binder)
+}
+
+func (ctx *ContextBase) bind(i interface{}, r Binder) error {
+	err := r(ctx, ctx.getReader(), i)
+	if err == nil && ctx.GetParam("valid") != "" {
+		err = ctx.app.Validater.Validate(i)
+	}
 	if err != nil {
 		ctx.logReset(3).WithField(ParamCaller, "Context.ReadBind").Error(err)
 	}
-	return
+	return err
+}
+
+// Validate 方法调用app.Validater校验结构体对象。
+func (ctx *ContextBase) Validate(i interface{}) error {
+	return ctx.app.Validater.Validate(i)
 }
 
 // Params 获得请求的全部参数。

@@ -100,10 +100,9 @@ func SetWithTags(i interface{}, key string, val interface{}, tags []string) erro
 	}
 	iValue := reflect.ValueOf(i)
 	switch iValue.Kind() {
-	case reflect.Ptr:
-	case reflect.Map, reflect.Interface:
+	case reflect.Ptr, reflect.Map, reflect.Interface:
 		if iValue.IsNil() {
-			return ErrConverterInputDataNotPtr
+			return ErrConverterInputDataNil
 		}
 	default:
 		return ErrConverterInputDataNotPtr
@@ -557,23 +556,39 @@ func (c *converter) convertTo(sValue reflect.Value, tValue reflect.Value) error 
 	if sValue.Kind() == reflect.Ptr || sValue.Kind() == reflect.Interface || tValue.Kind() == reflect.Ptr || tValue.Kind() == reflect.Interface {
 		stypes, svalues := getIndirectAllValue(sValue)
 		ttypes, tvalues := getIndirectAllValue(tValue)
+		sValue = svalues[len(svalues)-1]
+		tValue = tvalues[len(tvalues)-1]
 		for i, ttype := range ttypes {
 			for j, stype := range stypes {
 				// 转换接口类型、相同类型、type别名类型
 				if stype.ConvertibleTo(ttype) && tvalues[i].CanSet() {
+					// 如果类型最终指向map或struct则进行最后转换，将map或struct转换成map或struct
+					if ttype.Kind() == reflect.Ptr && indirectKindInMapStruct(ttype) && indirectKindInMapStruct(stype) {
+						return c.convertTo(sValue, tValue)
+					}
 					return c.convertToData(svalues[j], tvalues[i])
 				}
 			}
 		}
-		sValue = svalues[len(svalues)-1]
-		tValue = tvalues[len(tvalues)-1]
 
+		// 目标类型如果是空指针，则尝试进行初始化并转换
 		if tValue.Kind() == reflect.Ptr && tValue.IsNil() {
-			tValue.Set(reflect.New(tValue.Type().Elem()))
-			return c.convertTo(sValue, tValue)
+			newValue := reflect.New(tValue.Type().Elem())
+			err := c.convertTo(sValue, newValue)
+			if err == nil {
+				tValue.Set(newValue)
+			}
+			return err
 		}
 	}
 	return c.convertToData(sValue, tValue)
+}
+
+func indirectKindInMapStruct(iType reflect.Type) bool {
+	for iType.Kind() == reflect.Ptr {
+		iType = iType.Elem()
+	}
+	return iType.Kind() == reflect.Struct || iType.Kind() == reflect.Map
 }
 
 func (c *converter) convertToData(sValue reflect.Value, tValue reflect.Value) error {
@@ -670,7 +685,7 @@ func (c *converter) convertToStructToStruct(sValue reflect.Value, tValue reflect
 	}
 }
 
-// checkValueIsZero 函数检测一个值是否为空, 复制go.1.13 refletv.Value.IsZero方法,修改UnsafePointer判断方法。
+// checkValueIsZero 函数检测一个值是否为空, 修改go.1.13 refletv.Value.IsZero方法。
 func checkValueIsZero(iValue reflect.Value) bool {
 	switch iValue.Kind() {
 	case reflect.Bool:
@@ -684,30 +699,27 @@ func checkValueIsZero(iValue reflect.Value) bool {
 	case reflect.Complex64, reflect.Complex128:
 		c := iValue.Complex()
 		return math.Float64bits(real(c)) == 0 && math.Float64bits(imag(c)) == 0
+	case reflect.String:
+		return iValue.Len() == 0
+	case reflect.UnsafePointer:
+		// 兼容go1.9
+		return iValue.Interface() == nil
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return iValue.IsNil()
 	case reflect.Array:
 		for i := 0; i < iValue.Len(); i++ {
 			if !checkValueIsZero(iValue.Index(i)) {
 				return false
 			}
 		}
-		return true
-	case reflect.UnsafePointer:
-		// 兼容go1.9
-		return iValue.Interface() == nil
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
-		return iValue.IsNil()
-	case reflect.String:
-		return iValue.Len() == 0
 	case reflect.Struct:
 		for i := 0; i < iValue.NumField(); i++ {
 			if !checkValueIsZero(iValue.Field(i)) {
 				return false
 			}
 		}
-		return true
-	default:
-		panic(fmt.Errorf(ErrFormatConverterCheckZeroUnknownType, iValue.Kind().String()))
 	}
+	return true
 }
 
 // 通过字符串获取结构体属性的索引
@@ -770,9 +782,14 @@ func setWithValue(sValue reflect.Value, tValue reflect.Value) error {
 		sValue = svalues[len(svalues)-1]
 		tValue = tvalues[len(tvalues)-1]
 
+		// 目标类型如果是空指针，则尝试进行初始化并转换
 		if tValue.Kind() == reflect.Ptr && tValue.IsNil() {
-			tValue.Set(reflect.New(tValue.Type().Elem()))
-			return setWithValue(sValue, tValue)
+			newValue := reflect.New(tValue.Type().Elem())
+			err := setWithValue(sValue, newValue)
+			if err == nil {
+				tValue.Set(newValue)
+			}
+			return err
 		}
 	}
 	return setWithValueData(sValue, tValue)
@@ -823,9 +840,6 @@ func setWithString(iValue reflect.Value, val string) error {
 	case reflect.Int32:
 		return setIntField(val, 32, iValue)
 	case reflect.Int64:
-		if iValue.Type() == typeTimeDuration {
-			return setTimeDuration(val, iValue)
-		}
 		return setIntField(val, 64, iValue)
 	case reflect.Uint:
 		return setUintField(val, 0, iValue)
@@ -886,6 +900,15 @@ func setIntField(val string, bitSize int, field reflect.Value) error {
 		val = "0"
 	}
 	intVal, err := strconv.ParseInt(val, 10, bitSize)
+	// 兼容 time.Duration及衍生类型
+	if err != nil && field.Kind() == reflect.Int64 {
+		var t time.Duration
+		t, err = time.ParseDuration(val)
+		if err != nil {
+			return err
+		}
+		intVal = int64(t)
+	}
 	if err == nil {
 		field.SetInt(intVal)
 	}
@@ -949,17 +972,6 @@ func setFloatField(val string, bitSize int, field reflect.Value) error {
 		field.SetFloat(floatVal)
 	}
 	return err
-}
-
-// 设置时间类型，未支持未使用
-func setTimeDuration(val string, ivalue reflect.Value) error {
-	t, err := time.ParseDuration(val)
-	if err != nil {
-		return err
-	}
-
-	ivalue.Set(reflect.ValueOf(t))
-	return nil
 }
 
 // timeformats 定义允许使用的时间格式。

@@ -9,57 +9,41 @@ import (
 	"sync"
 )
 
-type (
-	// Validater 接口定义验证器。
-	Validater interface {
-		RegisterValidations(string, ...interface{})
-		Validate(interface{}) error
-		ValidateVar(interface{}, string) error
-	}
-	// validateInterface 接口定义对象自己验证的方法。
-	validateInterface interface {
-		Validate() error
-	}
-	validaterBase struct {
-		sync.RWMutex
-		// 结构体类型 - 验证信息
-		ValidateTypes map[reflect.Type]validateBaseFields
-		// 验证规则 - 验证类型 - 验证函数
-		ValidateFuncs map[string]map[reflect.Type]reflect.Value
-		// 验证规则 - 验证生成函数
-		ValidateNewFuncs map[string][]interface{}
-	}
-	validateBaseFields []validateBaseField
-	validateBaseField  struct {
-		Index   int
-		Value   reflect.Value
-		IsImple bool
-		Format  string
-	}
-)
+// Validater 接口定义验证器。
+type Validater interface {
+	RegisterValidations(string, ...interface{})
+	Validate(interface{}) error
+	ValidateVar(interface{}, string) error
+}
+
+// validateInterface 接口定义对象自己验证的方法。
+type validateInterface interface {
+	Validate() error
+}
+type validaterBase struct {
+	sync.Map
+	// 结构体类型 - 验证信息
+	ValidateTypes map[reflect.Type]validateBaseFields
+	// 验证规则 - 验证类型 - 验证函数
+	ValidateFuncs map[string]map[reflect.Type]reflect.Value
+	// 验证规则 - 验证生成函数
+	ValidateNewFuncs map[string][]interface{}
+}
+type validateBaseFields []validateBaseField
+type validateBaseField struct {
+	Index   int
+	Value   reflect.Value
+	IsImple bool
+	Format  string
+}
 
 func init() {
-	RegisterValidations("nozero", validateNozeroInt, validateNozeroString, validateNozeroInterface)
-	RegisterValidations("isnum", validateIsnumString)
-	RegisterValidations("min", validateNewMinInt, validateNewMinString)
-	RegisterValidations("max", validateNewMaxInt, validateNewMaxString)
-	RegisterValidations("len", validateNewLenString)
-	RegisterValidations("regexp", validateNewRegexpString)
-}
-
-// RegisterValidations 函数给DefaultValidater注册验证函数。
-func RegisterValidations(name string, fns ...interface{}) {
-	DefaultValidater.RegisterValidations(name, fns...)
-}
-
-// Validate 函数使用DefaultValidater验证一个对象。
-func Validate(i interface{}) error {
-	return DefaultValidater.Validate(i)
-}
-
-// ValidateVar 函数使用DefaultValidater验证一个变量。
-func ValidateVar(i interface{}, tag string) error {
-	return DefaultValidater.ValidateVar(i, tag)
+	DefaultValidater.RegisterValidations("nozero", validateNozeroInt, validateNozeroString, validateNozeroInterface)
+	DefaultValidater.RegisterValidations("isnum", validateIsnumString)
+	DefaultValidater.RegisterValidations("min", validateNewMinInt, validateNewMinString)
+	DefaultValidater.RegisterValidations("max", validateNewMaxInt, validateNewMaxString)
+	DefaultValidater.RegisterValidations("len", validateNewLenString)
+	DefaultValidater.RegisterValidations("regexp", validateNewRegexpString)
 }
 
 // GetValidateStringFunc 函数获得一个ValidateStringFunc对象。
@@ -170,15 +154,12 @@ func (v *validaterBase) Validate(i interface{}) error {
 }
 
 func (v *validaterBase) ParseValidateFields(iType reflect.Type) (validateBaseFields, error) {
-	v.RLock()
-	vfs, ok := v.ValidateTypes[iType]
-	v.RUnlock()
+	data, ok := v.Load(iType)
 	if ok {
-		return vfs, nil
+		return data.(validateBaseFields), nil
 	}
 
-	v.Lock()
-	defer v.Unlock()
+	var vfs validateBaseFields
 	for i := 0; i < iType.NumField(); i++ {
 		field := iType.Field(i)
 		tags := field.Tag.Get("validate")
@@ -208,7 +189,8 @@ func (v *validaterBase) ParseValidateFields(iType reflect.Type) (validateBaseFie
 			})
 		}
 	}
-	v.ValidateTypes[iType] = vfs
+
+	v.Store(iType, vfs)
 	return vfs, nil
 }
 

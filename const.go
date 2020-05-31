@@ -4,7 +4,6 @@ package eudore
 
 import (
 	"errors"
-	"net"
 	"reflect"
 	"time"
 )
@@ -16,8 +15,6 @@ type contextKey struct {
 var (
 	// AppContextKey 定义从context.Value中获取app实例对象的key，如果app支持的话。
 	AppContextKey = &contextKey{"app"}
-	// ServerGraceContextKey 定义从context.Value中获取是否进行热重启的key。
-	ServerGraceContextKey = &contextKey{"server-grace"}
 	// DefaultBodyMaxMemory 默认Body解析占用内存。
 	DefaultBodyMaxMemory int64 = 32 << 20 // 32 MB
 	// DefaultConvertTags 定义默认转换使用的结构体tags。
@@ -51,10 +48,7 @@ var (
 	typeController        = reflect.TypeOf((*Controller)(nil)).Elem()
 	typeHandlerFunc       = reflect.TypeOf((*HandlerFunc)(nil)).Elem()
 	typeValidateInterface = reflect.TypeOf((*validateInterface)(nil)).Elem()
-
-	typeNetListener  = reflect.TypeOf((*net.Listener)(nil)).Elem()
-	typeTimeDuration = reflect.TypeOf((*time.Duration)(nil)).Elem()
-	typeTimeTime     = reflect.TypeOf((*time.Time)(nil)).Elem()
+	typeTimeTime          = reflect.TypeOf((*time.Time)(nil)).Elem()
 )
 
 // 检测各类接口
@@ -66,7 +60,6 @@ var (
 	_ Logger     = (*LoggerStd)(nil)
 	_ Server     = (*ServerStd)(nil)
 	_ Server     = (*ServerFcgi)(nil)
-	_ Server     = (*ServerGrace)(nil)
 	_ Router     = (*RouterStd)(nil)
 	_ RouterCore = (*RouterCoreRadix)(nil)
 	_ RouterCore = (*RouterCoreFull)(nil)
@@ -106,8 +99,6 @@ var (
 
 	// ErrFormatBindDefaultNotSupportContentType BindDefault函数不支持当前的Content-Type Header。
 	ErrFormatBindDefaultNotSupportContentType = "BindDefault not support content type header: %s"
-	// ErrFormatConverterCheckZeroUnknownType checkValueIsZero方法处理未定义的类型。
-	ErrFormatConverterCheckZeroUnknownType = "reflect: call of reflect.Value.IsZero on %s Value"
 	// ErrFormatConverterGetWithTags 在Get方法时，无法或到值，返回错误描述。
 	ErrFormatConverterGetWithTags = "Get or GetWithTags func cannot get the value of the attribute '%s', error description: %v"
 	// ErrFormatConverterNotGetValue 在Get方法时，getValue无法继续查找新的属性值。
@@ -138,8 +129,6 @@ var (
 	ErrFormatRouterStdRegisterHandlersRecover = "The RouterStd.registerHandlers arg method is '%s' and path is '%s', recover error: %v"
 	// ErrFormatRouterStdNewHandlerFuncsUnregisterType RouterStd添加处理对象或中间件的第n个参数类型未注册，需要先使用RegisterHandlerExtend或AddHandlerExtend注册该函数类型。
 	ErrFormatRouterStdNewHandlerFuncsUnregisterType = "The RouterStd.newHandlerFuncs path is '%s', %dth handler parameter type is '%s', this is the unregistered handler type"
-	// ErrFormatStartNewProcessError 在StartNewProcess函数fork启动新进程错误。
-	ErrFormatStartNewProcessError = "StartNewProcess failed to forkexec error: %v"
 )
 
 // 定义eudore定义各种常量。
@@ -152,8 +141,6 @@ const (
 	EnvEudoreIsNotify = "EUDORE_IS_NOTIFY"
 	// EnvEudoreDisablePidfile 用于Command组件不写入pidfile，Notify组件启动的子程序不写入pidfile。
 	EnvEudoreDisablePidfile = "EUDORE_DISABLE_PIDFILE"
-	// EnvEudoreGracefulAddrs 按顺序记录fork多端口fd对应的地址。
-	EnvEudoreGracefulAddrs = "EnvEudoreGracefulAddrs"
 
 	// Response statue
 
@@ -246,6 +233,7 @@ const (
 	HeaderCacheControl                    = "Cache-Control"
 	HeaderClearSiteData                   = "Clear-Site-Data"
 	HeaderConnection                      = "Connection"
+	HeaderContentDisposition              = "Content-Disposition"
 	HeaderContentEncoding                 = "Content-Encoding"
 	HeaderContentLanguage                 = "Content-Language"
 	HeaderContentLength                   = "Content-Length"

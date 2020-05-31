@@ -109,17 +109,3 @@ func NewBinderURL(fn Binder) Binder {
 		return fn(ctx, r, i)
 	}
 }
-
-// NewBinderValidate 实际Binder后调用ValidateStruct检测结构体对象数据是否有效。
-func NewBinderValidate(fn Binder) Binder {
-	return func(ctx Context, r io.Reader, i interface{}) error {
-		err := fn(ctx, r, i)
-		if err == nil {
-			err = Validate(i)
-			if err != nil {
-				ctx.Error(err)
-			}
-		}
-		return err
-	}
-}

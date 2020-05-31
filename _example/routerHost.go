@@ -11,7 +11,7 @@ func main() {
 	router.SetRouter("example.com", eudore.NewRouterRadix())
 
 	app := eudore.NewApp(router)
-	app.Options(host.NewHandler(app))
+	app.SetHandler(host.NewHandler(app))
 
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteString("start server, this default page.")

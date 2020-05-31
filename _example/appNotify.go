@@ -8,36 +8,27 @@ package main
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 	"github.com/eudore/eudore/component/notify"
-	"os"
 )
-
-type loggerInitHandler3 interface {
-	NextHandler(eudore.Logger)
-}
 
 func main() {
 	app := eudore.NewApp()
-	httptest.NewClient(app).Stop(0)
 
-	// 设置编译命令、启动命令、监听目录
-	app.Config.Set("component.notify.buildcmd", "go build -o server appCoreNotify.go")
+	// 设置编译命令、启动命令、监听目录, 如果是启动的notify，则阻塞主进程等待退出。
+	app.Config.Set("component.notify.buildcmd", "go build -o server appNotify.go")
 	app.Config.Set("component.notify.startcmd", "./server")
 	app.Config.Set("component.notify.watchdir", ".")
-	notify.NewNotify(app).Run()
-
-	// 如果是启动的notify，则阻塞主进程等待。
-	if !eudore.GetStringBool(os.Getenv(eudore.EnvEudoreIsNotify)) {
-		defer app.Logger.Sync()
-		if initlog, ok := app.Logger.(loggerInitHandler3); ok {
-			app.Logger = eudore.NewLoggerStd(nil)
-			initlog.NextHandler(app.Logger)
-		}
-		<-app.Done()
+	n := notify.NewNotify(app)
+	if n.IsRun() {
+		// 启动日志输出 跳过后续初始化
+		go app.Run()
+		n.Run()
 		return
 	}
 
+	app.AnyFunc("/*", func(ctx eudore.Context) {
+		ctx.WriteString("hello eudore")
+	})
 	app.Listen(":8088")
 	app.Run()
 }

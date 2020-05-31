@@ -26,6 +26,7 @@ func TestAppNew2(*testing.T) {
 		eudore.NewServerStd(nil),
 		eudore.Binder(eudore.BindDefault),
 		eudore.Renderer(eudore.RenderDefault),
+		eudore.DefaultValidater,
 		6666,
 	)
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
@@ -44,8 +45,8 @@ func TestAppListen2(*testing.T) {
 	})
 
 	eudore.Set(app.Server, "", eudore.ServerStdConfig{
-		ReadTimeout:  12 * time.Second,
-		WriteTimeout: 4 * time.Second,
+		ReadTimeout:  eudore.TimeDuration(12 * time.Second),
+		WriteTimeout: eudore.TimeDuration(4 * time.Second),
 	})
 	eudore.Set(app.Server, "readtimeout", 12*time.Second)
 
@@ -74,7 +75,7 @@ func TestAppServerLogger2(t *testing.T) {
 
 func TestAppInitListener2(t *testing.T) {
 	app := eudore.NewApp()
-	app.Options(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	app.SetHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Log(r.URL.Path)
 		app.ServeHTTP(w, r)
 	}))

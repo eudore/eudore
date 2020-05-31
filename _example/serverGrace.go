@@ -13,11 +13,12 @@ import (
 
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/pprof"
+	"github.com/eudore/eudore/component/server/grace"
 	"github.com/eudore/eudore/component/websocket/gobwas"
 )
 
 func main() {
-	app := eudore.NewApp(eudore.NewServerGrace(eudore.NewServerStd(nil)))
+	app := eudore.NewApp(grace.NewServerGrace(eudore.NewServerStd(nil)))
 	pprof.Init(app.Group("/eudore/debug"))
 	app.AddHandlerExtend(gobwas.NewExtendFuncStream)
 	app.AnyFunc("/ws", func(stream eudore.Stream) {
@@ -35,7 +36,13 @@ func main() {
 		}
 	})
 	app.Options(app.Parse())
-	app.ListenTLS(":8086", "", "")
+
+	ln, err := grace.Listen("tcp", ":8088")
+	app.Options(err)
+	if err == nil {
+		app.Info("grace listen:", ln.Addr().String())
+		app.Serve(ln)
+	}
 
 	app.Info("start pid", os.Getpid())
 
@@ -43,7 +50,7 @@ func main() {
 		signalChan := make(chan os.Signal)
 		signal.Notify(signalChan, syscall.Signal(0x0c))
 		<-signalChan
-		err := app.Shutdown(context.WithValue(context.Background(), eudore.ServerGraceContextKey, "1"))
+		err := app.Shutdown(context.WithValue(context.Background(), grace.ServerGraceContextKey, "1"))
 		app.Options(err)
 		app.CancelFunc()
 	}()
