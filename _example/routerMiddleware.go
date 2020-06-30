@@ -1,7 +1,6 @@
 package main
 
 /*
-Router.Group 返回一个新的组路由，新路由器具有独立的参数和处理函数扩展。
 Router.AddMiddleware 会使用当前路由参数注册到路由核心，该行为是全局级别的，一次注册一直存在。
 */
 
@@ -14,15 +13,19 @@ import (
 func main() {
 	app := eudore.NewApp()
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
+	// 第一个参数为字符串就是指定的路径。
+	app.AddMiddleware("/api/", func(ctx eudore.Context) {
+		ctx.WriteString("middleware /api/\n")
+	})
 
 	// 创建组路由
 	apiv1 := app.Group("/api/v1")
-	apiv1.AddMiddleware(middleware.NewRecoverFunc())
-	apiv1.AddMiddleware("/*", func(ctx eudore.Context) {
-		ctx.WriteString("apiv1 route is '/*'")
+	apiv1.AddMiddleware(func(ctx eudore.Context) {
+		ctx.WriteString("group /api/v1 middleware/\n")
 	})
-	apiv1.AnyFunc("/*", handlepre1, handleparam)
-	apiv1.GetFunc("/get/:name", handleget)
+	apiv1.AnyFunc("/*", func(ctx eudore.Context) {
+		ctx.WriteString("request /api/v1")
+	})
 
 	// 默认路由
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
@@ -31,24 +34,14 @@ func main() {
 	})
 
 	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/").Do().Out()
 	client.NewRequest("GET", "/api/v1/").Do().Out()
-	client.NewRequest("GET", "/api/v1/get/eudore").Do().Out()
-	client.NewRequest("GET", "/api/v1/set/eudore").Do().Out()
+	client.NewRequest("GET", "/api/v1/eudore").Do().Out()
 	for client.Next() {
 		app.Error(client.Error())
 	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
-}
-
-func handleget(ctx eudore.Context) {
-	ctx.Debug("Get: " + ctx.GetParam("name"))
-	ctx.WriteString("Get: " + ctx.GetParam("name"))
-}
-func handlepre1(ctx eudore.Context) {
-	ctx.WriteString("handlepre1\n")
-}
-func handleparam(ctx eudore.Context) {
-	ctx.WriteString("handleparam: " + ctx.GetParam("*"))
 }

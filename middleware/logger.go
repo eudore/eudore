@@ -6,6 +6,10 @@ import (
 )
 
 // NewLoggerFunc 函数创建一个请求日志记录中间件。
+//
+// app参数传入*eudore.App需要使用其Logger输出日志，paramsh获取Context.Params如果不为空则添加到输出日志条目中
+//
+// 状态码如果为40x、50x输出日志级别为Error。
 func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
 		now := time.Now()

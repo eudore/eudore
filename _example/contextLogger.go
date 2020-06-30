@@ -29,7 +29,12 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp()
+	app := eudore.NewApp(
+		eudore.NewLoggerStd(map[string]interface{}{"FileLine": true}),
+	)
+	app.AddMiddleware(func(ctx eudore.Context) {
+		ctx.Request().Header.Add(eudore.HeaderXRequestID, "requestid")
+	})
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.Info("hello")
 		ctx.Infof("hello path is %s", ctx.GetParam("*"))

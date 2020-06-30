@@ -3,6 +3,7 @@ package httptest
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -56,10 +57,6 @@ func NewResponseWriterTest(client *Client, req *RequestReaderTest) *ResponseWrit
 		Code:      200,
 	}
 }
-
-// DefaultRemoteAddr is the default remote address to return in RemoteAddr if
-// an explicit DefaultRemoteAddr isn't set on ResponseWriterTest.
-const DefaultRemoteAddr = "1.2.3.4"
 
 // Header returns the response headers.
 func (rw *ResponseWriterTest) Header() http.Header {
@@ -210,9 +207,23 @@ func (rw *ResponseWriterTest) CheckHeader(h ...string) *ResponseWriterTest {
 	return rw
 }
 
+func (rw *ResponseWriterTest) getBodyString() string {
+	if rw.HeaderMap.Get("Content-Encoding") == "gzip" {
+		r, err := gzip.NewReader(rw.Body)
+		if err == nil {
+			body, err := ioutil.ReadAll(r)
+			if err != nil {
+				rw.Request.Error(err)
+			}
+			return string(body)
+		}
+	}
+	return rw.Body.String()
+}
+
 // CheckBodyContainString 方法检查响应的字符串body是否包含指定多个字符串。
 func (rw *ResponseWriterTest) CheckBodyContainString(strs ...string) *ResponseWriterTest {
-	body := rw.Body.String()
+	body := rw.getBodyString()
 	for _, str := range strs {
 		if !strings.Contains(body, str) {
 			rw.Request.Errorf("CheckBodyContainString response body not contains string: %s", str)
@@ -223,7 +234,7 @@ func (rw *ResponseWriterTest) CheckBodyContainString(strs ...string) *ResponseWr
 
 // CheckBodyString 方法检查body是否为指定字符串。
 func (rw *ResponseWriterTest) CheckBodyString(s string) *ResponseWriterTest {
-	if s != rw.Body.String() {
+	if s != rw.getBodyString() {
 		rw.Request.Errorf("CheckBodyString response body size %d not is check string", rw.Body.Len())
 	}
 	return rw
@@ -241,7 +252,7 @@ func (rw *ResponseWriterTest) Out() *ResponseWriterTest {
 	for k, v := range rw.HeaderMap {
 		b.WriteString(fmt.Sprintf("\n%s: %s", k, v))
 	}
-	b.WriteString("\n\n" + rw.Body.String())
+	b.WriteString("\n\n" + rw.getBodyString())
 	rw.Client.Println(b.String())
 	return rw
 }
@@ -265,6 +276,6 @@ func (rw *ResponseWriterTest) OutHeader() *ResponseWriterTest {
 
 // OutBody 方法输出body字符串信息。
 func (rw *ResponseWriterTest) OutBody() *ResponseWriterTest {
-	rw.Client.Printf("httptest request %s %s body: %s\n", rw.Request.Method, rw.Request.RequestURI, rw.Body.String())
+	rw.Client.Printf("httptest request %s %s body: %s\n", rw.Request.Method, rw.Request.RequestURI, rw.getBodyString())
 	return rw
 }

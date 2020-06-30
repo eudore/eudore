@@ -2,99 +2,63 @@ package middleware
 
 import (
 	"compress/gzip"
-	"fmt"
 	"io/ioutil"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/eudore/eudore"
 )
 
-type (
-	// gzipResponse 定义Gzip响应，实现ResponseWriter接口
-	gzipResponse struct {
-		eudore.ResponseWriter
-		writer *gzip.Writer
+// NewGzipFunc 创建一个gzip压缩函数,如果压缩级别超出gzip范围默认使用5。
+func NewGzipFunc(level int) eudore.HandlerFunc {
+	if level < gzip.HuffmanOnly || level > gzip.BestCompression {
+		level = 5
 	}
-	// Gzip 定义gzip压缩处理者。
-	Gzip struct {
-		pool sync.Pool
-	}
-)
-
-// NewGzip 创建一个gzip压缩处理者。
-func NewGzip(level int) *Gzip {
-	h := &Gzip{
-		pool: sync.Pool{
-			New: func() interface{} {
-				gz, err := gzip.NewWriterLevel(ioutil.Discard, level)
-				if err != nil {
-					return err
-				}
-				return &gzipResponse{
-					writer: gz,
-				}
-			},
+	pool := sync.Pool{
+		New: func() interface{} {
+			gz, _ := gzip.NewWriterLevel(ioutil.Discard, level)
+			return gz
 		},
 	}
-	return h
-}
+	return func(ctx eudore.Context) {
+		// 检查是否使用Gzip
+		if !shouldCompress(ctx) {
+			ctx.Next()
+			return
+		}
+		// 初始化ResponseWriter
+		w := &gzipResponse{
+			ResponseWriter: ctx.Response(),
+			Writer:         pool.Get().(*gzip.Writer),
+		}
+		w.Writer.Reset(ctx.Response())
 
-// NewGzipFunc 函数返回一个gzip处理函数。
-func NewGzipFunc(level int) eudore.HandlerFunc {
-	return NewGzip(level).HandleHTTP
-}
-
-// HandleHTTP 方法定义eudore请求处理函数。
-func (g *Gzip) HandleHTTP(ctx eudore.Context) {
-	// 检查是否使用Gzip
-	if !shouldCompress(ctx) {
+		ctx.SetResponse(w)
+		ctx.SetHeader(eudore.HeaderContentEncoding, "gzip")
+		ctx.SetHeader(eudore.HeaderVary, eudore.HeaderAcceptEncoding)
 		ctx.Next()
-		return
+
+		w.Writer.Close()
+		pool.Put(w.Writer)
 	}
-	// 初始化ResponseWriter
-	w, err := g.NewGzipResponse(ctx.Response())
-	if err != nil {
-		// 初始化失败，正常写入
-		ctx.Error(err)
-		ctx.Next()
-		return
-	}
-	ctx.SetResponse(w)
-	// 设置gzip header
-	ctx.SetHeader(eudore.HeaderContentEncoding, "gzip")
-	ctx.SetHeader(eudore.HeaderVary, eudore.HeaderAcceptEncoding)
-	// Next
-	ctx.Next()
-	w.writer.Close()
-	// 回收GzipResponse
-	g.pool.Put(w)
 
 }
 
-// NewGzipResponse 创建一个gzip响应。
-func (g *Gzip) NewGzipResponse(w eudore.ResponseWriter) (*gzipResponse, error) {
-	switch val := g.pool.Get().(type) {
-	case *gzipResponse:
-		val.ResponseWriter = w
-		val.writer.Reset(w)
-		return val, nil
-	case error:
-		return nil, val
-	}
-	return nil, fmt.Errorf("Create gzipResponse exception")
+// gzipResponse 定义Gzip响应，实现ResponseWriter接口
+type gzipResponse struct {
+	eudore.ResponseWriter
+	Writer *gzip.Writer
 }
 
 // Write 实现ResponseWriter中的Write方法。
-func (w *gzipResponse) Write(data []byte) (int, error) {
-	return w.writer.Write(data)
+func (w gzipResponse) Write(data []byte) (int, error) {
+	return w.Writer.Write(data)
 }
 
 // Flush 实现ResponseWriter中的Flush方法。
-func (w *gzipResponse) Flush() {
-	w.writer.Flush()
+func (w gzipResponse) Flush() {
+	w.Writer.Flush()
 	w.ResponseWriter.Flush()
 }
 
@@ -112,17 +76,7 @@ func shouldCompress(ctx eudore.Context) bool {
 		return false
 	}
 
-	extension := filepath.Ext(ctx.Path())
-	if len(extension) < 4 { // fast path
-		return true
-	}
-
-	switch extension {
-	case ".png", ".gif", ".jpeg", ".jpg":
-		return false
-	default:
-		return true
-	}
+	return true
 }
 
 // Push initiates an HTTP/2 server push.
@@ -134,7 +88,6 @@ func (w *gzipResponse) Push(target string, opts *http.PushOptions) error {
 
 // setAcceptEncodingForPushOptions sets "Accept-Encoding" : "gzip" for PushOptions without overriding existing headers.
 func setAcceptEncodingForPushOptions(opts *http.PushOptions) *http.PushOptions {
-
 	if opts == nil {
 		opts = &http.PushOptions{
 			Header: http.Header{

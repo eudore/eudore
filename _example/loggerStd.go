@@ -26,6 +26,7 @@ func main() {
 		"path":       "",
 		"Level":      "1",
 		"TimeFormat": "Mon Jan 2 15:04:05 -0700 MST 2006",
+		"FileLine":   true,
 	}))
 
 	app.Debug("debug")
@@ -34,7 +35,13 @@ func main() {
 	app.Error("error")
 	app.SetLevel(eudore.LogDebug)
 	app.Debug("debug")
-	app.Info("info")
+	app.WithField("depth", "disable").Info("info")
+
+	logout := app.WithField("caller", "mylogout").WithField("logout", true)
+	logout.WithField("level", "debug").Debug("debug")
+	logout.WithField("level", "info").Info("info")
+	logout.WithField("level", "warning").Warning("warning")
+	logout.WithField("level", "error").Error("error")
 
 	app.CancelFunc()
 	app.Run()

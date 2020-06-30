@@ -32,14 +32,14 @@ func BindDefault(ctx Context, r io.Reader, i interface{}) error {
 		return BindURL(ctx, r, i)
 	}
 	switch strings.SplitN(ctx.GetHeader(HeaderContentType), ";", 2)[0] {
-	case MimeApplicationJSON, MimeApplicationJSONUtf8:
+	case MimeApplicationJSON:
 		return BindJSON(ctx, r, i)
-	case MimeTextXML, MimeTextXMLCharsetUtf8, MimeApplicationXML, MimeApplicationxmlCharsetUtf8:
-		return BindXML(ctx, r, i)
-	case MimeMultipartForm, MimeApplicationFormCharsetUtf8:
-		return BindForm(ctx, r, i)
 	case MimeApplicationForm:
 		return BindURLBody(ctx, r, i)
+	case MimeMultipartForm:
+		return BindForm(ctx, r, i)
+	case MimeTextXML, MimeApplicationXML:
+		return BindXML(ctx, r, i)
 	default:
 		err := fmt.Errorf(ErrFormatBindDefaultNotSupportContentType, ctx.GetHeader(HeaderContentType))
 		ctx.Error(err)

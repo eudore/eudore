@@ -141,7 +141,7 @@ func (r *RouterCoreFull) insertRoute(method, key string, isany bool, val Handler
 // Note: 404 does not support extra parameters, not implemented.
 //
 // 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
-func (r *RouterCoreFull) Match(method, path string, params Params) HandlerFuncs {
+func (r *RouterCoreFull) Match(method, path string, params *Params) HandlerFuncs {
 	if n := r.getTree(method).recursiveLoopup(path, params); n != nil {
 		return n
 	}
@@ -312,7 +312,7 @@ func (r *fullNode) SetTags(args []string) {
 // AddTagsToParams give the current Node tag to Params
 //
 // AddTagsToParams 将当前Node的tags给予Params
-func (r *fullNode) AddTagsToParams(p Params) {
+func (r *fullNode) AddTagsToParams(p *Params) {
 	for i := range r.tags {
 		p.Add(r.tags[i], r.vals[i])
 	}
@@ -346,7 +346,7 @@ func (r *RouterCoreFull) getTree(method string) *fullNode {
 	}
 }
 
-func (r *fullNode) recursiveLoopup(searchKey string, params Params) HandlerFuncs {
+func (r *fullNode) recursiveLoopup(searchKey string, params *Params) HandlerFuncs {
 	// constant match, return data
 	// 常量匹配，返回数据
 	if len(searchKey) == 0 && r.handlers != nil {

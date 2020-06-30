@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 )
 
 // Stream 定义请求流，抽象websocket处理。
@@ -20,9 +19,6 @@ type Stream interface {
 	RecvMsg(interface{}) error
 	io.ReadWriteCloser
 }
-
-// RequestReader 对象为请求信息的载体。
-type RequestReader = http.Request
 
 // ResponseWriter 接口用于写入http请求响应体status、header、body。
 //
@@ -58,30 +54,15 @@ type Cookie struct {
 	Value string
 }
 
-// Params 定义请求上下文中的参数接口。
-type Params interface {
-	Get(string) string
-	Add(string, string)
-	Set(string, string)
-}
-
-// ParamsArray 使用数组实现Params
-type ParamsArray struct {
+// Params 定义用于保存一些键值数据。
+type Params struct {
 	Keys []string
 	Vals []string
 }
 
-var (
-	responseWriterHTTPPool = sync.Pool{
-		New: func() interface{} {
-			return &ResponseWriterHTTP{}
-		},
-	}
-)
-
 // Clone 方法深复制一个ParamArray对象。
-func (p *ParamsArray) Clone() *ParamsArray {
-	params := &ParamsArray{
+func (p *Params) Clone() *Params {
+	params := &Params{
 		Keys: make([]string, len(p.Keys)),
 		Vals: make([]string, len(p.Vals)),
 	}
@@ -90,7 +71,7 @@ func (p *ParamsArray) Clone() *ParamsArray {
 	return params
 }
 
-func (p *ParamsArray) String() string {
+func (p *Params) String() string {
 	var b bytes.Buffer
 	for i := range p.Keys {
 		if p.Keys[i] != "" && p.Vals[i] != "" {
@@ -104,7 +85,7 @@ func (p *ParamsArray) String() string {
 }
 
 // Get 方法返回一个参数的值。
-func (p *ParamsArray) Get(key string) string {
+func (p *Params) Get(key string) string {
 	for i, str := range p.Keys {
 		if str == key {
 			return p.Vals[i]
@@ -114,7 +95,7 @@ func (p *ParamsArray) Get(key string) string {
 }
 
 // Add 方法添加一个参数。
-func (p *ParamsArray) Add(key string, val string) {
+func (p *Params) Add(key string, val string) {
 	if key != "" {
 		p.Keys = append(p.Keys, key)
 		p.Vals = append(p.Vals, val)
@@ -122,9 +103,12 @@ func (p *ParamsArray) Add(key string, val string) {
 }
 
 // Set 方法设置一个参数的值。
-func (p *ParamsArray) Set(key string, val string) {
+func (p *Params) Set(key string, val string) {
 	for i, str := range p.Keys {
 		if str == key {
+			if val == "" {
+				p.Keys[i] = ""
+			}
 			p.Vals[i] = val
 			return
 		}

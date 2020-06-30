@@ -1,7 +1,8 @@
 # Eudore
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/eudore/eudore)](https://goreportcard.com/report/github.com/eudore/eudore)
-[![GoDoc](https://godoc.org/github.com/eudore/eudore?status.svg)](https://pkg.go.dev/github.com/eudore/eudore?tab=doc)
+[![godoc](https://godoc.org/github.com/eudore/eudore?status.svg)](https://godoc.org/github.com/eudore/eudore)
+[![go report card](https://goreportcard.com/badge/github.com/eudore/eudore)](https://goreportcard.com/report/github.com/eudore/eudore)
+[![codecov](https://codecov.io/gh/eudore/eudore/branch/master/graph/badge.svg)](https://codecov.io/gh/eudore/eudore)
 
 eudore是轻而全的http框架，高度解耦而轻，功能丰富而全，具有完整框架设计体系，设计高度简洁有序。。
 
@@ -27,10 +28,6 @@ go get -v -u github.com/eudore/eudore
 
 - [源码](https://github.com/eudore/eudore)
 - [godoc](https://pkg.go.dev/github.com/eudore/eudore?tab=doc)
-- [演示例子 90+](_example#example)
+- [演示例子 100+](_example#example)
 - [wiki文档](https://github.com/eudore/eudore/wiki)
 - [实践](https://github.com/eudore/website)
-
-## 许可
-
-MIT

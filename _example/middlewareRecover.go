@@ -17,6 +17,7 @@ func main() {
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/").Do()
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

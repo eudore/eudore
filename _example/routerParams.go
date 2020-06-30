@@ -24,7 +24,7 @@ import (
 )
 
 type Parmaser interface {
-	Params() eudore.Params
+	Params() *eudore.Params
 }
 
 func main() {

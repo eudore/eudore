@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title></title>
+</head>
+<body>
+<div id='nav'>
+	<ul>
+		<li><a href="#dump">dump</a></li>
+		<li><a href="#black">black</a></li>
+		<li><a href="#breaker">breaker</a></li>
+		<li style="display: none;"><a href="#request">request</a></li>
+		<li><a href="#pporf">pporf</a></li>
+		<li><a href="#look">look</a></li>
+		<li><a href="#expvar">expvar</a></li>
+	</ul>
+</div>
+<div id='app'></div>
+</body>
+
+<script type="text/javascript">
+	"use strict";
+	var apiGroup = window.location.href.split(/(.*)\/\w+\/ui.*/)[1]
+	var closefn
+	inithash(window.location.hash || "#"+window.location.href.split(/(.*)\/(\w+)\/ui.*/)[2])
+	window.onhashchange = function(e){
+		inithash(window.location.hash)
+	}
+	function inithash(hash) {
+		console.log("inithash",hash)
+		document.getElementById('app').innerHTML=""
+		if(closefn){
+			closefn()
+		}
+		switch (hash){
+		case '#dump':
+			initdump(); break;
+		case '#black':
+			initblack(); break;
+		case '#breaker':
+			initbreaker(); break;
+		case '#pporf':
+			initpprof(); break;
+		case '#look':
+			initlook(); break;
+		case '#expvar':
+			initexpvar(); break;
+		}
+	}
+
+function initdump() {
+	CreateJsonDom({
+		div: {
+			id:"dump-search",
+			input:{},
+			button:{innerText:"Dump"}
+		}
+	}, document.getElementById("app"))
+	var ws = new WebSocket("ws"+apiGroup.slice(4)+ "/dump/connect")
+	try {
+		ws.onopen = function() {
+			console.log("服务器-连接")
+			fetch("/hello", {method: 'PUT',body:"request hello body",cache: 'no-cache',}) 
+			closefn = function(){
+				if (ws){
+					ws.close()
+				}
+			}
+		}
+		ws.onmessage = function(event) {
+			var data = JSON.parse(event.data);
+			console.log(data)
+			DumpNewMessage(data)
+		}
+		ws.onclose = function() {
+			if (ws) {
+				ws.close();
+				ws = null;
+			}
+			console.log("服务器-关闭")
+		}
+		ws.onerror = function() {
+			if (ws) {
+				ws.close();
+				ws = null;
+			}
+			console.log("服务器-错误")
+		}
+	} catch (e) {
+		alert(e.message);
+	}
+
+}
+
+var dumpindex =0
+function DumpNewMessage(data){
+	dumpindex++
+	var id=dumpindex
+	CreateJsonDom({
+		div: {
+			id:"dump-"+id,
+			div:[
+				{
+					className:"dump-message",
+					span: [
+						{innerText:data["Method"]},
+						{innerText:data["Host"]+data["Path"]},
+						{innerText:data["Status"]},
+					],
+					onclick: function(e){
+						var dom = document.getElementById("dump-"+id).getElementsByClassName("dump-info")[0]
+						if(dom.style.display == "none") {
+							dom.style.display = "block"
+						}else {
+							dom.style.display = "none"
+						}
+					}
+				},
+				{
+					className:"dump-info",
+					style:"display: none",
+					ul:{
+						li:[
+							{innerText:'Basic Info',onclick: dumpdisplayInfo(id,'dump-info-basic')},
+							{innerText:'Request Info',onclick: dumpdisplayInfo(id,'dump-info-request')},
+							{innerText:'Response Info',onclick: dumpdisplayInfo(id,'dump-info-response')},
+						]
+					},
+				
+					div:[
+						{
+							className:"dump-info-basic", 
+							table: {
+								tr:[
+									{td:[{innerText:"method"},{innerText:data["Method"]}]},
+									{td:[{innerText:"uri"},{innerText:data["RequestURI"]}]},
+									{td:[{innerText:"proto"},{innerText:data["Proto"]}]}, 
+									{td:[{innerText:"Host"},{innerText:data["Host"]}]}, 
+									{td:[{innerText:"Status"},{innerText:data["Status"]}]}, 
+									{td:[{innerText:"Time"},{innerText:data["Time"]}]}, 
+									{td:[{innerText:"Params"},{p:getParamsDom(data["Params"])}]}, 
+									{td:[{innerText:"Handlers"},{p: getHandlerDom(data["Handlers"])}]}, 
+								]
+							}
+						},
+						{
+							className:"dump-info-request", 
+							style:"display: none",
+							table: {tr: getHeaderDom(data["RequestHeader"]) },
+							div:{innerText: b64DecodeUnicode(data['RequestBody'])}
+						},
+						{
+							className:"dump-info-response", 
+							style:"display: none",
+							table: {tr: getHeaderDom(data["ResponseHeader"]) },
+							div:{innerText: b64DecodeUnicode(data['ResponseBody'])}
+						},
+					]
+				}
+			]
+		}
+	}, document.getElementById("app"))
+}
+
+function dumpdisplayInfo(id, name){
+	return function(e) {
+		var doms = document.querySelectorAll("#dump-"+id+" .dump-info > div")
+		for(var i of doms) {
+			if(i.className==name){
+				i.style.display="block"
+			}else {
+				i.style.display="none"	
+			}
+		}
+	}
+}
+
+function getHeaderDom(data) {
+	var result=[]
+	for(var k in data) {
+		result.push({td:[{innerText:k},{innerText:data[k]}]})
+	}
+	return  result
+}
+
+function getParamsDom(data) {
+	var result = []
+	for(var i in data.Keys) {
+		result.push({innerText:data.Keys[i]+"="+data.Vals[i]})
+	}
+	return result
+}
+
+function getHandlerDom(data) {
+	var result = []
+	for(var i in data) {
+		result.push({innerText:data[i]})
+	}
+	return result
+}
+
+
+function initblack(){
+	CreateJsonDom({div:{
+		innerHTML:`		<span id="nav-info">eudore black list manager has <span id='nav-info-while'></span> while rule and <span id='nav-info-black'></span> black rule.</span>
+		<button id="black-insert" onclick="newrole()">insert rule</button>`,
+	}}, document.getElementById('app'))
+	fetch(apiGroup+"/black/data", {
+		method: 'GET',
+		cache: 'no-cache',
+		headers: {
+			Accept: 'application/json',
+		},
+	}).then(function(response) {
+		if(response.headers.get("X-Eudore-Admin")==null){
+			throw "eudore server not suppert blacklist"
+		} 
+		return response.json()
+	}).then(function(data) {
+		document.getElementById("nav-info-while").innerText = (data['white']||[])['length'] 
+		document.getElementById("nav-info-black").innerText = (data['black']||[])['length'] 
+		for (var i of data["white"]||[]) {
+			blackCreateList(i, "white")
+		}
+		for (var i of data["black"]||[]) {
+			blackCreateList(i, "black")
+		}
+	}).catch(function(err){
+		document.getElementById('app').innerText = err
+	})
+}
+
+function blackCreateList(data, state) {
+	var addr = data["addr"] + '/' + data["mask"]
+	CreateJsonDom({
+		'div': {
+			id: state + "-" + addr,
+			className: "black-node black-" + state,
+			span: [
+				{innerText: addr}, 
+				{innerText: data["count"]}, 
+			],
+			button: {
+				innerText: "delete",
+				onclick: function(e) {
+					fetch(apiGroup+'/black/'+state+'/'+data['addr']+'?mask='+data['mask'], {
+						method: 'DELETE',
+						cache: 'no-cache',
+					}).then(function(response) {
+						if (response.status==200) {
+							// 移除显示dom
+							var dom = document.getElementById(state + "-" + addr)
+							if (dom!=null){
+								dom.parentNode.removeChild(dom)
+							}
+						}
+					})
+				},
+			},
+		}
+	}, document.getElementById("app"))
+}
+
+function initbreaker(){
+	document.getElementById("app").innerHTML=`middleware.Breaker 重构中`
+}
+
+function initpprof(){
+	document.getElementById("app").innerHTML=` <iframe src="`+apiGroup+`/pprof/" width="100%" height="100%" frameborder="0" frameBorder="0" scrolling="no" marginHeight="0" marginWidth="0"    >
+ 您的浏览器不支持iframe，请升级
+ </iframe>`
+}
+
+function initlook(){
+	document.getElementById("app").innerHTML=` <iframe src="`+apiGroup+`/pprof/look/" width="100%" height="100%" frameborder="0">
+ 您的浏览器不支持iframe，请升级
+ </iframe>`
+}
+// frameBorder="0" scrolling="no" marginHeight="0" marginWidth="0"    
+
+function initexpvar(){
+		fetch(apiGroup+"/pprof/expvar", {
+		method: 'GET',
+		cache: 'no-cache',
+		headers: {
+			Accept: 'application/json',
+		},
+	}).then(function(response) {
+		if(response.headers.get("X-Eudore-Admin")==null){
+			throw "eudore server not suppert pprof-expvar"
+		} 
+		return response.json()
+	}).then(function(data) {
+		document.getElementById('app').innerHTML = '<pre>'+JSON.stringify(data, null, "\t")+'</pre>'
+		console.log(data)
+	}).catch(function(err){
+		document.getElementById('app').innerText = err
+	})
+}
+
+	// json to dom
+	function CreateJsonDom(data, parent, clean) {
+		if(parent==null) {
+			return
+		}
+		if(clean) {
+			parent.innerHTML = ""
+		}
+		for(var i in data) {
+			if(data[i] instanceof Array) {
+				for(var j in data[i]) {
+					CreateJsonDom({[i]: data[i][j]}, parent)
+				}
+			}else if(isJson(data[i])) {
+				var dom = document.createElement(i)
+				if(data[i]["ns"]!=null) {
+					dom = document.createElementNS(data[i]["ns"], i)
+				}
+				parent.appendChild(dom)
+				CreateJsonDom(data[i], dom)
+			}else {
+				switch (i) {
+				case 'className':
+					parent.className = data[i]
+					break
+				case 'innerText':
+					parent.innerText = data[i]
+					break;
+				case 'innerHTML':
+					parent.innerHTML = data[i]
+					break;
+				default:
+					if (i.indexOf("on")!=-1){ 
+						parent.addEventListener(i.slice(2), data[i]) 
+					}else {
+						parent.setAttribute(i, data[i])
+					}
+				}
+			}
+		}
+	}
+	function isJson(obj){
+		var isjson = typeof(obj) == "object" && Object.prototype.toString.call(obj).toLowerCase() == "[object object]" && !obj.length; 
+		return isjson;
+	}
+	function b64DecodeUnicode(str) {
+		try {
+			return decodeURIComponent(atob(str).split('').map(function(c) {
+				return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+			}).join(''));	
+		}catch{
+			return str
+		}
+	}
+
+</script>
+<style type="text/css">
+	*{margin: 0px;padding: 0px;} 
+	html,body,#app,iframe{width: 100%; height: 100%;}
+	#nav{display: block;width: 100%;height: 40px;background-color: #000;}
+	#nav>ul{max-width: 960px;margin: auto;}
+	#nav li{height: 100%;line-height: 40px;float: left;list-style: none;padding: 0 10px;}
+	#nav li a:link{color: #ccc;text-decoration:none;}
+	#app{max-width:960px;margin:auto;}
+	#app>div{margin:5px}
+
+	#dump-search input{width: 200px;height: 30px;font-size: 20px;}
+	#dump-search2 input:focus {border-color: #6cbbf7;box-shadow: 0 0 0 4px #6cbbf7;}
+	.dump-message{border:2px solid #49cc90 ;border-radius:7px;background-color: #ecfaf4;}
+	.dump-message>div{width:100%;}
+	.dump-message>span:first-child{padding-left:10px;height:40px;line-height:40px;display:inline-block;width:10%}
+	.dump-message>span:nth-of-type(2){display:inline-block;width:70%}
+	.dump-info{background-color: #bfe1ac;}
+	.dump-info>ul{display: block;height: 30px;}
+	.dump-info ul>li{float: left;list-style: none;width: 100px;background: #aaa;height: 100%;}
+	.dump-info, dump-info-basic,.dump-info-request,.dump-info-response{display: flex;flex-direction: column;}
+	.dump-info-request>div,.dump-info-response>div {word-break:break-all; overflow: hidden;}
+
+	.black-node{border:2px solid;border-radius:7px}
+	.black-node span:first-child{padding-left:10px;height:40px;line-height:40px;display:inline-block;width:65%}
+	.black-node span {display:inline-block;width:10%}
+	.black-node > button {display: inline-block;width: 10%}
+	.black-white{background-color:#ecfaf4;border-color:#49cc90}
+	.black-black{background-color:#feebeb;border-color:#f93e3e}
+
+	#dump-search,#black-insert{display: none;}
+/style>
+</html>

@@ -42,6 +42,7 @@ type LoggerStd struct {
 	Writer LoggerWriter `json:"-" alias:"writer"`
 	Pool   sync.Pool    `json:"-" alias:"pool"`
 	Mutex  sync.Mutex   `json:"-" alias:"mutex"`
+	*entryStd
 }
 
 // LoggerStdConfig 定义LoggerStd配置信息。
@@ -53,16 +54,19 @@ type LoggerStdConfig struct {
 	Link       string       `json:"link" alias:"link"`
 	Level      LoggerLevel  `json:"level" alias:"level"`
 	TimeFormat string       `json:"timeformat" alias:"timeformat"`
+	FileLine   bool         `json:"fileline" alias:"fileline"`
 }
 
 // 标准日志条目
 type entryStd struct {
+	logger     *LoggerStd
 	level      LoggerLevel
 	time       time.Time
 	message    string
 	data       []byte
 	timeformat string
-	handler    func(*entryStd)
+	depth      int
+	logout     bool
 }
 
 // NewLoggerStd 创建一个标准日志处理器。
@@ -71,13 +75,20 @@ func NewLoggerStd(arg interface{}) Logger {
 	log := &LoggerStd{}
 	log.TimeFormat = "2006-01-02 15:04:05"
 	ConvertTo(arg, &log.LoggerStdConfig)
+	logdepath := 4
+	if !log.FileLine {
+		logdepath = 4 - 0x40
+	}
 	log.Pool.New = func() interface{} {
 		return &entryStd{
+			logger:     log,
 			timeformat: log.TimeFormat,
 			data:       make([]byte, 0, 2048),
-			handler:    log.handler,
+			depth:      logdepath,
 		}
 	}
+	log.entryStd = log.Pool.Get().(*entryStd)
+	log.entryStd.logout = true
 	log.initOut()
 	return log
 }
@@ -110,172 +121,150 @@ func (log *LoggerStd) Sync() error {
 	return err
 }
 
-func (log *LoggerStd) newEntry() *entryStd {
-	entry := log.Pool.Get().(*entryStd)
-	entry.time = time.Now()
-	entry.level = log.Level
-	return entry
+func (entry *entryStd) getEntry() *entryStd {
+	newentry := entry.logger.Pool.Get().(*entryStd)
+	newentry.time = time.Now()
+	newentry.level = entry.logger.Level
+	newentry.depth = entry.depth
+	if len(entry.data) != 0 {
+		newentry.data = newentry.data[:len(entry.data)]
+		copy(newentry.data, entry.data)
+	}
+	return newentry
 }
 
-func (log *LoggerStd) handler(entry *entryStd) {
-	log.Mutex.Lock()
-	entry.writeTo(log.Writer)
-	log.Mutex.Unlock()
-	log.Pool.Put(entry)
-}
-
-// Debug 方法输出Debug级别日志。
-func (log *LoggerStd) Debug(args ...interface{}) {
-	log.newEntry().Debug(args...)
-}
-
-// Info 方法输出Info级别日志。
-func (log *LoggerStd) Info(args ...interface{}) {
-	log.newEntry().Info(args...)
-}
-
-// Warning 方法输出Warning级别日志。
-func (log *LoggerStd) Warning(args ...interface{}) {
-	log.newEntry().Warning(args...)
-}
-
-// Error 方法输出Error级别日志。
-func (log *LoggerStd) Error(args ...interface{}) {
-	log.newEntry().Error(args...)
-}
-
-// Fatal 方法输出Fatal级别日志。
-func (log *LoggerStd) Fatal(args ...interface{}) {
-	log.newEntry().Fatal(args...)
-}
-
-// Debugf 方法格式化输出Debug级别日志。
-func (log *LoggerStd) Debugf(format string, args ...interface{}) {
-	log.newEntry().Debugf(format, args...)
-}
-
-// Infof 方法格式化输出Info级别日志。
-func (log *LoggerStd) Infof(format string, args ...interface{}) {
-	log.newEntry().Infof(format, args...)
-}
-
-// Warningf 方法格式化输出Warning级别日志。
-func (log *LoggerStd) Warningf(format string, args ...interface{}) {
-	log.newEntry().Warningf(format, args...)
-}
-
-// Errorf 方法格式化输出Error级别日志。
-func (log *LoggerStd) Errorf(format string, args ...interface{}) {
-	log.newEntry().Errorf(format, args...)
-}
-
-// Fatalf 方法格式化输出Fatal级别日志。
-func (log *LoggerStd) Fatalf(format string, args ...interface{}) {
-	log.newEntry().Fatalf(format, args...)
-}
-
-// WithField 方法设置日志属性。
-func (log *LoggerStd) WithField(key string, value interface{}) Logout {
-	return log.newEntry().WithField(key, value)
-}
-
-// WithFields 方法设置多个日志属性。
-func (log *LoggerStd) WithFields(fields Fields) Logout {
-	return log.newEntry().WithFields(fields)
+func (entry *entryStd) putEntry() {
+	entry.logger.Mutex.Lock()
+	entry.writeTo(entry.logger.Writer)
+	entry.logger.Mutex.Unlock()
+	entry.logger.Pool.Put(entry)
 }
 
 // Debug 方法条目输出Debug级别日志。
 func (entry *entryStd) Debug(args ...interface{}) {
+	if entry.logout {
+		entry = entry.getEntry()
+	}
 	if entry.level < 1 {
 		entry.message = fmt.Sprintln(args...)
 		entry.message = entry.message[:len(entry.message)-1]
-		entry.handler(entry)
+		entry.putEntry()
 	}
 }
 
 // Info 方法条目输出Info级别日志。
 func (entry *entryStd) Info(args ...interface{}) {
+	if entry.logout {
+		entry = entry.getEntry()
+	}
 	if entry.level < 2 {
 		entry.level = 1
 		entry.message = fmt.Sprintln(args...)
 		entry.message = entry.message[:len(entry.message)-1]
-		entry.handler(entry)
+		entry.putEntry()
 	}
 }
 
 // Warning 方法条目输出Warning级别日志。
 func (entry *entryStd) Warning(args ...interface{}) {
+	if entry.logout {
+		entry = entry.getEntry()
+	}
 	if entry.level < 3 {
 		entry.level = 2
 		entry.message = fmt.Sprintln(args...)
 		entry.message = entry.message[:len(entry.message)-1]
-		entry.handler(entry)
+		entry.putEntry()
 	}
 }
 
 // Error 方法条目输出Error级别日志。
 func (entry *entryStd) Error(args ...interface{}) {
+	if entry.logout {
+		entry = entry.getEntry()
+	}
 	if entry.level < 4 {
 		entry.level = 3
 		entry.message = fmt.Sprintln(args...)
 		entry.message = entry.message[:len(entry.message)-1]
-		entry.handler(entry)
+		entry.putEntry()
 	}
 }
 
 // Fatal 方法条目输出Fatal级别日志。
 func (entry *entryStd) Fatal(args ...interface{}) {
+	if entry.logout {
+		entry = entry.getEntry()
+	}
 	entry.level = 4
 	entry.message = fmt.Sprintln(args...)
 	entry.message = entry.message[:len(entry.message)-1]
-	entry.handler(entry)
+	entry.putEntry()
 }
 
 // Debugf 方法格式化写入流Debug级别日志
 func (entry *entryStd) Debugf(format string, args ...interface{}) {
+	if entry.logout {
+		entry = entry.getEntry()
+	}
 	if entry.level < 1 {
 		entry.level = 0
 		entry.message = fmt.Sprintf(format, args...)
-		entry.handler(entry)
+		entry.putEntry()
 	}
 }
 
 // Infof 方法格式写入流出Info级别日志
 func (entry *entryStd) Infof(format string, args ...interface{}) {
+	if entry.logout {
+		entry = entry.getEntry()
+	}
 	if entry.level < 2 {
 		entry.level = 1
 		entry.message = fmt.Sprintf(format, args...)
-		entry.handler(entry)
+		entry.putEntry()
 	}
 }
 
 // Warningf 方法格式化输出写入流rning级别日志
 func (entry *entryStd) Warningf(format string, args ...interface{}) {
+	if entry.logout {
+		entry = entry.getEntry()
+	}
 	if entry.level < 3 {
 		entry.level = 2
 		entry.message = fmt.Sprintf(format, args...)
-		entry.handler(entry)
+		entry.putEntry()
 	}
 }
 
 // Errorf 方法格式化写入流Error级别日志
 func (entry *entryStd) Errorf(format string, args ...interface{}) {
+	if entry.logout {
+		entry = entry.getEntry()
+	}
 	if entry.level < 4 {
 		entry.level = 3
 		entry.message = fmt.Sprintf(format, args...)
-		entry.handler(entry)
+		entry.putEntry()
 	}
 }
 
 // Fatalf 方法格式化写入流Fatal级别日志
 func (entry *entryStd) Fatalf(format string, args ...interface{}) {
+	if entry.logout {
+		entry = entry.getEntry()
+	}
 	entry.level = 4
 	entry.message = fmt.Sprintf(format, args...)
-	entry.handler(entry)
+	entry.putEntry()
 }
 
 // WithFields 方法设置多个条目属性。
 func (entry *entryStd) WithFields(fields Fields) Logout {
+	if entry.logout {
+		entry = entry.getEntry()
+	}
 	for k, v := range fields {
 		entry.WithField(k, v)
 	}
@@ -284,10 +273,36 @@ func (entry *entryStd) WithFields(fields Fields) Logout {
 
 // WithField 方法设置一个日志属性。
 func (entry *entryStd) WithField(key string, value interface{}) Logout {
-	if key == "time" {
-		t, ok := value.(time.Time)
+	if entry.logout {
+		entry = entry.getEntry()
+	}
+	switch key {
+	case "depth":
+		val, ok := value.(int)
 		if ok {
-			entry.time = t
+			entry.depth += val
+			return entry
+		}
+		vals, ok := value.(string)
+		if ok {
+			if vals == "enable" && entry.depth < 0 {
+				entry.depth += 0x40
+			}
+			if vals == "disable" && entry.depth > 0 {
+				entry.depth -= 0x40
+			}
+			return entry
+		}
+	case "logout":
+		_, ok := value.(bool)
+		if ok {
+			entry.logout = true
+			return entry
+		}
+	case "time":
+		val, ok := value.(time.Time)
+		if ok {
+			entry.time = val
 			return entry
 		}
 	}
@@ -481,6 +496,14 @@ func (entry *entryStd) writeTo(w io.Writer) {
 	w.Write(*(*[]byte)(unsafe.Pointer(&timestr)))
 	w.Write(part2)
 	w.Write(levels[entry.level])
+
+	if entry.depth > 0 {
+		name, file, line := logFormatNameFileLine(entry.depth)
+		entry.WithField("name", name)
+		entry.WithField("file", file)
+		entry.WithField("line", line)
+		// entry.WithField("stat",GetPanicStack(0))
+	}
 
 	if len(entry.data) > 1 {
 		w.Write(part3)

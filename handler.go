@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"unsafe"
 )
 
 // HandlerFunc 是处理一个Context的函数
@@ -236,10 +237,11 @@ func (ext *handlerExtendBase) createHandlerFunc(fn, iValue reflect.Value) Handle
 		extname = extname[25:]
 	}
 	// 获取新函数名称,一般来源于函数扩展返回的函数名称。
-	name := contextSaveName[reflect.ValueOf(h).Pointer()]
+	hptr := getFuncPointer(reflect.ValueOf(h))
+	name := contextSaveName[hptr]
 	// 使用原值名称
 	if name == "" && iValue.Kind() != reflect.Struct {
-		name = contextAliasName[iValue.Pointer()]
+		name = contextAliasName[getFuncPointer(iValue)]
 	}
 	// 推断名称
 	if name == "" {
@@ -254,7 +256,7 @@ func (ext *handlerExtendBase) createHandlerFunc(fn, iValue reflect.Value) Handle
 			name = fmt.Sprintf("%s.%s", iType.PkgPath(), iType.Name())
 		}
 	}
-	contextFuncName[reflect.ValueOf(h).Pointer()] = fmt.Sprintf("%s(%s)", name, extname)
+	contextFuncName[hptr] = fmt.Sprintf("%s(%s)", name, extname)
 	return h
 }
 
@@ -445,6 +447,15 @@ func HandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	return hs
 }
 
+// getFuncPointer 函数获取一个reflect值的地址作为唯一标识id。
+func getFuncPointer(iValue reflect.Value) uintptr {
+	val := *(*struct {
+		_   *uintptr
+		ptr uintptr
+	})(unsafe.Pointer(&iValue))
+	return val.ptr
+}
+
 // SetHandlerFuncName function sets the name of a request context handler.
 //
 // Note: functions are not comparable, the method names of objects are overwritten by other method names.
@@ -453,7 +464,7 @@ func HandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 //
 // 注意：函数不具有可比性，对象的方法的名称会被其他方法名称覆盖。
 func SetHandlerFuncName(i HandlerFunc, name string) {
-	contextSaveName[reflect.ValueOf(i).Pointer()] = name
+	contextSaveName[getFuncPointer(reflect.ValueOf(i))] = name
 }
 
 // SetHandlerAliasName 函数设置一个函数处理对象原始名称，如果扩展未生成名称，使用此值。
@@ -465,19 +476,16 @@ func SetHandlerAliasName(i interface{}, name string) {
 		iValue = reflect.ValueOf(i)
 	}
 	if iValue.Kind() == reflect.Func || iValue.Kind() == reflect.Ptr {
-		contextAliasName[iValue.Pointer()] = name
+		contextAliasName[getFuncPointer(iValue)] = name
 	}
 }
 
 // String method implements the fmt.Stringer interface and implements the output function name.
 //
-// If the processing function has set the function name, use the set value, or use the runtime to get the default value. Method names may be confusing.
-//
 // String 方法实现fmt.Stringer接口，实现输出函数名称。
-//
-// 如果处理函数设置过函数名称，使用设置的值，否在使用runtime获取默认值，方法名称可能混乱。
 func (h HandlerFunc) String() string {
-	ptr := reflect.ValueOf(h).Pointer()
+	rh := reflect.ValueOf(h)
+	ptr := getFuncPointer(rh)
 	name, ok := contextFuncName[ptr]
 	if ok {
 		return name
@@ -486,7 +494,7 @@ func (h HandlerFunc) String() string {
 	if ok {
 		return name
 	}
-	return runtime.FuncForPC(ptr).Name()
+	return runtime.FuncForPC(rh.Pointer()).Name()
 }
 
 // NewExtendHandlerHTTP 函数handlerHTTP接口转换成HandlerFunc。

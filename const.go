@@ -23,6 +23,8 @@ var (
 	DefaultConvertFormTags = []string{"form", "alias"}
 	// DefaultConvertURLTags 定义bind url使用tags。
 	DefaultConvertURLTags = []string{"url", "alias"}
+	// DefaultRecoverDepth 定义GetPanicStack函数默认显示栈最大层数。
+	DefaultRecoverDepth = 20
 	// LogLevelString 定义日志级别输出字符串。
 	LogLevelString = [5]string{"DEBUG", "INFO", "WARNING", "ERROR", "FATAL"}
 	// RouterAllMethod 定义全部的方法，影响Any方法的注册。
@@ -75,7 +77,6 @@ var (
 	_ HandlerExtender = (*handlerExtendWarp)(nil)
 	_ HandlerExtender = (*handlerExtendTree)(nil)
 	_ Validater       = (*validaterBase)(nil)
-	_ Params          = (*ParamsArray)(nil)
 )
 
 // 定义默认错误
@@ -244,10 +245,10 @@ const (
 	HeaderContentType                     = "Content-Type"
 	HeaderCookie                          = "Cookie"
 	HeaderDate                            = "Date"
-	HeaderETag                            = "ETag"
+	HeaderETag                            = "Etag"
 	HeaderEarlyData                       = "Early-Data"
 	HeaderExpect                          = "Expect"
-	HeaderExpectCT                        = "Expect-CT"
+	HeaderExpectCT                        = "Expect-Ct"
 	HeaderExpires                         = "Expires"
 	HeaderFeaturePolicy                   = "Feature-Policy"
 	HeaderForwarded                       = "Forwarded"
@@ -278,7 +279,7 @@ const (
 	HeaderSetCookie                       = "Set-Cookie"
 	HeaderSourceMap                       = "SourceMap"
 	HeaderStrictTransportSecurity         = "Strict-Transport-Security"
-	HeaderTE                              = "TE"
+	HeaderTE                              = "Te"
 	HeaderTimingAllowOrigin               = "Timing-Allow-Origin"
 	HeaderTk                              = "Tk"
 	HeaderTrailer                         = "Trailer"
@@ -287,17 +288,18 @@ const (
 	HeaderUserAgent                       = "User-Agent"
 	HeaderVary                            = "Vary"
 	HeaderVia                             = "Via"
-	HeaderWWWAuthenticate                 = "WWW-Authenticate"
+	HeaderWWWAuthenticate                 = "Www-Authenticate"
 	HeaderWarning                         = "Warning"
 	HeaderXContentTypeOptions             = "X-Content-Type-Options"
-	HeaderXDNSPrefetchControl             = "X-DNS-Prefetch-Control"
+	HeaderXCSRFToken                      = "X-Csrf-Token"
+	HeaderXDNSPrefetchControl             = "X-Dns-Prefetch-Control"
 	HeaderXForwardedFor                   = "X-Forwarded-For"
 	HeaderXForwardedHost                  = "X-Forwarded-Host"
 	HeaderXForwardedProto                 = "X-Forwarded-Proto"
 	HeaderXFrameOptions                   = "X-Frame-Options"
-	HeaderXXSSProtection                  = "X-XSS-Protection"
-	HeaderXParentID                       = "X-Parent-ID"
-	HeaderXRequestID                      = "X-Request-ID"
+	HeaderXXSSProtection                  = "X-Xss-Protection"
+	HeaderXParentID                       = "X-Parent-Id"
+	HeaderXRequestID                      = "X-Request-Id"
 
 	// 默认http请求方法
 

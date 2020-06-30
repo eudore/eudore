@@ -20,7 +20,7 @@ func NewBasicAuthFunc(realm string, names map[string]string) eudore.HandlerFunc 
 		checks[base64.StdEncoding.EncodeToString([]byte(name+":"+pass))] = name
 	}
 	return func(ctx eudore.Context) {
-		auth := ctx.GetHeader("Authorization")
+		auth := ctx.GetHeader(eudore.HeaderAuthorization)
 		if len(auth) > 5 && auth[:6] == "Basic " {
 			name, ok := checks[auth[6:]]
 			if ok {
@@ -28,7 +28,7 @@ func NewBasicAuthFunc(realm string, names map[string]string) eudore.HandlerFunc 
 				return
 			}
 		}
-		ctx.SetHeader("WWW-Authenticate", realm)
+		ctx.SetHeader(eudore.HeaderWWWAuthenticate, realm)
 		ctx.WriteHeader(401)
 		ctx.End()
 	}

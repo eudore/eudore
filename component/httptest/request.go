@@ -73,6 +73,10 @@ func NewRequestReaderTest(client *Client, method, path string) *RequestReaderTes
 		r.Header.Add("Sec-WebSocket-Version", "13")
 		r.Header.Add("Origin", "http://"+r.Host)
 		r.Body = http.NoBody
+	} else {
+		if u.Scheme == "" {
+			u.Scheme = "http"
+		}
 	}
 	r.Form, _ = url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
@@ -95,9 +99,25 @@ func (r *RequestReaderTest) Errorf(format string, args ...interface{}) {
 	r.Client.Errs = append(r.Client.Errs, err)
 }
 
+// WithTLS 方法在模拟请求时设置tls状态。
+func (r *RequestReaderTest) WithTLS() *RequestReaderTest {
+	r.TLS = &tls.ConnectionState{
+		Version:           tls.VersionTLS12,
+		HandshakeComplete: true,
+		ServerName:        r.Host,
+	}
+	return r
+}
+
 // WithAddQuery 方法给请求添加一个url参数。
 func (r *RequestReaderTest) WithAddQuery(key, val string) *RequestReaderTest {
 	r.Form.Add(key, val)
+	return r
+}
+
+// WithRemoteAddr 方法设置请求的客户端ip地址端口。
+func (r *RequestReaderTest) WithRemoteAddr(addr string) *RequestReaderTest {
+	r.RemoteAddr = addr
 	return r
 }
 
@@ -264,14 +284,17 @@ func (r *RequestReaderTest) Do() *ResponseWriterTest {
 		if r.URL.Scheme == "ws" || r.URL.Scheme == "wss" {
 			r.websocketServer, r.websocketClient = net.Pipe()
 		}
-		r.RemoteAddr = "192.0.2.1:1234"
+		if r.RemoteAddr == "" {
+			r.RemoteAddr = r.Client.RemoteAddr
+		}
 		r.Client.Handler.ServeHTTP(resp, r.Request)
-		r.Client.CookieJar.SetCookies(r.URL, (&http.Response{Header: resp.Header()}).Cookies())
+		r.handleCooke(&http.Response{Header: resp.Header()})
 	} else {
 		r.RequestURI = ""
 		httpResp, err := r.sendResponse()
 		if err == nil {
 			resp.HandleRespone(httpResp)
+			r.handleCooke(httpResp)
 		} else {
 			r.Error(err)
 			resp.Code = 500
@@ -367,6 +390,16 @@ func (r *RequestReaderTest) sendResponse() (*http.Response, error) {
 		r.websocketHandle(conn)
 	}
 	return resp, err
+}
+
+func (r *RequestReaderTest) handleCooke(resp *http.Response) {
+	switch r.URL.Scheme {
+	case "", "ws":
+		r.URL.Scheme = "http"
+	case "wss":
+		r.URL.Scheme = "https"
+	}
+	r.Client.CookieJar.SetCookies(r.URL, resp.Cookies())
 }
 
 var zeroDialer net.Dialer

@@ -1,7 +1,6 @@
 package host
 
 import (
-	"net/http"
 	"strings"
 
 	"github.com/eudore/eudore"
@@ -23,22 +22,9 @@ type RouterCoreHost struct {
 var _ eudore.Router = (*RouterHost)(nil)
 var _ eudore.RouterCore = (*RouterCoreHost)(nil)
 
-// NewHandler 函数实现一个添加host参数的http.Handler。
-func NewHandler(app *eudore.App) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// init
-		ctx := app.ContextPool.Get().(eudore.Context)
-		response := new(eudore.ResponseWriterHTTP)
-		// handle
-		response.Reset(w)
-		ctx.Reset(r.Context(), response, r)
-		ctx.AddParam("host", ctx.Host())
-		ctx.SetHandler(-1, app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params()))
-		ctx.Next()
-		ctx.End()
-		// release
-		app.ContextPool.Put(ctx)
-	})
+// AddHostHandler 函数将host值加入到Params中
+func AddHostHandler(ctx eudore.Context) {
+	ctx.AddParam("host", ctx.Host())
 }
 
 // NewRouterHost 函数创建一个默认的hst路由。
@@ -124,7 +110,7 @@ func (r *RouterCoreHost) HandleFunc(method string, path string, handler eudore.H
 }
 
 // Match 方法根据host选择路由器然后匹配请求。
-func (r *RouterCoreHost) Match(method, path string, params eudore.Params) eudore.HandlerFuncs {
+func (r *RouterCoreHost) Match(method, path string, params *eudore.Params) eudore.HandlerFuncs {
 	return r.getRouter(params.Get("host")).Match(method, path, params)
 }
 

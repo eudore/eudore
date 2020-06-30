@@ -57,16 +57,17 @@ type loggerInitHandler interface {
 // LoggerInit 初始日志处理器仅记录日志，再设置日志处理器后，
 // 会将当前记录的日志交给新日志处理器处理，用于处理程序初始化之前产生的日志。
 type LoggerInit struct {
-	level LoggerLevel
-	mu    sync.Mutex
 	data  []*entryInit
+	Mutex sync.Mutex
+	*entryInit
 }
 type entryInit struct {
 	logger  *LoggerInit
-	Level   LoggerLevel `json:"level"`
-	Fields  Fields      `json:"fields,omitempty"`
-	Time    time.Time   `json:"time"`
-	Message string      `json:"message,omitempty"`
+	level   LoggerLevel
+	time    time.Time
+	message string
+	fields  Fields
+	logout  bool
 }
 
 // 定义日志级别
@@ -76,203 +77,214 @@ const (
 	LogWarning
 	LogError
 	LogFatal
-	LogClose
+	logSetLevel
 )
 
 // NewLoggerInit 函数创建一个初始化日志处理器。
 func NewLoggerInit() Logger {
-	return &LoggerInit{}
-}
-
-func (l *LoggerInit) newEntry() *entryInit {
-	return &entryInit{logger: l, Time: time.Now()}
-}
-
-func (l *LoggerInit) putEntry(entry *entryInit) {
-	if entry.Level >= l.level {
-		l.mu.Lock()
-		l.data = append(l.data, entry)
-		l.mu.Unlock()
+	log := &LoggerInit{}
+	log.entryInit = &entryInit{
+		logger: log,
+		logout: true,
 	}
+	return log
 }
 
 // NextHandler 方法实现loggerInitHandler接口。
-func (l *LoggerInit) NextHandler(logger Logger) {
-	for _, e := range l.data {
-		switch e.Level {
+func (log *LoggerInit) NextHandler(logger Logger) {
+	logout := logger.WithField("depth", "disable")
+	for _, entry := range log.data {
+		switch entry.level {
 		case LogDebug:
-			logger.WithFields(e.Fields).WithField("time", e.Time).Debug(e.Message)
+			logout.WithFields(entry.fields).WithField("time", entry.time).Debug(entry.message)
 		case LogInfo:
-			logger.WithFields(e.Fields).WithField("time", e.Time).Info(e.Message)
+			logout.WithFields(entry.fields).WithField("time", entry.time).Info(entry.message)
 		case LogWarning:
-			logger.WithFields(e.Fields).WithField("time", e.Time).Warning(e.Message)
+			logout.WithFields(entry.fields).WithField("time", entry.time).Warning(entry.message)
 		case LogError:
-			logger.WithFields(e.Fields).WithField("time", e.Time).Error(e.Message)
+			logout.WithFields(entry.fields).WithField("time", entry.time).Error(entry.message)
 		case LogFatal:
-			logger.WithFields(e.Fields).WithField("time", e.Time).Fatal(e.Message)
+			logout.WithFields(entry.fields).WithField("time", entry.time).Fatal(entry.message)
+		case logSetLevel:
+			logger.SetLevel(entry.fields["level"].(LoggerLevel))
 		}
 	}
-	l.data = l.data[0:0]
+	logger.Sync()
+	log.data = log.data[0:0]
 }
 
 // SetLevel 方法设置日志处理级别。
-func (l *LoggerInit) SetLevel(level LoggerLevel) {
-	l.level = level
+func (log *LoggerInit) SetLevel(level LoggerLevel) {
+	entry := log.newEntry()
+	entry.level = logSetLevel
+	entry.WithField("level", level)
+	entry.putEntry()
 }
 
 // Sync 方法
-func (l *LoggerInit) Sync() error {
+func (log *LoggerInit) Sync() error {
 	return nil
 }
 
-// WithField 方法给日志新增一个属性。
-func (l *LoggerInit) WithField(key string, value interface{}) Logout {
-	return l.newEntry().WithField(key, value)
-}
-
-// WithFields 方法给日志新增多个属性。
-func (l *LoggerInit) WithFields(fields Fields) Logout {
-	return l.newEntry().WithFields(fields)
-}
-
-// Debug 方法输出Debug级别日志。
-func (l *LoggerInit) Debug(args ...interface{}) {
-	l.newEntry().Debug(args...)
-}
-
-// Info 方法输出Info级别日志。
-func (l *LoggerInit) Info(args ...interface{}) {
-	l.newEntry().Info(args...)
-}
-
-// Warning 方法输出Warning级别日志。
-func (l *LoggerInit) Warning(args ...interface{}) {
-	l.newEntry().Warning(args...)
-}
-
-// Error 方法输出Error级别日志。
-func (l *LoggerInit) Error(args ...interface{}) {
-	l.newEntry().Error(args...)
-}
-
-// Fatal 方法输出Fatal级别日志。
-func (l *LoggerInit) Fatal(args ...interface{}) {
-	l.newEntry().Fatal(args...)
-}
-
-// Debugf 方法格式化输出Debug级别日志。
-func (l *LoggerInit) Debugf(format string, args ...interface{}) {
-	l.newEntry().Debugf(format, args...)
-}
-
-// Infof 方法格式化输出Info级别日志。
-func (l *LoggerInit) Infof(format string, args ...interface{}) {
-	l.newEntry().Infof(format, args...)
-}
-
-// Warningf 方法格式化输出Warning级别日志。
-func (l *LoggerInit) Warningf(format string, args ...interface{}) {
-	l.newEntry().Warningf(format, args...)
-}
-
-// Errorf 方法格式化输出Error级别日志。
-func (l *LoggerInit) Errorf(format string, args ...interface{}) {
-	l.newEntry().Errorf(format, args...)
-}
-
-// Fatalf 方法格式化输出Fatal级别日志。
-func (l *LoggerInit) Fatalf(format string, args ...interface{}) {
-	l.newEntry().Fatalf(format, args...)
-}
-
-// Debug 方法输出Debug级别日志。
-func (e *entryInit) Debug(args ...interface{}) {
-	e.Level = 0
-	e.Message = fmt.Sprintln(args...)
-	e.Message = e.Message[:len(e.Message)-1]
-	e.logger.putEntry(e)
-}
-
-// Info 方法输出Info级别日志。
-func (e *entryInit) Info(args ...interface{}) {
-	e.Level = 1
-	e.Message = fmt.Sprintln(args...)
-	e.Message = e.Message[:len(e.Message)-1]
-	e.logger.putEntry(e)
-}
-
-// Warning 方法输出Warning级别日志。
-func (e *entryInit) Warning(args ...interface{}) {
-	e.Level = 2
-	e.Message = fmt.Sprintln(args...)
-	e.Message = e.Message[:len(e.Message)-1]
-	e.logger.putEntry(e)
-}
-
-// Error 方法输出Error级别日志。
-func (e *entryInit) Error(args ...interface{}) {
-	e.Level = 3
-	e.Message = fmt.Sprintln(args...)
-	e.Message = e.Message[:len(e.Message)-1]
-	e.logger.putEntry(e)
-}
-
-// Fatal 方法输出Fatal级别日志。
-func (e *entryInit) Fatal(args ...interface{}) {
-	e.Level = 4
-	e.Message = fmt.Sprintln(args...)
-	e.Message = e.Message[:len(e.Message)-1]
-	e.logger.putEntry(e)
-}
-
-// Debugf 方法格式化输出Debug级别日志。
-func (e *entryInit) Debugf(format string, args ...interface{}) {
-	e.Level = 0
-	e.Message = fmt.Sprintf(format, args...)
-	e.logger.putEntry(e)
-}
-
-// Infof 方法格式化输出Info级别日志。
-func (e *entryInit) Infof(format string, args ...interface{}) {
-	e.Level = 1
-	e.Message = fmt.Sprintf(format, args...)
-	e.logger.putEntry(e)
-}
-
-// Warningf 方法格式化输出Warning级别日志。
-func (e *entryInit) Warningf(format string, args ...interface{}) {
-	e.Level = 2
-	e.Message = fmt.Sprintf(format, args...)
-	e.logger.putEntry(e)
-}
-
-// Errorf 方法格式化输出Error级别日志。
-func (e *entryInit) Errorf(format string, args ...interface{}) {
-	e.Level = 3
-	e.Message = fmt.Sprintf(format, args...)
-	e.logger.putEntry(e)
-}
-
-// Fatalf 方法格式化输出Fatal级别日志。
-func (e *entryInit) Fatalf(format string, args ...interface{}) {
-	e.Level = 4
-	e.Message = fmt.Sprintf(format, args...)
-	e.logger.putEntry(e)
-}
-
-// WithField 方法给日志新增一个属性。
-func (e *entryInit) WithField(key string, value interface{}) Logout {
-	if e.Fields == nil {
-		e.Fields = make(Fields)
+func (entry *entryInit) newEntry() *entryInit {
+	newentry := &entryInit{
+		logger: entry.logger,
+		time:   time.Now(),
 	}
-	e.Fields[key] = value
-	return e
+	if entry.fields != nil {
+		newentry.fields = make(Fields, len(entry.fields))
+	}
+	for k, v := range entry.fields {
+		newentry.fields[k] = v
+	}
+	return newentry
+}
+
+func (entry *entryInit) putEntry() {
+	entry.logger.Mutex.Lock()
+	entry.logger.data = append(entry.logger.data, entry)
+	entry.logger.Mutex.Unlock()
+}
+
+// Debug 方法输出Debug级别日志。
+func (entry *entryInit) Debug(args ...interface{}) {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	entry.level = 0
+	entry.message = fmt.Sprintln(args...)
+	entry.message = entry.message[:len(entry.message)-1]
+	entry.putEntry()
+}
+
+// Info 方法输出Info级别日志。
+func (entry *entryInit) Info(args ...interface{}) {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	entry.level = 1
+	entry.message = fmt.Sprintln(args...)
+	entry.message = entry.message[:len(entry.message)-1]
+	entry.putEntry()
+}
+
+// Warning 方法输出Warning级别日志。
+func (entry *entryInit) Warning(args ...interface{}) {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	entry.level = 2
+	entry.message = fmt.Sprintln(args...)
+	entry.message = entry.message[:len(entry.message)-1]
+	entry.putEntry()
+}
+
+// Error 方法输出Error级别日志。
+func (entry *entryInit) Error(args ...interface{}) {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	entry.level = 3
+	entry.message = fmt.Sprintln(args...)
+	entry.message = entry.message[:len(entry.message)-1]
+	entry.putEntry()
+}
+
+// Fatal 方法输出Fatal级别日志。
+func (entry *entryInit) Fatal(args ...interface{}) {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	entry.level = 4
+	entry.message = fmt.Sprintln(args...)
+	entry.message = entry.message[:len(entry.message)-1]
+	entry.putEntry()
+}
+
+// Debugf 方法格式化输出Debug级别日志。
+func (entry *entryInit) Debugf(format string, args ...interface{}) {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	entry.level = 0
+	entry.message = fmt.Sprintf(format, args...)
+	entry.putEntry()
+}
+
+// Infof 方法格式化输出Info级别日志。
+func (entry *entryInit) Infof(format string, args ...interface{}) {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	entry.level = 1
+	entry.message = fmt.Sprintf(format, args...)
+	entry.putEntry()
+}
+
+// Warningf 方法格式化输出Warning级别日志。
+func (entry *entryInit) Warningf(format string, args ...interface{}) {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	entry.level = 2
+	entry.message = fmt.Sprintf(format, args...)
+	entry.putEntry()
+}
+
+// Errorf 方法格式化输出Error级别日志。
+func (entry *entryInit) Errorf(format string, args ...interface{}) {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	entry.level = 3
+	entry.message = fmt.Sprintf(format, args...)
+	entry.putEntry()
+}
+
+// Fatalf 方法格式化输出Fatal级别日志。
+func (entry *entryInit) Fatalf(format string, args ...interface{}) {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	entry.level = 4
+	entry.message = fmt.Sprintf(format, args...)
+	entry.putEntry()
+}
+
+// WithField 方法给日志新增一个属性。
+func (entry *entryInit) WithField(key string, value interface{}) Logout {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	switch key {
+	case "depth":
+		return entry
+	case "logout":
+		_, ok := value.(bool)
+		if ok {
+			entry.logout = true
+			return entry
+		}
+	}
+	if entry.fields == nil {
+		entry.fields = make(Fields)
+	}
+	entry.fields[key] = value
+	return entry
 }
 
 // WithFields 方法给日志新增多个属性。
-func (e *entryInit) WithFields(fields Fields) Logout {
-	e.Fields = fields
-	return e
+func (entry *entryInit) WithFields(fields Fields) Logout {
+	if entry.logout {
+		entry = entry.newEntry()
+	}
+	if entry.fields == nil {
+		entry.fields = make(Fields)
+	}
+	for k, v := range fields {
+		entry.fields[k] = v
+	}
+	return entry
 }
 
 // String 方法实现ftm.Stringer接口，格式化输出日志级别。
@@ -304,13 +316,13 @@ func (l *LoggerLevel) UnmarshalText(text []byte) error {
 	return ErrLoggerLevelUnmarshalText
 }
 
-// NewPrintFunc 函数使用app创建一个输出函数。
+// NewPrintFunc 函数使用Logout创建一个输出函数。
 //
 // 如果第一个参数Fields类型，则调用WithFields方法。
 //
 // 如果参数是一个error则输出error级别日志，否在输出info级别日志。
-func NewPrintFunc(app *App) func(...interface{}) {
-	var log Logout = app
+func NewPrintFunc(log Logout) func(...interface{}) {
+	log = log.WithField("depth", 2).WithField("logout", true)
 	return func(args ...interface{}) {
 		fields, ok := args[0].(Fields)
 		if ok {
@@ -352,8 +364,9 @@ func logFormatNameFileLine(depth int) (string, string, int) {
 	return name, file, line
 }
 
-func getPanicStakc(depth int) []string {
-	pc := make([]uintptr, 20)
+// GetPanicStack 函数返回panic栈信息。
+func GetPanicStack(depth int) []string {
+	pc := make([]uintptr, DefaultRecoverDepth)
 	n := runtime.Callers(depth, pc)
 	if n == 0 {
 		return nil
@@ -361,7 +374,7 @@ func getPanicStakc(depth int) []string {
 
 	pc = pc[:n] // pass only valid pcs to runtime.CallersFrames
 	frames := runtime.CallersFrames(pc)
-	stack := make([]string, 0, 20)
+	stack := make([]string, 0, DefaultRecoverDepth)
 
 	frame, more := frames.Next()
 	for more {

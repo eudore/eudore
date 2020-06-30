@@ -14,13 +14,21 @@ import (
 
 func main() {
 	app := eudore.NewApp(eudore.NewLoggerInit())
-	app.Debug(0)
-	app.Info(1)
+	app.Debug("debug")
+	app.Info("info")
+	app.Warning("warning")
+	app.Error("error")
 	app.Sync()
-	app.Info(2)
-	app.Info(3)
+
+	logout := app.WithField("caller", "mylogout").WithField("logout", true)
+	logout.WithField("level", "debug").Debug("debug")
+	logout.WithField("level", "info").Info("info")
+	logout.WithField("level", "warning").Warning("warning")
+	logout.WithField("level", "error").Error("error")
+
 	app.AnyFunc("/*path", eudore.HandlerEmpty)
 	app.Options(eudore.NewLoggerStd(nil))
+	app.WithField("depth", "enable").Info("info")
 	app.CancelFunc()
 	app.Run()
 }

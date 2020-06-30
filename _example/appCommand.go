@@ -22,10 +22,15 @@ import (
 func main() {
 	app := eudore.NewApp()
 	app.Options(app.Parse())
-	command.Init(app)
+	app.Options(command.Init(app))
+	if app.Err() != nil {
+		app.Run()
+		return
+	}
 	app.GetFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteString("hello eudore")
 	})
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

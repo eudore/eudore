@@ -27,11 +27,12 @@ type (
 		http.Handler
 		*http.Client
 		http.CookieJar
-		Args    url.Values
-		Headers http.Header
-		Index   int
-		Errs    []error
-		Out     io.Writer
+		RemoteAddr string
+		Args       url.Values
+		Headers    http.Header
+		Index      int
+		Errs       []error
+		Out        io.Writer
 	}
 )
 
@@ -39,13 +40,14 @@ type (
 func NewClient(handler http.Handler) *Client {
 	jar, _ := cookiejar.New(nil)
 	return &Client{
-		Context:   context.Background(),
-		Handler:   handler,
-		Client:    http.DefaultClient,
-		CookieJar: jar,
-		Args:      make(url.Values),
-		Headers:   make(http.Header),
-		Out:       os.Stdout,
+		Context:    context.Background(),
+		Handler:    handler,
+		Client:     http.DefaultClient,
+		CookieJar:  jar,
+		RemoteAddr: "192.0.2.1:1234",
+		Args:       make(url.Values),
+		Headers:    make(http.Header),
+		Out:        os.Stdout,
 	}
 }
 
@@ -76,6 +78,27 @@ func (clt *Client) Println(args ...interface{}) (int, error) {
 // Printf 方法客户端可视化输出字符串。
 func (clt *Client) Printf(format string, args ...interface{}) (int, error) {
 	return fmt.Fprintf(clt.Out, format, args...)
+}
+
+// GetCookie 获取客户端存储的请求路由对应的cookie值。
+func (clt *Client) GetCookie(path, key string) string {
+	u, err := url.Parse(path)
+	if err != nil {
+		//
+		return ""
+	}
+	if u.Host == "" {
+		u.Host = HTTPTestHost
+	}
+	if u.Scheme == "" {
+		u.Scheme = "http"
+	}
+	for _, cookie := range clt.CookieJar.Cookies(u) {
+		if cookie.Name == key {
+			return cookie.Value
+		}
+	}
+	return ""
 }
 
 // WithAddParam 方法添加客户端全局参数。

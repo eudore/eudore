@@ -142,7 +142,7 @@ func (r *RouterCoreRadix) insertRoute(method, key string, isany bool, val Handle
 // Note: 404 does not support extra parameters, not implemented.
 //
 // 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
-func (r *RouterCoreRadix) Match(method, path string, params Params) HandlerFuncs {
+func (r *RouterCoreRadix) Match(method, path string, params *Params) HandlerFuncs {
 	if n := r.getTree(method).recursiveLoopup(path, params); n != nil {
 		return n
 	}
@@ -260,7 +260,7 @@ func (r *radixNode) SetTags(args []string) {
 // AddTagsToParams give the current Node tag to Params
 //
 // AddTagsToParams 将当前Node的tags给予Params
-func (r *radixNode) AddTagsToParams(p Params) {
+func (r *radixNode) AddTagsToParams(p *Params) {
 	for i := range r.tags {
 		p.Add(r.tags[i], r.vals[i])
 	}
@@ -297,7 +297,7 @@ func (r *RouterCoreRadix) getTree(method string) *radixNode {
 // 按照顺序匹配一个路径。
 //
 // 依次检查常量节点、参数节点、通配符节点，如果有一个匹配就直接返回。
-func (r *radixNode) recursiveLoopup(searchKey string, params Params) HandlerFuncs {
+func (r *radixNode) recursiveLoopup(searchKey string, params *Params) HandlerFuncs {
 	// 如果路径为空，当前节点就是需要匹配的节点，直接返回。
 	if len(searchKey) == 0 && r.handlers != nil {
 		r.AddTagsToParams(params)

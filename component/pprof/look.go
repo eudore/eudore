@@ -14,7 +14,7 @@ import (
 //
 // 当前暂时使用github.com/kr/pretty格式化app对象。
 func Look(ctx eudore.Context) {
-	data := ctx.Context().Value(eudore.AppContextKey)
+	data := ctx.GetContext().Value(eudore.AppContextKey)
 	if data == nil {
 		ctx.SetHeader(eudore.HeaderContentType, "text/plain; charset=utf-8")
 		ctx.WriteString(`pprof look not found *eudore.App object.
@@ -55,9 +55,10 @@ func NewLook(data interface{}) eudore.HandlerFunc {
 		fm.indent()
 		fm.handle(reflect.ValueOf(data))
 		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
+		ctx.SetHeader("X-Eudore-Admin", "look")
 		ctx.WriteString(`<style>
 			 span{white-space:pre-wrap;word-wrap : break-word ;overflow: hidden ;}
-			</style><pre>`)
+			</style><script>console.log("d=10 depth递归显时层数\nall=false 是否显时非导出属性")</script><pre>`)
 		ctx.Write(fm.buffer.Bytes())
 		ctx.WriteString("</pre>")
 	}

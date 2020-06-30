@@ -22,7 +22,9 @@ type App struct {
 	Binder             `alias:"binder"`
 	Renderer           `alias:"renderer"`
 	Validater          `alias:"validater"`
-	ContextPool        sync.Pool `alias:"contextpool"`
+	GetWarp            `alias:"getwarp"`
+	HandlerFuncs       `alias:"handlerfuncs"`
+	NewContext         func() Context `alias:"newcontext"`
 }
 
 func main() {
@@ -162,14 +164,15 @@ type HandlerExtender interface {
 // Context 定义请求上下文接口。
 type Context interface {
 	// context
-	Reset(context.Context, ResponseWriter, *RequestReader)
-	Context() context.Context
-	Request() *RequestReader
+	Reset(context.Context, http.ResponseWriter, *http.Request)
+	Request() *http.Request
 	Response() ResponseWriter
 	WithContext(context.Context)
-	SetRequest(*RequestReader)
+	SetRequest(*http.Request)
 	SetResponse(ResponseWriter)
 	SetHandler(int, HandlerFuncs)
+	GetContext() context.Context
+	GetHandler() (int, HandlerFuncs)
 	Next()
 	End()
 	Done() <-chan struct{}
@@ -188,9 +191,10 @@ type Context interface {
 	Body() []byte
 	Bind(interface{}) error
 	BindWith(interface{}, Binder) error
+	Validate(interface{}) error
 
 	// param query header cookie session
-	Params() Params
+	Params() *Params
 	GetParam(string) string
 	SetParam(string, string)
 	AddParam(string, string)
@@ -214,7 +218,6 @@ type Context interface {
 	Push(string, *http.PushOptions) error
 	Render(interface{}) error
 	RenderWith(interface{}, Renderer) error
-	// render writer
 	WriteString(string) error
 	WriteJSON(interface{}) error
 	WriteFile(string) error
@@ -234,9 +237,6 @@ type Context interface {
 	WithFields(fields Fields) Logout
 	Logger() Logout
 }
-
-// RequestReader 对象为请求信息的载体。
-type RequestReader = http.Request
 
 // ResponseWriter 接口用于写入http请求响应体status、header、body。
 //
@@ -265,9 +265,8 @@ type Cookie struct {
 	Value string
 }
 
-// Params 定义请求上下文中的参数接口。
-type Params interface {
-	Get(string) string
-	Add(string, string)
-	Set(string, string)
+// Params 定义用于保存一些键值数据。
+type Params struct {
+	Keys []string
+	Vals []string
 }

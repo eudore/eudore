@@ -21,6 +21,6 @@ func main() {
 		ctx.WriteString("server daemon")
 	})
 	app.Listen(":8088")
-	app.CancelFunc()
+	// app.CancelFunc()
 	app.Run()
 }

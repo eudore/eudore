@@ -92,6 +92,7 @@ func init() {
 // Expvar 方法实现expvar处理。
 func Expvar(ctx eudore.Context) {
 	ctx.SetHeader("Content-Type", "application/json; charset=utf-8")
+	ctx.SetHeader("X-Eudore-Admin", "expvar")
 	ctx.WriteHeader(200)
 	ctx.Write([]byte("{\n"))
 	first := true

@@ -1,13 +1,14 @@
 package eudore_test
 
 import (
-	"bou.ke/monkey"
 	"encoding/json"
 	"errors"
-	"github.com/eudore/eudore"
 	"os"
 	"runtime"
 	"testing"
+
+	"bou.ke/monkey"
+	"github.com/eudore/eudore"
 )
 
 type loggerInitHandler2 interface {
@@ -118,6 +119,8 @@ func (marsha4) MarshalText() ([]byte, error) {
 
 func TestLoggerStd2(t *testing.T) {
 	log := eudore.NewLoggerStd(nil)
+	log.Debug("debug")
+	log.Info("info")
 	log.WithField("json", eudore.LogDebug).Debug()
 	log.WithField("stringer", eudore.HandlerFunc(eudore.HandlerEmpty)).Debug("2")
 	log.WithField("bool", true).Debug("2")
@@ -211,6 +214,21 @@ func TestLoggerStdOut4(t *testing.T) {
 
 func TestLoggerStdOut5(t *testing.T) {
 	defer os.RemoveAll("logger")
+
+	{
+		// 占用第一个索引文件
+		os.Mkdir("logger", 0644)
+		file, err := os.OpenFile("logger/logger-out-0.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		if err == nil {
+			str := []byte("eudore logger Writer test.")
+			for i := 0; i < 1024; i++ {
+				file.Write(str)
+			}
+			file.Sync()
+			file.Close()
+		}
+	}
+
 	log := eudore.NewLoggerStd(&eudore.LoggerStdConfig{
 		Std:     true,
 		Path:    "logger/logger-out-index.log",

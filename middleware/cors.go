@@ -1,73 +1,63 @@
 package middleware
 
 import (
-	"github.com/eudore/eudore"
+	"net/textproto"
 	"strings"
+
+	"github.com/eudore/eudore"
 )
 
-type (
-	// Cors 定义Cors对象。
-	Cors struct {
-		origins []string
-		headers map[string]string
-	}
-)
-
-// NewCors 函数创建应该Cors对象。
+// NewCorsFunc 函数创建一个Cors处理函数。
+//
+// origins是允许的origin，headers是跨域验证成功的添加的headers，例如："Access-Control-Allow-Credentials"、"Access-Control-Allow-Headers"等。
 //
 // 如果origins为空，设置为*。
 // 如果Access-Control-Allow-Methods header为空，设置为*。
-func NewCors(origins []string, headers map[string]string) *Cors {
+func NewCorsFunc(origins []string, headers map[string]string) eudore.HandlerFunc {
 	if len(origins) == 0 {
 		origins = []string{"*"}
+	}
+	for k, v := range headers {
+		delete(headers, k)
+		headers[textproto.CanonicalMIMEHeaderKey(k)] = v
 	}
 	if headers["Access-Control-Allow-Methods"] == "" {
 		headers["Access-Control-Allow-Methods"] = "*"
 	}
-	return &Cors{
-		origins: origins,
-		headers: headers,
-	}
-}
-
-// NewCorsFunc 函数创建应该CORES中间件。
-func NewCorsFunc(origins []string, headers map[string]string) eudore.HandlerFunc {
-	return NewCors(origins, headers).HandleHTTP
-}
-
-// HandleHTTP 方法实现eudore上下文请求函数。
-func (cors *Cors) HandleHTTP(ctx eudore.Context) {
-	origin := ctx.GetHeader("Origin")
-	if origin == "" {
-		return
-	}
-
-	// 检查是否未同源请求。
-	host := ctx.Host()
-	if origin == "http://"+host || origin == "https://"+host {
-		return
-	}
-
-	if !cors.validateOrigin(origin) {
-		ctx.WriteHeader(403)
-		ctx.End()
-		return
-	}
-
-	h := ctx.Response().Header()
-	if ctx.Method() == eudore.MethodOptions {
-		for k, v := range cors.headers {
-			h.Add(k, v)
+	return func(ctx eudore.Context) {
+		origin := ctx.GetHeader("Origin")
+		if origin == "" {
+			return
 		}
-		ctx.WriteHeader(204)
-		ctx.End()
+		origin = strings.TrimPrefix(strings.TrimPrefix(origin, "http://"), "https://")
+
+		// 检查是否未同源请求。
+		host := ctx.Host()
+		if origin == host {
+			return
+		}
+
+		if !validateOrigin(origins, origin) {
+			ctx.WriteHeader(403)
+			ctx.End()
+			return
+		}
+
+		h := ctx.Response().Header()
+		h.Add("Access-Control-Allow-Origin", ctx.GetHeader("Origin"))
+		if ctx.Method() == eudore.MethodOptions {
+			for k, v := range headers {
+				h[k] = append(h[k], v)
+			}
+			ctx.WriteHeader(204)
+			ctx.End()
+		}
 	}
-	h.Add("Access-Control-Allow-Origin", origin)
 }
 
 // validateOrigin 方法检查origin是否合法。
-func (cors *Cors) validateOrigin(origin string) bool {
-	for _, i := range cors.origins {
+func validateOrigin(origins []string, origin string) bool {
+	for _, i := range origins {
 		if matchStar(origin, i) {
 			return true
 		}

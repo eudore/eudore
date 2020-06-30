@@ -35,6 +35,11 @@ func main() {
 		Keyfile:  "server.key",
 		Certfile: "server.cer",
 	}).Listen()
+	if err == nil {
+		app.Serve(ln)
+	} else {
+		app.Error(err)
+	}
 
 	ln, err = (&eudore.ServerListenConfig{
 		Addr:      ":8088",

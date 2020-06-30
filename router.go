@@ -39,7 +39,7 @@ type Router interface {
 // RouterCore主要实现路由匹配相关细节。
 type RouterCore interface {
 	HandleFunc(string, string, HandlerFuncs)
-	Match(string, string, Params) HandlerFuncs
+	Match(string, string, *Params) HandlerFuncs
 }
 
 // RouterMethod The default directly registered interface of the route. Set the routing parameters, group routing, middleware, function extensions, controllers and other behaviors.
@@ -69,18 +69,9 @@ type RouterMethod interface {
 type RouterStd struct {
 	RouterCore      `alias:"routercore"`
 	HandlerExtender `alias:"handlerextender"`
-	params          *ParamsArray         `alias:"params"`
-	Middlewares     *trieNode            `alias:"middlewares"`
+	params          *Params              `alias:"params"`
+	Middlewares     *middlewareTree      `alias:"middlewares"`
 	Print           func(...interface{}) `alias:"print"`
-}
-
-// trieNode 存储中间件信息的前缀树。
-//
-// 用于内存存储路由器中间件注册信息，并根据注册路由返回对应的中间件。
-type trieNode struct {
-	path   string
-	vals   HandlerFuncs
-	childs []*trieNode
 }
 
 // HandlerRouter405 函数定义默认405处理
@@ -102,12 +93,12 @@ func HandlerRouter404(ctx Context) {
 func NewRouterStd(core RouterCore) Router {
 	return &RouterStd{
 		RouterCore: core,
-		params: &ParamsArray{
+		params: &Params{
 			Keys: []string{ParamRoute},
 			Vals: []string{""},
 		},
 		HandlerExtender: NewHandlerExtendWarp(NewHandlerExtendTree(), DefaultHandlerExtend),
-		Middlewares:     newTrieNode(),
+		Middlewares:     newMiddlewareTree(),
 		Print:           printEmpty,
 	}
 }
@@ -156,11 +147,11 @@ func (m *RouterStd) PrintError(depth int, err error) {
 
 // PrintPanic 方法输出一个err，附加当前stack。
 func (m *RouterStd) PrintPanic(err error) {
-	m.Print(Fields{"stack": getPanicStakc(4)}, err)
+	m.Print(Fields{"stack": GetPanicStack(4)}, err)
 }
 
 // Params 方法返回当前路由参数，路由参数值为空字符串不会被使用。
-func (m *RouterStd) Params() Params {
+func (m *RouterStd) Params() *Params {
 	return m.params
 }
 
@@ -198,7 +189,7 @@ func (m *RouterStd) SetParam(key string, val string) Router {
 // ParamsCombine 方法解析一个字符串路径，并合并到一个当前路由参数的副本中。
 //
 // 例如路径格式为：/user action=user
-func (m *RouterStd) ParamsCombine(path string) *ParamsArray {
+func (m *RouterStd) ParamsCombine(path string) *Params {
 	args := strings.Split(path, " ")
 	params := m.params.Clone()
 	key, val := split2byte(args[0], '=')
@@ -257,7 +248,7 @@ func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 		m.PrintError(1, err)
 		return err
 	}
-	m.Print("RegisterHandler:", method, fullpath, handlers)
+	m.Print("Register handler:", method, fullpath, handlers)
 	handlers = HandlerFuncsCombine(m.Middlewares.Lookup(path), handlers)
 
 	// 处理多方法
@@ -358,7 +349,7 @@ func (m *RouterStd) AddMiddleware(hs ...interface{}) error {
 
 	m.Middlewares.Insert(path, handlers)
 	m.RouterCore.HandleFunc("Middlewares", path, handlers)
-	m.Print("RegisterMiddleware:", path, handlers)
+	m.Print("Register middleware:", path, handlers)
 	return nil
 }
 
@@ -435,13 +426,61 @@ func (m *RouterStd) OptionsFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodOptions, path, h...)
 }
 
-func newTrieNode() *trieNode {
-	return &trieNode{}
+// middlewareTree 定义中间件信息存储树
+type middlewareTree struct {
+	index int
+	node  *middlewareNode
 }
 
-// Insert 方法实现trieNode添加一个子节点。
-func (t *trieNode) Insert(path string, vals HandlerFuncs) {
+func newMiddlewareTree() *middlewareTree {
+	return &middlewareTree{node: new(middlewareNode)}
+}
+
+func (t *middlewareTree) Insert(path string, val HandlerFuncs) {
+	t.index++
+	indexs := make([]int, len(val))
+	for i := range indexs {
+		indexs[i] = t.index
+	}
+	t.node.Insert(path, indexs, val)
+}
+
+// Lookup 方法查找路径对应的处理函数，并安装索引进行排序。
+func (t *middlewareTree) Lookup(path string) HandlerFuncs {
+	indexs, vals := t.node.Lookup(path)
+	length := len(vals)
+	for i := 0; i < length; i++ {
+		for j := i; j < length; j++ {
+			if indexs[i] > indexs[j] {
+				indexs[i], indexs[j] = indexs[j], indexs[i]
+				vals[i], vals[j] = vals[j], vals[i]
+			}
+		}
+	}
+	return vals
+}
+
+func (t *middlewareTree) clone() *middlewareTree {
+	return &middlewareTree{
+		index: t.index,
+		node:  t.node.clone(),
+	}
+}
+
+// middlewareNode 存储中间件信息的前缀树。
+//
+// 用于内存存储路由器中间件注册信息，并根据注册路由返回对应的中间件。
+type middlewareNode struct {
+	path   string
+	vals   HandlerFuncs
+	indexs []int
+	childs []*middlewareNode
+}
+
+// Insert 方法实现middlewareNode添加一个子节点。
+func (t *middlewareNode) Insert(path string, indexs []int, vals HandlerFuncs) {
 	if path == "" {
+		t.indexs = indexsCombine(t.indexs, indexs)
 		t.vals = HandlerFuncsCombine(t.vals, vals)
 		return
 	}
@@ -450,32 +489,46 @@ func (t *trieNode) Insert(path string, vals HandlerFuncs) {
 		if find {
 			if subStr != t.childs[i].path {
 				t.childs[i].path = strings.TrimPrefix(t.childs[i].path, subStr)
-				t.childs[i] = &trieNode{
+				t.childs[i] = &middlewareNode{
 					path:   subStr,
-					childs: []*trieNode{t.childs[i]},
+					childs: []*middlewareNode{t.childs[i]},
 				}
 			}
-			t.childs[i].Insert(path[len(subStr):], vals)
+			t.childs[i].Insert(path[len(subStr):], indexs, vals)
 			return
 		}
 	}
-	t.childs = append(t.childs, &trieNode{path: path, vals: vals})
+	t.childs = append(t.childs, &middlewareNode{path: path, indexs: indexs, vals: vals})
 }
 
 // Lookup Find if seachKey exist in current trie tree and return its value
-func (t *trieNode) Lookup(path string) HandlerFuncs {
+func (t *middlewareNode) Lookup(path string) ([]int, HandlerFuncs) {
 	for _, i := range t.childs {
 		if strings.HasPrefix(path, i.path) {
-			return HandlerFuncsCombine(t.vals, i.Lookup(path[len(i.path):]))
+			indexs, val := i.Lookup(path[len(i.path):])
+			return indexsCombine(t.indexs, indexs), HandlerFuncsCombine(t.vals, val)
 		}
 	}
-	return t.vals
+	return t.indexs, t.vals
 }
 
-func (t *trieNode) clone() *trieNode {
+// clone 方法深拷贝这个中间件存储节点
+func (t *middlewareNode) clone() *middlewareNode {
 	nt := *t
 	for i := range nt.childs {
 		nt.childs[i] = nt.childs[i].clone()
 	}
 	return &nt
+}
+
+// indexsCombine 函数合并两个int切片
+func indexsCombine(hs1, hs2 []int) []int {
+	// if nil
+	if len(hs1) == 0 {
+		return hs2
+	}
+	hs := make([]int, len(hs1)+len(hs2))
+	copy(hs, hs1)
+	copy(hs[len(hs1):], hs2)
+	return hs
 }

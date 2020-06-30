@@ -272,5 +272,4 @@ func (d *TimeDuration) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 	return fmt.Errorf("invalid duration type %T, value: '%s'", b, b)
-
 }

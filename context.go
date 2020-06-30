@@ -14,19 +14,21 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 )
 
 // Context 定义请求上下文接口。
 type Context interface {
 	// context
-	Reset(context.Context, ResponseWriter, *RequestReader)
-	Context() context.Context
-	Request() *RequestReader
+	Reset(context.Context, http.ResponseWriter, *http.Request)
+	Request() *http.Request
 	Response() ResponseWriter
 	WithContext(context.Context)
-	SetRequest(*RequestReader)
+	SetRequest(*http.Request)
 	SetResponse(ResponseWriter)
 	SetHandler(int, HandlerFuncs)
+	GetContext() context.Context
+	GetHandler() (int, HandlerFuncs)
 	Next()
 	End()
 	Done() <-chan struct{}
@@ -48,7 +50,7 @@ type Context interface {
 	Validate(interface{}) error
 
 	// param query header cookie session
-	Params() Params
+	Params() *Params
 	GetParam(string) string
 	SetParam(string, string)
 	AddParam(string, string)
@@ -94,20 +96,22 @@ type Context interface {
 
 // ContextBase 实现Context接口。
 type ContextBase struct {
-	*RequestReader
-	ResponseWriter
-	ParamsArray
-	index      int
-	handler    HandlerFuncs
-	ctx        context.Context
-	err        string
-	querys     url.Values
-	cookies    []Cookie
-	isReadBody bool
-	postBody   []byte
+	RequestReader  *http.Request
+	ResponseWriter ResponseWriter
+	httpResponse   ResponseWriterHTTP
+	httpParams     Params
+	index          int
+	depth          int
+	handler        HandlerFuncs
+	ctx            context.Context
+	err            string
+	querys         url.Values
+	cookies        []Cookie
+	isReadBody     bool
+	postBody       []byte
 	// component
-	app *App
-	log Logout
+	app  *App
+	pool *sync.Pool
 }
 
 // entryContextBase 实现ContextBase使用的Logout对象。
@@ -116,28 +120,36 @@ type entryContextBase struct {
 	Context *ContextBase
 }
 
+// NewContextBaseFunc 函数创建一个NewContext函数用于获取Context对象。
+func NewContextBaseFunc(app *App) func() Context {
+	pool := &sync.Pool{}
+	return func() Context {
+		return NewContextBase(app, pool)
+	}
+}
+
 // NewContextBase 函数创建ContextBase对象，实现Context接口。
 // 依赖app.Logger、app.Binder、app.Validater、app.Render
-func NewContextBase(app *App) *ContextBase {
+func NewContextBase(app *App, pool *sync.Pool) *ContextBase {
 	return &ContextBase{
-		app: app,
-		log: app.Logger,
+		app:  app,
+		pool: pool,
 	}
 }
 
 // Reset Context
-func (ctx *ContextBase) Reset(pctx context.Context, w ResponseWriter, r *RequestReader) {
+func (ctx *ContextBase) Reset(pctx context.Context, w http.ResponseWriter, r *http.Request) {
 	ctx.ctx = pctx
 	ctx.RequestReader = r
-	ctx.ResponseWriter = w
-	ctx.handler = nil
+	ctx.httpResponse.Reset(w)
+	ctx.ResponseWriter = &ctx.httpResponse
 	ctx.err = ""
-	ctx.log = ctx.app.Logger
 
 	// data
+	ctx.depth = 0
 	ctx.querys = nil
-	ctx.ParamsArray.Keys = ctx.ParamsArray.Keys[0:0]
-	ctx.ParamsArray.Vals = ctx.ParamsArray.Vals[0:0]
+	ctx.httpParams.Keys = ctx.httpParams.Keys[0:0]
+	ctx.httpParams.Vals = ctx.httpParams.Vals[0:0]
 	// cookies
 	ctx.cookies = ctx.cookies[0:0]
 	ctx.readCookies(r.Header.Get(HeaderCookie))
@@ -147,13 +159,13 @@ func (ctx *ContextBase) Reset(pctx context.Context, w ResponseWriter, r *Request
 	ctx.postBody = ctx.postBody[0:0]
 }
 
-// Context 获取当前请求的上下文,Context的context.Context对象由更高层传递下来，禁止SetContext方法修改。
-func (ctx *ContextBase) Context() context.Context {
+// GetContext 获取当前请求的上下文,Context的context.Context对象由更高层传递下来，禁止SetContext方法修改。
+func (ctx *ContextBase) GetContext() context.Context {
 	return ctx.ctx
 }
 
 // Request 获取请求对象。
-func (ctx *ContextBase) Request() *RequestReader {
+func (ctx *ContextBase) Request() *http.Request {
 	return ctx.RequestReader
 }
 
@@ -170,7 +182,7 @@ func (ctx *ContextBase) WithContext(cctx context.Context) {
 }
 
 // SetRequest 设置请求对象。
-func (ctx *ContextBase) SetRequest(r *RequestReader) {
+func (ctx *ContextBase) SetRequest(r *http.Request) {
 	ctx.RequestReader = r
 }
 
@@ -179,17 +191,27 @@ func (ctx *ContextBase) SetResponse(w ResponseWriter) {
 	ctx.ResponseWriter = w
 }
 
-// SetHandler 方法设置上下文的全部请求处理者。
+// SetHandler 方法设置请求上下文的全部请求处理者。
 func (ctx *ContextBase) SetHandler(index int, hs HandlerFuncs) {
 	ctx.index, ctx.handler = index, hs
+}
+
+// GetHandler 方法获取请求上下文的当前处理索引和全部请求处理者。
+func (ctx *ContextBase) GetHandler() (int, HandlerFuncs) {
+	return ctx.index, ctx.handler
 }
 
 // Next 方法调用请求上下文下一个处理函数。
 func (ctx *ContextBase) Next() {
 	ctx.index++
+	ctx.depth++
 	for ctx.index < len(ctx.handler) {
 		ctx.handler[ctx.index](ctx)
 		ctx.index++
+	}
+	ctx.depth--
+	if ctx.depth == 0 {
+		ctx.pool.Put(ctx)
 	}
 }
 
@@ -265,7 +287,7 @@ func (ctx *ContextBase) Body() []byte {
 	if !ctx.isReadBody {
 		bts, err := ioutil.ReadAll(ctx.RequestReader.Body)
 		if err != nil {
-			ctx.logReset(3).WithField(ParamCaller, "Context.Body").Error(err)
+			ctx.logReset(1).WithField(ParamCaller, "Context.Body").Error(err)
 			return []byte{}
 		}
 		ctx.isReadBody = true
@@ -298,7 +320,7 @@ func (ctx *ContextBase) bind(i interface{}, r Binder) error {
 		err = ctx.app.Validater.Validate(i)
 	}
 	if err != nil {
-		ctx.logReset(3).WithField(ParamCaller, "Context.ReadBind").Error(err)
+		ctx.logReset(2).WithField(ParamCaller, "Context.ReadBind").Error(err)
 	}
 	return err
 }
@@ -309,23 +331,23 @@ func (ctx *ContextBase) Validate(i interface{}) error {
 }
 
 // Params 获得请求的全部参数。
-func (ctx *ContextBase) Params() Params {
-	return &ctx.ParamsArray
+func (ctx *ContextBase) Params() *Params {
+	return &ctx.httpParams
 }
 
 // GetParam 方法获取一个参数的值。
 func (ctx *ContextBase) GetParam(key string) string {
-	return ctx.ParamsArray.Get(key)
+	return ctx.httpParams.Get(key)
 }
 
 // SetParam 方法设置一个参数。
 func (ctx *ContextBase) SetParam(key, val string) {
-	ctx.ParamsArray.Set(key, val)
+	ctx.httpParams.Set(key, val)
 }
 
 // AddParam 方法给参数添加一个新参数。
 func (ctx *ContextBase) AddParam(key, val string) {
-	ctx.ParamsArray.Add(key, val)
+	ctx.httpParams.Add(key, val)
 }
 
 // Querys 方法返回http请求的全部uri参数。
@@ -434,7 +456,7 @@ func (ctx *ContextBase) parseForm() error {
 		err = errors.New("content-type Header parse boundary is empty")
 	}
 	if err != nil {
-		ctx.logReset(4).WithField(ParamCaller, "Context.Form...").WithField("check", "request content-type header: "+ctx.ContentType()).Error(err)
+		ctx.logReset(2).WithField(ParamCaller, "Context.Form...").WithField("check", "request content-type header: "+ctx.ContentType()).Error(err)
 		return err
 	}
 
@@ -443,9 +465,14 @@ func (ctx *ContextBase) parseForm() error {
 		ctx.RequestReader.MultipartForm = f
 	}
 	if err != nil {
-		ctx.logReset(4).WithField(ParamCaller, "Context.Form...").Error(err)
+		ctx.logReset(2).WithField(ParamCaller, "Context.Form...").Error(err)
 	}
 	return err
+}
+
+// WriteHeader 方法写入响应状态码。
+func (ctx *ContextBase) WriteHeader(code int) {
+	ctx.ResponseWriter.WriteHeader(code)
 }
 
 // Redirect implement request redirection.
@@ -467,7 +494,7 @@ func (ctx *ContextBase) Push(target string, opts *http.PushOptions) error {
 
 	err := ctx.ResponseWriter.Push(target, opts)
 	if err != nil {
-		ctx.logReset(3).WithField(ParamCaller, "Context.Push").Errorf("Failed to push: %v, Resource path: %s.", err, target)
+		ctx.logReset(1).WithField(ParamCaller, "Context.Push").Errorf("Failed to push: %v, Resource path: %s.", err, target)
 	}
 	return err
 }
@@ -476,7 +503,7 @@ func (ctx *ContextBase) Push(target string, opts *http.PushOptions) error {
 func (ctx *ContextBase) Write(data []byte) (n int, err error) {
 	n, err = ctx.ResponseWriter.Write(data)
 	if err != nil {
-		ctx.logReset(3).WithField(ParamCaller, "Context.Write").Error(err)
+		ctx.logReset(1).WithField(ParamCaller, "Context.Write").Error(err)
 	}
 	return
 }
@@ -485,7 +512,7 @@ func (ctx *ContextBase) Write(data []byte) (n int, err error) {
 func (ctx *ContextBase) WriteString(i string) (err error) {
 	_, err = ctx.ResponseWriter.Write([]byte(i))
 	if err != nil {
-		ctx.logReset(3).WithField(ParamCaller, "Context.WriteString").Error(err)
+		ctx.logReset(1).WithField(ParamCaller, "Context.WriteString").Error(err)
 	}
 	return
 }
@@ -514,24 +541,24 @@ func (ctx *ContextBase) RenderWith(i interface{}, r Renderer) error {
 func (ctx *ContextBase) writeRenderWith(i interface{}, r Renderer) error {
 	err := r(ctx, i)
 	if err != nil {
-		ctx.logReset(4).WithField(ParamCaller, "Context.Render Context.Render Context.WriteJSON").Error(err)
+		ctx.logReset(2).WithField(ParamCaller, "Context.Render Context.Render Context.WriteJSON").Error(err)
 	}
 	return err
 }
 
 // Debug 方法写入Debug日志。
 func (ctx *ContextBase) Debug(args ...interface{}) {
-	ctx.logReset(3).Debug(args...)
+	ctx.logReset(1).Debug(args...)
 }
 
 // Info 方法写入Info日志。
 func (ctx *ContextBase) Info(args ...interface{}) {
-	ctx.logReset(3).Info(args...)
+	ctx.logReset(1).Info(args...)
 }
 
 // Warning 方法写入Warning日志。
 func (ctx *ContextBase) Warning(args ...interface{}) {
-	ctx.logReset(3).Warning(args...)
+	ctx.logReset(1).Warning(args...)
 }
 
 // Error 方法写入Error日志。
@@ -540,7 +567,7 @@ func (ctx *ContextBase) Error(args ...interface{}) {
 	if len(args) == 1 && args[0] == nil {
 		return
 	}
-	ctx.logReset(3).Error(args...)
+	ctx.logReset(1).Error(args...)
 }
 
 // Fatal 方法写入Fatal日志，并结束请求上下文处理。
@@ -552,28 +579,28 @@ func (ctx *ContextBase) Fatal(args ...interface{}) {
 	}
 	msg := fmt.Sprintln(args...)
 	ctx.err = msg[:len(msg)-1]
-	ctx.logReset(3).Error(ctx.err)
+	ctx.logReset(1).Error(ctx.err)
 	ctx.logFatal()
 }
 
 // Debugf 方法输出Info日志。
 func (ctx *ContextBase) Debugf(format string, args ...interface{}) {
-	ctx.logReset(3).Debug(fmt.Sprintf(format, args...))
+	ctx.logReset(1).Debug(fmt.Sprintf(format, args...))
 }
 
 // Infof 方法输出Info日志。
 func (ctx *ContextBase) Infof(format string, args ...interface{}) {
-	ctx.logReset(3).Info(fmt.Sprintf(format, args...))
+	ctx.logReset(1).Info(fmt.Sprintf(format, args...))
 }
 
 // Warningf 方法输出Warning日志。
 func (ctx *ContextBase) Warningf(format string, args ...interface{}) {
-	ctx.logReset(3).Warning(fmt.Sprintf(format, args...))
+	ctx.logReset(1).Warning(fmt.Sprintf(format, args...))
 }
 
 // Errorf 方法输出Error日志。
 func (ctx *ContextBase) Errorf(format string, args ...interface{}) {
-	ctx.logReset(3).Error(fmt.Sprintf(format, args...))
+	ctx.logReset(1).Error(fmt.Sprintf(format, args...))
 }
 
 // Fatalf 方法输出Fatal日志，并结束请求上下文处理。
@@ -581,28 +608,35 @@ func (ctx *ContextBase) Errorf(format string, args ...interface{}) {
 // 注意：如果err中存在敏感信息会被写入到响应中。
 func (ctx *ContextBase) Fatalf(format string, args ...interface{}) {
 	ctx.err = fmt.Sprintf(format, args...)
-	ctx.logReset(3).Errorf(ctx.err)
+	ctx.logReset(1).Errorf(ctx.err)
 	ctx.logFatal()
 }
 
 // logReset 方法添加Context基础信息。
 func (ctx *ContextBase) logReset(depth int) Logout {
 	fields := make(Fields)
-	_, file, line := logFormatNameFileLine(depth)
-	fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
-	fields["file"] = file
-	fields["line"] = line
-	return ctx.log.WithFields(fields)
+	if depth != 0 {
+		fields["depth"] = depth
+	}
+	requestid := ctx.GetHeader(HeaderXRequestID)
+	if requestid != "" {
+		fields[HeaderXRequestID] = requestid
+	}
+	return ctx.app.Logger.WithFields(fields)
 }
 
 // logFatal 方法执行Fatal方法的返回信息。
 func (ctx *ContextBase) logFatal() {
 	// 结束Context
-	if ctx.ResponseWriter.Status() == 200 {
+	status := ctx.ResponseWriter.Status()
+	if ctx.ResponseWriter.Size() == 0 {
+		status = 500
 		ctx.WriteHeader(500)
+	}
+	if status > 399 {
 		ctx.Render(map[string]interface{}{
 			"error":        ctx.err,
-			"status":       500,
+			"status":       status,
 			"x-request-id": ctx.RequestID(),
 		})
 	}
@@ -612,7 +646,7 @@ func (ctx *ContextBase) logFatal() {
 // WithField 方法增加一个日志属性，返回一个新的Logout。
 func (ctx *ContextBase) WithField(key string, value interface{}) Logout {
 	return &entryContextBase{
-		Logout:  ctx.logReset(3).WithField(key, value),
+		Logout:  ctx.logReset(0).WithField(key, value),
 		Context: ctx,
 	}
 }
@@ -621,32 +655,25 @@ func (ctx *ContextBase) WithField(key string, value interface{}) Logout {
 //
 // 如果fields包含file条目属性，则不会添加调用位置信息。
 func (ctx *ContextBase) WithFields(fields Fields) Logout {
-	if fields == nil {
-		fields = make(Fields)
+	if fields != nil {
+		fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
 	}
-	_, ok := fields["file"]
-	if !ok {
-		_, file, line := logFormatNameFileLine(2)
-		fields["file"] = file
-		fields["line"] = line
-	}
-	fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
 	return &entryContextBase{
-		Logout:  ctx.log.WithFields(fields),
+		Logout:  ctx.logReset(0).WithFields(fields),
 		Context: ctx,
 	}
 }
 
 // Logger 直接返回app的Logger对象，通常用于Hijack并释放Context后使用Logout。
 func (ctx *ContextBase) Logger() Logout {
-	return ctx.log
+	return ctx.logReset(0).WithField("logout", true)
 }
 
 // Fatal 方法重写Context的Fatal方法，不执行panic，http返回500和请求id。
 func (e *entryContextBase) Fatal(args ...interface{}) {
 	msg := fmt.Sprintln(args...)
 	e.Context.err = msg[:len(msg)-1]
-	e.Logout.Error(msg)
+	e.Logout.WithField("depth", 1).Error(msg)
 	e.Context.logFatal()
 
 }
@@ -654,7 +681,7 @@ func (e *entryContextBase) Fatal(args ...interface{}) {
 // Fatalf 方法重写Context的Fatalf方法，不执行panic，http返回500和请求id。
 func (e *entryContextBase) Fatalf(format string, args ...interface{}) {
 	e.Context.err = fmt.Sprintf(format, args...)
-	e.Logout.Error(e.Context.err)
+	e.Logout.WithField("depth", 1).Error(e.Context.err)
 	e.Context.logFatal()
 }
 
@@ -670,6 +697,7 @@ func (e *entryContextBase) WithFields(fields Fields) Logout {
 	return e
 }
 
+// readCookies 方法初始化cookie键值对，form net/http。
 func (ctx *ContextBase) readCookies(line string) {
 	if len(line) == 0 {
 		return

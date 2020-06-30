@@ -150,6 +150,7 @@ func ControllerInjectStateful(controller Controller, router Router) error {
 // 如果存在路由器参数enable-route-extend，ControllerInjectSingleton函数将使用路由扩展函数，而不使用控制器扩展函数。
 func ControllerInjectSingleton(controller Controller, router Router) error {
 	pType := reflect.TypeOf(controller)
+	pValue := reflect.ValueOf(controller)
 	iType := pType.Elem()
 
 	// 添加控制器组。
@@ -175,9 +176,9 @@ func ControllerInjectSingleton(controller Controller, router Router) error {
 
 		if fnNewHandler != nil {
 			// 使用路由扩展
-			h := reflect.ValueOf(controller).Method(m.Index)
-			SetHandlerAliasName(h, fmt.Sprintf("%s.%s.%s", cpkg, cname, method))
-			router.AddHandler(getRouteMethod(method), path+" "+pfn(cpkg, cname, method), fnNewHandler(h.Interface())...)
+			h := pValue.Method(m.Index).Interface()
+			name := fmt.Sprintf("%s.%s.%s", cpkg, cname, method)
+			router.AddHandler(getRouteMethod(method), path+" "+pfn(cpkg, cname, method), fnNewHandler(h, name)...)
 		} else {
 			// 使用控制器扩展
 			router.AddHandler(getRouteMethod(method), path+" "+pfn(cpkg, cname, method), ControllerFuncExtend{
@@ -216,7 +217,7 @@ func newControllerSingletionRelease(controller Controller, name string) HandlerF
 	return h
 }
 
-func newControllerSingletionHandle(name string, controller Controller, router Router) func(interface{}) []interface{} {
+func newControllerSingletionHandle(name string, controller Controller, router Router) func(interface{}, string) []interface{} {
 	if router.GetParam("enable-route-extend") == "" {
 		return nil
 	}
@@ -230,7 +231,8 @@ func newControllerSingletionHandle(name string, controller Controller, router Ro
 		fnRelease = newControllerSingletionRelease(controller, fmt.Sprintf("%s.Release", name))
 	}
 
-	return func(i interface{}) (hs []interface{}) {
+	return func(i interface{}, name string) (hs []interface{}) {
+		SetHandlerAliasName(reflect.ValueOf(i), name)
 		if enableInit {
 			hs = append(hs, fnInit)
 		}

@@ -6,7 +6,6 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 )
 
@@ -24,7 +23,8 @@ type App struct {
 	Renderer           `alias:"renderer"`
 	Validater          `alias:"validater"`
 	GetWarp            `alias:"getwarp"`
-	ContextPool        sync.Pool `alias:"contextpool"`
+	HandlerFuncs       `alias:"handlerfuncs"`
+	NewContext         func() Context `alias:"newcontext"`
 }
 
 // NewApp 函数创建一个App对象。
@@ -39,11 +39,10 @@ func NewApp(options ...interface{}) *App {
 		Validater: DefaultValidater,
 	}
 	app.Context, app.CancelFunc = context.WithCancel(context.WithValue(context.Background(), AppContextKey, app))
-	app.ContextPool.New = func() interface{} {
-		return NewContextBase(app)
-	}
 	app.Server.SetHandler(app)
 	app.GetWarp = NewGetWarpWithApp(app)
+	app.NewContext = NewContextBaseFunc(app)
+	app.HandlerFuncs = HandlerFuncs{app.serveContext}
 	Set(app.Config, "print", NewPrintFunc(app))
 	Set(app.Server, "print", NewPrintFunc(app))
 	Set(app.Router, "print", NewPrintFunc(app))
@@ -62,6 +61,9 @@ func (app *App) Options(options ...interface{}) {
 			app.Context = val
 			app.Context, app.CancelFunc = context.WithCancel(app.Context)
 		case Logger:
+			Set(app.Config, "print", NewPrintFunc(val))
+			Set(app.Server, "print", NewPrintFunc(val))
+			Set(app.Router, "print", NewPrintFunc(val))
 			initlog, ok := app.Logger.(loggerInitHandler)
 			if ok {
 				initlog.NextHandler(val)
@@ -87,7 +89,7 @@ func (app *App) Options(options ...interface{}) {
 			app.Error("eudore app cannel context on handler error: " + val.Error())
 			app.CancelFunc()
 		default:
-			app.Logger.Warningf("eudore app  invalid option: %v", i)
+			app.Logger.Warningf("eudore app invalid option: %v", i)
 		}
 	}
 }
@@ -109,20 +111,34 @@ func (app *App) Run() error {
 	return app.Err()
 }
 
-// ServeHTTP 方法实现http.Handler接口，处理http请求。
-func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// init
-	ctx := app.ContextPool.Get().(Context)
-	response := responseWriterHTTPPool.Get().(*ResponseWriterHTTP)
-	// handle
-	response.Reset(w)
-	ctx.Reset(r.Context(), response, r)
+// serveContext 实现处理请求上下文函数。
+func (app *App) serveContext(ctx Context) {
 	ctx.SetHandler(-1, app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params()))
 	ctx.Next()
+}
+
+// ServeHTTP 方法实现http.Handler接口，处理http请求。
+func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx := app.NewContext()
+	ctx.Reset(r.Context(), w, r)
+	ctx.SetHandler(-1, app.HandlerFuncs)
+	ctx.Next()
 	ctx.End()
-	// release
-	responseWriterHTTPPool.Put(response)
-	app.ContextPool.Put(ctx)
+}
+
+// AddMiddleware 方法如果第一个参数为字符串"global",则使用DefaultHandlerExtend创建请求处理函数，并作为全局请求中间件添加给App。
+func (app *App) AddMiddleware(hs ...interface{}) error {
+	if len(hs) > 1 {
+		name, ok := hs[0].(string)
+		if ok && name == "global" {
+			handler := DefaultHandlerExtend.NewHandlerFuncs("", hs[1:])
+			app.Info("Register app global middleware:", handler)
+			app.HandlerFuncs = HandlerFuncsCombine(app.HandlerFuncs[0:len(app.HandlerFuncs)-1], handler)
+			app.HandlerFuncs = HandlerFuncsCombine(app.HandlerFuncs, HandlerFuncs{app.serveContext})
+			return nil
+		}
+	}
+	return app.Router.AddMiddleware(hs...)
 }
 
 // Listen 方法监听一个http端口

@@ -37,6 +37,7 @@ func main() {
 		app.Error(client.Error())
 	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

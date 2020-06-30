@@ -9,10 +9,11 @@ PASS
 ok  	command-line-arguments	4.284s
 */
 
-import ( 
-	"testing"
+import (
 	"net/textproto"
-) 
+	"testing"
+)
+
 func BenchmarkHead1(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {

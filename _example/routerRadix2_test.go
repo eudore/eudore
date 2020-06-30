@@ -6,32 +6,18 @@ import (
 	"testing"
 
 	"github.com/eudore/eudore"
-	// "github.com/kr/pretty"
 )
 
-type EudoreContext = eudore.Context
 type Context struct {
-	EudoreContext
-	eudore.ParamsArray
+	eudore.Context
+	httpParams eudore.Params
 }
 
-func (ctx *Context) Params() eudore.Params {
-	return &ctx.ParamsArray
+func (ctx *Context) Params() *eudore.Params {
+	return &ctx.httpParams
 }
 func (ctx *Context) GetParam(key string) string {
-	return ctx.ParamsArray.Get(key)
-}
-func (ctx *Context) Get(key string) string {
-	return ctx.ParamsArray.Get(key)
-}
-
-func (ctx *Context) Add(key string, val string) {
-	fmt.Println("Add", key, val)
-	ctx.ParamsArray.Set(key, val)
-}
-func (ctx *Context) Set(key string, val string) {
-	fmt.Println("Set", key, val)
-	ctx.ParamsArray.Set(key, val)
+	return ctx.httpParams.Get(key)
 }
 
 func newNodeData(path string) (string, string, eudore.HandlerFuncs) {
@@ -51,6 +37,7 @@ func runCheck(hs eudore.HandlerFuncs, ctx *Context) {
 	for _, h := range hs {
 		h(ctx)
 	}
+	ctx.httpParams = eudore.Params{}
 }
 
 func TestRadixRouter2(*testing.T) {
@@ -68,20 +55,19 @@ func TestRadixRouter2(*testing.T) {
 	tree.HandleFunc(newNodeData("/note/:method/:name"))
 	tree.HandleFunc(newNodeData("/*"))
 	tree.HandleFunc(newNodeData("/"))
-	// fmt.Printf("%# v\n", pretty.Formatter(tree))
 	ctx := &Context{}
-	runCheck(tree.Match("GET", "/api/v1/node/11", ctx), ctx)
-	runCheck(tree.Match("GET", "/api/v1/node/111", ctx), ctx)
-	runCheck(tree.Match("GET", "/api/v1/node/111/111", ctx), ctx)
-	runCheck(tree.Match("GET", "/api/v1/list", ctx), ctx)
-	runCheck(tree.Match("GET", "/api/v1/list33", ctx), ctx)
-	runCheck(tree.Match("GET", "/api/v1/get", ctx), ctx)
-	runCheck(tree.Match("GET", "/api/v2/get", ctx), ctx)
-	runCheck(tree.Match("GET", "/api/v3/111", ctx), ctx)
-	runCheck(tree.Match("GET", "/note/get/eudore/2", ctx), ctx)
-	runCheck(tree.Match("GET", "/note/get/eudore", ctx), ctx)
-	runCheck(tree.Match("GET", "/note/set/eudore", ctx), ctx)
-	runCheck(tree.Match("GET", "/node", ctx), ctx)
+	runCheck(tree.Match("GET", "/api/v1/node/11", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/api/v1/node/111", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/api/v1/node/111/111", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/api/v1/list", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/api/v1/list33", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/api/v1/get", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/api/v2/get", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/api/v3/111", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/note/get/eudore/2", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/note/get/eudore", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/note/set/eudore", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/node", ctx.Params()), ctx)
 }
 
 func TestRadixPath1(*testing.T) {
@@ -90,9 +76,9 @@ func TestRadixPath1(*testing.T) {
 	ctx := &Context{}
 	tree.HandleFunc("404", "", eudore.HandlerFuncs{echoRoute("404")})
 	tree.HandleFunc("405", "", eudore.HandlerFuncs{echoRoute("405")})
-	runCheck(tree.Match("GET", "/", ctx), ctx)
-	runCheck(tree.Match("GET", "/index", ctx), ctx)
-	runCheck(tree.Match("11", "/", ctx), ctx)
+	runCheck(tree.Match("GET", "/", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/index", ctx.Params()), ctx)
+	runCheck(tree.Match("11", "/", ctx.Params()), ctx)
 }
 
 func TestRadixPath2(*testing.T) {
@@ -102,9 +88,9 @@ func TestRadixPath2(*testing.T) {
 	ctx := &Context{}
 	tree.HandleFunc("404", "", eudore.HandlerFuncs{echoRoute("404")})
 	tree.HandleFunc("405", "", eudore.HandlerFuncs{echoRoute("405")})
-	runCheck(tree.Match("GET", "/authorizations", ctx), ctx)
-	runCheck(tree.Match("GET", "/authorizations/:id", ctx), ctx)
-	runCheck(tree.Match("11", "/", ctx), ctx)
+	runCheck(tree.Match("GET", "/authorizations", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/authorizations/:id", ctx.Params()), ctx)
+	runCheck(tree.Match("11", "/", ctx.Params()), ctx)
 }
 
 func TestFullRouter2(*testing.T) {
@@ -121,15 +107,15 @@ func TestFullRouter2(*testing.T) {
 	tree.HandleFunc(newNodeData("/1/*id"))
 	tree.HandleFunc(newNodeData("/*id"))
 	ctx := &Context{}
-	runCheck(tree.Match("GET", "/2", ctx), ctx)
-	runCheck(tree.Match("GET", "/22", ctx), ctx)
-	runCheck(tree.Match("GET", "/abc", ctx), ctx)
-	runCheck(tree.Match("GET", "/abc123", ctx), ctx)
-	runCheck(tree.Match("GET", "/1/2", ctx), ctx)
-	runCheck(tree.Match("GET", "/1/22", ctx), ctx)
-	runCheck(tree.Match("GET", "/1/abc", ctx), ctx)
-	runCheck(tree.Match("GET", "/1/abc123", ctx), ctx)
-	runCheck(tree.Match("GET", "/2/abc123", ctx), ctx)
-	runCheck(tree.Match("GET", "/api/23", ctx), ctx)
-	runCheck(tree.Match("GET", "/api/3", ctx), ctx)
+	runCheck(tree.Match("GET", "/2", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/22", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/abc", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/abc123", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/1/2", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/1/22", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/1/abc", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/1/abc123", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/2/abc123", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/api/23", ctx.Params()), ctx)
+	runCheck(tree.Match("GET", "/api/3", ctx.Params()), ctx)
 }

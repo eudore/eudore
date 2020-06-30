@@ -14,14 +14,14 @@ import (
 )
 
 type conf struct {
-	Keys   map[string]interface{} `alias:"keys"`
-		Component *componentConfig            `alias:"component"`
-	Enable []string               `alias:"enable"`
-	Mods   map[string]*conf       `alias:"mods"`
+	Keys      map[string]interface{} `alias:"keys"`
+	Component *componentConfig       `alias:"component"`
+	Enable    []string               `alias:"enable"`
+	Mods      map[string]*conf       `alias:"mods"`
 }
 type componentConfig struct {
-		Logger *eudore.LoggerStdConfig `json:"logger" alias:"logger"`
-		Server *eudore.ServerStdConfig `json:"server" alias:"server"`
+	Logger *eudore.LoggerStdConfig `json:"logger" alias:"logger"`
+	Server *eudore.ServerStdConfig `json:"server" alias:"server"`
 }
 
 var configfilepath = "example.json"
@@ -56,6 +56,7 @@ func main() {
 	app.Config.Set("enable", []string{"debug"})
 	app.Options(app.Parse())
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

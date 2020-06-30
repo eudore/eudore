@@ -12,12 +12,21 @@ import (
 func TestContext2(t *testing.T) {
 	app := eudore.NewApp()
 	app.AnyFunc("/ctx", func(ctx eudore.Context) {
-		ctx.WithContext(context.WithValue(ctx.Context(), "num", 66666))
-		ctx.Debug("context:", ctx.Context())
+		ctx.WithContext(context.WithValue(ctx.GetContext(), "num", 66666))
+		ctx.Debug("context:", ctx.GetContext())
+	})
+	app.AnyFunc("/handler", func(ctx eudore.Context) {
+		h, ok := ctx.(interface {
+			GetHandler() (int, eudore.HandlerFuncs)
+		})
+		if ok {
+			ctx.Debug(h.GetHandler())
+		}
 	})
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/ctx").Do()
+	client.NewRequest("GET", "/handler").Do()
 	client.NewRequest("GET", "/err").Do()
 
 	app.CancelFunc()
@@ -49,7 +58,7 @@ func TestReadWriteError2(t *testing.T) {
 	app := eudore.NewApp()
 	app.AnyFunc("/r", func(ctx eudore.Context) {
 		req := ctx.Request()
-		req = req.WithContext(ctx.Context())
+		req = req.WithContext(ctx.GetContext())
 		req.Body = &noReadRequest{}
 		ctx.SetRequest(req)
 
