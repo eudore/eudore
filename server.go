@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/fcgi"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -75,6 +76,7 @@ type netHTTPLog struct {
 // ServerFcgi 定义fastcgi server
 type ServerFcgi struct {
 	http.Handler
+	sync.Mutex
 	listeners []net.Listener
 }
 
@@ -149,12 +151,16 @@ func (srv *ServerFcgi) SetHandler(h http.Handler) {
 
 // Serve 方法启动一个新的fcgi监听。
 func (srv *ServerFcgi) Serve(ln net.Listener) error {
+	srv.Lock()
 	srv.listeners = append(srv.listeners, ln)
+	srv.Unlock()
 	return fcgi.Serve(ln, srv.Handler)
 }
 
 // Shutdown 方法关闭fcgi关闭监听。
 func (srv *ServerFcgi) Shutdown(ctx context.Context) error {
+	srv.Lock()
+	defer srv.Unlock()
 	var errs muliterror
 	for _, ln := range srv.listeners {
 		err := ln.Close()
@@ -232,6 +238,7 @@ func loadCertificate(cret, key string) (tls.Certificate, error) {
 		IsCA:        true,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
 	}
 	pool := x509.NewCertPool()
 	pool.AddCert(ca)
@@ -247,6 +254,11 @@ func loadCertificate(cret, key string) (tls.Certificate, error) {
 
 // TimeDuration 定义time.Duration类型处理json
 type TimeDuration time.Duration
+
+// String 方法格式化输出时间。
+func (d TimeDuration) String() string {
+	return time.Duration(d).String()
+}
 
 // MarshalJSON 方法实现json序列化输出。
 func (d TimeDuration) MarshalJSON() ([]byte, error) {

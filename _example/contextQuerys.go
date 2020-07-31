@@ -15,10 +15,8 @@ func main() {
 	client := httptest.NewClient(app)
 	client.NewRequest("PUT", "/file/22?name=eudore&type=2&size=722").WithHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationForm).Do().CheckStatus(200).Out()
 	client.NewRequest("PUT", "/file/22?%gh&%ij").WithHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationForm).Do().CheckStatus(200).Out()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

@@ -29,10 +29,6 @@ func main() {
 	client.NewRequest("POST", "/fn").WithAddQuery("csrf", csrfval).Do().CheckStatus(200)
 	client.NewRequest("POST", "/nil").WithAddQuery("csrf", csrfval).Do().CheckStatus(200)
 
-	for client.Next() {
-		app.Error(client.Error())
-	}
-
 	app.Listen(":8088")
 	// app.CancelFunc()
 	app.Run()

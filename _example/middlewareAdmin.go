@@ -8,11 +8,10 @@ import (
 )
 
 func main() {
-
-	app := eudore.NewApp()
+	app := eudore.NewApp(eudore.NewRouterStd(eudore.NewRouterCoreDebug(nil)))
 
 	admin := app.Group("/eudore/debug")
-	admin.AddMiddleware(middleware.NewBasicAuthFunc("Eudore", map[string]string{"user": "pw"}))
+	admin.AddMiddleware(middleware.NewBasicAuthFunc(map[string]string{"user": "pw"}))
 	pprof.Init(admin)
 	admin.AnyFunc("/pprof/look/* godoc=/eudore/debug/pprof/godoc", pprof.NewLook(app))
 	admin.AnyFunc("/pprof/expvar godoc=/eudore/debug/pprof/godoc", pprof.Expvar)
@@ -36,9 +35,6 @@ func main() {
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/1").Do()
 	client.NewRequest("GET", "/eudore/debug/admin/ui").Do()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.Listen(":8088")
 	// app.CancelFunc()

@@ -6,18 +6,12 @@ package middleware
 
 import (
 	"encoding/base64"
-	"fmt"
 	"net/http"
 	"strings"
 )
 
 // NewNetHTTPBasicAuthFunc 函数创建一个net/http BasicAuth中间件处理函数，文档见NewBasicAuthFunc函数。
-func NewNetHTTPBasicAuthFunc(next http.Handler, realm string, names map[string]string) http.HandlerFunc {
-	if realm == "" {
-		realm = "Basic"
-	} else {
-		realm = fmt.Sprintf("Basic realm=\"%s\"", realm)
-	}
+func NewNetHTTPBasicAuthFunc(next http.Handler, names map[string]string) http.HandlerFunc {
 	checks := make(map[string]string, len(names))
 	for name, pass := range names {
 		checks[base64.StdEncoding.EncodeToString([]byte(name+":"+pass))] = name
@@ -32,7 +26,7 @@ func NewNetHTTPBasicAuthFunc(next http.Handler, realm string, names map[string]s
 				return
 			}
 		}
-		w.Header().Set("WWW-Authenticate", realm)
+		w.Header().Set("WWW-Authenticate", "Basic")
 		w.WriteHeader(401)
 	}
 }

@@ -3,24 +3,34 @@ package main
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
-	"github.com/eudore/eudore/component/session"
-	"github.com/eudore/eudore/component/session/gorilla"
 	gorillasession "github.com/gorilla/sessions"
 )
 
 func main() {
-	// 创建session，并注册转换函数。
-	app := eudore.NewApp()
-	app.AddHandlerExtend(gorilla.NewExtendContextSession(gorillasession.NewCookieStore([]byte("sessionid"))))
+	sessionName := "sessionid"
+	globalSessions := gorillasession.NewCookieStore([]byte(sessionName))
 
-	app.GetFunc("/set", func(ctx session.Context) {
+	app := eudore.NewApp()
+	app.GetFunc("/set", func(ctx eudore.Context) {
 		// 读取会话
-		ctx.SetSession("key1", 22)
-		ctx.Debugf("session set key1 value: %v", ctx.GetSession("key1"))
-		ctx.SessionRelease()
+		data, err := globalSessions.Get(ctx.Request(), sessionName)
+		if err != nil {
+			ctx.Fatal(err)
+			return
+		}
+
+		data.Values["key1"] = 22
+		ctx.Debugf("session set key1 value: %v", data.Values["key1"])
+		data.Save(ctx.Request(), ctx.Response())
 	})
-	app.GetFunc("/get", func(ctx session.Context) {
-		ctx.Debugf("session get key1 value: %v", ctx.GetSession("key1"))
+	app.GetFunc("/get", func(ctx eudore.Context) {
+		data, err := globalSessions.Get(ctx.Request(), sessionName)
+		if err != nil {
+			ctx.Fatal(err)
+			return
+		}
+
+		ctx.Debugf("session get key1 value: %v", data.Values["key1"])
 	})
 
 	client := httptest.NewClient(app)

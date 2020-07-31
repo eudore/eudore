@@ -26,11 +26,9 @@ func main() {
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/myroute/hello").Do().Out()
 	client.NewRequest("PUT", "/myroute/").Do().Out()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }
 

@@ -97,9 +97,6 @@ func TestHandlerReister2(t *testing.T) {
 	}
 	client.NewRequest("GET", "/2/7").Do()
 
-	for client.Next() {
-		app.Error(client.Error())
-	}
 	app.CancelFunc()
 	app.Run()
 }
@@ -118,6 +115,7 @@ func TestHandlerList2(t *testing.T) {
 	})
 	api.AnyFunc("/user/info", "hello")
 	t.Log(strings.Join(api.(eudore.HandlerExtender).ListExtendHandlerNames(), "\n"))
+
 	app.CancelFunc()
 	app.Run()
 }
@@ -152,9 +150,7 @@ func TestHandlerRPC2(t *testing.T) {
 		return errors.New("test binder error")
 	}
 	client.NewRequest("GET", "/1/1").Do()
-	for client.Next() {
-		app.Error(client.Error())
-	}
+
 	app.CancelFunc()
 	app.Run()
 }

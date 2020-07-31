@@ -22,7 +22,6 @@ func main() {
 		}
 		go func() {
 			defer conn.Close()
-
 			for {
 				// 读取数据
 				msg, op, err := wsutil.ReadClientData(conn)
@@ -43,8 +42,7 @@ func main() {
 			}
 		}()
 	}))
-
 	app.Listen(":8088")
-	app.CancelFunc()
+	// app.CancelFunc()
 	app.Run()
 }

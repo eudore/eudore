@@ -23,7 +23,7 @@ func main() {
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/1").Do()
-	client.WithHeaderValue(eudore.HeaderAcceptEncoding, "gzip")
+	client.AddHeaderValue(eudore.HeaderAcceptEncoding, "gzip")
 	client.NewRequest("GET", "/1").Do().Out()
 	client.NewRequest("GET", "https://localhost:8088/1").Do().Out()
 

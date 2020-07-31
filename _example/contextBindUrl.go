@@ -51,10 +51,8 @@ func main() {
 	client.NewRequest("GET", "/binderr").Do().CheckStatus(200).Out()
 	// url body绑定
 	client.NewRequest("PUT", "/file/data/2").WithBodyString("name=eudore&type=2&size=722").WithHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationForm).Do().CheckStatus(200).Out()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

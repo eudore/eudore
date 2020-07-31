@@ -17,6 +17,6 @@ func main() {
 		ctx.WriteString("your path is " + ctx.Path())
 	})
 	app.Listen(":8088")
-	app.CancelFunc()
+	// app.CancelFunc()
 	app.Run()
 }

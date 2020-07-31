@@ -33,9 +33,6 @@ func main() {
 
 	client := httptest.NewClient(app)
 	client.NewRequest("PUT", "/1").Do().Out()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.Listen(":8088")
 	// app.CancelFunc()

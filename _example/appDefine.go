@@ -24,7 +24,7 @@ type App struct {
 	Validater          `alias:"validater"`
 	GetWarp            `alias:"getwarp"`
 	HandlerFuncs       `alias:"handlerfuncs"`
-	NewContext         func() Context `alias:"newcontext"`
+	ContextPool        sync.Pool `alias:"contextpool"`
 }
 
 func main() {
@@ -106,8 +106,7 @@ type RouterCore interface {
 // RouterMethod 路由默认直接注册的接口，设置路由参数、组路由、中间件、函数扩展、控制器等行为。
 type RouterMethod interface {
 	Group(string) Router
-	GetParam(string) string
-	SetParam(string, string) Router
+	Params() *Params
 	AddHandler(string, string, ...interface{}) error
 	AddController(...Controller) error
 	AddMiddleware(...interface{}) error
@@ -165,17 +164,18 @@ type HandlerExtender interface {
 type Context interface {
 	// context
 	Reset(context.Context, http.ResponseWriter, *http.Request)
+	GetContext() context.Context
 	Request() *http.Request
 	Response() ResponseWriter
+	Logger() Logout
 	WithContext(context.Context)
 	SetRequest(*http.Request)
 	SetResponse(ResponseWriter)
+	SetLogger(Logout)
 	SetHandler(int, HandlerFuncs)
-	GetContext() context.Context
 	GetHandler() (int, HandlerFuncs)
 	Next()
 	End()
-	Done() <-chan struct{}
 	Err() error
 
 	// request info
@@ -235,7 +235,6 @@ type Context interface {
 	Fatalf(string, ...interface{})
 	WithField(key string, value interface{}) Logout
 	WithFields(fields Fields) Logout
-	Logger() Logout
 }
 
 // ResponseWriter 接口用于写入http请求响应体status、header、body。

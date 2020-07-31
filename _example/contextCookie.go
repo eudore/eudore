@@ -36,6 +36,7 @@ func main() {
 			Path:     "/",
 			HttpOnly: true,
 		})
+		ctx.SetCookieValue("set", "eudore", 0)
 		ctx.SetCookieValue("name", "eudore", 600)
 	})
 	app.AnyFunc("/get", func(ctx eudore.Context) {
@@ -46,13 +47,11 @@ func main() {
 	})
 
 	client := httptest.NewClient(app)
-	client.WithHeaderValue("Cookie", "age=22; name=eudore; =00; tag=\007hs; aa=\"bb\"; ")
+	client.AddHeaderValue("Cookie", "age=22; name=eudore; =00; tag=\007hs; aa=\"bb\"; ")
 	client.NewRequest("PUT", "/get").Do().CheckStatus(200).Out()
 	client.NewRequest("PUT", "/set").Do().CheckStatus(200).Out()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

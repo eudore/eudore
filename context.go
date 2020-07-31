@@ -14,24 +14,24 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 )
 
 // Context 定义请求上下文接口。
 type Context interface {
 	// context
 	Reset(context.Context, http.ResponseWriter, *http.Request)
+	GetContext() context.Context
 	Request() *http.Request
 	Response() ResponseWriter
+	Logger() Logout
 	WithContext(context.Context)
 	SetRequest(*http.Request)
 	SetResponse(ResponseWriter)
+	SetLogger(Logout)
 	SetHandler(int, HandlerFuncs)
-	GetContext() context.Context
 	GetHandler() (int, HandlerFuncs)
 	Next()
 	End()
-	Done() <-chan struct{}
 	Err() error
 
 	// request info
@@ -91,27 +91,25 @@ type Context interface {
 	Fatalf(string, ...interface{})
 	WithField(key string, value interface{}) Logout
 	WithFields(fields Fields) Logout
-	Logger() Logout
 }
 
 // ContextBase 实现Context接口。
 type ContextBase struct {
+	context        context.Context
 	RequestReader  *http.Request
 	ResponseWriter ResponseWriter
 	httpResponse   ResponseWriterHTTP
 	httpParams     Params
 	index          int
-	depth          int
 	handler        HandlerFuncs
-	ctx            context.Context
 	err            string
 	querys         url.Values
 	cookies        []Cookie
 	isReadBody     bool
 	postBody       []byte
 	// component
-	app  *App
-	pool *sync.Pool
+	app *App
+	log Logout
 }
 
 // entryContextBase 实现ContextBase使用的Logout对象。
@@ -120,48 +118,33 @@ type entryContextBase struct {
 	Context *ContextBase
 }
 
-// NewContextBaseFunc 函数创建一个NewContext函数用于获取Context对象。
-func NewContextBaseFunc(app *App) func() Context {
-	pool := &sync.Pool{}
-	return func() Context {
-		return NewContextBase(app, pool)
-	}
-}
-
 // NewContextBase 函数创建ContextBase对象，实现Context接口。
 // 依赖app.Logger、app.Binder、app.Validater、app.Render
-func NewContextBase(app *App, pool *sync.Pool) *ContextBase {
-	return &ContextBase{
-		app:  app,
-		pool: pool,
-	}
+func NewContextBase(app *App) *ContextBase {
+	return &ContextBase{app: app}
 }
 
 // Reset Context
 func (ctx *ContextBase) Reset(pctx context.Context, w http.ResponseWriter, r *http.Request) {
-	ctx.ctx = pctx
+	ctx.context = pctx
 	ctx.RequestReader = r
 	ctx.httpResponse.Reset(w)
 	ctx.ResponseWriter = &ctx.httpResponse
+	ctx.log = ctx.app.Logger
 	ctx.err = ""
-
 	// data
-	ctx.depth = 0
 	ctx.querys = nil
 	ctx.httpParams.Keys = ctx.httpParams.Keys[0:0]
 	ctx.httpParams.Vals = ctx.httpParams.Vals[0:0]
-	// cookies
+	// cookies body
 	ctx.cookies = ctx.cookies[0:0]
-	ctx.readCookies(r.Header.Get(HeaderCookie))
-
-	// body
 	ctx.isReadBody = false
 	ctx.postBody = ctx.postBody[0:0]
 }
 
 // GetContext 获取当前请求的上下文,Context的context.Context对象由更高层传递下来，禁止SetContext方法修改。
 func (ctx *ContextBase) GetContext() context.Context {
-	return ctx.ctx
+	return ctx.context
 }
 
 // Request 获取请求对象。
@@ -174,11 +157,9 @@ func (ctx *ContextBase) Response() ResponseWriter {
 	return ctx.ResponseWriter
 }
 
-// WithContext 设置当前请求上下文的ctx，必须是请求上下文的衍生上下文。
-//
-// ctx.WithContext(context.WithValue("key", ctx.Context()))
-func (ctx *ContextBase) WithContext(cctx context.Context) {
-	ctx.ctx = cctx
+// Logger 直接返回app的Logger对象，通常用于Hijack并释放Context后使用Logout。
+func (ctx *ContextBase) Logger() Logout {
+	return ctx.log
 }
 
 // SetRequest 设置请求对象。
@@ -189,6 +170,18 @@ func (ctx *ContextBase) SetRequest(r *http.Request) {
 // SetResponse 设置响应对象。
 func (ctx *ContextBase) SetResponse(w ResponseWriter) {
 	ctx.ResponseWriter = w
+}
+
+// SetLogger 方法设置ContextBases输出日志的基础Logout。
+func (ctx *ContextBase) SetLogger(log Logout) {
+	ctx.log = log.WithField("logout", true)
+}
+
+// WithContext 设置当前请求上下文的ctx，必须是请求上下文的衍生上下文。
+//
+// ctx.WithContext(context.WithValue("key", ctx.Context()))
+func (ctx *ContextBase) WithContext(cctx context.Context) {
+	ctx.context = cctx
 }
 
 // SetHandler 方法设置请求上下文的全部请求处理者。
@@ -204,14 +197,9 @@ func (ctx *ContextBase) GetHandler() (int, HandlerFuncs) {
 // Next 方法调用请求上下文下一个处理函数。
 func (ctx *ContextBase) Next() {
 	ctx.index++
-	ctx.depth++
 	for ctx.index < len(ctx.handler) {
 		ctx.handler[ctx.index](ctx)
 		ctx.index++
-	}
-	ctx.depth--
-	if ctx.depth == 0 {
-		ctx.pool.Put(ctx)
 	}
 }
 
@@ -220,17 +208,12 @@ func (ctx *ContextBase) End() {
 	ctx.index = 0xff
 }
 
-// Done 方法返回判断Context是否完成，在调用End方法时会cancel。
-func (ctx *ContextBase) Done() <-chan struct{} {
-	return ctx.ctx.Done()
-}
-
 // Err 方法返回
 func (ctx *ContextBase) Err() error {
 	if ctx.err != "" {
 		return errors.New(ctx.err)
 	}
-	return ctx.ctx.Err()
+	return ctx.context.Err()
 }
 
 // Read 方法实现io.Reader读取http请求。
@@ -282,17 +265,18 @@ func (ctx *ContextBase) Istls() bool {
 	return ctx.RequestReader.TLS != nil
 }
 
-// Body 返回请求的body，并保存到缓存中，可重复调用Body方法。
+// Body 返回请求的body，并保存到缓存中，可重复调用Body方法,每次调用会重置ctx.Request().Body对象成一个body reader。
 func (ctx *ContextBase) Body() []byte {
 	if !ctx.isReadBody {
 		bts, err := ioutil.ReadAll(ctx.RequestReader.Body)
 		if err != nil {
-			ctx.logReset(1).WithField(ParamCaller, "Context.Body").Error(err)
+			ctx.log.WithField("depth", 1).WithField(ParamCaller, "Context.Body").Error(err)
 			return []byte{}
 		}
 		ctx.isReadBody = true
 		ctx.postBody = bts
 	}
+	ctx.RequestReader.Body = ioutil.NopCloser(bytes.NewReader(ctx.postBody))
 	return ctx.postBody
 }
 
@@ -320,7 +304,7 @@ func (ctx *ContextBase) bind(i interface{}, r Binder) error {
 		err = ctx.app.Validater.Validate(i)
 	}
 	if err != nil {
-		ctx.logReset(2).WithField(ParamCaller, "Context.ReadBind").Error(err)
+		ctx.log.WithField("depth", 2).WithField(ParamCaller, "Context.ReadBind").Error(err)
 	}
 	return err
 }
@@ -369,23 +353,25 @@ func (ctx *ContextBase) GetQuery(key string) string {
 	return ctx.Querys().Get(key)
 }
 
-// GetHeader 获取一个请求header，相当于ctx.Request().Header().Get(name)。
+// GetHeader 方法获取一个请求header，相当于ctx.Request().Header().Get(name)。
 func (ctx *ContextBase) GetHeader(name string) string {
 	return ctx.RequestReader.Header.Get(name)
 }
 
-// SetHeader 设置一个响应header，相当于ctx.Response().Header().Set(name, val)
+// SetHeader 方法设置一个响应header，相当于ctx.Response().Header().Set(name, val)
 func (ctx *ContextBase) SetHeader(name string, val string) {
 	ctx.ResponseWriter.Header().Set(name, val)
 }
 
-// Cookies 获取全部请求的cookie。
+// Cookies 方法获取全部请求的cookie,获取的cookie值是首次调用Cookies/GetCookie方法后解析的数据。。
 func (ctx *ContextBase) Cookies() []Cookie {
+	ctx.readCookies(ctx.RequestReader.Header.Get(HeaderCookie))
 	return ctx.cookies
 }
 
-// GetCookie 获得一个请求cookie的值。
+// GetCookie 获方法得一个请求cookie的值,获取的cookie值是首次调用Cookies/GetCookie方法后解析的数据。。
 func (ctx *ContextBase) GetCookie(name string) string {
+	ctx.readCookies(ctx.RequestReader.Header.Get(HeaderCookie))
 	for _, ctx := range ctx.cookies {
 		if ctx.Name == name {
 			return ctx.Value
@@ -394,16 +380,20 @@ func (ctx *ContextBase) GetCookie(name string) string {
 	return ""
 }
 
-// SetCookie 设置一个Set-Cookie header，返回设置的cookie。
+// SetCookie 方法设置一个响应cookie的数据，设置响应 Set-Cookie header。
 func (ctx *ContextBase) SetCookie(cookie *SetCookie) {
 	if v := cookie.String(); v != "" {
 		ctx.ResponseWriter.Header().Add(HeaderSetCookie, v)
 	}
 }
 
-// SetCookieValue 返回一个cookie。
+// SetCookieValue 方法设置一个响应cookie，如果maxAge非0则设置Max-Age属性。
 func (ctx *ContextBase) SetCookieValue(name, value string, maxAge int) {
-	ctx.ResponseWriter.Header().Add(HeaderSetCookie, fmt.Sprintf("%s=%s; Max-Age=%d", name, url.QueryEscape(value), maxAge))
+	if maxAge != 0 {
+		ctx.ResponseWriter.Header().Add(HeaderSetCookie, fmt.Sprintf("%s=%s; Max-Age=%d", name, url.QueryEscape(value), maxAge))
+	} else {
+		ctx.ResponseWriter.Header().Add(HeaderSetCookie, fmt.Sprintf("%s=%s;", name, url.QueryEscape(value)))
+	}
 }
 
 // FormValue 使用body解析成Form数据，并返回对应key的值
@@ -456,7 +446,7 @@ func (ctx *ContextBase) parseForm() error {
 		err = errors.New("content-type Header parse boundary is empty")
 	}
 	if err != nil {
-		ctx.logReset(2).WithField(ParamCaller, "Context.Form...").WithField("check", "request content-type header: "+ctx.ContentType()).Error(err)
+		ctx.log.WithField("depth", 2).WithField(ParamCaller, "Context.Form...").WithField("check", "request content-type header: "+ctx.ContentType()).Error(err)
 		return err
 	}
 
@@ -465,7 +455,7 @@ func (ctx *ContextBase) parseForm() error {
 		ctx.RequestReader.MultipartForm = f
 	}
 	if err != nil {
-		ctx.logReset(2).WithField(ParamCaller, "Context.Form...").Error(err)
+		ctx.log.WithField("depth", 2).WithField(ParamCaller, "Context.Form...").Error(err)
 	}
 	return err
 }
@@ -494,7 +484,7 @@ func (ctx *ContextBase) Push(target string, opts *http.PushOptions) error {
 
 	err := ctx.ResponseWriter.Push(target, opts)
 	if err != nil {
-		ctx.logReset(1).WithField(ParamCaller, "Context.Push").Errorf("Failed to push: %v, Resource path: %s.", err, target)
+		ctx.log.WithField("depth", 1).WithField(ParamCaller, "Context.Push").Errorf("Failed to push: %v, Resource path: %s.", err, target)
 	}
 	return err
 }
@@ -503,7 +493,7 @@ func (ctx *ContextBase) Push(target string, opts *http.PushOptions) error {
 func (ctx *ContextBase) Write(data []byte) (n int, err error) {
 	n, err = ctx.ResponseWriter.Write(data)
 	if err != nil {
-		ctx.logReset(1).WithField(ParamCaller, "Context.Write").Error(err)
+		ctx.log.WithField("depth", 1).WithField(ParamCaller, "Context.Write").Error(err)
 	}
 	return
 }
@@ -512,7 +502,7 @@ func (ctx *ContextBase) Write(data []byte) (n int, err error) {
 func (ctx *ContextBase) WriteString(i string) (err error) {
 	_, err = ctx.ResponseWriter.Write([]byte(i))
 	if err != nil {
-		ctx.logReset(1).WithField(ParamCaller, "Context.WriteString").Error(err)
+		ctx.log.WithField("depth", 1).WithField(ParamCaller, "Context.WriteString").Error(err)
 	}
 	return
 }
@@ -541,24 +531,24 @@ func (ctx *ContextBase) RenderWith(i interface{}, r Renderer) error {
 func (ctx *ContextBase) writeRenderWith(i interface{}, r Renderer) error {
 	err := r(ctx, i)
 	if err != nil {
-		ctx.logReset(2).WithField(ParamCaller, "Context.Render Context.Render Context.WriteJSON").Error(err)
+		ctx.log.WithField("depth", 2).WithField(ParamCaller, "Context.Render Context.Render Context.WriteJSON").Error(err)
 	}
 	return err
 }
 
 // Debug 方法写入Debug日志。
 func (ctx *ContextBase) Debug(args ...interface{}) {
-	ctx.logReset(1).Debug(args...)
+	ctx.log.WithField("depth", 1).Debug(args...)
 }
 
 // Info 方法写入Info日志。
 func (ctx *ContextBase) Info(args ...interface{}) {
-	ctx.logReset(1).Info(args...)
+	ctx.log.WithField("depth", 1).Info(args...)
 }
 
 // Warning 方法写入Warning日志。
 func (ctx *ContextBase) Warning(args ...interface{}) {
-	ctx.logReset(1).Warning(args...)
+	ctx.log.WithField("depth", 1).Warning(args...)
 }
 
 // Error 方法写入Error日志。
@@ -567,7 +557,7 @@ func (ctx *ContextBase) Error(args ...interface{}) {
 	if len(args) == 1 && args[0] == nil {
 		return
 	}
-	ctx.logReset(1).Error(args...)
+	ctx.log.WithField("depth", 1).Error(args...)
 }
 
 // Fatal 方法写入Fatal日志，并结束请求上下文处理。
@@ -579,28 +569,28 @@ func (ctx *ContextBase) Fatal(args ...interface{}) {
 	}
 	msg := fmt.Sprintln(args...)
 	ctx.err = msg[:len(msg)-1]
-	ctx.logReset(1).Error(ctx.err)
+	ctx.log.WithField("depth", 1).Error(ctx.err)
 	ctx.logFatal()
 }
 
 // Debugf 方法输出Info日志。
 func (ctx *ContextBase) Debugf(format string, args ...interface{}) {
-	ctx.logReset(1).Debug(fmt.Sprintf(format, args...))
+	ctx.log.WithField("depth", 1).Debug(fmt.Sprintf(format, args...))
 }
 
 // Infof 方法输出Info日志。
 func (ctx *ContextBase) Infof(format string, args ...interface{}) {
-	ctx.logReset(1).Info(fmt.Sprintf(format, args...))
+	ctx.log.WithField("depth", 1).Info(fmt.Sprintf(format, args...))
 }
 
 // Warningf 方法输出Warning日志。
 func (ctx *ContextBase) Warningf(format string, args ...interface{}) {
-	ctx.logReset(1).Warning(fmt.Sprintf(format, args...))
+	ctx.log.WithField("depth", 1).Warning(fmt.Sprintf(format, args...))
 }
 
 // Errorf 方法输出Error日志。
 func (ctx *ContextBase) Errorf(format string, args ...interface{}) {
-	ctx.logReset(1).Error(fmt.Sprintf(format, args...))
+	ctx.log.WithField("depth", 1).Error(fmt.Sprintf(format, args...))
 }
 
 // Fatalf 方法输出Fatal日志，并结束请求上下文处理。
@@ -608,21 +598,8 @@ func (ctx *ContextBase) Errorf(format string, args ...interface{}) {
 // 注意：如果err中存在敏感信息会被写入到响应中。
 func (ctx *ContextBase) Fatalf(format string, args ...interface{}) {
 	ctx.err = fmt.Sprintf(format, args...)
-	ctx.logReset(1).Errorf(ctx.err)
+	ctx.log.WithField("depth", 1).Errorf(ctx.err)
 	ctx.logFatal()
-}
-
-// logReset 方法添加Context基础信息。
-func (ctx *ContextBase) logReset(depth int) Logout {
-	fields := make(Fields)
-	if depth != 0 {
-		fields["depth"] = depth
-	}
-	requestid := ctx.GetHeader(HeaderXRequestID)
-	if requestid != "" {
-		fields[HeaderXRequestID] = requestid
-	}
-	return ctx.app.Logger.WithFields(fields)
 }
 
 // logFatal 方法执行Fatal方法的返回信息。
@@ -646,7 +623,7 @@ func (ctx *ContextBase) logFatal() {
 // WithField 方法增加一个日志属性，返回一个新的Logout。
 func (ctx *ContextBase) WithField(key string, value interface{}) Logout {
 	return &entryContextBase{
-		Logout:  ctx.logReset(0).WithField(key, value),
+		Logout:  ctx.log.WithField(key, value),
 		Context: ctx,
 	}
 }
@@ -659,14 +636,9 @@ func (ctx *ContextBase) WithFields(fields Fields) Logout {
 		fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
 	}
 	return &entryContextBase{
-		Logout:  ctx.logReset(0).WithFields(fields),
+		Logout:  ctx.log.WithFields(fields),
 		Context: ctx,
 	}
-}
-
-// Logger 直接返回app的Logger对象，通常用于Hijack并释放Context后使用Logout。
-func (ctx *ContextBase) Logger() Logout {
-	return ctx.logReset(0).WithField("logout", true)
 }
 
 // Fatal 方法重写Context的Fatal方法，不执行panic，http返回500和请求id。
@@ -699,7 +671,7 @@ func (e *entryContextBase) WithFields(fields Fields) Logout {
 
 // readCookies 方法初始化cookie键值对，form net/http。
 func (ctx *ContextBase) readCookies(line string) {
-	if len(line) == 0 {
+	if len(line) == 0 || len(ctx.cookies) != 0 {
 		return
 	}
 	parts := strings.Split(line, "; ")
@@ -737,220 +709,120 @@ func NewExtendContextData(fn func(ContextData)) HandlerFunc {
 
 // GetParamBool 获取参数转换成bool类型。
 func (ctx ContextData) GetParamBool(key string) bool {
-	return GetStringDefaultBool(ctx.GetParam(key), false)
-}
-
-// GetParamDefaultBool 获取参数转换成bool类型，转换失败返回默认值。
-func (ctx ContextData) GetParamDefaultBool(key string, b bool) bool {
-	return GetStringDefaultBool(ctx.GetParam(key), b)
+	return GetStringBool(ctx.GetParam(key))
 }
 
 // GetParamInt 获取参数转换成int类型。
-func (ctx ContextData) GetParamInt(key string) int {
-	return GetStringDefaultInt(ctx.GetParam(key), 0)
-}
-
-// GetParamDefaultInt 获取参数转换成int类型，转换失败返回默认值。
-func (ctx ContextData) GetParamDefaultInt(key string, i int) int {
-	return GetStringDefaultInt(ctx.GetParam(key), i)
+func (ctx ContextData) GetParamInt(key string, nums ...int) int {
+	return GetStringInt(ctx.GetParam(key), nums...)
 }
 
 // GetParamInt64 获取参数转换成int64类型。
-func (ctx ContextData) GetParamInt64(key string) int64 {
-	return GetStringDefaultInt64(ctx.GetParam(key), 0)
-}
-
-// GetParamDefaultInt64 获取参数转换成int64类型，转换失败返回默认值。
-func (ctx ContextData) GetParamDefaultInt64(key string, i int64) int64 {
-	return GetStringDefaultInt64(ctx.GetParam(key), i)
+func (ctx ContextData) GetParamInt64(key string, nums ...int64) int64 {
+	return GetStringInt64(ctx.GetParam(key), nums...)
 }
 
 // GetParamFloat32 获取参数转换成int32类型。
-func (ctx ContextData) GetParamFloat32(key string) float32 {
-	return GetStringDefaultFloat32(ctx.GetParam(key), 0)
-}
-
-// GetParamDefaultFloat32 获取参数转换成int32类型，转换失败返回默认值。
-func (ctx ContextData) GetParamDefaultFloat32(key string, f float32) float32 {
-	return GetStringDefaultFloat32(ctx.GetParam(key), f)
+func (ctx ContextData) GetParamFloat32(key string, nums ...float32) float32 {
+	return GetStringFloat32(ctx.GetParam(key), nums...)
 }
 
 // GetParamFloat64 获取参数转换成float64类型。
-func (ctx ContextData) GetParamFloat64(key string) float64 {
-	return GetStringDefaultFloat64(ctx.GetParam(key), 0)
+func (ctx ContextData) GetParamFloat64(key string, nums ...float64) float64 {
+	return GetStringFloat64(ctx.GetParam(key), nums...)
 }
 
-// GetParamDefaultFloat64 获取参数转换成float64类型，转换失败返回默认值。
-func (ctx ContextData) GetParamDefaultFloat64(key string, f float64) float64 {
-	return GetStringDefaultFloat64(ctx.GetParam(key), f)
-}
-
-// GetParamDefaultString 获取一个参数，如果为空字符串返回默认值。
-func (ctx ContextData) GetParamDefaultString(key, str string) string {
-	return GetStringDefault(ctx.GetParam(key), str)
+// GetParamString 获取一个参数，如果为空字符串返回默认值。
+func (ctx ContextData) GetParamString(key string, strs ...string) string {
+	return GetString(ctx.GetParam(key), strs...)
 }
 
 // GetHeaderBool 获取header转换成bool类型。
 func (ctx ContextData) GetHeaderBool(key string) bool {
-	return GetStringDefaultBool(ctx.GetHeader(key), false)
-}
-
-// GetHeaderDefaultBool 获取header转换成bool类型，转换失败返回默认值。
-func (ctx ContextData) GetHeaderDefaultBool(key string, b bool) bool {
-	return GetStringDefaultBool(ctx.GetHeader(key), b)
+	return GetStringBool(ctx.GetHeader(key))
 }
 
 // GetHeaderInt 获取header转换成int类型。
-func (ctx ContextData) GetHeaderInt(key string) int {
-	return GetStringDefaultInt(ctx.GetHeader(key), 0)
-}
-
-// GetHeaderDefaultInt 获取header转换成int类型，转换失败返回默认值。
-func (ctx ContextData) GetHeaderDefaultInt(key string, i int) int {
-	return GetStringDefaultInt(ctx.GetHeader(key), i)
+func (ctx ContextData) GetHeaderInt(key string, nums ...int) int {
+	return GetStringInt(ctx.GetHeader(key), nums...)
 }
 
 // GetHeaderInt64 获取header转换成int64类型。
-func (ctx ContextData) GetHeaderInt64(key string) int64 {
-	return GetStringDefaultInt64(ctx.GetHeader(key), 0)
-}
-
-// GetHeaderDefaultInt64 获取header转换成int64类型，转换失败返回默认值。
-func (ctx ContextData) GetHeaderDefaultInt64(key string, i int64) int64 {
-	return GetStringDefaultInt64(ctx.GetHeader(key), i)
+func (ctx ContextData) GetHeaderInt64(key string, nums ...int64) int64 {
+	return GetStringInt64(ctx.GetHeader(key), nums...)
 }
 
 // GetHeaderFloat32 获取header转换成float32类型。
-func (ctx ContextData) GetHeaderFloat32(key string) float32 {
-	return GetStringDefaultFloat32(ctx.GetHeader(key), 0)
-}
-
-// GetHeaderDefaultFloat32 获取header转换成float32类型，转换失败返回默认值。
-func (ctx ContextData) GetHeaderDefaultFloat32(key string, f float32) float32 {
-	return GetStringDefaultFloat32(ctx.GetHeader(key), f)
+func (ctx ContextData) GetHeaderFloat32(key string, nums ...float32) float32 {
+	return GetStringFloat32(ctx.GetHeader(key), nums...)
 }
 
 // GetHeaderFloat64 获取header转换成float64类型。
-func (ctx ContextData) GetHeaderFloat64(key string) float64 {
-	return GetStringDefaultFloat64(ctx.GetHeader(key), 0)
+func (ctx ContextData) GetHeaderFloat64(key string, nums ...float64) float64 {
+	return GetStringFloat64(ctx.GetHeader(key), nums...)
 }
 
-// GetHeaderDefaultFloat64 获取header转换成float64类型，转换失败返回默认值。
-func (ctx ContextData) GetHeaderDefaultFloat64(key string, f float64) float64 {
-	return GetStringDefaultFloat64(ctx.GetHeader(key), f)
-}
-
-// GetHeaderDefaultString 获取header，如果为空字符串返回默认值。
-func (ctx ContextData) GetHeaderDefaultString(key, str string) string {
-	return GetStringDefault(ctx.GetHeader(key), str)
+// GetHeaderString 获取header，如果为空字符串返回默认值。
+func (ctx ContextData) GetHeaderString(key string, strs ...string) string {
+	return GetString(ctx.GetHeader(key), strs...)
 }
 
 // GetQueryBool 获取uri参数值转换成bool类型。
 func (ctx ContextData) GetQueryBool(key string) bool {
-	return GetStringDefaultBool(ctx.GetQuery(key), false)
-}
-
-// GetQueryDefaultBool 获取uri参数值转换成bool类型，转换失败返回默认值。
-func (ctx ContextData) GetQueryDefaultBool(key string, b bool) bool {
-	return GetStringDefaultBool(ctx.GetQuery(key), b)
+	return GetStringBool(ctx.GetQuery(key))
 }
 
 // GetQueryInt 获取uri参数值转换成int类型。
-func (ctx ContextData) GetQueryInt(key string) int {
-	return GetStringDefaultInt(ctx.GetQuery(key), 0)
-}
-
-// GetQueryDefaultInt 获取uri参数值转换成int类型，转换失败返回默认值。
-func (ctx ContextData) GetQueryDefaultInt(key string, i int) int {
-	return GetStringDefaultInt(ctx.GetQuery(key), i)
+func (ctx ContextData) GetQueryInt(key string, nums ...int) int {
+	return GetStringInt(ctx.GetQuery(key), nums...)
 }
 
 // GetQueryInt64 获取uri参数值转换成int64类型。
-func (ctx ContextData) GetQueryInt64(key string) int64 {
-	return GetStringDefaultInt64(ctx.GetQuery(key), 0)
-}
-
-// GetQueryDefaultInt64 获取uri参数值转换成int64类型，转换失败返回默认值。
-func (ctx ContextData) GetQueryDefaultInt64(key string, i int64) int64 {
-	return GetStringDefaultInt64(ctx.GetQuery(key), i)
+func (ctx ContextData) GetQueryInt64(key string, nums ...int64) int64 {
+	return GetStringInt64(ctx.GetQuery(key), nums...)
 }
 
 // GetQueryFloat32 获取url参数值转换成float32类型。
-func (ctx ContextData) GetQueryFloat32(key string) float32 {
-	return GetStringDefaultFloat32(ctx.GetQuery(key), 0)
-}
-
-// GetQueryDefaultFloat32 获取url参数值转换成float32类型，转换失败返回默认值。
-func (ctx ContextData) GetQueryDefaultFloat32(key string, f float32) float32 {
-	return GetStringDefaultFloat32(ctx.GetQuery(key), f)
+func (ctx ContextData) GetQueryFloat32(key string, nums ...float32) float32 {
+	return GetStringFloat32(ctx.GetQuery(key), nums...)
 }
 
 // GetQueryFloat64 获取url参数值转换成float64类型。
-func (ctx ContextData) GetQueryFloat64(key string) float64 {
-	return GetStringDefaultFloat64(ctx.GetQuery(key), 0)
+func (ctx ContextData) GetQueryFloat64(key string, nums ...float64) float64 {
+	return GetStringFloat64(ctx.GetQuery(key), nums...)
 }
 
-// GetQueryDefaultFloat64 获取url参数值转换成float64类型，转换失败返回默认值。
-func (ctx ContextData) GetQueryDefaultFloat64(key string, f float64) float64 {
-	return GetStringDefaultFloat64(ctx.GetQuery(key), f)
-}
-
-// GetQueryDefaultString 获取一个uri参数的值，如果为空字符串返回默认值。
-func (ctx ContextData) GetQueryDefaultString(key, str string) string {
-	return GetStringDefault(ctx.GetQuery(key), str)
+// GetQueryString 获取一个uri参数的值，如果为空字符串返回默认值。
+func (ctx ContextData) GetQueryString(key string, strs ...string) string {
+	return GetString(ctx.GetQuery(key), strs...)
 }
 
 // GetCookieBool 获取一个cookie的转换成bool类型。
 func (ctx ContextData) GetCookieBool(key string) bool {
-	return GetStringDefaultBool(ctx.GetCookie(key), false)
-}
-
-// GetCookieDefaultBool 获取一个cookie的转换成bool类型，转换失败返回默认值
-func (ctx ContextData) GetCookieDefaultBool(key string, b bool) bool {
-	return GetStringDefaultBool(ctx.GetCookie(key), b)
+	return GetStringBool(ctx.GetCookie(key))
 }
 
 // GetCookieInt 获取一个cookie的转换成int类型。
-func (ctx ContextData) GetCookieInt(key string) int {
-	return GetStringDefaultInt(ctx.GetCookie(key), 0)
-}
-
-// GetCookieDefaultInt 获取一个cookie的转换成int类型，转换失败返回默认值
-func (ctx ContextData) GetCookieDefaultInt(key string, i int) int {
-	return GetStringDefaultInt(ctx.GetCookie(key), i)
+func (ctx ContextData) GetCookieInt(key string, nums ...int) int {
+	return GetStringInt(ctx.GetCookie(key), nums...)
 }
 
 // GetCookieInt64 获取一个cookie的转换成int64类型。
-func (ctx ContextData) GetCookieInt64(key string) int64 {
-	return GetStringDefaultInt64(ctx.GetCookie(key), 0)
-}
-
-// GetCookieDefaultInt64 获取一个cookie的转换成int64类型，转换失败返回默认值
-func (ctx ContextData) GetCookieDefaultInt64(key string, i int64) int64 {
-	return GetStringDefaultInt64(ctx.GetCookie(key), i)
+func (ctx ContextData) GetCookieInt64(key string, nums ...int64) int64 {
+	return GetStringInt64(ctx.GetCookie(key), nums...)
 }
 
 // GetCookieFloat32 获取一个cookie的转换成float32类型。
-func (ctx ContextData) GetCookieFloat32(key string) float32 {
-	return GetStringDefaultFloat32(ctx.GetCookie(key), 0)
-}
-
-// GetCookieDefaultFloat32 获取一个cookie的转换成float32类型，转换失败返回默认值
-func (ctx ContextData) GetCookieDefaultFloat32(key string, f float32) float32 {
-	return GetStringDefaultFloat32(ctx.GetCookie(key), f)
+func (ctx ContextData) GetCookieFloat32(key string, nums ...float32) float32 {
+	return GetStringFloat32(ctx.GetCookie(key), nums...)
 }
 
 // GetCookieFloat64 获取一个cookie的转换成float64类型。
-func (ctx ContextData) GetCookieFloat64(key string) float64 {
-	return GetStringDefaultFloat64(ctx.GetCookie(key), 0)
+func (ctx ContextData) GetCookieFloat64(key string, nums ...float64) float64 {
+	return GetStringFloat64(ctx.GetCookie(key), nums...)
 }
 
-// GetCookieDefaultFloat64 获取一个cookie的转换成float64类型，转换失败返回默认值
-func (ctx ContextData) GetCookieDefaultFloat64(key string, f float64) float64 {
-	return GetStringDefaultFloat64(ctx.GetCookie(key), f)
-}
-
-// GetCookieDefaultString 获取一个cookie的值，如果为空字符串返回默认值。
-func (ctx ContextData) GetCookieDefaultString(key, str string) string {
-	return GetStringDefault(ctx.GetCookie(key), str)
+// GetCookieString 获取一个cookie的值，如果为空字符串返回默认值。
+func (ctx ContextData) GetCookieString(key string, strs ...string) string {
+	return GetString(ctx.GetCookie(key), strs...)
 }

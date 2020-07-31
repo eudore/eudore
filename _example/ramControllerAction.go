@@ -24,7 +24,8 @@ func main() {
 	app := eudore.NewApp()
 	app.AddController(new(ramBaseController))
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }
 

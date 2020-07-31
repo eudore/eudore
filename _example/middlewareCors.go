@@ -46,9 +46,6 @@ func main() {
 	client.NewRequest("GET", "/5").WithHeaderValue("Origin", "http://127.0.0.1:8089").Do()
 	client.NewRequest("GET", "/6").WithHeaderValue("Origin", "http://example.com").Do()
 	client.NewRequest("GET", "/6").WithHeaderValue("Origin", "http://www.eudore.cn").Do()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.Listen(":8088")
 	// app.CancelFunc()

@@ -30,9 +30,6 @@ func main() {
 	client.NewRequest("GET", "/api/v1/").Do().Out()
 	client.NewRequest("GET", "/api/v1/get/eudore").Do().Out()
 	client.NewRequest("GET", "/api/v1/set/eudore").Do().Out()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.Listen(":8088")
 	// app.CancelFunc()

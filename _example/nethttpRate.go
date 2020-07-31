@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/eudore/eudore/component/httptest"
@@ -24,7 +23,4 @@ func main() {
 	client.NewRequest("GET", "/").Do().CheckStatus(200)
 	client.NewRequest("GET", "/").Do().CheckStatus(200)
 	client.NewRequest("GET", "/").Do().CheckStatus(200)
-	for client.Next() {
-		log.Println(client.Error())
-	}
 }

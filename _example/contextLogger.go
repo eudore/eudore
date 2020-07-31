@@ -75,10 +75,8 @@ func main() {
 	client.NewRequest("GET", "/ffile").WithHeaderValue(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do().CheckStatus(200).Out()
 	client.NewRequest("GET", "/err").WithHeaderValue(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do().CheckStatus(200).Out()
 	client.NewRequest("GET", "/field").WithHeaderValue(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do().CheckStatus(200).Out()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

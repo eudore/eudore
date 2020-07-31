@@ -12,9 +12,8 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {})
-	middleware.NewNetHTTPBasicAuthFunc(mux, "", data)
 	srv := &http.Server{
-		Handler: middleware.NewNetHTTPBasicAuthFunc(mux, "Eudore", data),
+		Handler: middleware.NewNetHTTPBasicAuthFunc(mux, data),
 	}
 
 	client := httptest.NewClient(srv.Handler)

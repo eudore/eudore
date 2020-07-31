@@ -37,6 +37,7 @@ func main() {
 	client.NewRequest("GET", "/api/v1/11").Do()
 	client.NewRequest("GET", "/api/v2/11").Do()
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

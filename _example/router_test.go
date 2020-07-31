@@ -9,10 +9,8 @@ import (
 )
 
 func TestRouterFullAny2(t *testing.T) {
-	app := eudore.NewApp()
-	app.Router = eudore.NewRouterFull()
-	eudore.Set(app.Router, "print", eudore.NewPrintFunc(app))
-	// 遍历覆盖
+	app := eudore.NewApp(eudore.NewRouterFull())
+	// Any方法覆盖
 	app.GetFunc("/get/:val", func(ctx eudore.Context) {
 		ctx.WriteString("method is get\n")
 	})
@@ -22,10 +20,9 @@ func TestRouterFullAny2(t *testing.T) {
 	app.PostFunc("/get/:val", func(ctx eudore.Context) {
 		ctx.WriteString("method is post\n")
 	})
-	app.AddHandler("444", "", eudore.HandlerRouter404)
-	app.AddHandler("404", "", eudore.HandlerRouter404)
-
+	app.AddHandler("404,444", "", eudore.HandlerRouter404)
 	app.AddHandler("405", "", eudore.HandlerRouter405)
+
 	// 请求测试
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/get/1").Do().CheckStatus(200).CheckBodyContainString("get").OutBody()
@@ -36,18 +33,13 @@ func TestRouterFullAny2(t *testing.T) {
 	client.NewRequest("PUT", "/get").Do().CheckStatus(404)
 	client.NewRequest("PUT", "/3").Do().CheckStatus(404)
 	client.NewRequest("put", "/3").Do().CheckStatus(405)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.CancelFunc()
 	app.Run()
 }
 
 func TestRouterFullCheck2(t *testing.T) {
-	app := eudore.NewApp()
-	app.Router = eudore.NewRouterFull()
-	eudore.Set(app.Router, "print", eudore.NewPrintFunc(app))
+	app := eudore.NewApp(eudore.NewRouterFull())
 
 	app.AnyFunc("/1/:num|isnum version=1", eudore.HandlerEmpty)
 	app.AnyFunc("/1/222", eudore.HandlerEmpty)
@@ -70,9 +62,6 @@ func TestRouterFullCheck2(t *testing.T) {
 	client.NewRequest("PUT", "/3/11/22").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/4/22").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/5/22").Do().CheckStatus(404)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.CancelFunc()
 	app.Run()

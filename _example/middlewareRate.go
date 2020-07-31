@@ -20,9 +20,6 @@ func main() {
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.Listen(":8088")
 	// app.CancelFunc()
@@ -31,20 +28,54 @@ func main() {
 	middlewareRate2()
 	middlewareRate3()
 	middlewareRate4()
+	middlewareRate5()
 }
 
 func middlewareRate2() {
 	app := eudore.NewApp()
-	app.AddMiddleware(middleware.NewTimeoutFunc(time.Millisecond * 200))
 	app.AddMiddleware("/out", func(ctx eudore.Context) {
-		cctx, cannel := context.WithTimeout(ctx.GetContext(), time.Millisecond*10)
+		cctx, cannel := context.WithTimeout(ctx.GetContext(), time.Millisecond*20)
 		go func() {
 			<-cctx.Done()
 			cannel()
 		}()
 		ctx.WithContext(cctx)
 	})
-	app.AddMiddleware(middleware.NewRateFunc(1, 3, app.Context, time.Millisecond*100, func(ctx eudore.Context) string {
+	app.AddMiddleware(middleware.NewRateFunc(1, 3, app.Context, time.Millisecond*10, func(ctx eudore.Context) string {
+		return ctx.RealIP()
+	}))
+	app.AnyFunc("/out", eudore.HandlerEmpty)
+	app.AnyFunc("/*", eudore.HandlerEmpty)
+
+	client := httptest.NewClient(app)
+	client.NewRequest("PUT", "/").Do().CheckStatus(200)
+	client.NewRequest("PUT", "/").Do().CheckStatus(200)
+	time.Sleep(50 * time.Millisecond)
+	client.NewRequest("PUT", "/out").Do().CheckStatus(200)
+	client.NewRequest("PUT", "/").Do().CheckStatus(200)
+	client.NewRequest("PUT", "/").Do().CheckStatus(200)
+	client.NewRequest("PUT", "/").Do().CheckStatus(200)
+	client.NewRequest("PUT", "/").Do().CheckStatus(200)
+	client.NewRequest("PUT", "/").Do().CheckStatus(200)
+	client.NewRequest("PUT", "/out").Do().CheckStatus(200)
+	client.NewRequest("PUT", "/").Do().CheckStatus(200)
+
+	app.Listen(":8088")
+	// app.CancelFunc()
+	app.Run()
+}
+
+func middlewareRate3() {
+	app := eudore.NewApp()
+	app.AddMiddleware("/out", func(ctx eudore.Context) {
+		cctx, cannel := context.WithTimeout(ctx.GetContext(), time.Millisecond*2)
+		go func() {
+			<-cctx.Done()
+			cannel()
+		}()
+		ctx.WithContext(cctx)
+	})
+	app.AddMiddleware(middleware.NewRateFunc(1, 3, app.Context, time.Millisecond*10, func(ctx eudore.Context) string {
 		return ctx.RealIP()
 	}))
 	app.AnyFunc("/out", eudore.HandlerEmpty)
@@ -55,22 +86,14 @@ func middlewareRate2() {
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
-	client.NewRequest("PUT", "/").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/out").Do().CheckStatus(200)
-	client.NewRequest("PUT", "/out").Do().CheckStatus(200)
-	client.NewRequest("PUT", "/out").Do().CheckStatus(200)
-	time.Sleep(time.Second / 2)
-	client.NewRequest("PUT", "/").Do().CheckStatus(200)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.Listen(":8088")
 	// app.CancelFunc()
 	app.Run()
 }
 
-func middlewareRate3() {
+func middlewareRate4() {
 	app := eudore.NewApp()
 	app.AnyFunc("/*", middleware.NewRateFunc(1, 3, app.Context, time.Millisecond*100), eudore.HandlerEmpty)
 
@@ -82,16 +105,13 @@ func middlewareRate3() {
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.Listen(":8088")
 	// app.CancelFunc()
 	app.Run()
 }
 
-func middlewareRate4() {
+func middlewareRate5() {
 	app := eudore.NewApp()
 	app.AnyFunc("/*", middleware.NewRateFunc(1, 2, app.Context, time.Microsecond*49), eudore.HandlerEmpty)
 
@@ -102,9 +122,6 @@ func middlewareRate4() {
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
 	time.Sleep(time.Second)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.Listen(":8088")
 	// app.CancelFunc()

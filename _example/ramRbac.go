@@ -22,6 +22,8 @@ func main() {
 	rbac.AddPermission(4, "4")
 	rbac.AddPermission(5, "5")
 	rbac.AddPermission(6, "6")
+	rbac.AddPermission(7, "7")
+	rbac.DeletePermission("7")
 	// 角色id1 绑定 权限id1 2 3
 	rbac.BindPermissions(1, 1, 2, 3)
 	// 角色id2 绑定 权限id4 5 6
@@ -49,10 +51,12 @@ func main() {
 	client.NewRequest("PUT", "/4").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/5").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/6").Do().CheckStatus(200)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	rbac.UnbindPermissions(1, 1)
+	rbac.UnbindPermissions(1, 6)
+	rbac.UnnindRole(2, 1)
+
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

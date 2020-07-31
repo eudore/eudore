@@ -4,13 +4,11 @@ import (
 	beegosession "github.com/astaxie/beego/session"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
-	"github.com/eudore/eudore/component/session"
-	"github.com/eudore/eudore/component/session/beego"
 )
 
 func main() {
 	// 创建session，并注册转换函数。
-	sessionConfig := &beegosession.ManagerConfig{
+	globalSessions, _ := beegosession.NewManager("memory", &beegosession.ManagerConfig{
 		CookieName:      "gosessionid",
 		EnableSetCookie: true,
 		Gclifetime:      3600,
@@ -18,20 +16,28 @@ func main() {
 		Secure:          false,
 		CookieLifeTime:  3600,
 		ProviderConfig:  "./tmp",
-	}
-	globalSessions, _ := beegosession.NewManager("memory", sessionConfig)
-	go globalSessions.GC()
-	app := eudore.NewApp()
-	app.AddHandlerExtend(beego.NewExtendContextSession(globalSessions))
-
-	app.GetFunc("/set", func(ctx session.Context) {
-		// 读取会话
-		ctx.SetSession("key1", 22)
-		ctx.Debugf("session set key1 value: %v", ctx.GetSession("key1"))
-		ctx.SessionRelease()
 	})
-	app.GetFunc("/get", func(ctx session.Context) {
-		ctx.Debugf("session get key1 value: %v", ctx.GetSession("key1"))
+	go globalSessions.GC()
+
+	app := eudore.NewApp()
+	app.GetFunc("/set", func(ctx eudore.Context) {
+		// 读取会话
+		data, err := globalSessions.SessionStart(ctx.Response(), ctx.Request())
+		if err != nil {
+			ctx.Fatal(err)
+		}
+
+		data.Set("key1", 22)
+		ctx.Debugf("session set key1 value: %v", data.Get("key1"))
+		data.SessionRelease(ctx.Response())
+	})
+	app.GetFunc("/get", func(ctx eudore.Context) {
+		data, err := globalSessions.SessionStart(ctx.Response(), ctx.Request())
+		if err != nil {
+			ctx.Fatal(err)
+		}
+
+		ctx.Debugf("session get key1 value: %v", data.Get("key1"))
 	})
 
 	client := httptest.NewClient(app)

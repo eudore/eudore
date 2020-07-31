@@ -23,6 +23,7 @@ func main() {
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.Debug("hello eudore")
 		ctx.Info("hello eudore")
+		ctx.End()
 	})
 
 	client := httptest.NewClient(app)

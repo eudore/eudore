@@ -40,7 +40,7 @@ func main() {
 }
 
 func readHttp(c eudore.Config) error {
-	for _, path := range eudore.GetArrayString(c.Get("keys.config")) {
+	for _, path := range eudore.GetStrings(c.Get("keys.config")) {
 		if !strings.HasPrefix(path, "http://") && !strings.HasPrefix(path, "https://") {
 			continue
 		}

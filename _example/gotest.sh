@@ -28,16 +28,17 @@ cp -rf *_test.go $dir/
 cd $dir
 rm -f appDefine_test.go appNotify_test.go appDaemon_test.go
 
-COVERPKG='github.com/eudore/eudore,github.com/eudore/eudore/middleware'
+COVERPKG='github.com/eudore/eudore,github.com/eudore/eudore/middleware,github.com/eudore/eudore/component/ram,github.com/eudore/eudore/component/httptest'
 export ENV_KEYS_NAME=eudore
 export GODOC=https://golang.org
+export CGO_ENABLED=1
 
 # 运行测试
 if [ $# -ne 0 ];then
 	$*
 elif [ -z $OUT ];then
-	$GOROOT/bin/go test -v -timeout=2m -cover -coverpkg=$COVERPKG $OPTION
+	$GOROOT/bin/go test -v -timeout=2m -reace -cover -coverpkg=$COVERPKG $OPTION
 else
-	$GOROOT/bin/go test -v -timeout=2m -cover -coverpkg=$COVERPKG -coverprofile=size_coverage.out $OPTION && go tool cover -html=size_coverage.out -o $OUT && rm -f size_coverage.out
+	$GOROOT/bin/go test -v -timeout=2m -race -cover -coverpkg=$COVERPKG -coverprofile=coverage.txt $OPTION && go tool cover -html=coverage.txt -o $OUT 
 fi
 rm -f *_test.go

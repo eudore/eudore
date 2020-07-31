@@ -2,17 +2,14 @@ package main
 
 /*
 type RouterMethod interface {
-	GetParam(string) string
-	SetParam(string, string) Router
+	Params() *Params
 	...
 }
-Router可以使用GetParam和SetParam方法读写当前路器由参数。
+Router可以使用Params方法获取当前路器由参数。
 
 在Router.Group时，新路由器会复制一份上级路由器参数，同时处理路径中的参数。
 
 在Router.Macth后，默认的路由参数和匹配参数会添加到Context中。
-
-在Router中使用键eudore.ParamAllKeys/eudore.ParamAllVals可以获取到全部参数key/val，返回多个值使用空格分割。
 
 在Router和Context中"route"参数表示当前路由路径
 */
@@ -23,10 +20,6 @@ import (
 	"github.com/eudore/eudore/middleware"
 )
 
-type Parmaser interface {
-	Params() *eudore.Params
-}
-
 func main() {
 	app := eudore.NewApp()
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
@@ -34,9 +27,7 @@ func main() {
 	apiv1 := app.Group("/api/v1 version=v1")
 	apiv1.AnyFunc("/*", starParam)
 	apiv1.GetFunc("/get/:name action=getParamName", getParamName)
-	app.Debug("all param keys:", apiv1.GetParam(eudore.ParamAllKeys))
-	app.Debug("all param vals:", apiv1.GetParam(eudore.ParamAllVals))
-	app.Debugf("parmas: %#v", apiv1.(Parmaser).Params())
+	app.Debug("all param:", apiv1.Params())
 
 	// 默认路由
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
@@ -48,11 +39,9 @@ func main() {
 	client.NewRequest("GET", "/api/v1/").Do().Out()
 	client.NewRequest("GET", "/api/v1/get/eudore").Do().Out()
 	client.NewRequest("GET", "/api/v1/set/eudore").Do().Out()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }
 

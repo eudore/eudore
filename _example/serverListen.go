@@ -37,6 +37,6 @@ func main() {
 
 	// 方式3: 使用app调用eudore.ServerListenConfig启动监听。
 	app.ListenTLS(":8088", "", "")
-	app.CancelFunc()
+	// app.CancelFunc()
 	app.Run()
 }

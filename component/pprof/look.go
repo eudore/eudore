@@ -47,8 +47,8 @@ func NewLook(data interface{}) eudore.HandlerFunc {
 			visited:   make(map[uintptr]int),
 			pathfield: []string{p},
 			depth:     1,
-			maxDepth:  eudore.GetStringDefaultInt(ctx.GetQuery("d"), 10),
-			godoc:     eudore.GetStringDefault(ctx.GetParam("godoc"), "https://golang.org"),
+			maxDepth:  eudore.GetStringInt(ctx.GetQuery("d"), 10),
+			godoc:     eudore.GetString(ctx.GetParam("godoc"), "https://golang.org"),
 			args:      ctx.Querys().Encode(),
 			showall:   ctx.GetQuery("all") == "",
 		}

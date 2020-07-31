@@ -24,9 +24,6 @@ func main() {
 		time.Sleep(time.Millisecond * 500)
 		client.NewRequest("GET", "/1").Do()
 	}
-	for client.Next() {
-		app.Error(client.Error())
-	}
 	client.NewRequest("GET", "/eudore/debug/breaker/ui").Do()
 	middleware.BreakerStaticHTML = ""
 	client.NewRequest("GET", "/eudore/debug/breaker/ui").Do()

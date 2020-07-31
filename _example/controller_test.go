@@ -51,7 +51,8 @@ func (ctl *mysGroupController) Release(ctx eudore.Context) error {
 
 func TestControllerGroup2(*testing.T) {
 	app := eudore.NewApp()
-	app.SetParam("controllergroup", "/g1").AddController(new(mybGroupcontroller))
+	app.Params().Set("controllergroup", "/g1")
+	app.AddController(new(mybGroupcontroller))
 	app.AddController(new(mybGroupcontroller))
 	app.AddController(new(mybGroupController))
 	app.AddController(new(mysGroup))
@@ -131,7 +132,7 @@ func TestControllerExtendExec2(*testing.T) {
 	app := eudore.NewApp()
 	app.AddController(new(eudore.ControllerBase))
 	app.AddController(new(myexecConrtoller))
-	app.SetParam("controllergroup", "name").SetParam("enable-route-extend", "0").AddController(new(mysGroupController))
+	app.Group(" controllergroup=name enable-route-extend=0").AddController(new(mysGroupController))
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/init").Do()
@@ -178,9 +179,6 @@ func TestControllerExtendExec2(*testing.T) {
 	client.NewRequest("GET", "/map/string/render/error1").Do()
 	client.NewRequest("GET", "/map/string/render/error2").Do()
 
-	for client.Next() {
-		app.Error(client.Error())
-	}
 	app.CancelFunc()
 	app.Run()
 }

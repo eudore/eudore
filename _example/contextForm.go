@@ -34,13 +34,10 @@ func main() {
 	})
 
 	client := httptest.NewClient(app)
-	client.NewRequest("POST", "/").WithBodyFormValue("name", "my name", "message", "msg").WithBodyFormFile("file", "contextBindForm.go", "contextBindForm file content").Do()
-	client.NewRequest("POST", "/").WithBodyJSONValue("name", "my name", "message", "msg").Do()
+	client.NewRequest("POST", "/").WithBodyFormValue("name", "my name").WithBodyFormValue("message", "msg").WithBodyFormFile("file", "contextBindForm.go", "contextBindForm file content").Do()
+	client.NewRequest("POST", "/").WithBodyJSONValue("name", "my name").WithBodyJSONValue("message", "msg").Do()
 
-	for client.Next() {
-		app.Error(client.Error())
-	}
-
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

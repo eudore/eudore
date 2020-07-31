@@ -44,3 +44,8 @@ func (ctx *contextWarp) Next() {
 		ctx.index++
 	}
 }
+
+// End 结束请求上下文的处理。
+func (ctx *contextWarp) End() {
+	ctx.index = 0xff
+}

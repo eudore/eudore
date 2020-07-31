@@ -34,8 +34,8 @@ type Command struct {
 
 // Init 函数初始化定义程序启动命令。
 func Init(app *eudore.App) error {
-	cmd := eudore.GetDefaultString(app.Config.Get("command"), "start")
-	pid := eudore.GetDefaultString(app.Config.Get("pidfile"), "/var/run/eudore.pid")
+	cmd := eudore.GetString(app.Config.Get("command"), "start")
+	pid := eudore.GetString(app.Config.Get("pidfile"), "/var/run/eudore.pid")
 	app.Logger.Infof("current command is %s, pidfile in %s, process pid is %d.", cmd, pid, os.Getpid())
 	return NewCommand(app, cmd, pid).Run()
 }

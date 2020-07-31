@@ -100,6 +100,8 @@ var (
 
 	// ErrFormatBindDefaultNotSupportContentType BindDefault函数不支持当前的Content-Type Header。
 	ErrFormatBindDefaultNotSupportContentType = "BindDefault not support content type header: %s"
+	// ErrFormatControllerBind 执行控制器方法bind时返回错误
+	ErrFormatControllerBind = "Controller bind error: %v"
 	// ErrFormatConverterGetWithTags 在Get方法时，无法或到值，返回错误描述。
 	ErrFormatConverterGetWithTags = "Get or GetWithTags func cannot get the value of the attribute '%s', error description: %v"
 	// ErrFormatConverterNotGetValue 在Get方法时，getValue无法继续查找新的属性值。
@@ -121,7 +123,7 @@ var (
 	// ErrFormatRegisterHandlerExtendOutputParamError RegisterHandlerExtend函数注册的函数返回值错误。
 	ErrFormatRegisterHandlerExtendOutputParamError = "The '%s' output parameter is illegal and should be a HandlerFunc object"
 	// ErrFormatRouterStdAddController RouterStd控制器路由注入错误
-	ErrFormatRouterStdAddController = "The RouterStd.AddController Inject error: %v"
+	ErrFormatRouterStdAddController = "The RouterStd.AddController Inject %s error: %v"
 	// ErrFormatRouterStdAddHandlerExtend RouterStd添加扩展错误
 	ErrFormatRouterStdAddHandlerExtend = "The RouterStd.AddHandlerExtend path is '%s' RegisterHandlerExtend error: %v"
 	// ErrFormatRouterStdRegisterHandlersMethodInvalid RouterStd.registerHandlers 的添加的是无效的，全部有效方法为RouterAllMethod。
@@ -340,14 +342,14 @@ const (
 
 	// Param
 
-	ParamAction   = "action"
-	ParamAllKeys  = "allkeys"
-	ParamAllVals  = "allvals"
-	ParamCaller   = "caller"
-	ParamRAM      = "ram"
-	ParamTemplate = "template"
-	ParamRoute    = "route"
-	ParamDeny     = "deny"
-	ParamUID      = "UID"
-	ParamUNAME    = "UNAME"
+	ParamAction          = "action"
+	ParamCaller          = "caller"
+	ParamControllerGroup = "controllergroup"
+	ParamRAM             = "ram"
+	ParamRegister        = "register"
+	ParamTemplate        = "template"
+	ParamRoute           = "route"
+	ParamDeny            = "deny"
+	ParamUID             = "UID"
+	ParamUNAME           = "UNAME"
 )

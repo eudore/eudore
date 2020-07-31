@@ -6,6 +6,8 @@ type Handler interface {
 	Match(int, string, eudore.Context) (bool, bool)
 	// return1 验证结果 return2 是否验证
 }
+
+当前example使用ram.Handler对象自定义处理请求匹配。
 */
 
 import (
@@ -65,9 +67,6 @@ func main() {
 	client.NewRequest("PUT", "/4").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/5").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/6").Do().CheckStatus(200)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.CancelFunc()
 	app.Run()

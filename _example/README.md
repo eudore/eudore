@@ -2,9 +2,10 @@
 
 本部分为演示例子目录功能导航,保存eudore、component、middleware三个实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
 
-exmaple都默认使用httptest测试，可以注释代码`app.CancelFunc()`不终止程序并添加`app.Listen(":8088")`后使用阅览器访问，单元测试执行gotest.sh脚本。
+exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)测试，可以注释代码`app.CancelFunc()`不终止程序并添加`app.Listen(":8088")`后使用阅览器访问，单元测试执行gotest.sh脚本。
 
-go version go1.10.1 linux/amd64 coverage: 100.0% of statements
+go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/component/ram, github.com/eudore/eudore/component/httptest
+
 
 - Application
 	- [New](appCore.go)
@@ -24,7 +25,6 @@ go version go1.10.1 linux/amd64 coverage: 100.0% of statements
 	- [配置解析选择](configOption.go)
 	- [读取文件配置](configReadFile.go)
 	- [读取http远程配置](configReadHttp.go)
-	- viper Config适配
 - Logger
 	- [LoggerInit](loggerInit.go)
 	- [LoggerStd](loggerStd.go)
@@ -47,6 +47,8 @@ go version go1.10.1 linux/amd64 coverage: 100.0% of statements
 	- [Raidx路由器](routerRadix.go)
 	- [Full路由器](routerFull.go)
 	- [Host路由器](routerHost.go)
+	- [路由器注册调试](routerDebug.go)
+	- [路由器注册移除](routerDelete.go)
 	- [radix树](radixtree.go)
 - Context
 	- [Request Info](contextRequestInfo.go)
@@ -105,19 +107,24 @@ go version go1.10.1 linux/amd64 coverage: 100.0% of statements
 	- [Router匹配](middlewareRouter.go)
 	- [Router方法实现Rewrite](middlewareRouterRewrite.go)
 	- [ContextWarp](middlewareContextWarp.go)
+	- [日志加入RequestID](middlewareRequestID.go)
 - Ram
 	- [Acl权限控制](ramAcl.go)
 	- [Rbac权限控制](ramRbac.go)
 	- [Pbac权限控制](ramPbacl.go)
+	- [自定义pbac条件](ramPbaclCondition.go)
 	- [混合权限控制](ramAll.go)
 	- [自定义ram处理请求](ramHandle.go)
 	- [控制器生成action参数](ramControllerAction.go)
-	- casbin处理逻辑
+- Httptest
+	- [发送请求](httptestRequest.go)
+	- [构造多种body](httptestBody.go)
+	- [使用cookie](httptestCookies.go)
+	- [测试websocket](httptestWebsocket.go)
 - Session
 	- [gorilla session](sessionGorilla.go)
 	- [beego session](sessionBeego.go)
 - Websocket
-	- [使用websocket Stream](websocketStream.go)
 	- [使用github.com/gobwas/ws库](websocketGobwas.go)
 	- [使用github.com/gorilla/websocket库](websocketGorilla.go)
 - tool
@@ -126,7 +133,6 @@ go version go1.10.1 linux/amd64 coverage: 100.0% of statements
 	- [基于路径读写对象](toolGetSet.go)
 	- [结构体和变量校验](toolValidate.go)
 - 组件
-	- [httptest组件](componentHttpTest.go)
 	- [pprof](componentPprof.go)
 	- [http代理实现](componentProxy.go)
 	- [运行时对象数据显示](componentLook.go)
@@ -136,3 +142,5 @@ go version go1.10.1 linux/amd64 coverage: 100.0% of statements
 - net/http
 	- [中间件 黑名单](nethttpBalck.go)
 	- [中间件 路径重写](nethttpRewrite.go)
+	- [中间件 BasicAuth](nethttpBasicAuth.go)
+	- [中间件 限流](nethttpRate.go)

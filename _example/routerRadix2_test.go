@@ -95,15 +95,17 @@ func TestRadixPath2(*testing.T) {
 
 func TestFullRouter2(*testing.T) {
 	tree := eudore.NewRouterCoreFull()
+	tree.HandleFunc("404", "", eudore.HandlerFuncs{echoRoute("404")})
+	tree.HandleFunc("405", "", eudore.HandlerFuncs{echoRoute("405")})
 	tree.HandleFunc(newNodeData("/"))
 	tree.HandleFunc(newNodeData("/*"))
-	tree.HandleFunc(newNodeData("/:id|^[a-z]*$"))
-	tree.HandleFunc(newNodeData("/:id|min:4"))
+	tree.HandleFunc(newNodeData("/:id|{^[a-z]*$}"))
+	tree.HandleFunc(newNodeData("/:id|{min:4}"))
 	tree.HandleFunc(newNodeData("/:id|isnum"))
 	tree.HandleFunc(newNodeData("/:id"))
-	tree.HandleFunc(newNodeData("/api/*id|^[0-9]$"))
-	tree.HandleFunc(newNodeData("/1/*id|min:4"))
-	tree.HandleFunc(newNodeData("/1/*id|isnum"))
+	tree.HandleFunc(newNodeData("/api/*id|{^[0-9]$}"))
+	tree.HandleFunc(newNodeData("/1/*id|{min:4}"))
+	tree.HandleFunc(newNodeData("/1/*id|{isnum}"))
 	tree.HandleFunc(newNodeData("/1/*id"))
 	tree.HandleFunc(newNodeData("/*id"))
 	ctx := &Context{}

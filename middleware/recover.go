@@ -19,10 +19,6 @@ func NewRecoverFunc() eudore.HandlerFunc {
 				err = fmt.Errorf("%v", r)
 			}
 			stack := eudore.GetPanicStack(5)
-			terr, ok := r.(interface{ GetStack() []string })
-			if ok {
-				stack = append(terr.GetStack(), stack...)
-			}
 			ctx.WithField("error", "recover error").WithField("stack", stack).Error(err)
 
 			if ctx.Response().Size() == 0 {

@@ -15,7 +15,7 @@ func main() {
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AddController(new(mySingletonController))
 	// enable-route-extend 参数启用使用请求上下文扩展
-	app.SetParam("controllergroup", "name").SetParam("enable-route-extend", "0").AddController(new(mySingletonController))
+	app.Group(" controllergroup=name enable-route-extend=0").AddController(new(mySingletonController))
 
 	// 请求测试
 	client := httptest.NewClient(app)
@@ -26,13 +26,11 @@ func main() {
 	client.NewRequest("GET", mybasepath).Do().CheckStatus(200).CheckBodyContainString("4")
 
 	client.NewRequest("GET", "/2/mysingleton").Do().CheckStatus(200)
-	client.NewRequest("GET", "/name/mysingleton").Do().CheckStatus(200)
+	client.NewRequest("GET", "/88/name/mysingleton").Do().CheckStatus(200)
 	client.NewRequest("GET", "/").Do().CheckStatus(404)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }
 

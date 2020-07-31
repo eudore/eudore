@@ -144,10 +144,8 @@ func (node *rewriteNode) matchNode(path string, result *matchResult) bool {
 		return true
 	}
 	for _, current := range node.children {
-		if strings.HasPrefix(path, current.path) {
-			if current.matchNode(path[len(current.path):], result) {
-				return true
-			}
+		if strings.HasPrefix(path, current.path) && current.matchNode(path[len(current.path):], result) {
+			return true
 		}
 	}
 	if node.wildcard != nil {

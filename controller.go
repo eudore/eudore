@@ -157,8 +157,11 @@ func ControllerInjectSingleton(controller Controller, router Router) error {
 	cname := iType.Name()
 	cpkg := iType.PkgPath()
 	fnNewHandler := newControllerSingletionHandle(fmt.Sprintf("%s.%s", cpkg, cname), controller, router)
-	router.SetParam("enable-route-extend", "").SetParam("ignore-init", "").SetParam("ignore-release", "")
 	router = router.Group(getContrllerRouterGroup(cname, router))
+	params := router.Params()
+	params.Del("enable-route-extend")
+	params.Del("ignore-init")
+	params.Del("ignore-release")
 
 	// 获取路由参数函数
 	pfn := defaultRouteParam
@@ -174,16 +177,16 @@ func ControllerInjectSingleton(controller Controller, router Router) error {
 			continue
 		}
 
+		name := fmt.Sprintf("%s.%s.%s", cpkg, cname, method)
 		if fnNewHandler != nil {
 			// 使用路由扩展
 			h := pValue.Method(m.Index).Interface()
-			name := fmt.Sprintf("%s.%s.%s", cpkg, cname, method)
 			router.AddHandler(getRouteMethod(method), path+" "+pfn(cpkg, cname, method), fnNewHandler(h, name)...)
 		} else {
 			// 使用控制器扩展
 			router.AddHandler(getRouteMethod(method), path+" "+pfn(cpkg, cname, method), ControllerFuncExtend{
 				Controller: controller,
-				Name:       fmt.Sprintf("%s.%s.%s", cpkg, cname, method),
+				Name:       name,
 				Index:      m.Index,
 				Pool:       pool,
 			})
@@ -218,11 +221,11 @@ func newControllerSingletionRelease(controller Controller, name string) HandlerF
 }
 
 func newControllerSingletionHandle(name string, controller Controller, router Router) func(interface{}, string) []interface{} {
-	if router.GetParam("enable-route-extend") == "" {
+	if router.Params().Get("enable-route-extend") == "" {
 		return nil
 	}
-	enableInit := router.GetParam("ignore-init") == ""
-	enableRelease := router.GetParam("ignore-release") == ""
+	enableInit := router.Params().Get("ignore-init") == ""
+	enableRelease := router.Params().Get("ignore-release") == ""
 	var fnInit, fnRelease HandlerFunc
 	if enableInit {
 		fnInit = newControllerSingletionInit(controller, fmt.Sprintf("%s.Init", name))
@@ -246,17 +249,15 @@ func newControllerSingletionHandle(name string, controller Controller, router Ro
 
 func getContrllerRouterGroup(name string, router Router) string {
 	switch {
-	case router.GetParam("controllergroup") != "":
-		group := router.GetParam("controllergroup")
-		router.SetParam("controllergroup", "")
+	case router.Params().Get(ParamControllerGroup) != "":
+		group := router.Params().Get(ParamControllerGroup)
+		router.Params().Del(ParamControllerGroup)
 		if group[0] == '/' {
 			return group
 		}
 		return "/" + group
-	case strings.HasSuffix(name, "Controller"):
-		return "/" + strings.ToLower(strings.TrimSuffix(name, "Controller"))
-	case strings.HasSuffix(name, "controller"):
-		return "/" + strings.ToLower(strings.TrimSuffix(name, "controller"))
+	case controllerHasSuffix(name):
+		return "/" + strings.ToLower(name[:len(name)-10])
 	default:
 		return ""
 	}
@@ -298,7 +299,7 @@ func getRoutesWithName(controller Controller) map[string]string {
 // 如果对象名称是Controller或controller为前缀，则忽略该对象。
 func getContrllerAllowMethos(iType reflect.Type) []string {
 	name := getValueName(iType)
-	if strings.HasPrefix(name, "Controller") || strings.HasPrefix(name, "controller") {
+	if controllerHasPrefix(name) {
 		return nil
 	}
 
@@ -319,7 +320,7 @@ func getContrllerAllowMethos(iType reflect.Type) []string {
 func getContrllerIgnoreMethos(iType reflect.Type) []string {
 	name := getValueName(iType)
 	var ms []string
-	if strings.HasPrefix(name, "Controller") || strings.HasPrefix(name, "controller") {
+	if controllerHasPrefix(name) {
 		ms = getContrllerAllMethos(iType)
 	}
 	if iType.Kind() == reflect.Ptr {
@@ -335,6 +336,16 @@ func getContrllerIgnoreMethos(iType reflect.Type) []string {
 		}
 	}
 	return ms
+}
+
+// controllerHasPrefix 函数判断控制器名称前缀是否为"Controller"或"controller"。
+func controllerHasPrefix(name string) bool {
+	return strings.HasPrefix(name, "Controller") || strings.HasPrefix(name, "controller")
+}
+
+// controllerHasSuffix 函数判断控制器名称后缀是否为"Controller"或"controller"。
+func controllerHasSuffix(name string) bool {
+	return strings.HasSuffix(name, "Controller") || strings.HasSuffix(name, "controller")
 }
 
 // getContrllerAllMethos 函数获得一共类型包含指针类型的全部方法名称。
@@ -499,10 +510,8 @@ func (ctl *ControllerSingleton) GetRouteParam(pkg, name, method string) string {
 //
 // MyUserController Index => views/controller/my/user/index.html
 func defaultGetViewTemplate(cname string, method string) string {
-	if strings.HasSuffix(cname, "Controller") {
-		cname = strings.TrimSuffix(cname, "Controller")
-	} else if strings.HasSuffix(cname, "controller") {
-		cname = strings.TrimSuffix(cname, "controller")
+	if controllerHasSuffix(cname) {
+		cname = cname[:len(cname)-10]
 	}
 	names := splitName(cname)
 	for i := range names {
@@ -642,7 +651,7 @@ func NewExtendControllerFunc(ef ControllerFuncExtend) HandlerFunc {
 	}
 
 	index := ef.Index
-	return NewExtendController(ef.Name, ef.Pool, func(ctx Context, ctl Controller) {
+	return NewExtendController(ef.Name, ef.Pool, func(_ Context, ctl Controller) {
 		reflect.ValueOf(ctl).Method(index).Call(nil)
 	})
 }
@@ -780,7 +789,7 @@ func NewExtendControllerFuncMapString(ef ControllerFuncExtend) HandlerFunc {
 		req := make(map[string]interface{})
 		err := ctx.Bind(&req)
 		if err != nil {
-			ctx.Fatalf("controller bind error: %v", err)
+			ctx.Fatalf(ErrFormatControllerBind, err)
 			return
 		}
 		reflect.ValueOf(ctl).Method(index).Call([]reflect.Value{reflect.ValueOf(req)})
@@ -799,7 +808,7 @@ func NewExtendControllerFuncMapStringRender(ef ControllerFuncExtend) HandlerFunc
 		req := make(map[string]interface{})
 		err := ctx.Bind(&req)
 		if err != nil {
-			ctx.Fatalf("controller bind error: %v", err)
+			ctx.Fatalf(ErrFormatControllerBind, err)
 			return
 		}
 		data := reflect.ValueOf(ctl).Method(index).Call([]reflect.Value{reflect.ValueOf(req)})[0].Interface()
@@ -824,7 +833,7 @@ func NewExtendControllerFuncMapStringError(ef ControllerFuncExtend) HandlerFunc 
 		req := make(map[string]interface{})
 		err := ctx.Bind(&req)
 		if err != nil {
-			ctx.Fatalf("controller bind error: %v", err)
+			ctx.Fatalf(ErrFormatControllerBind, err)
 			return
 		}
 		ierr := reflect.ValueOf(ctl).Method(index).Call([]reflect.Value{reflect.ValueOf(req)})[0].Interface()
@@ -846,7 +855,7 @@ func NewExtendControllerFuncMapStringRenderError(ef ControllerFuncExtend) Handle
 		req := make(map[string]interface{})
 		err := ctx.Bind(&req)
 		if err != nil {
-			ctx.Fatalf("controller bind error: %v", err)
+			ctx.Fatalf(ErrFormatControllerBind, err)
 			return
 		}
 		data, err := reflect.ValueOf(ctl).Method(index).Interface().(func(map[string]interface{}) (interface{}, error))(req)

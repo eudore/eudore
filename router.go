@@ -1,17 +1,38 @@
 package eudore
 
 /*
-Router
-
 Router对象用于定义请求的路由器
 
 文件：router.go routerradix.go routerfull.go
+
+
+Router接口分为RouterCore和RouterMethod，RouterCore实现路由器匹配算法和逻辑，RouterMethod实现路由规则注册的封装。
+
+RouterMethod实现下列功能：
+	组路由
+	中间件或函数扩展注册在局部作用域/全局作用域
+	添加控制器
+	显示路由注册debug信息
+
+RouterCore拥有五种路由器核心实现下列功能：
+	高性能
+	低代码复杂度(RouterCoreFull支持5级优先级 一处代码复杂度19不满足)
+	请求获取额外的默认参数(包含当前路由匹配规则)
+	变量和通配符匹配
+	匹配优先级 常量 > 变量校验 > 变量 > 通配符校验 > 通配符(RouterCoreRadix三级优先级 RouterCoreFull五级优先级)
+	方法优先级 指定方法 > Any方法
+	变量和通配符支持正则和自定义函数进行校验数据(RouterCoreFull特性)
+	变量和通配符支持常量前缀
+	获取注册的全部路由规则信息(RouterCoreBebug实现)
+	基于Host进行路由规则匹配(RouterCoreHost实现)
+	允许运行时进行动态增删路由器规则(RouterCoreRadix和RouterCoreFull实现，外层需要RouterCoreLock包装一层)
 */
 
 import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 )
 
 // Router interface needs to implement the router method and the router core two interfaces.
@@ -47,8 +68,7 @@ type RouterCore interface {
 // RouterMethod 路由默认直接注册的接口，设置路由参数、组路由、中间件、函数扩展、控制器等行为。
 type RouterMethod interface {
 	Group(string) Router
-	GetParam(string) string
-	SetParam(string, string) Router
+	Params() *Params
 	AddHandler(string, string, ...interface{}) error
 	AddController(...Controller) error
 	AddMiddleware(...interface{}) error
@@ -103,6 +123,16 @@ func NewRouterStd(core RouterCore) Router {
 	}
 }
 
+// NewRouterRadix 创建一个Radix路由器。
+func NewRouterRadix() Router {
+	return NewRouterStd(NewRouterCoreRadix())
+}
+
+// NewRouterFull 函数创建一个Full路由器。
+func NewRouterFull() Router {
+	return NewRouterStd(NewRouterCoreFull())
+}
+
 // Group method returns a new group router.
 //
 // The parameters, middleware, and function extensions of each Group group route registration will not affect the superior, but the subordinate will inherit the superior data.
@@ -126,28 +156,11 @@ func (m *RouterStd) Group(path string) Router {
 	// 构建新的路由方法配置器
 	return &RouterStd{
 		RouterCore:      m.RouterCore,
-		params:          m.ParamsCombine(path),
+		params:          m.paramsCombine(path),
 		HandlerExtender: NewHandlerExtendWarp(NewHandlerExtendTree(), m.HandlerExtender),
 		Middlewares:     m.Middlewares.clone(),
 		Print:           m.Print,
 	}
-}
-
-// PrintError 方法输出一个err，附加错误的函数名称和文件位置。
-func (m *RouterStd) PrintError(depth int, err error) {
-	// 兼容添加控制器错误输出
-	name, _, _ := logFormatNameFileLine(depth + 5)
-	if name == "github.com/eudore/eudore.(*RouterStd).AddController" {
-		depth += 3
-	}
-
-	name, file, line := logFormatNameFileLine(depth + 3)
-	m.Print(Fields{"func": name, "file": file, "line": line}, err)
-}
-
-// PrintPanic 方法输出一个err，附加当前stack。
-func (m *RouterStd) PrintPanic(err error) {
-	m.Print(Fields{"stack": GetPanicStack(4)}, err)
 }
 
 // Params 方法返回当前路由参数，路由参数值为空字符串不会被使用。
@@ -155,56 +168,69 @@ func (m *RouterStd) Params() *Params {
 	return m.params
 }
 
-// GetParam method returns a router parameter.
-//
-// If the key is eudore.ParamAllKeys / eudore.ParamAllVals and the value is empty, all keys / values are returned, separated by spaces between multiple values.
-//
-// GetParam 方法返回一个路由器参数。
-//
-// 如果key为eudore.ParamAllKeys/eudore.ParamAllVals且值为空，则返回全部的键/值，多值间空格分割。
-func (m *RouterStd) GetParam(key string) string {
-	val := m.params.Get(key)
-	// 返回params全部key/val
-	if val == "" {
-		switch key {
-		case ParamAllKeys:
-			val = strings.Join(m.params.Keys, " ")
-		case ParamAllVals:
-			val = strings.Join(m.params.Vals, " ")
-		}
-	}
-	return val
-}
-
-// SetParam 方法给当前路由器设置一个参数。
-func (m *RouterStd) SetParam(key string, val string) Router {
-	m.params.Set(key, val)
-	return m
-}
-
-// ParamsCombine method parses a string path and merges it into a copy of the current routing parameters.
+// paramsCombine method parses a string path and merges it into a copy of the current routing parameters.
 //
 // For example, the path format is: / user action = user
 //
-// ParamsCombine 方法解析一个字符串路径，并合并到一个当前路由参数的副本中。
+// paramsCombine 方法解析一个字符串路径，并合并到一个当前路由参数的副本中。
 //
 // 例如路径格式为：/user action=user
-func (m *RouterStd) ParamsCombine(path string) *Params {
-	args := strings.Split(path, " ")
-	params := m.params.Clone()
-	key, val := split2byte(args[0], '=')
-	if key != "" {
-		if val != "" {
-			params.Set("route", params.Get("route")+val)
-		} else {
-			params.Set("route", params.Get("route")+key)
+func (m *RouterStd) paramsCombine(path string) *Params {
+	newparams := m.params.Clone()
+	params := NewParamsRoute(path)
+	newparams.Vals[0] = newparams.Vals[0] + params.Vals[0]
+	for i := range params.Keys[1:] {
+		newparams.Add(params.Keys[i+1], params.Vals[i+1])
+	}
+	return newparams
+}
+
+// printError 方法输出一个err，附加错误的函数名称和文件位置。
+func (m *RouterStd) printError(depth int, err error) {
+	// 兼容添加控制器错误输出
+	name, _, _ := logFormatNameFileLine(depth + 5)
+	if name == "github.com/eudore/eudore.(*RouterStd).AddController" {
+		depth += 3
+	}
+
+	name, file, line := logFormatNameFileLine(depth + 3)
+	m.Print(Fields{"params": m.params, "func": name, "file": file, "line": line}, err)
+}
+
+// printPanic 方法输出一个err，附加当前stack。
+func (m *RouterStd) printPanic(err error) {
+	m.Print(Fields{"params": m.params, "stack": GetPanicStack(4)}, err)
+}
+
+// getRoutePath 函数截取到路径中的route，支持'{}'进行块匹配。
+func getRoutePath(path string) string {
+	var depth = 0
+	var str = ""
+	for i := range path {
+		switch path[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+		case ' ':
+			if depth == 0 {
+				return str
+			}
 		}
-		args = args[1:]
+		str += path[i : i+1]
 	}
-	for _, str := range args {
-		params.Set(split2byte(str, '='))
+	return path
+}
+
+// getRouteParam 函数截取到路径中的指定参数，支持对route部分使用'{}'进行块匹配。
+func getRouteParam(path, key string) string {
+	key += "="
+	for _, i := range strings.Split(path[len(getRoutePath(path)):], " ") {
+		if strings.HasPrefix(i, key) {
+			return i[len(key):]
+		}
 	}
-	return params
+	return ""
 }
 
 // AddHandler adds a new route, allowing multiple request methods to be separated using ','.
@@ -229,24 +255,31 @@ func (m *RouterStd) AddHandler(method, path string, hs ...interface{}) error {
 // registerHandlers 方法将handler转换成HandlerFuncs，添加路由路径对应的请求中间件，并调用RouterCore对象注册路由方法。
 func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (err error) {
 	defer func() {
-		// RouterCoreFull 注册未知校验规则存在panic
+		// RouterCoreFull 注册未知校验规则存在panic,或者其他自定义路由注册出现panic。
 		if rerr := recover(); rerr != nil {
 			err = fmt.Errorf(ErrFormatRouterStdRegisterHandlersRecover, method, path, rerr)
-			m.PrintPanic(err)
+			m.printPanic(err)
 		}
 	}()
 
-	params := m.ParamsCombine(path)
+	params := m.paramsCombine(path)
 	path = params.Get("route")
 	fullpath := params.String()
+	// 如果方法为404、405方法，route为空
 	if len(fullpath) > 6 && fullpath[:6] == "route=" {
 		fullpath = fullpath[6:]
 	}
+	method = strings.ToUpper(method)
 
 	handlers, err := m.newHandlerFuncs(path, hs)
 	if err != nil {
-		m.PrintError(1, err)
+		m.printError(1, err)
 		return err
+	}
+	// 如果注册方法是TEST则输出RouterStd debug信息
+	if method == "TEST" {
+		m.Print(fmt.Sprintf("Test handlers params is %s, split path to: ['%s'], match middlewares is: %v, register handlers is: %v.", params.String(), strings.Join(getSplitPath(path), "', '"), m.Middlewares.Lookup(path), handlers))
+		return
 	}
 	m.Print("Register handler:", method, fullpath, handlers)
 	handlers = HandlerFuncsCombine(m.Middlewares.Lookup(path), handlers)
@@ -254,12 +287,13 @@ func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 	// 处理多方法
 	var errs muliterror
 	for _, i := range strings.Split(method, ",") {
+		i = strings.TrimSpace(i)
 		if checkMethod(i) {
 			m.RouterCore.HandleFunc(i, fullpath, handlers)
 		} else {
 			err := fmt.Errorf(ErrFormatRouterStdRegisterHandlersMethodInvalid, i, method, fullpath)
 			errs.HandleError(err)
-			m.PrintError(1, err)
+			m.printError(1, err)
 		}
 	}
 	return errs.GetError()
@@ -310,14 +344,26 @@ func checkMethod(method string) bool {
 func (m *RouterStd) AddController(cs ...Controller) error {
 	var errs muliterror
 	for _, c := range cs {
+		name := getConrtrollerName(c)
+		m.Print("Register controller:", m.params.String(), name)
 		err := c.Inject(c, m)
 		if err != nil {
-			err = fmt.Errorf(ErrFormatRouterStdAddController, err)
+			err = fmt.Errorf(ErrFormatRouterStdAddController, name, err)
 			errs.HandleError(err)
-			m.PrintError(0, err)
+			m.printError(0, err)
 		}
 	}
 	return errs.GetError()
+}
+
+// getConrtrollerName 函数获取控制器的名称
+func getConrtrollerName(ctl Controller) string {
+	ster, ok := ctl.(fmt.Stringer)
+	if ok {
+		return ster.String()
+	}
+	cType := reflect.Indirect(reflect.ValueOf(ctl)).Type()
+	return fmt.Sprintf("%s.%s", cType.PkgPath(), cType.Name())
 }
 
 // AddMiddleware adds multiple middleware functions to the router, which will use HandlerExtender to convert parameters.
@@ -332,7 +378,7 @@ func (m *RouterStd) AddMiddleware(hs ...interface{}) error {
 		return nil
 	}
 
-	path := m.GetParam("route")
+	path := m.Params().Get("route")
 	if len(hs) > 1 {
 		route, ok := hs[0].(string)
 		if ok {
@@ -343,7 +389,7 @@ func (m *RouterStd) AddMiddleware(hs ...interface{}) error {
 
 	handlers, err := m.newHandlerFuncs(path, hs)
 	if err != nil {
-		m.PrintError(0, err)
+		m.printError(0, err)
 		return err
 	}
 
@@ -365,7 +411,7 @@ func (m *RouterStd) AddHandlerExtend(hs ...interface{}) error {
 		return nil
 	}
 
-	path := m.GetParam("route")
+	path := m.Params().Get("route")
 	if len(hs) > 1 {
 		route, ok := hs[0].(string)
 		if ok {
@@ -380,7 +426,7 @@ func (m *RouterStd) AddHandlerExtend(hs ...interface{}) error {
 		if err != nil {
 			err = fmt.Errorf(ErrFormatRouterStdAddHandlerExtend, path, err)
 			errs.HandleError(err)
-			m.PrintError(0, err)
+			m.printError(0, err)
 		}
 	}
 	return errs.GetError()
@@ -531,4 +577,219 @@ func indexsCombine(hs1, hs2 []int) []int {
 	copy(hs, hs1)
 	copy(hs[len(hs1):], hs2)
 	return hs
+}
+
+// RouterCoreLock 允许对RouterCore读写进行加锁，用于运行时动态增删路由规则。
+type RouterCoreLock struct {
+	sync.RWMutex
+	RouterCore
+}
+
+// NewRouterCoreLock 函数创建一个带读写锁的路由器核心。
+func NewRouterCoreLock(core RouterCore) RouterCore {
+	return &RouterCoreLock{RouterCore: core}
+}
+
+// HandleFunc 方法对路由器核心加写锁进行注册路由规则。
+func (r *RouterCoreLock) HandleFunc(method, path string, hs HandlerFuncs) {
+	r.Lock()
+	// defer 防止panic导致无法解锁
+	defer r.Unlock()
+	r.RouterCore.HandleFunc(method, path, hs)
+}
+
+// Match 方法对路由器加读锁进行匹配请求。
+func (r *RouterCoreLock) Match(method, path string, params *Params) (hs HandlerFuncs) {
+	r.RLock()
+	hs = r.RouterCore.Match(method, path, params)
+	r.RUnlock()
+	return
+}
+
+// RouterCoreDebug 定义debug路由器。
+type RouterCoreDebug struct {
+	RouterCore   `json:"-" xml:"-"`
+	Methods      []string   `json:"methods" xml:"methods"`
+	Paths        []string   `json:"paths" xml:"paths"`
+	HandlerNames [][]string `json:"handlernames" xml:"handlernames"`
+}
+
+var _ RouterCore = (*RouterCoreDebug)(nil)
+
+// NewRouterCoreDebug 函数指定路由核心创建一个debug核心,默认使用eudore.RouterCoreRadix为核心。
+func NewRouterCoreDebug(core RouterCore) RouterCore {
+	if core == nil {
+		core = NewRouterRadix()
+	}
+	r := &RouterCoreDebug{
+		RouterCore: core,
+	}
+	r.HandleFunc("GET", "/eudore/debug/router/data", HandlerFuncs{r.getData})
+	return r
+}
+
+// HandleFunc 实现eudore.RouterCore接口，记录全部路由信息。
+func (r *RouterCoreDebug) HandleFunc(method, path string, hs HandlerFuncs) {
+	r.RouterCore.HandleFunc(method, path, hs)
+	names := make([]string, len(hs))
+	for i := range hs {
+		names[i] = fmt.Sprint(hs[i])
+	}
+	r.Methods = append(r.Methods, method)
+	r.Paths = append(r.Paths, path)
+	r.HandlerNames = append(r.HandlerNames, names)
+}
+
+// getData 方法返回debug路由信息数据。
+func (r *RouterCoreDebug) getData(ctx Context) {
+	ctx.SetHeader("X-Eudore-Admin", "router-debug")
+	ctx.Render(r)
+}
+
+// RouterCoreHost 实现基于host进行路由匹配
+type RouterCoreHost struct {
+	routertree   wildcardHostNode
+	routers      map[string]RouterCore
+	newRouteCore func(string) RouterCore
+}
+
+// NewRouterCoreHost h函数创建一个Host路由核心，需要给定一个根据host值创建路由核心的函数。
+func NewRouterCoreHost(newfn func(string) RouterCore) RouterCore {
+	r := &RouterCoreHost{
+		newRouteCore: newfn,
+		routers:      make(map[string]RouterCore),
+	}
+	r.getRouterCore("*")
+	return r
+}
+
+// HandleFunc 方法从path中寻找host参数选择路由器注册匹配
+//
+// host值为一个host模式，允许存在*，表示当前任意字符到下一个'.'或结尾。
+//
+// 如果host值为'*'将注册添加给当前全部路由器核心，如果host值为空注册给'*'的路由器黑心，允许多个host使用','分割一次注册给多host。
+func (r *RouterCoreHost) HandleFunc(method, path string, hs HandlerFuncs) {
+	host := getRouteParam(path, "host")
+	switch host {
+	case "*":
+		for _, core := range r.routers {
+			core.HandleFunc(method, path, hs)
+		}
+	case "":
+		r.getRouterCore("*").HandleFunc(method, path, hs)
+	default:
+		for _, host := range strings.Split(host, ",") {
+			r.getRouterCore(host).HandleFunc(method, path, hs)
+		}
+	}
+}
+
+// getRouterCore 方法寻找参数对应的路由器核心，如果不存在则调用函数创建并存储。
+func (r *RouterCoreHost) getRouterCore(host string) RouterCore {
+	core, ok := r.routers[host]
+	if ok {
+		return core
+	}
+	core = r.newRouteCore(host)
+	r.routers[host] = core
+	r.routertree.insert(host, core)
+	return core
+}
+
+// Match 方法返回RouterCoreHost.matchHost函数处理请求，在matchHost函数中使用host值进行二次匹配并拼接请求处理函数。
+func (r *RouterCoreHost) Match(method, path string, params *Params) HandlerFuncs {
+	return HandlerFuncs{r.matchHost}
+}
+
+func (r *RouterCoreHost) matchHost(ctx Context) {
+	hs := r.routertree.matchNode(ctx.Host()).Match(ctx.Method(), ctx.Path(), ctx.Params())
+	index, handlers := ctx.GetHandler()
+	ctx.SetHandler(index, HandlerFuncsCombine(HandlerFuncsCombine(handlers[:index+1], hs), handlers[index+1:]))
+}
+
+type wildcardHostNode struct {
+	path     string
+	wildcard *wildcardHostNode
+	children []*wildcardHostNode
+	data     RouterCore
+}
+
+func (node *wildcardHostNode) insert(path string, val RouterCore) {
+	paths := strings.Split(path, "*")
+	newpaths := make([]string, 1, len(paths)*2-1)
+	newpaths[0] = paths[0]
+	for _, path := range paths[1:] {
+		newpaths = append(newpaths, "*")
+		if path != "" {
+			newpaths = append(newpaths, path)
+		}
+	}
+	for _, p := range newpaths {
+		node = node.insertNode(p)
+	}
+	node.data = val
+}
+
+func (node *wildcardHostNode) insertNode(path string) *wildcardHostNode {
+	if path == "*" {
+		if node.wildcard == nil {
+			node.wildcard = &wildcardHostNode{path: path}
+		}
+		return node.wildcard
+	}
+	if path == "" {
+		return node
+	}
+
+	for i := range node.children {
+		subStr, find := getSubsetPrefix(path, node.children[i].path)
+		if find {
+			if subStr != node.children[i].path {
+				node.children[i].path = strings.TrimPrefix(node.children[i].path, subStr)
+				node.children[i] = &wildcardHostNode{
+					path:     subStr,
+					children: []*wildcardHostNode{node.children[i]},
+				}
+			}
+			return node.children[i].insertNode(strings.TrimPrefix(path, subStr))
+		}
+	}
+	newnode := &wildcardHostNode{path: path}
+	node.children = append(node.children, newnode)
+	// 常量node按照首字母排序。
+	for i := len(node.children) - 1; i > 0; i-- {
+		if node.children[i].path[0] < node.children[i-1].path[0] {
+			node.children[i], node.children[i-1] = node.children[i-1], node.children[i]
+		}
+	}
+
+	return newnode
+}
+
+func (node *wildcardHostNode) matchNode(path string) RouterCore {
+	if path == "" && node.data != nil {
+		return node.data
+	}
+	for _, current := range node.children {
+		if strings.HasPrefix(path, current.path) {
+			if result := current.matchNode(path[len(current.path):]); result != nil {
+				return result
+			}
+		}
+	}
+	if node.wildcard != nil {
+		if node.wildcard.children != nil {
+			pos := strings.IndexByte(path, '.')
+			if pos == -1 {
+				pos = len(path)
+			}
+			if result := node.wildcard.matchNode(path[pos:]); result != nil {
+				return result
+			}
+		}
+		if node.wildcard.data != nil {
+			return node.wildcard.data
+		}
+	}
+	return nil
 }

@@ -28,11 +28,9 @@ func main() {
 	client.NewRequest("GET", "/myuser/").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/myuser/").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
 	client.NewRequest("GET", "/myuser/name").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }
 

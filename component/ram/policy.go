@@ -2,18 +2,16 @@ package ram
 
 import (
 	"encoding/json"
-	"fmt"
-	"github.com/eudore/eudore"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/eudore/eudore"
 )
 
 type (
 	// Policy 定义一个策略。
 	Policy struct {
-		// Version string
-		// Description string `json:"description",omitempty`
 		Name        string      `json:"name"`
 		Description string      `json:"description"`
 		Version     string      `json:"version"`
@@ -21,46 +19,44 @@ type (
 	}
 	// Statement 定义一条策略内容。
 	Statement struct {
-		Effect     bool          `json:"effect"`
-		Action     []string      `json:"action"`
-		Resource   []string      `json:"resource"`
-		Conditions *ConditionAnd `json:"conditions,omitempty"`
+		Effect     bool      `json:"effect"`
+		Action     []string  `json:"action"`
+		Resource   []string  `json:"resource"`
+		Conditions Condition `json:"conditions,omitempty"`
 	}
 	// Condition 定义策略使用的条件。
 	Condition interface {
 		Name() string
 		Match(ctx eudore.Context) bool
 	}
-	// NewConditionFunc 定义条件构造函数。
-	NewConditionFunc func(interface{}) Condition
-	// ConditionOr 定义Or条件。
-	ConditionOr struct {
+	// conditionOr 定义Or条件。
+	conditionOr struct {
 		Conditions []Condition `json:"conditions,omitempty"`
 	}
-	// ConditionAnd 定义And条件。
-	ConditionAnd struct {
+	// conditionAnd 定义And条件。
+	conditionAnd struct {
 		Conditions []Condition `json:"conditions,omitempty"`
 	}
-	// ConditionSourceIp 定义ip检查条件。
-	ConditionSourceIp struct {
+	// conditionSourceIp 定义ip检查条件。
+	conditionSourceIp struct {
 		SourceIp []*net.IPNet `json:"sourceip,omitempty"`
 	}
-	// ConditionTime 定义当前时间现在条件。
-	ConditionTime struct {
+	// conditionTime 定义当前时间现在条件。
+	conditionTime struct {
 		Befor time.Time `json:"befor"`
 		After time.Time `json:"after"`
 	}
-	// ConditionMethod 定义请求方法条件。
-	ConditionMethod struct {
+	// conditionMethod 定义请求方法条件。
+	conditionMethod struct {
 		Methods []string `json:"methods"`
 	}
 
 	/*
-		browser条件扩展: https://github.com/eudore/website/blob/master/internal/middleware/rambrowser.go
+		ConditionBrowser扩展: https://github.com/eudore/website/blob/master/framework/rambrowser.go
 	*/
 )
 
-var conditionnews = make(map[string]NewConditionFunc)
+var conditionnews = make(map[string]func(interface{}) Condition)
 
 func init() {
 	conditionnews["or"] = NewConditionOr
@@ -71,25 +67,21 @@ func init() {
 }
 
 // RegisterCondition 方法支持一个条件构造函数，默认存在or、and、sourceip、time、method。
-func RegisterCondition(name string, cond NewConditionFunc) {
+func RegisterCondition(name string, cond func(interface{}) Condition) {
 	conditionnews[name] = cond
 }
 
-// NewPolicyStringJSON 方法使用json字符串创建一个策略对象。
-func NewPolicyStringJSON(str string) *Policy {
-	policy := Policy{}
-	err := json.Unmarshal([]byte(str), &policy)
-	if err != nil {
-		panic(err)
-	}
-
-	return &policy
+// ParsePolicyString 方法使用json字符串创建一个策略对象。
+func ParsePolicyString(str string) (*Policy, error) {
+	policy := &Policy{}
+	err := json.Unmarshal([]byte(str), policy)
+	return policy, err
 }
 
 // MatchAction 方法匹配描述的条件。
-func (stat *Statement) MatchAction(action string) bool {
+func (stat Statement) MatchAction(action string) bool {
 	for _, i := range stat.Action {
-		if MatchStar(action, i) {
+		if matchStar(action, i) {
 			return true
 		}
 	}
@@ -97,9 +89,9 @@ func (stat *Statement) MatchAction(action string) bool {
 }
 
 // MatchResource 方法匹配描述的资源。
-func (stat *Statement) MatchResource(resource string) bool {
+func (stat Statement) MatchResource(resource string) bool {
 	for _, i := range stat.Resource {
-		if MatchStar(resource, i) {
+		if matchStar(resource, i) {
 			return true
 		}
 	}
@@ -107,11 +99,33 @@ func (stat *Statement) MatchResource(resource string) bool {
 }
 
 // MatchCondition 方法匹配描述的条件。
-func (stat *Statement) MatchCondition(ctx eudore.Context) bool {
+func (stat Statement) MatchCondition(ctx eudore.Context) bool {
 	if stat.Conditions == nil {
 		return true
 	}
 	return stat.Conditions.Match(ctx)
+}
+
+// UnmarshalJSON 方法实现json反序列化。
+func (stat *Statement) UnmarshalJSON(body []byte) error {
+	var data struct {
+		Effect     bool                   `json:"effect"`
+		Action     []string               `json:"action"`
+		Resource   []string               `json:"resource"`
+		Conditions map[string]interface{} `json:"conditions,omitempty"`
+	}
+	err := json.Unmarshal(body, &data)
+	if err != nil {
+		return err
+	}
+	stat.Effect = data.Effect
+	stat.Action = data.Action
+	stat.Resource = data.Resource
+	conds := NewConditions(data.Conditions)
+	if len(conds) > 0 {
+		stat.Conditions = conditionAnd{conds}
+	}
+	return nil
 }
 
 // NewConditions 方法使用json对象创建多个条件
@@ -121,7 +135,6 @@ func NewConditions(data map[string]interface{}) []Condition {
 		fn, ok := conditionnews[key]
 		if !ok {
 			continue
-
 		}
 
 		cond := fn(val)
@@ -138,16 +151,16 @@ func NewConditionOr(i interface{}) Condition {
 	if !ok {
 		return nil
 	}
-	return &ConditionOr{Conditions: NewConditions(data)}
+	return &conditionOr{Conditions: NewConditions(data)}
 }
 
 // Name 方法返回条件名称。
-func (cond *ConditionOr) Name() string {
+func (cond conditionOr) Name() string {
 	return "or"
 }
 
 // Match 方法匹配or条件。
-func (cond *ConditionOr) Match(ctx eudore.Context) bool {
+func (cond conditionOr) Match(ctx eudore.Context) bool {
 	for _, i := range cond.Conditions {
 		if i.Match(ctx) {
 			return true
@@ -156,19 +169,8 @@ func (cond *ConditionOr) Match(ctx eudore.Context) bool {
 	return false
 }
 
-// UnmarshalJSON 方法实现json反序列化。
-func (cond *ConditionOr) UnmarshalJSON(body []byte) error {
-	var data map[string]interface{}
-	err := json.Unmarshal(body, &data)
-	if err != nil {
-		return err
-	}
-	cond.Conditions = NewConditions(data)
-	return nil
-}
-
 // MarshalJSON 方法实现json序列化。
-func (cond *ConditionOr) MarshalJSON() ([]byte, error) {
+func (cond conditionOr) MarshalJSON() ([]byte, error) {
 	data := make(map[string]Condition)
 	for _, cond := range cond.Conditions {
 		data[cond.Name()] = cond
@@ -182,16 +184,16 @@ func NewConditionAnd(i interface{}) Condition {
 	if !ok {
 		return nil
 	}
-	return &ConditionAnd{Conditions: NewConditions(data)}
+	return conditionAnd{Conditions: NewConditions(data)}
 }
 
 // Name 方法返回条件名称。
-func (cond *ConditionAnd) Name() string {
+func (cond conditionAnd) Name() string {
 	return "and"
 }
 
 // Match 方法匹配and条件。
-func (cond *ConditionAnd) Match(ctx eudore.Context) bool {
+func (cond conditionAnd) Match(ctx eudore.Context) bool {
 	for _, i := range cond.Conditions {
 		if !i.Match(ctx) {
 			return false
@@ -200,19 +202,8 @@ func (cond *ConditionAnd) Match(ctx eudore.Context) bool {
 	return true
 }
 
-// UnmarshalJSON 方法实现json反序列化。
-func (cond *ConditionAnd) UnmarshalJSON(body []byte) error {
-	var data map[string]interface{}
-	err := json.Unmarshal(body, &data)
-	if err != nil {
-		return err
-	}
-	cond.Conditions = NewConditions(data)
-	return nil
-}
-
 // MarshalJSON 方法实现json序列化。
-func (cond *ConditionAnd) MarshalJSON() ([]byte, error) {
+func (cond conditionAnd) MarshalJSON() ([]byte, error) {
 	data := make(map[string]Condition)
 	for _, cond := range cond.Conditions {
 		data[cond.Name()] = cond
@@ -223,7 +214,7 @@ func (cond *ConditionAnd) MarshalJSON() ([]byte, error) {
 // NewConditionSourceIp 方法创建一个ip匹配条件。
 func NewConditionSourceIp(i interface{}) Condition {
 	var ipnets []*net.IPNet
-	for _, i := range GetArrayString(i) {
+	for _, i := range eudore.GetStrings(i) {
 		if strings.IndexByte(i, '/') == -1 {
 			i += "/32"
 		}
@@ -232,16 +223,16 @@ func NewConditionSourceIp(i interface{}) Condition {
 			ipnets = append(ipnets, ipnet)
 		}
 	}
-	return &ConditionSourceIp{SourceIp: ipnets}
+	return &conditionSourceIp{SourceIp: ipnets}
 }
 
 // Name 方法返回条件名称。
-func (cond *ConditionSourceIp) Name() string {
+func (cond conditionSourceIp) Name() string {
 	return "sourceip"
 }
 
 // Match 方法匹配ip段。
-func (cond *ConditionSourceIp) Match(ctx eudore.Context) bool {
+func (cond conditionSourceIp) Match(ctx eudore.Context) bool {
 	for _, i := range cond.SourceIp {
 		if i.Contains(net.ParseIP(ctx.RealIP())) {
 			return true
@@ -251,7 +242,7 @@ func (cond *ConditionSourceIp) Match(ctx eudore.Context) bool {
 }
 
 // MarshalJSON 方法实现ip条件的序列化。
-func (cond *ConditionSourceIp) MarshalJSON() ([]byte, error) {
+func (cond conditionSourceIp) MarshalJSON() ([]byte, error) {
 	data := make([]string, 0, len(cond.SourceIp))
 	for _, i := range cond.SourceIp {
 		data = append(data, i.IP.String())
@@ -261,41 +252,41 @@ func (cond *ConditionSourceIp) MarshalJSON() ([]byte, error) {
 
 // NewConditionTime 方法创建一个时间条件。
 func NewConditionTime(i interface{}) Condition {
-	cond := &ConditionTime{}
+	cond := &conditionTime{}
 	data, ok := i.(map[string]interface{})
 	if ok {
-		cond.After = TimeParse(getString(data["after"]))
-		cond.Befor = TimeParse(getString(data["befor"]))
-		if cond.Befor.Unix() == 0 {
-			cond.Befor = time.Unix(9223372036854775807, 9223372036854775807)
+		cond.After = timeParse(eudore.GetString(data["after"]))
+		cond.Befor = timeParse(eudore.GetString(data["befor"]))
+		if cond.Befor.Equal(time.Time{}) {
+			cond.Befor = time.Date(9999, 12, 31, 0, 0, 0, 0, time.Now().Location())
 		}
 	}
 	return cond
 }
 
 // Name 方法返回条件名称。
-func (cond *ConditionTime) Name() string {
+func (cond conditionTime) Name() string {
 	return "time"
 }
 
 // Match 方法匹配当前时间范围。
-func (cond *ConditionTime) Match(ctx eudore.Context) bool {
+func (cond conditionTime) Match(ctx eudore.Context) bool {
 	current := time.Now()
 	return current.Before(cond.Befor) && current.After(cond.After)
 }
 
 // NewConditionMethod 创建一个请求方法条件。
 func NewConditionMethod(i interface{}) Condition {
-	return &ConditionMethod{Methods: GetArrayString(i)}
+	return &conditionMethod{Methods: eudore.GetStrings(i)}
 }
 
 // Name 方法返回条件名称。
-func (cond *ConditionMethod) Name() string {
+func (cond conditionMethod) Name() string {
 	return "method"
 }
 
 // Match 方法匹配http请求方法。
-func (cond *ConditionMethod) Match(ctx eudore.Context) bool {
+func (cond conditionMethod) Match(ctx eudore.Context) bool {
 	method := ctx.Method()
 	for _, i := range cond.Methods {
 		if i == method {
@@ -306,21 +297,8 @@ func (cond *ConditionMethod) Match(ctx eudore.Context) bool {
 }
 
 // MarshalJSON 方法实现请求方法的序列化。
-func (cond *ConditionMethod) MarshalJSON() ([]byte, error) {
+func (cond conditionMethod) MarshalJSON() ([]byte, error) {
 	return json.Marshal(cond.Methods)
-}
-
-// GetArrayString 方法将一个对象转换成字符串数组。
-func GetArrayString(i interface{}) []string {
-	strs, ok := i.([]interface{})
-	if ok {
-		data := make([]string, len(strs))
-		for i, str := range strs {
-			data[i] = fmt.Sprint(str)
-		}
-		return data
-	}
-	return nil
 }
 
 // timeformats 定义允许使用的时间格式。
@@ -348,19 +326,19 @@ var timeformats = []string{
 	"2006-01-02T15:04:05.999999999Z07:00",
 }
 
-// TimeParse 方法通过解析内置支持的时间格式。
-func TimeParse(str string) time.Time {
+// timeParse 方法通过解析内置支持的时间格式。
+func timeParse(str string) time.Time {
 	for _, f := range timeformats {
 		t, err := time.Parse(f, str)
 		if err == nil {
 			return t
 		}
 	}
-	return time.Unix(1, 0)
+	return time.Time{}
 }
 
-// MatchStar 模式匹配对象，允许使用带'*'的模式。
-func MatchStar(obj, patten string) bool {
+// matchStar 模式匹配对象，允许使用带'*'的模式。
+func matchStar(obj, patten string) bool {
 	ps := strings.Split(patten, "*")
 	if len(ps) < 2 {
 		return patten == obj
@@ -379,14 +357,4 @@ func MatchStar(obj, patten string) bool {
 		obj = obj[pos+len(i):]
 	}
 	return true
-}
-
-func getString(i interface{}) string {
-	if i == nil {
-		return ""
-	}
-	if v, ok := i.(string); ok && v != "" {
-		return v
-	}
-	return ""
 }

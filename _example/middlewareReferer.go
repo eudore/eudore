@@ -34,9 +34,6 @@ func main() {
 	client.NewRequest("GET", "/").WithHeaderValue(eudore.HeaderReferer, "http://www.example.com/1/1").Do().CheckStatus(403)
 	client.NewRequest("GET", "/").WithHeaderValue(eudore.HeaderReferer, "http://www.example.com/1/2").Do().CheckStatus(200)
 	client.NewRequest("GET", "/").WithHeaderValue(eudore.HeaderReferer, "http://127.0.0.1/1").Do().CheckStatus(200)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.Listen(":8088")
 	// app.CancelFunc()
@@ -56,14 +53,10 @@ func referer2() {
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
 	client := httptest.NewClient(app)
-	client.WithHeaderValue(eudore.HeaderHost, "www.eudore.cn")
+	client.AddHeaderValue(eudore.HeaderHost, "www.eudore.cn")
 	client.NewRequest("GET", "/").WithHeaderValue(eudore.HeaderReferer, "").Do().CheckStatus(200)
 	client.NewRequest("GET", "/").WithHeaderValue(eudore.HeaderReferer, "http://www.eudore.cn/").Do().CheckStatus(200)
 	client.NewRequest("GET", "/").WithHeaderValue(eudore.HeaderReferer, "http://www.example.com/").Do().CheckStatus(403)
-
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
 	app.Listen(":8088")
 	// app.CancelFunc()

@@ -2,6 +2,8 @@ package main
 
 /*
 ConvertTo和区别在于ConvertMap，ConvertTo会把数据转换到目标对象中，而ConvertMap会统一递归转换成map。
+
+converter.go可以单独分离出，额外需要的变量定义在const.go中。
 */
 
 import (

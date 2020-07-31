@@ -13,7 +13,7 @@ func main() {
 	pbac := ram.NewPbac()
 	// acl rbac pbac 绑定信息
 
-	app := eudore.NewCore()
+	app := eudore.NewApp()
 	app.AddMiddleware(ram.NewMiddleware(acl, rbac, pbac))
 
 	app.Listen(":80")
@@ -21,4 +21,4 @@ func main() {
 }
 ```
 
-[数据库相关封装](https://github.com/eudore/website/blob/master/internal/middleware/ram.go)
+[数据库相关封装](https://github.com/eudore/website/blob/master/framework/ram.go)

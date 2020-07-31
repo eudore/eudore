@@ -23,17 +23,11 @@ import (
 	"strings"
 )
 
-type (
-	radixTree struct {
-		root radixNode
-	}
-	radixNode struct {
-		path     string
-		children []*radixNode
-		key      string
-		val      interface{}
-	}
-)
+type radixNode struct {
+	path     string
+	children []*radixNode
+	val      interface{}
+}
 
 func main() {
 	tree := newRadixTree()
@@ -45,113 +39,73 @@ func main() {
 	tree.Insert("app", 5)
 	tree.Insert("append", 6)
 	tree.Insert("interface", 7)
+	fmt.Println(tree.Lookup("app"))
+	fmt.Println(tree.Lookup("append"))
+	tree.Delete("app")
+	fmt.Println(tree.Lookup("app"))
 	fmt.Println(tree.Lookup("append"))
 }
 
-func newRadixTree() *radixTree {
-	return &radixTree{radixNode{}}
+func newRadixTree() *radixNode {
+	return &radixNode{}
 }
 
-// 新增Node
-func (r *radixNode) InsertNode(path, key string, value interface{}) {
-	if len(path) == 0 {
-		// 路径空就设置当前node的值
-		r.key = key
-		r.val = value
-	} else {
-		// 否则新增node
-		r.children = append(r.children, &radixNode{path: path, key: key, val: value})
+func (node *radixNode) Insert(path string, val interface{}) {
+	if path == "" {
+		node.val = val
+		return
 	}
-}
-
-// 对指定路径为edgeKey的Node分叉，公共前缀路径为pathKey
-func (r *radixNode) SplitNode(pathKey, edgeKey string) *radixNode {
-	for i := range r.children {
-		// 找到路径为edgeKey路径的Node，然后分叉
-		if r.children[i].path == edgeKey {
-			// 创建新的分叉Node，路径为公共前缀路径pathKey
-			newNode := &radixNode{path: pathKey}
-			// 将原来edgeKey的数据移动到新的分叉Node之下
-			// 直接新增Node，原Node数据仅改变路径为截取后的后段路径
-			newNode.children = append(newNode.children, &radixNode{
-				// 截取路径
-				path: strings.TrimPrefix(edgeKey, pathKey),
-				// 复制数据
-				key:      r.children[i].key,
-				val:      r.children[i].val,
-				children: r.children[i].children,
-			})
-			// 设置radixNode的child[i]的Node为分叉Node
-			// 原理路径Node的数据移到到了分叉Node的child里面，原Node对象GC释放。
-			r.children[i] = newNode
-			// 返回分叉新创建的Node
-			return newNode
-		}
-	}
-	return nil
-}
-
-func (t *radixTree) Insert(key string, val interface{}) {
-	t.recursiveInsertTree(&t.root, key, key, val)
-}
-
-// 给currentNode递归添加，路径为containKey的Node
-//
-// targetKey和targetValue为新Node数据。
-func (t *radixTree) recursiveInsertTree(currentNode *radixNode, containKey string, targetKey string, targetValue interface{}) {
-	for i := range currentNode.children {
-		// 检查当前遍历的Node和插入路径是否有公共路径
-		// subStr是两者的公共路径，find表示是否有
-		subStr, find := getSubsetPrefix(containKey, currentNode.children[i].path)
+	for i := range node.children {
+		// 检查当前遍历的Node和插入路径是否有公共路径,subStr是两者的公共路径，find表示是否有
+		subStr, find := getSubsetPrefix(path, node.children[i].path)
 		if find {
-			// 如果child路径等于公共最大路径，则该node添加child
-			// child的路径为插入路径先过滤公共路径的后面部分。
-			if subStr == currentNode.children[i].path {
-				nextTargetKey := strings.TrimPrefix(containKey, currentNode.children[i].path)
-				// 当前node新增子Node可能原本有多个child，所以需要递归添加
-				t.recursiveInsertTree(currentNode.children[i], nextTargetKey, targetKey, targetValue)
-			} else {
-				// 如果公共路径不等于当前node的路径
-				// 则将currentNode.children[i]路径分叉
-				// 分叉后的就拥有了公共路径，然后添加新Node
-				newNode := currentNode.SplitNode(subStr, currentNode.children[i].path)
-				if newNode == nil {
-					panic("Unexpect error on split node")
+			// 如果child路径大于公共最大路径，则进行node分裂
+			if subStr != node.children[i].path {
+				node.children[i].path = strings.TrimPrefix(node.children[i].path, subStr)
+				node.children[i] = &radixNode{
+					path:     subStr,
+					children: []*radixNode{node.children[i]},
 				}
-				// 添加新的node
-				// 分叉后树一定只有一个没有相同路径的child，所以直接添加node
-				newNode.InsertNode(strings.TrimPrefix(containKey, subStr), targetKey, targetValue)
 			}
+			node.children[i].Insert(strings.TrimPrefix(path, subStr), val)
 			return
 		}
 	}
 	// 没有相同前缀路径存在，直接添加为child
-	currentNode.InsertNode(containKey, targetKey, targetValue)
+	node.children = append(node.children, &radixNode{path: path, val: val})
 }
 
-//Lookup: Find if seachKey exist in current radix tree and return its value
-func (t *radixTree) Lookup(searchKey string) (interface{}, bool) {
-	return t.recursiveLoopup(&t.root, searchKey)
-}
-
-// 递归获得searchNode路径为searchKey的Node数据。
-func (t *radixTree) recursiveLoopup(searchNode *radixNode, searchKey string) (interface{}, bool) {
-	// 匹配node，返回数据
-	if len(searchKey) == 0 {
-		return searchNode.val, true
+func (node *radixNode) Delete(path string) bool {
+	if len(path) == 0 {
+		node.val = nil
+		return true
 	}
-
-	for _, edgeObj := range searchNode.children {
-		// 寻找相同前缀node
-		if contrainPrefix(searchKey, edgeObj.path) {
-			// 截取为匹配的路径
-			nextSearchKey := strings.TrimPrefix(searchKey, edgeObj.path)
-			// 然后当前Node递归判断
-			return t.recursiveLoopup(edgeObj, nextSearchKey)
+	for i, child := range node.children {
+		if contrainPrefix(path, child.path) && child.Delete(strings.TrimPrefix(path, child.path)) {
+			if len(child.children) == 0 {
+				for ; i < len(node.children)-1; i++ {
+					node.children[i] = node.children[i+1]
+				}
+				node.children = node.children[:len(node.children)-1]
+			}
+			return true
 		}
 	}
+	return false
+}
 
-	return nil, false
+// Lookup 递归获得searchNode路径为searchKey的Node数据。
+func (node *radixNode) Lookup(path string) interface{} {
+	if len(path) == 0 {
+		return node.val
+	}
+	for _, child := range node.children {
+		// 寻找相同前缀node,截取为匹配的路径,然后当前Node递归判断
+		if contrainPrefix(path, child.path) {
+			return child.Lookup(strings.TrimPrefix(path, child.path))
+		}
+	}
+	return nil
 }
 
 // 判断字符串str1的前缀是否是str2

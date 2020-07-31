@@ -42,10 +42,8 @@ func main() {
 	client := httptest.NewClient(app)
 	client.NewRequest("PUT", "/file/data/1").WithHeaderValue("Content-Type", "application/json").WithBodyString(`{"username":"abc","name":"eudore","age":21,"password":"12345678"}`).Do().CheckStatus(200).Out()
 	client.NewRequest("PUT", "/file/data/2").WithHeaderValue("Content-Type", "application/json").WithBodyString(`{"username":"abc","name":"","age":21,"password":"12345"}`).Do().CheckStatus(200).Out()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

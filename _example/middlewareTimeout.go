@@ -1,6 +1,11 @@
 package main
 
+/*
+Eudore.Context实现并发安全需要对几乎所有操作加锁，成本太大使用http.TimeoutHandler仅对全局进行超时限制。
+*/
+
 import (
+	"net/http"
 	"time"
 
 	"github.com/eudore/eudore"
@@ -10,10 +15,11 @@ import (
 
 func main() {
 	app := eudore.NewApp()
+	app.SetHandler(http.TimeoutHandler(app, 3*time.Second/10, ""))
 	app.AddMiddleware(
 		middleware.NewLoggerFunc(app, "route"),
 		middleware.NewRecoverFunc(),
-		middleware.NewTimeoutFunc(3*time.Second/10),
+		// middleware.NewTimeoutFunc(3*time.Second/10),
 	)
 	app.AnyFunc("/*", func(ctx eudore.ContextData) {
 		time.Sleep(time.Duration(ctx.GetParamInt64("*")) * time.Second / 10)
@@ -33,21 +39,16 @@ func main() {
 		ctx.Debug(11 / n)
 	})
 
-	client := httptest.NewClient(app)
+	client := httptest.NewClient(http.TimeoutHandler(app, 3*time.Second/10, ""))
 	client.NewRequest("PUT", "/1").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/2").Do().CheckStatus(200)
-	client.NewRequest("PUT", "/3").Do().CheckStatus(200)
-	client.NewRequest("PUT", "/4").Do().CheckStatus(200)
-	client.NewRequest("PUT", "/5").Do().CheckStatus(200)
+	client.NewRequest("PUT", "/4").Do().CheckStatus(503)
+	client.NewRequest("PUT", "/5").Do().CheckStatus(503)
 	client.NewRequest("PUT", "/h/1").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/h/2").Do().CheckStatus(200)
-	client.NewRequest("PUT", "/h/3").Do().CheckStatus(200)
-	client.NewRequest("PUT", "/h/4").Do().CheckStatus(200)
-	client.NewRequest("PUT", "/h/5").Do().CheckStatus(200)
-	client.NewRequest("PUT", "/panic").Do().CheckStatus(200)
-	for client.Next() {
-		app.Error(client.Error())
-	}
+	client.NewRequest("PUT", "/h/4").Do().CheckStatus(503)
+	client.NewRequest("PUT", "/h/5").Do().CheckStatus(503)
+	client.NewRequest("PUT", "/panic").Do().CheckStatus(503)
 
 	app.Listen(":8088")
 	// app.CancelFunc()

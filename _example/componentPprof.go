@@ -20,6 +20,7 @@ func main() {
 	client.NewRequest("GET", "/eudore/debug/pprof/expvar").WithHeaderValue(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do().OutBody()
 	client.NewRequest("GET", "/eudore/debug/pprof/goroutine?debug=1").Do().OutBody()
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

@@ -86,10 +86,8 @@ func main() {
 	`).Do().CheckStatus(200).Out()
 	client.NewRequest("PUT", "/body").WithBodyString(`{"name": "eudore","type": "file", "size":720,"lastModified":1257894000}`).Do()
 	client.NewRequest("PUT", "/with").WithBodyString(`{"name": "eudore","type": "file", "size":720,"lastModified":1257894000}`).Do()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

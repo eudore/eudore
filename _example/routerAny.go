@@ -51,10 +51,8 @@ func main() {
 	client.NewRequest("GET", "/get/1").Do().CheckStatus(200).CheckBodyContainString("get").OutBody()
 	client.NewRequest("POST", "/get/2").Do().CheckStatus(200).CheckBodyContainString("post").OutBody()
 	client.NewRequest("PUT", "/get/3").Do().CheckStatus(200).CheckBodyContainString("any").OutBody()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

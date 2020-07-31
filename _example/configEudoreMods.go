@@ -55,6 +55,7 @@ func main() {
 	app.Config.Set("keys.config", configfilepath)
 	app.Config.Set("enable", []string{"debug"})
 	app.Options(app.Parse())
+	app.Info(app.Get("component.server.readtimeout"))
 
 	app.Listen(":8088")
 	// app.CancelFunc()

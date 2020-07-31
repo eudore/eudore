@@ -45,8 +45,8 @@ func main() {
 	pbac.AddPolicyStringJson(1, `{"version":"1","description":"AdministratorAccess","statement":[{"effect":true,"action":["*"],"resource":["*"]}]}`)
 	pbac.AddPolicyStringJson(2, `{"version":"1","description":"Get method allow","statement":[{"effect":true,"action":["*"],"resource":["*"],"conditions":{"method":["GET"]}}]}`)
 	pbac.AddPolicyStringJson(3, `{"version":"1","description":"Get method allow","statement":[{"effect":true,"action":["3"],"resource":["*"]}]}`)
-	pbac.BindPolicy(1, 2)
-	pbac.BindPolicy(1, 3)
+	pbac.BindPolicy(1, 1, 2)
+	pbac.BindPolicy(1, 1, 3)
 
 	app := eudore.NewApp()
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "action", "ram", "route", "resource", "browser"))
@@ -68,10 +68,8 @@ func main() {
 	client.NewRequest("PUT", "/4").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/5").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/6").Do().CheckStatus(200)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

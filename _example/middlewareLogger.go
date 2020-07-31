@@ -15,7 +15,7 @@ func main() {
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
 	client := httptest.NewClient(app)
-	client.WithHeaderValue(eudore.HeaderXParentID, "parent-id")
+	client.AddHeaderValue(eudore.HeaderXParentID, "parent-id")
 	client.NewRequest("GET", "/1?a=1").Do()
 	client.NewRequest("GET", "/r").WithHeaderValue(eudore.HeaderXRequestID, "request-id").Do()
 

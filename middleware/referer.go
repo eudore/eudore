@@ -22,7 +22,7 @@ func NewRefererFunc(data map[string]bool) eudore.HandlerFunc {
 
 	tree := new(refererNode)
 	for k, v := range data {
-		if strings.HasPrefix(k, "http://") || strings.HasPrefix(k, "http://") || k == "" {
+		if strings.HasPrefix(k, "http://") || strings.HasPrefix(k, "https://") || k == "" {
 			tree.insert(k).data = fmt.Sprint(v)
 		} else {
 			tree.insert("http://" + k).data = fmt.Sprint(v)
@@ -145,27 +145,3 @@ func (node *refererNode) matchNode(path string) *refererNode {
 	}
 	return nil
 }
-
-/*
-func (node *refererNode) insertNode(path string) *refererNode {
-	if path == "" {
-		return node
-	}
-	for i := range node.children {
-		subStr, find := getSubsetPrefix(path, node.children[i].path)
-		if find {
-			if subStr != node.children[i].path {
-				node.children[i].path = strings.TrimPrefix(node.children[i].path, subStr)
-				node.children[i] = &refererNode{
-					path:     subStr,
-					children: []*refererNode{node.children[i]},
-				}
-			}
-			return node.children[i].insertNode(strings.TrimPrefix(path, subStr))
-		}
-	}
-	newnode := &refererNode{path: path}
-	node.children = append(node.children, newnode)
-	return newnode
-}
-*/

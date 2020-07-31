@@ -6,10 +6,9 @@ BasicAuth
 实现请求BasicAuth访问认证
 
 参数:
-	string               指定realm值，通常可以忽略使用空字符串
 	map[string]string    允许的用户名和密码的键值对map。
 example:
-	app.AddMiddleware(middleware.NewBasicAuthFunc("Eudore", map[string]string{"user": "pw"}))
+	app.AddMiddleware(middleware.NewBasicAuthFunc(map[string]string{"user": "pw"}))
 
 
 Black
@@ -210,10 +209,7 @@ Timeout
 
 设置请求处理超时时间，如果超时返回503状态码并取消context，
 
-参数:
-	time.Duration    请求处理超时时间
-example:
-	app.AddMiddleware(middleware.NewTimeoutFunc(3*time.Second)）
+实现难点：写入中超时状态码异常、panic栈无法捕捉信息异常、http.Header并发读写、sync.Pool回收了Context、Context数据竟态检测
 
 */
 package middleware

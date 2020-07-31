@@ -25,8 +25,8 @@ func NewDumpFunc(router eudore.Router) eudore.HandlerFunc {
 	router.AnyFunc("/dump/ui", HandlerAdmin)
 	router.AnyFunc("/dump/connect", d.dumphandler)
 	return func(ctx eudore.Context) {
-		indexs := d.matchConn(ctx)
-		if len(indexs) != 0 {
+		conns := d.matchConn(ctx)
+		if len(conns) != 0 {
 			// not handler panic
 			ctx.Body()
 			dumpresp := &dumpResponset{ResponseWriter: ctx.Response()}
@@ -49,13 +49,13 @@ func NewDumpFunc(router eudore.Router) eudore.HandlerFunc {
 				Params:         ctx.Params(),
 				Handlers:       getContextHandlerName(ctx),
 			}
-			d.WriteMessage(msg, indexs)
+			msg.WriteMessage(conns)
 		}
 	}
 }
 
 type dump struct {
-	sync.Mutex
+	sync.RWMutex
 	dumpconn []*dumpConn
 }
 
@@ -91,38 +91,28 @@ func (d *dump) newDumpConn(ctx eudore.Context) error {
 		dumpconn.keys = append(dumpconn.keys, k)
 		dumpconn.vals = append(dumpconn.vals, querys.Get(k))
 	}
+	for i := 0; i < len(d.dumpconn); i++ {
+		d.dumpconn[i].Lock()
+		empty := d.dumpconn[i].Conn == nil
+		d.dumpconn[i].Unlock()
+		if empty {
+			d.dumpconn[i] = dumpconn
+			return nil
+		}
+	}
 	d.dumpconn = append(d.dumpconn, dumpconn)
 	return nil
 }
 
-func (d *dump) matchConn(ctx eudore.Context) (index []int) {
-	for i := range d.dumpconn {
+func (d *dump) matchConn(ctx eudore.Context) (conns []*dumpConn) {
+	d.RLock()
+	defer d.RUnlock()
+	for i := 0; i < len(d.dumpconn); i++ {
 		if d.dumpconn[i].Match(ctx) {
-			index = append(index, i)
+			conns = append(conns, d.dumpconn[i])
 		}
 	}
 	return
-}
-
-func (d *dump) WriteMessage(msg *dumpMessage, indexs []int) {
-	body, _ := json.Marshal(msg)
-	var head []byte
-	length := len(body)
-	if length <= 0xffff {
-		head = []byte{129, 126, uint8(length >> 8), uint8(length & 0xff)}
-	} else {
-		head = []byte{129, 127, 0, 0, 0, 0, 0, 0, 0, 0}
-		for i := uint(0); i < 7; i++ {
-			head[9-i] = uint8(length >> (8 * i) & 0xff)
-		}
-	}
-	for i := range indexs {
-		conn := d.dumpconn[i]
-		conn.Lock()
-		conn.Write(head)
-		conn.Write(body)
-		conn.Unlock()
-	}
 }
 
 type dumpConn struct {
@@ -133,24 +123,17 @@ type dumpConn struct {
 }
 
 func (cond *dumpConn) Match(ctx eudore.Context) bool {
+	cond.Lock()
+	defer cond.Unlock()
+	if cond.Conn == nil {
+		return false
+	}
 	for i := range cond.keys {
-		switch {
-		case cond.keys[i] == "path":
-			if !matchStar(ctx.Path(), cond.vals[i]) {
-				return false
-			}
-		case strings.HasPrefix(cond.keys[i], "query-"):
-			if !matchStar(ctx.GetParam(cond.keys[i][6:]), cond.vals[i]) {
-				return false
-			}
-		case strings.HasPrefix(cond.keys[i], "header-"):
-			if !matchStar(ctx.GetHeader(cond.keys[i][7:]), cond.vals[i]) {
-				return false
-			}
-		case strings.HasPrefix(cond.keys[i], "param-"):
-			if !matchStar(ctx.GetParam(cond.keys[i][6:]), cond.vals[i]) {
-				return false
-			}
+		if cond.keys[i] == "path" && !matchStar(ctx.Path(), cond.vals[i]) ||
+			strings.HasPrefix(cond.keys[i], "query-") && !matchStar(ctx.GetParam(cond.keys[i][6:]), cond.vals[i]) ||
+			strings.HasPrefix(cond.keys[i], "header-") && !matchStar(ctx.GetHeader(cond.keys[i][7:]), cond.vals[i]) ||
+			strings.HasPrefix(cond.keys[i], "param-") && !matchStar(ctx.GetParam(cond.keys[i][6:]), cond.vals[i]) {
+			return false
 		}
 	}
 	return true
@@ -171,6 +154,29 @@ type dumpMessage struct {
 	ResponseBody   []byte
 	Params         *eudore.Params
 	Handlers       []string
+}
+
+func (msg *dumpMessage) WriteMessage(conns []*dumpConn) {
+	body, _ := json.Marshal(msg)
+	var head []byte
+	length := len(body)
+	if length <= 0xffff {
+		head = []byte{129, 126, uint8(length >> 8), uint8(length & 0xff)}
+	} else {
+		head = []byte{129, 127, 0, 0, 0, 0, 0, 0, 0, 0}
+		for i := uint(0); i < 7; i++ {
+			head[9-i] = uint8(length >> (8 * i) & 0xff)
+		}
+	}
+	for _, conn := range conns {
+		conn.Lock()
+		conn.Write(head)
+		_, err := conn.Write(body)
+		if err != nil {
+			conn.Conn = nil
+		}
+		conn.Unlock()
+	}
 }
 
 func getContextHandlerName(ctx eudore.Context) []string {

@@ -37,6 +37,7 @@ func main() {
 		"num":  44,
 	}).WithHeaderValue("Accept", " application/json").Do().Out()
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

@@ -69,8 +69,8 @@ func (b *black) data(ctx eudore.Context) interface{} {
 }
 
 func (b *black) putIP(ctx eudore.Context) {
-	ip := fmt.Sprintf("%s/%s", ctx.GetParam("ip"), eudore.GetStringDefault(ctx.GetQuery("mask"), "32"))
-	ctx.Infof("%s insert %s ip: %s", ctx.RealIP(), eudore.GetStringDefault(ctx.GetQuery("black"), "white"), ip)
+	ip := fmt.Sprintf("%s/%s", ctx.GetParam("ip"), eudore.GetString(ctx.GetQuery("mask"), "32"))
+	ctx.Infof("%s insert %s ip: %s", ctx.RealIP(), eudore.GetString(ctx.GetQuery("black"), "white"), ip)
 	if ctx.GetParam("black") != "" {
 		b.InsertBlack(ip)
 	} else {
@@ -79,8 +79,8 @@ func (b *black) putIP(ctx eudore.Context) {
 }
 
 func (b *black) deleteIP(ctx eudore.Context) {
-	ip := fmt.Sprintf("%s/%s", ctx.GetParam("ip"), eudore.GetStringDefault(ctx.GetQuery("mask"), "32"))
-	ctx.Infof("%s delete %s ip: %s", ctx.RealIP(), eudore.GetStringDefault(ctx.GetQuery("black"), "white"), ip)
+	ip := fmt.Sprintf("%s/%s", ctx.GetParam("ip"), eudore.GetString(ctx.GetQuery("mask"), "32"))
+	ctx.Infof("%s delete %s ip: %s", ctx.RealIP(), eudore.GetString(ctx.GetQuery("black"), "white"), ip)
 	if ctx.GetParam("black") != "" {
 		b.DeleteBlack(ip)
 	} else {

@@ -14,10 +14,8 @@ func main() {
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/eudore/debug/show/").Do().OutBody()
 	client.NewRequest("GET", "/eudore/debug/pprof/look/?d=1").Do().OutBody()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

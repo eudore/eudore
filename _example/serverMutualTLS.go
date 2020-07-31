@@ -65,7 +65,7 @@ func main() {
 	}
 	client.NewRequest("GET", "https://localhost:8088/").Do().CheckStatus(200).Out()
 
-	app.CancelFunc()
+	// app.CancelFunc()
 	app.Run()
 }
 

@@ -29,6 +29,6 @@ func main() {
 	}))
 
 	app.Listen(":8088")
-	app.CancelFunc()
+	// app.CancelFunc()
 	app.Run()
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -24,7 +25,7 @@ type App struct {
 	Validater          `alias:"validater"`
 	GetWarp            `alias:"getwarp"`
 	HandlerFuncs       `alias:"handlerfuncs"`
-	NewContext         func() Context `alias:"newcontext"`
+	ContextPool        sync.Pool `alias:"contextpool"`
 }
 
 // NewApp 函数创建一个App对象。
@@ -41,8 +42,8 @@ func NewApp(options ...interface{}) *App {
 	app.Context, app.CancelFunc = context.WithCancel(context.WithValue(context.Background(), AppContextKey, app))
 	app.Server.SetHandler(app)
 	app.GetWarp = NewGetWarpWithApp(app)
-	app.NewContext = NewContextBaseFunc(app)
 	app.HandlerFuncs = HandlerFuncs{app.serveContext}
+	app.ContextPool.New = func() interface{} { return NewContextBase(app) }
 	Set(app.Config, "print", NewPrintFunc(app))
 	Set(app.Server, "print", NewPrintFunc(app))
 	Set(app.Router, "print", NewPrintFunc(app))
@@ -119,11 +120,12 @@ func (app *App) serveContext(ctx Context) {
 
 // ServeHTTP 方法实现http.Handler接口，处理http请求。
 func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx := app.NewContext()
+	ctx := app.ContextPool.Get().(Context)
 	ctx.Reset(r.Context(), w, r)
 	ctx.SetHandler(-1, app.HandlerFuncs)
 	ctx.Next()
 	ctx.End()
+	app.ContextPool.Put(ctx)
 }
 
 // AddMiddleware 方法如果第一个参数为字符串"global",则使用DefaultHandlerExtend创建请求处理函数，并作为全局请求中间件添加给App。
@@ -151,7 +153,7 @@ func (app *App) Listen(addr string) error {
 		app.Error(err)
 		return err
 	}
-	app.Logger.Infof("listen %s %s", ln.Addr().Network(), ln.Addr().String())
+	app.Logger.Infof("listen http in %s %s", ln.Addr().Network(), ln.Addr().String())
 	app.Serve(ln)
 	return nil
 }
@@ -170,7 +172,7 @@ func (app *App) ListenTLS(addr, key, cert string) error {
 		app.Error(err)
 		return err
 	}
-	app.Logger.Infof("listen tls %s %s", ln.Addr().Network(), ln.Addr().String())
+	app.Logger.Infof("listen https in %s %s", ln.Addr().Network(), ln.Addr().String())
 	app.Serve(ln)
 	return nil
 }

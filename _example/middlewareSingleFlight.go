@@ -39,10 +39,6 @@ func main() {
 	client.NewRequest("POST", "/sf").Do()
 	client.NewRequest("GET", "/s").Do().CheckBodyString("hello eudore")
 
-	for client.Next() {
-		app.Error(client.Error())
-	}
-
 	app.Listen(":8088")
 	// app.CancelFunc()
 	app.Run()

@@ -209,8 +209,8 @@ func (s *getSeter) setMap(iValue reflect.Value) error {
 }
 
 func (s *getSeter) setArray(iValue reflect.Value) error {
-	index := GetStringDefaultInt(s.keys[0], -1)
-	if index < 0 || index >= iValue.Len() {
+	index, err := strconv.Atoi(s.keys[0])
+	if err != nil || index < 0 || index >= iValue.Len() {
 		return fmt.Errorf(ErrFormatConverterSetArrayIndexInvalid, s.keys[0], iValue.Len())
 	}
 	s.keys = s.keys[1:]
@@ -226,8 +226,11 @@ func (s *getSeter) setSlice(iValue reflect.Value) error {
 	}
 	// 创建新元素的类型和值
 	newValue := reflect.New(iType.Elem()).Elem()
-	index := GetStringDefaultInt(s.keys[0], -1)
-	if index != -1 {
+	index, err := strconv.Atoi(s.keys[0])
+	if err != nil {
+		index = -1
+	}
+	if index > -1 {
 		// 新建数组替换原数组扩容
 		if iValue.Cap() <= index {
 			iValue.Set(reflect.AppendSlice(reflect.MakeSlice(iType, 0, index+1), iValue))
@@ -241,12 +244,12 @@ func (s *getSeter) setSlice(iValue reflect.Value) error {
 	}
 
 	s.keys = s.keys[1:]
-	err := s.setValue(newValue)
+	err = s.setValue(newValue)
 	if err == nil {
-		if index == -1 {
-			iValue.Set(reflect.Append(iValue, newValue))
-		} else {
+		if index > -1 {
 			iValue.Index(index).Set(newValue)
+		} else {
+			iValue.Set(reflect.Append(iValue, newValue))
 		}
 	}
 	return err
@@ -355,8 +358,8 @@ func (s *getSeter) getSlice(iValue reflect.Value) interface{} {
 		return nil
 	}
 	// 检测索引是否存在
-	index := GetStringDefaultInt(s.keys[0], -1)
-	if index < 0 || iValue.Len() <= index {
+	index, err := strconv.Atoi(s.keys[0])
+	if err != nil || index < 0 || iValue.Len() <= index {
 		return nil
 	}
 	s.keys = s.keys[1:]

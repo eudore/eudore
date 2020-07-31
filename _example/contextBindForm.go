@@ -18,11 +18,9 @@ func main() {
 
 	client := httptest.NewClient(app)
 	client.NewRequest("POST", "/file/data/content.text").WithBodyFormValue("name", "my name").WithBodyFormFile("file", "contextBindForm.go", "contextBindForm file content").Do()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }
 

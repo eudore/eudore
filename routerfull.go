@@ -9,11 +9,11 @@ import (
 )
 
 const (
-	fullNodeKindConst    uint8 = 1 << iota // 常量
-	fullNodeKindRegex                      // 参数正则或函数校验
-	fullNodeKindParam                      // 参数
-	fullNodeKindValid                      // 通配符正则或函数校验
-	fullNodeKindWildcard                   // 通配符
+	fullNodeKindConst         uint8 = 1 << iota // 常量
+	fullNodeKindParamValid                      // 参数校验
+	fullNodeKindParam                           // 参数
+	fullNodeKindWildcardValid                   // 通配符校验
+	fullNodeKindWildcard                        // 通配符
 	fullNodeKindAnyMethod
 )
 
@@ -27,7 +27,6 @@ const (
 type RouterCoreFull struct {
 	node404 fullNode
 	node405 fullNode
-	root    fullNode
 	get     fullNode
 	post    fullNode
 	put     fullNode
@@ -37,45 +36,34 @@ type RouterCoreFull struct {
 	patch   fullNode
 }
 type fullNode struct {
-	path string
 	kind uint8
 	pnum uint8
+	path string
 	name string
 	// 保存各类子节点
-	Cchildren []*fullNode
-	Rchildren []*fullNode
-	Pchildren []*fullNode
-	Vchildren []*fullNode
-	Wchildren *fullNode
+	Cchildren  []*fullNode
+	PVchildren []*fullNode
+	Pchildren  []*fullNode
+	WVchildren []*fullNode
+	Wchildren  *fullNode
 	// 默认标签的名称和值
-	tags []string
-	vals []string
-	// 校验函数
-	check func(string) bool
-	// 正则捕获名称和函数
-	// names		[]string
-	// find		RouterFindFunc
-	// 路由匹配的处理者
-	handlers HandlerFuncs
-}
-
-// NewRouterFull 函数创建一个Full路由器。
-func NewRouterFull() Router {
-	return NewRouterStd(NewRouterCoreFull())
+	params      *Params
+	handlers    HandlerFuncs
+	anyin       bool
+	anyhandlers HandlerFuncs
+	check       func(string) bool
 }
 
 // NewRouterCoreFull 函数创建一个Full路由器核心，使用radix匹配。
 func NewRouterCoreFull() RouterCore {
 	return &RouterCoreFull{
 		node404: fullNode{
-			tags:     []string{ParamRoute},
-			vals:     []string{"404"},
+			params:   &Params{Keys: []string{ParamRoute}, Vals: []string{"404"}},
 			handlers: HandlerFuncs{HandlerRouter404},
 		},
 		node405: fullNode{
 			Wchildren: &fullNode{
-				tags:     []string{ParamRoute},
-				vals:     []string{"405"},
+				params:   &Params{Keys: []string{ParamRoute}, Vals: []string{"405"}},
 				handlers: HandlerFuncs{HandlerRouter405},
 			},
 		},
@@ -104,218 +92,19 @@ func (r *RouterCoreFull) HandleFunc(method string, path string, handler HandlerF
 	}
 }
 
-// Add a new route Node.
-//
-// If the method does not support it will not be added, request to change the path will respond 405
-//
-// 添加一个新的路由Node。
-//
-// 如果方法不支持则不会添加，请求改路径会响应405
-func (r *RouterCoreFull) insertRoute(method, key string, isany bool, val HandlerFuncs) {
-	var currentNode = r.getTree(method)
-	if currentNode == &r.node405 {
-		return
-	}
-
-	// 创建节点
-	args := strings.Split(key, " ")
-	for _, path := range getSplitPath(args[0]) {
-		currentNode = currentNode.InsertNode(path, newFullNode(path))
-	}
-
-	if isany {
-		if currentNode.kind&fullNodeKindAnyMethod != fullNodeKindAnyMethod && currentNode.handlers != nil {
-			return
-		}
-		currentNode.kind |= fullNodeKindAnyMethod
-	} else {
-		currentNode.kind &^= fullNodeKindAnyMethod
-	}
-
-	currentNode.handlers = val
-	currentNode.SetTags(args)
-}
-
 // Match a request, if the method does not allow direct return to node405, no match returns node404.
 //
 // Note: 404 does not support extra parameters, not implemented.
 //
 // 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
 func (r *RouterCoreFull) Match(method, path string, params *Params) HandlerFuncs {
-	if n := r.getTree(method).recursiveLoopup(path, params); n != nil {
+	if n := r.getTree(method).lookNode(path, params); n != nil {
 		return n
 	}
 
 	// 处理404
-	r.node404.AddTagsToParams(params)
+	params.Combine(r.node404.params)
 	return r.node404.handlers
-}
-
-// 创建一个Radix树Node，会根据当前路由设置不同的节点类型和名称。
-//
-// '*'前缀为通配符节点，':'前缀为参数节点，其他未常量节点,如果通配符和参数结点后带有符号'|'则为校验结点。
-func newFullNode(path string) *fullNode {
-	newNode := &fullNode{path: path}
-	switch path[0] {
-	case '*':
-		newNode.kind = fullNodeKindWildcard
-		if len(path) == 1 {
-			newNode.name = "*"
-		} else {
-			newNode.name = path[1:]
-			// 如果路径后序具有'|'符号，则截取后端名称返回校验函数
-			// 并升级成校验通配符Node
-			if name, fn := loadCheckFunc(path); len(name) > 0 {
-				// 无法获得校验函数抛出错误
-				if fn == nil {
-					panic("loadCheckFunc path is invalid, load func failure " + path)
-				}
-				newNode.kind, newNode.name, newNode.check = fullNodeKindValid, name, fn
-			}
-		}
-	case ':':
-		newNode.kind = fullNodeKindParam
-		newNode.name = path[1:]
-		// 如果路径后序具有'|'符号，则截取后端名称返回校验函数
-		// 并升级成校验参数Node
-		if name, fn := loadCheckFunc(path); len(name) > 0 {
-			if fn == nil {
-				panic("loadCheckFunc path is invalid, load func failure " + path)
-			}
-			newNode.kind, newNode.name, newNode.check = fullNodeKindRegex, name, fn
-		}
-	// 常量Node
-	default:
-		newNode.kind = fullNodeKindConst
-	}
-	return newNode
-}
-
-// Load the checksum function by name.
-//
-// 根据名称加载校验函数。
-func loadCheckFunc(path string) (string, func(string) bool) {
-	path = path[1:]
-	// Intercept parameter name and check function name
-	// 截取参数名称和校验函数名称
-	name, fname := split2byte(path, '|')
-	if name == "" || fname == "" {
-		return "", nil
-	}
-
-	// regular
-	// If it is the beginning of a regular expression, add the default regular check function name.
-	// 正则
-	// 如果是正则表达式开头，添加默认正则校验函数名称。
-	if fname[0] == '^' {
-		fname = "regexp:" + fname
-	}
-
-	// 调用validate部分创建check函数
-	return name, GetValidateStringFunc(fname)
-}
-
-// InsertNode add a child node to the node.
-//
-// InsertNode 给节点添加一个子节点。
-func (r *fullNode) InsertNode(path string, nextNode *fullNode) *fullNode {
-	if len(path) == 0 {
-		return r
-	}
-	nextNode.path = path
-	switch nextNode.kind &^ fullNodeKindAnyMethod {
-	case fullNodeKindConst:
-		return r.InsertNodeConst(path, nextNode)
-	case fullNodeKindParam:
-		// parameter node
-		// 参数节点
-
-		// The path exists to return the old Node
-		// 路径存在返回旧Node
-		for _, i := range r.Pchildren {
-			if i.path == path {
-				return i
-			}
-		}
-		r.pnum++
-		r.Pchildren = append(r.Pchildren, nextNode)
-	case fullNodeKindRegex:
-		// parameter check node
-		// 参数校验节点
-		for _, i := range r.Rchildren {
-			if i.path == path {
-				return i
-			}
-		}
-		r.pnum++
-		r.Rchildren = append(r.Rchildren, nextNode)
-	case fullNodeKindValid:
-		// wildcard check Node
-		// 通配符校验Node
-		for _, i := range r.Vchildren {
-			if i.path == path {
-				return i
-			}
-		}
-		r.Vchildren = append(r.Vchildren, nextNode)
-	case fullNodeKindWildcard:
-		// Set the wildcard Node data.
-		// 设置通配符Node数据。
-		r.Wchildren = nextNode
-		// default:
-		// 	panic("Undefined radix node type from router full.")
-	}
-	return nextNode
-}
-
-// InsertNodeConst 方法处理添加常量node。
-func (r *fullNode) InsertNodeConst(path string, nextNode *fullNode) *fullNode {
-	// 变量添加常量node
-	for i := range r.Cchildren {
-		subStr, find := getSubsetPrefix(path, r.Cchildren[i].path)
-		if find {
-			if subStr != r.Cchildren[i].path {
-				r.Cchildren[i].path = strings.TrimPrefix(r.Cchildren[i].path, subStr)
-				r.Cchildren[i] = &fullNode{
-					path:      subStr,
-					Cchildren: []*fullNode{r.Cchildren[i]},
-				}
-			}
-			return r.Cchildren[i].InsertNode(strings.TrimPrefix(path, subStr), nextNode)
-		}
-	}
-	r.Cchildren = append(r.Cchildren, nextNode)
-	// 常量node按照首字母排序。
-	for i := len(r.Cchildren) - 1; i > 0; i-- {
-		if r.Cchildren[i].path[0] < r.Cchildren[i-1].path[0] {
-			r.Cchildren[i], r.Cchildren[i-1] = r.Cchildren[i-1], r.Cchildren[i]
-		}
-	}
-	return nextNode
-}
-
-// Set the tags for the current Node
-//
-// 给当前Node设置tags
-func (r *fullNode) SetTags(args []string) {
-	r.tags = make([]string, len(args))
-	r.vals = make([]string, len(args))
-	// The first parameter name defaults to route
-	// 第一个参数名称默认为route
-	r.tags[0] = ParamRoute
-	r.vals[0] = args[0]
-	for i, str := range args[1:] {
-		r.tags[i+1], r.vals[i+1] = split2byte(str, '=')
-	}
-}
-
-// AddTagsToParams give the current Node tag to Params
-//
-// AddTagsToParams 将当前Node的tags给予Params
-func (r *fullNode) AddTagsToParams(p *Params) {
-	for i := range r.tags {
-		p.Add(r.tags[i], r.vals[i])
-	}
 }
 
 // Get the tree of the corresponding method.
@@ -346,22 +135,186 @@ func (r *RouterCoreFull) getTree(method string) *fullNode {
 	}
 }
 
-func (r *fullNode) recursiveLoopup(searchKey string, params *Params) HandlerFuncs {
+// Add a new route Node.
+//
+// If the method does not support it will not be added, request to change the path will respond 405
+//
+// 添加一个新的路由Node。
+//
+// 如果方法不支持则不会添加，请求改路径会响应405
+func (r *RouterCoreFull) insertRoute(method, key string, isany bool, val HandlerFuncs) {
+	var currentNode = r.getTree(method)
+	if currentNode == &r.node405 {
+		return
+	}
+
+	params := NewParamsRoute(key)
+	if params.Get(ParamRegister) == "off" {
+		currentNode.deleteRoute(params.Get(ParamRoute), isany, val)
+		return
+	}
+
+	// 创建节点
+	for _, path := range getSplitPath(params.Get(ParamRoute)) {
+		currentNode = currentNode.insertNode(path, newFullNode(path))
+	}
+	currentNode.params = params
+	if isany {
+		if currentNode.anyin || currentNode.handlers == nil {
+			currentNode.handlers = val
+			currentNode.anyin = true
+		}
+		currentNode.anyhandlers = val
+	} else {
+		currentNode.handlers = val
+		currentNode.anyin = false
+	}
+}
+
+// 创建一个Radix树Node，会根据当前路由设置不同的节点类型和名称。
+//
+// '*'前缀为通配符节点，':'前缀为参数节点，其他未常量节点,如果通配符和参数结点后带有符号'|'则为校验结点。
+func newFullNode(path string) *fullNode {
+	newNode := &fullNode{path: path}
+	switch path[0] {
+	case '*':
+		newNode.kind = fullNodeKindWildcard
+		if len(path) == 1 {
+			newNode.name = "*"
+		} else {
+			newNode.name = path[1:]
+			// 如果路径后序具有'|'符号，则截取后端名称返回校验函数
+			// 并升级成校验通配符Node
+			if name, fn := loadCheckFunc(path); len(name) > 0 {
+				// 无法获得校验函数抛出错误
+				if fn == nil {
+					panic("loadCheckFunc path is invalid, load func failure " + path)
+				}
+				newNode.kind, newNode.name, newNode.check = fullNodeKindWildcardValid, name, fn
+			}
+		}
+	case ':':
+		newNode.kind = fullNodeKindParam
+		newNode.name = path[1:]
+		// 如果路径后序具有'|'符号，则截取后端名称返回校验函数
+		// 并升级成校验参数Node
+		if name, fn := loadCheckFunc(path); len(name) > 0 {
+			if fn == nil {
+				panic("loadCheckFunc path is invalid, load func failure " + path)
+			}
+			newNode.kind, newNode.name, newNode.check = fullNodeKindParamValid, name, fn
+		}
+	// 常量Node
+	default:
+		newNode.kind = fullNodeKindConst
+	}
+	return newNode
+}
+
+// Load the checksum function by name.
+//
+// 根据名称加载校验函数。
+func loadCheckFunc(path string) (string, func(string) bool) {
+	path = path[1:]
+	// 截取参数名称和校验函数名称
+	name, fname := split2byte(path, '|')
+	if name == "" || fname == "" {
+		return "", nil
+	}
+	// 如果是正则表达式开头，添加默认正则校验函数名称。
+	if fname[0] == '^' && fname[len(fname)-1] == '$' {
+		fname = "regexp:" + fname
+	}
+
+	// 调用validate部分创建check函数
+	return name, GetValidateStringFunc(fname)
+}
+
+// insertNode add a child node to the node.
+//
+// insertNode 给节点添加一个子节点。
+func (r *fullNode) insertNode(path string, nextNode *fullNode) *fullNode {
+	if len(path) == 0 {
+		return r
+	}
+	nextNode.path = path
+	switch nextNode.kind {
+	case fullNodeKindConst:
+		return r.insertNodeConst(path, nextNode)
+	case fullNodeKindParam:
+		for _, i := range r.Pchildren {
+			if i.path == path {
+				return i
+			}
+		}
+		r.pnum++
+		r.Pchildren = append(r.Pchildren, nextNode)
+	case fullNodeKindParamValid:
+		for _, i := range r.PVchildren {
+			if i.path == path {
+				return i
+			}
+		}
+		r.pnum++
+		r.PVchildren = append(r.PVchildren, nextNode)
+	case fullNodeKindWildcardValid:
+		for _, i := range r.WVchildren {
+			if i.path == path {
+				return i
+			}
+		}
+		r.WVchildren = append(r.WVchildren, nextNode)
+	case fullNodeKindWildcard:
+		r.Wchildren = nextNode
+		// default:
+		// 	panic("Undefined radix node type from router full.")
+	}
+	return nextNode
+}
+
+// insertNodeConst 方法处理添加常量node。
+func (r *fullNode) insertNodeConst(path string, nextNode *fullNode) *fullNode {
+	// 变量添加常量node
+	for i := range r.Cchildren {
+		subStr, find := getSubsetPrefix(path, r.Cchildren[i].path)
+		if find {
+			if subStr != r.Cchildren[i].path {
+				r.Cchildren[i].path = strings.TrimPrefix(r.Cchildren[i].path, subStr)
+				r.Cchildren[i] = &fullNode{
+					kind:      fullNodeKindConst,
+					path:      subStr,
+					Cchildren: []*fullNode{r.Cchildren[i]},
+				}
+			}
+			return r.Cchildren[i].insertNode(strings.TrimPrefix(path, subStr), nextNode)
+		}
+	}
+	r.Cchildren = append(r.Cchildren, nextNode)
+	// 常量node按照首字母排序。
+	for i := len(r.Cchildren) - 1; i > 0; i-- {
+		if r.Cchildren[i].path[0] < r.Cchildren[i-1].path[0] {
+			r.Cchildren[i], r.Cchildren[i-1] = r.Cchildren[i-1], r.Cchildren[i]
+		}
+	}
+	return nextNode
+}
+
+func (r *fullNode) lookNode(searchKey string, params *Params) HandlerFuncs {
 	// constant match, return data
 	// 常量匹配，返回数据
 	if len(searchKey) == 0 && r.handlers != nil {
-		r.AddTagsToParams(params)
+		params.Combine(r.params)
 		return r.handlers
 	}
 
 	if len(searchKey) > 0 {
 		// Traverse constant Node match
 		// 遍历常量Node匹配
-		for _, edgeObj := range r.Cchildren {
-			if edgeObj.path[0] >= searchKey[0] {
-				if len(searchKey) >= len(edgeObj.path) && searchKey[:len(edgeObj.path)] == edgeObj.path {
-					nextSearchKey := searchKey[len(edgeObj.path):]
-					if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
+		for _, child := range r.Cchildren {
+			if child.path[0] >= searchKey[0] {
+				if len(searchKey) >= len(child.path) && searchKey[:len(child.path)] == child.path {
+					nextSearchKey := searchKey[len(child.path):]
+					if n := child.lookNode(nextSearchKey, params); n != nil {
 						return n
 					}
 				}
@@ -382,10 +335,10 @@ func (r *fullNode) recursiveLoopup(searchKey string, params *Params) HandlerFunc
 
 			// check parameter matching
 			// 校验参数匹配
-			for _, edgeObj := range r.Rchildren {
-				if edgeObj.check(currentKey) {
-					if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
-						params.Add(edgeObj.name, currentKey)
+			for _, child := range r.PVchildren {
+				if child.check(currentKey) {
+					if n := child.lookNode(nextSearchKey, params); n != nil {
+						params.Add(child.name, currentKey)
 						return n
 					}
 				}
@@ -393,9 +346,9 @@ func (r *fullNode) recursiveLoopup(searchKey string, params *Params) HandlerFunc
 
 			// 参数匹配
 			// 变量Node依次匹配是否满足
-			for _, edgeObj := range r.Pchildren {
-				if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
-					params.Add(edgeObj.name, currentKey)
+			for _, child := range r.Pchildren {
+				if n := child.lookNode(nextSearchKey, params); n != nil {
+					params.Add(child.name, currentKey)
 					return n
 				}
 			}
@@ -406,18 +359,18 @@ func (r *fullNode) recursiveLoopup(searchKey string, params *Params) HandlerFunc
 	// If the current Node has a wildcard processing method that directly matches, the result is returned.
 	// 通配符校验匹配
 	// 若当前Node有通配符处理方法直接匹配，返回结果。
-	for _, edgeObj := range r.Vchildren {
-		if edgeObj.check(searchKey) {
-			edgeObj.AddTagsToParams(params)
-			params.Add(edgeObj.name, searchKey)
-			return edgeObj.handlers
+	for _, child := range r.WVchildren {
+		if child.check(searchKey) {
+			params.Combine(child.params)
+			params.Add(child.name, searchKey)
+			return child.handlers
 		}
 	}
 
 	// If the current Node has a wildcard processing method that directly matches, the result is returned.
 	// 若当前Node有通配符处理方法直接匹配，返回结果。
 	if r.Wchildren != nil {
-		r.Wchildren.AddTagsToParams(params)
+		params.Combine(r.Wchildren.params)
 		params.Add(r.Wchildren.name, searchKey)
 		return r.Wchildren.handlers
 	}
@@ -425,4 +378,154 @@ func (r *fullNode) recursiveLoopup(searchKey string, params *Params) HandlerFunc
 	// can't match, return nil
 	// 无法匹配，返回空
 	return nil
+}
+
+func (r *fullNode) deleteRoute(path string, isany bool, val HandlerFuncs) {
+	nodes := r.findNode(path)
+	if nodes == nil {
+		return
+	}
+	last := nodes[len(nodes)-1]
+	// clean handler
+	if isany {
+		if last.anyin {
+			last.handlers = nil
+		}
+		last.anyin = false
+		last.anyhandlers = nil
+	} else {
+		last.handlers = last.anyhandlers
+	}
+	if last.handlers == nil {
+		last.params = nil
+	}
+	// clean node
+	for i := len(nodes) - 2; i > -1; i-- {
+		if nodes[i+1].IsZero() {
+			nodes[i].deleteNode(nodes[i+1])
+			nodes[i].IsMarge()
+		} else if !nodes[i].IsMarge() {
+			return
+		}
+	}
+}
+
+func (r *fullNode) findNode(path string) []*fullNode {
+	args := getSplitPath(path)
+	nodes := make([]*fullNode, 1, len(args)*2)
+	nodes[0] = r
+	for _, i := range args {
+		last := nodes[len(nodes)-1]
+		switch i[0] {
+		case '*':
+			child := last.findNodeWildcard(i)
+			if child == nil {
+				return nil
+			}
+			nodes = append(nodes, child)
+		case ':':
+			child := last.findNodeParam(i)
+			if child == nil {
+				return nil
+			}
+			nodes = append(nodes, child)
+		default:
+			childs := last.findNodeConst(i)
+			if childs == nil {
+				return nil
+			}
+			for i := len(childs) - 1; i > -1; i-- {
+				nodes = append(nodes, childs[i])
+			}
+		}
+	}
+	return nodes
+}
+
+func (r *fullNode) findNodeWildcard(path string) *fullNode {
+	if r.Wchildren != nil && r.Wchildren.path == path {
+		return r.Wchildren
+	}
+	for _, child := range r.WVchildren {
+		if child.path == path {
+			return child
+		}
+	}
+	return nil
+}
+
+func (r *fullNode) findNodeParam(path string) *fullNode {
+	for _, child := range r.Pchildren {
+		if child.path == path {
+			return child
+		}
+	}
+	for _, child := range r.PVchildren {
+		if child.path == path {
+			return child
+		}
+	}
+	return nil
+}
+
+func (r *fullNode) findNodeConst(path string) []*fullNode {
+	if path == "" {
+		return []*fullNode{r}
+	}
+	for _, child := range r.Cchildren {
+		if child.path[0] >= path[0] {
+			if len(path) >= len(child.path) && path[:len(child.path)] == child.path {
+				if n := child.findNodeConst(path[len(child.path):]); n != nil {
+					return append(n, r)
+				}
+			}
+			break
+		}
+	}
+	return nil
+}
+
+func (r *fullNode) IsZero() bool {
+	return r.handlers == nil && len(r.Cchildren) == 0 && len(r.Pchildren) == 0 && len(r.PVchildren) == 0 && len(r.WVchildren) == 0 && r.Wchildren == nil
+}
+
+func (r *fullNode) IsMarge() bool {
+	if r.kind == fullNodeKindConst && r.handlers == nil && len(r.Cchildren) == 1 && len(r.Pchildren) == 0 && len(r.PVchildren) == 0 && len(r.WVchildren) == 0 && r.Wchildren == nil {
+		r.Cchildren[0].path = r.path + r.Cchildren[0].path
+		*r = *r.Cchildren[0]
+		return true
+	}
+	return false
+}
+
+func (r *fullNode) deleteNode(node *fullNode) {
+	switch node.kind {
+	case fullNodeKindConst:
+		r.Cchildren = fullRemoveNode(r.Cchildren, node)
+	case fullNodeKindParam:
+		r.PVchildren = fullRemoveNode(r.PVchildren, node)
+		r.pnum--
+	case fullNodeKindParamValid:
+		r.Pchildren = fullRemoveNode(r.Pchildren, node)
+		r.pnum--
+	case fullNodeKindWildcardValid:
+		r.WVchildren = fullRemoveNode(r.WVchildren, node)
+	case fullNodeKindWildcard:
+		r.Wchildren = nil
+	}
+}
+
+func fullRemoveNode(nodes []*fullNode, node *fullNode) []*fullNode {
+	if len(nodes) == 1 {
+		return nil
+	}
+	for i, child := range nodes {
+		if child == node {
+			for ; i < len(nodes)-1; i++ {
+				nodes[i] = nodes[i+1]
+			}
+			nodes = nodes[:len(nodes)-1]
+		}
+	}
+	return nodes
 }

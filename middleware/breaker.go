@@ -116,7 +116,7 @@ func (b *Breaker) data(ctx eudore.Context) {
 }
 
 func (b *Breaker) getRoute(ctx eudore.Context) {
-	id := eudore.GetStringDefaultInt(ctx.GetParam("id"), -1)
+	id := eudore.GetStringInt(ctx.GetParam("id"), -1)
 	if id < 0 || id >= b.num {
 		ctx.Fatal("id is invalid")
 		return
@@ -128,8 +128,8 @@ func (b *Breaker) getRoute(ctx eudore.Context) {
 }
 
 func (b *Breaker) putRouteState(ctx eudore.Context) {
-	id := eudore.GetStringDefaultInt(ctx.GetParam("id"), -1)
-	state := eudore.GetStringDefaultInt(ctx.GetParam("state"), -1)
+	id := eudore.GetStringInt(ctx.GetParam("id"), -1)
+	state := eudore.GetStringInt(ctx.GetParam("state"), -1)
 	if id < 0 || id >= b.num {
 		ctx.Fatal("id is invalid")
 		return

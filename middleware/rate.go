@@ -88,13 +88,15 @@ func (r *rate) cleanupVisitors(ctx context.Context) {
 		select {
 		case now := <-time.After(dura):
 			dead := now.UnixNano() - int64(dura)
+			r.mu.Lock()
 			for key, v := range r.visitors {
+				v.Lock()
 				if v.last < dead {
-					r.mu.Lock()
 					delete(r.visitors, key)
-					r.mu.Unlock()
 				}
+				v.Unlock()
 			}
+			r.mu.Unlock()
 		case <-ctx.Done():
 			return
 		}

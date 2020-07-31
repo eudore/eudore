@@ -4,21 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"strings"
 )
-
-// Stream 定义请求流，抽象websocket处理。
-type Stream interface {
-	StreamID() string
-	GetType() int
-	SetType(int)
-	SendMsg(interface{}) error
-	RecvMsg(interface{}) error
-	io.ReadWriteCloser
-}
 
 // ResponseWriter 接口用于写入http请求响应体status、header、body。
 //
@@ -60,6 +49,25 @@ type Params struct {
 	Vals []string
 }
 
+// NewParamsRoute 方法根据一个路由路径创建Params，支持路由路径块模式。
+func NewParamsRoute(path string) *Params {
+	route := getRoutePath(path)
+	args := strings.Split(path[len(route):], " ")
+	if args[0] == "" {
+		args = args[1:]
+	}
+	params := &Params{
+		Keys: make([]string, len(args)+1),
+		Vals: make([]string, len(args)+1),
+	}
+	params.Keys[0] = ParamRoute
+	params.Vals[0] = route
+	for i, str := range args {
+		params.Keys[i+1], params.Vals[i+1] = split2byte(str, '=')
+	}
+	return params
+}
+
 // Clone 方法深复制一个ParamArray对象。
 func (p *Params) Clone() *Params {
 	params := &Params{
@@ -71,6 +79,14 @@ func (p *Params) Clone() *Params {
 	return params
 }
 
+// Combine 方法将params数据合并到p。
+func (p *Params) Combine(params *Params) {
+	for i := range params.Keys {
+		p.Add(params.Keys[i], params.Vals[i])
+	}
+}
+
+// String 方法输出Params成字符串。
 func (p *Params) String() string {
 	var b bytes.Buffer
 	for i := range p.Keys {
@@ -106,14 +122,20 @@ func (p *Params) Add(key string, val string) {
 func (p *Params) Set(key string, val string) {
 	for i, str := range p.Keys {
 		if str == key {
-			if val == "" {
-				p.Keys[i] = ""
-			}
 			p.Vals[i] = val
 			return
 		}
 	}
 	p.Add(key, val)
+}
+
+// Del 方法删除一个参数值
+func (p *Params) Del(key string) {
+	for i, str := range p.Keys {
+		if str == key {
+			p.Vals[i] = ""
+		}
+	}
 }
 
 // Reset 方法重置ResponseWriterHTTP对象。

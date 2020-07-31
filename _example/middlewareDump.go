@@ -13,7 +13,7 @@ import (
 
 func main() {
 	app := eudore.NewApp()
-	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
+	// app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware(middleware.NewDumpFunc(app.Group("/eudore/debug")))
 	app.AnyFunc("/gzip", middleware.NewGzipFunc(5), func(ctx eudore.Context) {
 		ctx.WriteString("gzip body")
@@ -34,30 +34,39 @@ func main() {
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
 	client := httptest.NewClient(app)
-	client.WithHeaderValue(eudore.HeaderAcceptEncoding, "gzip")
-	client.NewRequest("GET", "/eudore/debug/dump/connect").WithWebsocket(ReadDumpMessage).Do().Out()
+	client.AddHeaderValue(eudore.HeaderAcceptEncoding, "gzip")
+	client.NewRequest("GET", "/eudore/debug/dump/connect").Do()
 	go func() {
-		client.NewRequest("ws", "/eudore/debug/dump/connect").WithWebsocket(ReadDumpMessage).Do().Out()
+		client.NewRequest("GET", "/eudore/debug/dump/connect").WithWebsocket(ReadDumpMessage).Do()
 	}()
 	go func() {
-		client.NewRequest("ws", "/eudore/debug/dump/connect?path=/echo").WithWebsocket(ReadDumpMessage).Do().Out()
+		time.Sleep(time.Millisecond * 10)
+		client.NewRequest("GET", "/eudore/debug/dump/connect").WithWebsocket(closeDumpMessage).Do()
+		client.NewRequest("GET", "/").Do()
+		client.NewRequest("GET", "/").Do()
+		client.NewRequest("GET", "/eudore/debug/dump/connect").WithWebsocket(ReadDumpMessage).Do()
 	}()
 	go func() {
-		client.NewRequest("ws", "/eudore/debug/dump/connect?path=/echo&query-name=eudore*").WithWebsocket(ReadDumpMessage).Do().Out()
+		client.NewRequest("GET", "/eudore/debug/dump/connect?path=/echo").WithWebsocket(ReadDumpMessage).Do()
 	}()
 	go func() {
-		client.NewRequest("ws", "/eudore/debug/dump/connect?param-route=/echo").WithWebsocket(ReadDumpMessage).Do().Out()
+		client.NewRequest("GET", "/eudore/debug/dump/connect?path=/echo&query-name=eudore*").WithWebsocket(ReadDumpMessage).Do()
 	}()
 	go func() {
-		client.NewRequest("ws", "/eudore/debug/dump/connect?header-origin=https://*").WithWebsocket(ReadDumpMessage).Do().Out()
+		client.NewRequest("GET", "/eudore/debug/dump/connect?param-route=/echo").WithWebsocket(ReadDumpMessage).Do()
 	}()
 	go func() {
-		time.Sleep(time.Second / 5)
+		client.NewRequest("GET", "/eudore/debug/dump/connect?header-origin=https://*").WithWebsocket(ReadDumpMessage).Do()
+	}()
+	go func() {
+		time.Sleep(time.Millisecond * 20)
 		client.NewRequest("GET", "/").Do()
 		client.NewRequest("GET", "/echo").Do()
 		client.NewRequest("GET", "/bigbody").Do()
 		client.NewRequest("GET", "/gzip").Do()
+		time.Sleep(time.Millisecond * 40)
 		client.NewRequest("GET", "/gziperr").Do()
+		time.Sleep(time.Millisecond * 40)
 		// app.CancelFunc()
 	}()
 
@@ -65,6 +74,9 @@ func main() {
 	app.Run()
 }
 
+func closeDumpMessage(conn net.Conn) {
+	conn.Close()
+}
 func ReadDumpMessage(conn net.Conn) {
 	io.Copy(ioutil.Discard, conn)
 }

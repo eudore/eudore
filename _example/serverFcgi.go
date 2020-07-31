@@ -11,6 +11,6 @@ import (
 func main() {
 	app := eudore.NewApp(eudore.NewServerFcgi())
 	app.Listen(":8088")
-	app.CancelFunc()
+	// app.CancelFunc()
 	app.Run()
 }

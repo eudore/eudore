@@ -27,6 +27,7 @@ func main() {
 	client.NewRequest("GET", "/").Do().CheckBodyString("map[a:1 b:2]").Out()
 	client.NewRequest("GET", "/").WithHeaderValue("Accept", "application/json").Do().CheckHeader("Content-Type", "application/json; charset=utf-8").CheckBodyString(`{"a":1,"b":2}`).Out()
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

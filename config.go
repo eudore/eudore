@@ -208,7 +208,7 @@ func configPrint(c Config, args ...interface{}) {
 // ConfigParseJSON 方法解析json文件配置。
 func ConfigParseJSON(c Config) error {
 	configPrint(c, "config read paths: ", c.Get("keys.config"))
-	for _, path := range GetArrayString(c.Get("keys.config")) {
+	for _, path := range GetStrings(c.Get("keys.config")) {
 		file, err := os.Open(path)
 		if err == nil {
 			err = json.NewDecoder(file).Decode(c)
@@ -254,7 +254,7 @@ func ConfigParseEnvs(c Config) error {
 //
 // 默认会加载OS mod,如果是docker环境下使用docker模式。
 func ConfigParseMods(c Config) error {
-	mod := GetArrayString(c.Get("enable"))
+	mod := GetStrings(c.Get("enable"))
 	mod = append([]string{getOS()}, mod...)
 	configPrint(c, "config load mods: ", mod)
 	for _, i := range mod {

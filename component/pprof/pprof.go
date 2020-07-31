@@ -27,11 +27,11 @@ func (w *response) Write(p []byte) (int, error) {
 // Init 函数实现注入pprof路由。
 func Init(r eudore.Router) {
 	r = r.Group("/pprof")
-	server := r.GetParam("godoc")
-	r.SetParam("godoc", "")
+	server := r.Params().Get("godoc")
+	r.Params().Set("godoc", "")
 
 	if server == "" {
-		route := r.GetParam("route")
+		route := r.Params().Get("route")
 		// go.11创建内置godoc并启动
 		godoc := NewGodoc(route + "/godoc")
 		if godoc != nil {

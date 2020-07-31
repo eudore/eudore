@@ -25,11 +25,9 @@ func main() {
 	client.NewRequest("GET", "/myfields/num").Do().CheckStatus(200).Out()
 	client.NewRequest("GET", "/myfields/name").Do().CheckStatus(200).Out()
 	client.NewRequest("GET", "/file/data/2").Do().CheckStatus(200).Out()
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }
 

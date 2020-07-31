@@ -26,10 +26,8 @@ func main() {
 
 	client := httptest.NewClient(app)
 	client.NewRequest("HEAD", "/2").WithHeaderValue("Content-Type", "application/json").Do().CheckStatus(200)
-	for client.Next() {
-		app.Error(client.Error())
-	}
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }

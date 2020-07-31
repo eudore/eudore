@@ -25,7 +25,8 @@ func main() {
 		fmt.Println(ctx.parseJwt())
 	})
 
-	app.CancelFunc()
+	app.Listen(":8088")
+	// app.CancelFunc()
 	app.Run()
 }
 

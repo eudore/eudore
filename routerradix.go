@@ -12,7 +12,6 @@ const (
 	radixNodeKindConst uint8 = 1 << iota
 	radixNodeKindParam
 	radixNodeKindWildcard
-	radixNodeKindAnyMethod
 )
 
 // RouterCoreRadix basic function router based on radix tree implementation.
@@ -28,7 +27,6 @@ type RouterCoreRadix struct {
 	node405 radixNode
 	// various methods routing tree
 	// 各种方法路由树
-	root    radixNode
 	get     radixNode
 	post    radixNode
 	put     radixNode
@@ -49,28 +47,22 @@ type radixNode struct {
 	Pchildren []*radixNode
 	Wchildren *radixNode
 	// 当前节点的数据
-	tags     []string
-	vals     []string
-	handlers HandlerFuncs
-}
-
-// NewRouterRadix 创建一个Radix路由器。
-func NewRouterRadix() Router {
-	return NewRouterStd(NewRouterCoreRadix())
+	params      *Params
+	handlers    HandlerFuncs
+	anyin       bool
+	anyhandlers HandlerFuncs
 }
 
 // NewRouterCoreRadix 函数创建一个Full路由器核心，使用radix匹配。
 func NewRouterCoreRadix() RouterCore {
 	return &RouterCoreRadix{
 		node404: radixNode{
-			tags:     []string{ParamRoute},
-			vals:     []string{"404"},
+			params:   &Params{Keys: []string{ParamRoute}, Vals: []string{"404"}},
 			handlers: HandlerFuncs{HandlerRouter404},
 		},
 		node405: radixNode{
 			Wchildren: &radixNode{
-				tags:     []string{ParamRoute},
-				vals:     []string{"405"},
+				params:   &Params{Keys: []string{ParamRoute}, Vals: []string{"405"}},
 				handlers: HandlerFuncs{HandlerRouter405},
 			},
 		},
@@ -97,6 +89,49 @@ func (r *RouterCoreRadix) HandleFunc(method string, path string, handler Handler
 	}
 }
 
+// Match a request, if the method does not allow direct return to node405, no match returns node404.
+//
+// Note: 404 does not support extra parameters, not implemented.
+//
+// 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
+func (r *RouterCoreRadix) Match(method, path string, params *Params) HandlerFuncs {
+	if n := r.getTree(method).lookNode(path, params); n != nil {
+		return n
+	}
+
+	// 处理404
+	params.Combine(r.node404.params)
+	return r.node404.handlers
+}
+
+// Get the tree of the corresponding method.
+//
+// Support eudore.RouterAllMethod these methods, weak support will return 405 processing tree.
+//
+// 获取对应方法的树。
+//
+// 支持eudore.RouterAllMethod这些方法,弱不支持会返回405处理树。
+func (r *RouterCoreRadix) getTree(method string) *radixNode {
+	switch method {
+	case MethodGet:
+		return &r.get
+	case MethodPost:
+		return &r.post
+	case MethodDelete:
+		return &r.delete
+	case MethodPut:
+		return &r.put
+	case MethodHead:
+		return &r.head
+	case MethodOptions:
+		return &r.options
+	case MethodPatch:
+		return &r.patch
+	default:
+		return &r.node405
+	}
+}
+
 // insertRoute add a new routing node.
 //
 // If the method is not supported, it will not be added. Requesting the path will respond 405.
@@ -118,38 +153,26 @@ func (r *RouterCoreRadix) insertRoute(method, key string, isany bool, val Handle
 		return
 	}
 
+	params := NewParamsRoute(key)
+	if params.Get(ParamRegister) == "off" {
+		currentNode.deleteRoute(params.Get(ParamRoute), isany, val)
+		return
+	}
 	// 创建节点
-	args := strings.Split(key, " ")
-	for _, path := range getSplitPath(args[0]) {
-		currentNode = currentNode.InsertNode(path, newRadixNode(path))
+	for _, path := range getSplitPath(params.Get(ParamRoute)) {
+		currentNode = currentNode.insertNode(path, newRadixNode(path))
 	}
-
+	currentNode.params = params
 	if isany {
-		if currentNode.kind&radixNodeKindAnyMethod != radixNodeKindAnyMethod && currentNode.handlers != nil {
-			return
+		if currentNode.anyin || currentNode.handlers == nil {
+			currentNode.handlers = val
+			currentNode.anyin = true
 		}
-		currentNode.kind |= radixNodeKindAnyMethod
+		currentNode.anyhandlers = val
 	} else {
-		currentNode.kind &^= radixNodeKindAnyMethod
+		currentNode.handlers = val
+		currentNode.anyin = false
 	}
-
-	currentNode.handlers = val
-	currentNode.SetTags(args)
-}
-
-// Match a request, if the method does not allow direct return to node405, no match returns node404.
-//
-// Note: 404 does not support extra parameters, not implemented.
-//
-// 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
-func (r *RouterCoreRadix) Match(method, path string, params *Params) HandlerFuncs {
-	if n := r.getTree(method).recursiveLoopup(path, params); n != nil {
-		return n
-	}
-
-	// 处理404
-	r.node404.AddTagsToParams(params)
-	return r.node404.handlers
 }
 
 // Create a Radix tree Node that will set different node types based on the current route.
@@ -197,12 +220,12 @@ func newRadixNode(path string) *radixNode {
 // 如果新节点类型是参数结点，会检测当前参数是否存在，存在返回已处在的节点。
 //
 // 如果新节点类型是通配符结点，直接设置为当前节点的通配符处理节点。
-func (r *radixNode) InsertNode(path string, nextNode *radixNode) *radixNode {
+func (r *radixNode) insertNode(path string, nextNode *radixNode) *radixNode {
 	if len(path) == 0 {
 		return r
 	}
 	nextNode.path = path
-	switch nextNode.kind &^ radixNodeKindAnyMethod {
+	switch nextNode.kind {
 	case radixNodeKindConst:
 		for i := range r.Cchildren {
 			subStr, find := getSubsetPrefix(path, r.Cchildren[i].path)
@@ -210,11 +233,12 @@ func (r *radixNode) InsertNode(path string, nextNode *radixNode) *radixNode {
 				if subStr != r.Cchildren[i].path {
 					r.Cchildren[i].path = strings.TrimPrefix(r.Cchildren[i].path, subStr)
 					r.Cchildren[i] = &radixNode{
+						kind:      fullNodeKindConst,
 						path:      subStr,
 						Cchildren: []*radixNode{r.Cchildren[i]},
 					}
 				}
-				return r.Cchildren[i].InsertNode(strings.TrimPrefix(path, subStr), nextNode)
+				return r.Cchildren[i].insertNode(strings.TrimPrefix(path, subStr), nextNode)
 			}
 		}
 		r.Cchildren = append(r.Cchildren, nextNode)
@@ -242,75 +266,23 @@ func (r *radixNode) InsertNode(path string, nextNode *radixNode) *radixNode {
 	return nextNode
 }
 
-// Set the tags for the current Node
-//
-// 给当前Node设置tags
-func (r *radixNode) SetTags(args []string) {
-	r.tags = make([]string, len(args))
-	r.vals = make([]string, len(args))
-	// The first parameter name defaults to route
-	// 第一个参数名称默认为route
-	r.tags[0] = ParamRoute
-	r.vals[0] = args[0]
-	for i, str := range args[1:] {
-		r.tags[i+1], r.vals[i+1] = split2byte(str, '=')
-	}
-}
-
-// AddTagsToParams give the current Node tag to Params
-//
-// AddTagsToParams 将当前Node的tags给予Params
-func (r *radixNode) AddTagsToParams(p *Params) {
-	for i := range r.tags {
-		p.Add(r.tags[i], r.vals[i])
-	}
-}
-
-// Get the tree of the corresponding method.
-//
-// Support eudore.RouterAllMethod these methods, weak support will return 405 processing tree.
-//
-// 获取对应方法的树。
-//
-// 支持eudore.RouterAllMethod这些方法,弱不支持会返回405处理树。
-func (r *RouterCoreRadix) getTree(method string) *radixNode {
-	switch method {
-	case MethodGet:
-		return &r.get
-	case MethodPost:
-		return &r.post
-	case MethodDelete:
-		return &r.delete
-	case MethodPut:
-		return &r.put
-	case MethodHead:
-		return &r.head
-	case MethodOptions:
-		return &r.options
-	case MethodPatch:
-		return &r.patch
-	default:
-		return &r.node405
-	}
-}
-
-// 按照顺序匹配一个路径。
+// lookNode 按照顺序匹配一个路径。
 //
 // 依次检查常量节点、参数节点、通配符节点，如果有一个匹配就直接返回。
-func (r *radixNode) recursiveLoopup(searchKey string, params *Params) HandlerFuncs {
+func (r *radixNode) lookNode(searchKey string, params *Params) HandlerFuncs {
 	// 如果路径为空，当前节点就是需要匹配的节点，直接返回。
 	if len(searchKey) == 0 && r.handlers != nil {
-		r.AddTagsToParams(params)
+		params.Combine(r.params)
 		return r.handlers
 	}
 
 	if len(searchKey) > 0 {
 		// 遍历常量Node匹配，寻找具有相同前缀的那个节点
-		for _, edgeObj := range r.Cchildren {
-			if edgeObj.path[0] >= searchKey[0] {
-				if len(searchKey) >= len(edgeObj.path) && searchKey[:len(edgeObj.path)] == edgeObj.path {
-					nextSearchKey := searchKey[len(edgeObj.path):]
-					if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
+		for _, child := range r.Cchildren {
+			if child.path[0] >= searchKey[0] {
+				if len(searchKey) >= len(child.path) && searchKey[:len(child.path)] == child.path {
+					nextSearchKey := searchKey[len(child.path):]
+					if n := child.lookNode(nextSearchKey, params); n != nil {
 						return n
 					}
 				}
@@ -327,9 +299,9 @@ func (r *radixNode) recursiveLoopup(searchKey string, params *Params) HandlerFun
 
 			// Whether the variable Node matches in sequence is satisfied
 			// 遍历参数节点是否后续匹配
-			for _, edgeObj := range r.Pchildren {
-				if n := edgeObj.recursiveLoopup(nextSearchKey, params); n != nil {
-					params.Add(edgeObj.name, searchKey[:pos])
+			for _, child := range r.Pchildren {
+				if n := child.lookNode(nextSearchKey, params); n != nil {
+					params.Add(child.name, searchKey[:pos])
 					return n
 				}
 			}
@@ -339,7 +311,7 @@ func (r *radixNode) recursiveLoopup(searchKey string, params *Params) HandlerFun
 	// If the current Node has a wildcard processing method that directly matches, the result is returned.
 	// 若当前节点有通配符处理方法直接匹配，返回结果。
 	if r.Wchildren != nil {
-		r.Wchildren.AddTagsToParams(params)
+		params.Combine(r.Wchildren.params)
 		params.Add(r.Wchildren.name, searchKey)
 		return r.Wchildren.handlers
 	}
@@ -347,6 +319,129 @@ func (r *radixNode) recursiveLoopup(searchKey string, params *Params) HandlerFun
 	// can't match, return nil
 	// 无法匹配，返回空
 	return nil
+}
+
+func (r *radixNode) deleteRoute(path string, isany bool, val HandlerFuncs) {
+	nodes := r.findNode(path)
+	if nodes == nil {
+		return
+	}
+	last := nodes[len(nodes)-1]
+	// clean handler
+	if isany {
+		if last.anyin {
+			last.handlers = nil
+		}
+		last.anyin = false
+		last.anyhandlers = nil
+	} else {
+		last.handlers = last.anyhandlers
+	}
+	if last.handlers == nil {
+		last.params = nil
+	}
+	// clean node
+	for i := len(nodes) - 2; i > -1; i-- {
+		if nodes[i+1].IsZero() {
+			nodes[i].deleteNode(nodes[i+1])
+			nodes[i].IsMarge()
+		} else if !nodes[i].IsMarge() {
+			return
+		}
+	}
+}
+
+func (r *radixNode) findNode(path string) []*radixNode {
+	args := getSplitPath(path)
+	nodes := make([]*radixNode, 1, len(args)*2)
+	nodes[0] = r
+	for _, i := range args {
+		last := nodes[len(nodes)-1]
+		switch i[0] {
+		case '*':
+			if last.Wchildren == nil || (last.Wchildren.name != i && last.Wchildren.name != i[1:]) {
+				return nil
+			}
+			nodes = append(nodes, last.Wchildren)
+		case ':':
+			var islook bool
+			for _, child := range last.Pchildren {
+				if child.name == i[1:] {
+					islook = true
+					nodes = append(nodes, child)
+					break
+				}
+			}
+			if !islook {
+				return nil
+			}
+		default:
+			childs := last.findNodeConst(i)
+			if childs == nil {
+				return nil
+			}
+			for i := len(childs) - 1; i > -1; i-- {
+				nodes = append(nodes, childs[i])
+			}
+		}
+	}
+	return nodes
+}
+
+func (r *radixNode) findNodeConst(path string) []*radixNode {
+	if path == "" {
+		return []*radixNode{r}
+	}
+	for _, child := range r.Cchildren {
+		if child.path[0] >= path[0] {
+			if len(path) >= len(child.path) && path[:len(child.path)] == child.path {
+				if n := child.findNodeConst(path[len(child.path):]); n != nil {
+					return append(n, r)
+				}
+			}
+			break
+		}
+	}
+	return nil
+}
+
+func (r *radixNode) IsZero() bool {
+	return r.handlers == nil && len(r.Cchildren) == 0 && len(r.Pchildren) == 0 && r.Wchildren == nil
+}
+
+func (r *radixNode) IsMarge() bool {
+	if r.kind == radixNodeKindConst && r.handlers == nil && len(r.Cchildren) == 1 && len(r.Pchildren) == 0 && r.Wchildren == nil {
+		r.Cchildren[0].path = r.path + r.Cchildren[0].path
+		*r = *r.Cchildren[0]
+		return true
+	}
+	return false
+}
+
+func (r *radixNode) deleteNode(node *radixNode) {
+	switch node.kind {
+	case radixNodeKindConst:
+		r.Cchildren = radixRemoveNode(r.Cchildren, node)
+	case radixNodeKindParam:
+		r.Pchildren = radixRemoveNode(r.Pchildren, node)
+	case radixNodeKindWildcard:
+		r.Wchildren = nil
+	}
+}
+
+func radixRemoveNode(nodes []*radixNode, node *radixNode) []*radixNode {
+	if len(nodes) == 1 {
+		return nil
+	}
+	for i, child := range nodes {
+		if child == node {
+			for ; i < len(nodes)-1; i++ {
+				nodes[i] = nodes[i+1]
+			}
+			nodes = nodes[:len(nodes)-1]
+		}
+	}
+	return nodes
 }
 
 /*
@@ -364,7 +459,7 @@ String path cutting example:
 /api/:get/*		[/api/ :get / *]
 /api/:name/info/*		[/api/ :name /info/ *]
 /api/:name|^\\d+$/info	[/api/ :name|^\d+$ /info]
-/api/*|^0/api\\S+$		[/api/ *|^0 /api\S+$]
+/api/*|{^0/api\\S+$}	[/api/ *|^0 /api\S+$]
 /api/*|^\\$\\d+$		[/api/ *|^\$\d+$]
 */
 func getSplitPath(key string) []string {
@@ -373,32 +468,38 @@ func getSplitPath(key string) []string {
 	}
 	var strs []string
 	var length = -1
-	var ismatch = false
+	var isall = 0
 	var isconst = false
 	for i := range key {
-		if ismatch {
-			strs[length] = strs[length] + key[i:i+1]
-			if key[i] == '$' && key[i-1] != '\\' && (i == len(key)-1 || key[i+1] == '/') {
-				ismatch = false
+		// 块模式匹配
+		if isall > 0 {
+			switch key[i] {
+			case '{':
+				isall++
+			case '}':
+				isall--
+			}
+			if isall > 0 {
+				strs[length] = strs[length] + key[i:i+1]
 			}
 			continue
 		}
 		switch key[i] {
 		case '/':
+			// 常量模式，非常量模式下创建新字符串
 			if !isconst {
 				length++
 				strs = append(strs, "")
 				isconst = true
-
 			}
 		case ':', '*':
+			// 变量模式
 			isconst = false
-			if key[i-1] == '/' {
-				length++
-				strs = append(strs, "")
-			}
-		case '^':
-			ismatch = true
+			length++
+			strs = append(strs, "")
+		case '{':
+			isall++
+			continue
 		}
 		strs[length] = strs[length] + key[i:i+1]
 	}
