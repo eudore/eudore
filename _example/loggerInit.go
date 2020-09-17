@@ -20,7 +20,7 @@ func main() {
 	app.Error("error")
 	app.Sync()
 
-	logout := app.WithField("caller", "mylogout").WithField("logout", true)
+	logout := app.WithField("caller", "mylogout").WithFields(nil)
 	logout.WithField("level", "debug").Debug("debug")
 	logout.WithField("level", "info").Info("info")
 	logout.WithField("level", "warning").Warning("warning")

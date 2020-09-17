@@ -262,6 +262,11 @@ func (entry *entryStd) Fatalf(format string, args ...interface{}) {
 
 // WithFields 方法设置多个条目属性。
 func (entry *entryStd) WithFields(fields Fields) Logout {
+	if fields == nil {
+		entry = entry.getEntry()
+		entry.logout = true
+		return entry
+	}
 	if entry.logout {
 		entry = entry.getEntry()
 	}
@@ -291,12 +296,6 @@ func (entry *entryStd) WithField(key string, value interface{}) Logout {
 			if vals == "disable" && entry.depth > 0 {
 				entry.depth -= 0x40
 			}
-			return entry
-		}
-	case "logout":
-		_, ok := value.(bool)
-		if ok {
-			entry.logout = true
 			return entry
 		}
 	case "time":

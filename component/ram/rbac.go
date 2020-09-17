@@ -24,6 +24,11 @@ func NewRbac() *Rbac {
 	}
 }
 
+// Name 方法返回rbac name。
+func (r *Rbac) Name() string {
+	return "rbac"
+}
+
 // Match 方法实现ram.Handler接口，匹配一个请求。
 func (r *Rbac) Match(id int, name string, ctx eudore.Context) (bool, bool) {
 	r.RLock()
@@ -35,7 +40,6 @@ func (r *Rbac) Match(id int, name string, ctx eudore.Context) (bool, bool) {
 	for _, roles := range r.RoleBinds[id] {
 		for _, perm := range r.PermissionBinds[roles] {
 			if perm == permid {
-				ctx.SetParam(eudore.ParamRAM, "rbac")
 				return true, true
 			}
 		}

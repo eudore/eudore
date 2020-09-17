@@ -29,6 +29,11 @@ func NewPbac() *Pbac {
 	}
 }
 
+// Name 方法返回pbac name。
+func (p *Pbac) Name() string {
+	return "pbac"
+}
+
 // Match 方法实现ram.Handler接口，匹配一个请求。
 func (p *Pbac) Match(id int, action string, ctx eudore.Context) (bool, bool) {
 	p.RLock()
@@ -43,7 +48,6 @@ func (p *Pbac) Match(id int, action string, ctx eudore.Context) (bool, bool) {
 			}
 			for _, s := range ps.Statement {
 				if s.MatchAction(action) && s.MatchResource(resource) && s.MatchCondition(ctx) {
-					ctx.SetParam(eudore.ParamRAM, "pbac")
 					ctx.SetParam("policy", ps.Name)
 					return s.Effect, true
 				}
@@ -56,11 +60,10 @@ func (p *Pbac) Match(id int, action string, ctx eudore.Context) (bool, bool) {
 func getResource(ctx eudore.Context) string {
 	path := ctx.Path()
 	// 移除无效的前缀
-	prefix := ctx.GetParam("prefix")
+	prefix := ctx.GetParam("resource-prefix")
 	if prefix != "" {
 		path = path[len(prefix):]
 	}
-	ctx.SetParam("resource", path)
 	return path
 }
 

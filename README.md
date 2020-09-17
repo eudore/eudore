@@ -4,7 +4,7 @@
 [![go report card](https://goreportcard.com/badge/github.com/eudore/eudore)](https://goreportcard.com/report/github.com/eudore/eudore)
 [![codecov](https://codecov.io/gh/eudore/eudore/branch/master/graph/badge.svg)](https://codecov.io/gh/eudore/eudore)
 
-eudore是轻而全的http框架，高度解耦而轻，功能丰富而全，具有完整框架设计体系，设计高度简洁有序。。
+eudore是轻而全的http框架，高度解耦而轻，功能丰富而全，具有完整框架设计体系，设计高度简洁有序。
 
 反馈和交流请加群组：[QQ群373278915](//shang.qq.com/wpa/qunwpa?idkey=869ec8f1272b4757771c3e406349f1128cfa3bd9ca668937dda8dfb223261a60)。
 

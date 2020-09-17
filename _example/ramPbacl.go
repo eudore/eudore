@@ -52,7 +52,7 @@ func main() {
 	for _, i := range []int{1, 2, 3, 4, 5, 6} {
 		app.AnyFunc(fmt.Sprintf("/%d action=%d", i, i), eudore.HandlerEmpty)
 	}
-	app.AnyFunc("/* action=hello prefix=/", eudore.HandlerEmpty)
+	app.AnyFunc("/* action=hello resource-prefix=/", eudore.HandlerEmpty)
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/1?id=1").Do().CheckStatus(200)

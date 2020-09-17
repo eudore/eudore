@@ -80,15 +80,16 @@ type ServerFcgi struct {
 	listeners []net.Listener
 }
 
-// ServerListenConfig 定义一个通用的端口监听配置。
+// ServerListenConfig 定义一个通用的端口监听配置,监听https仅支持单证书。
 type ServerListenConfig struct {
-	Addr      string `alias:"addr" description:"Listen addr."`
-	HTTPS     bool   `alias:"https" description:"Is https."`
-	HTTP2     bool   `alias:"http2" description:"Is http2."`
-	Mutual    bool   `alias:"mutual" description:"Is mutual tls."`
-	Certfile  string `alias:"certfile" description:"Http server cert file."`
-	Keyfile   string `alias:"keyfile" description:"Http server key file."`
-	TrustFile string `alias:"trustfile" description:"Http client ca file."`
+	Addr        string            `alias:"addr" description:"Listen addr."`
+	HTTPS       bool              `alias:"https" description:"Is https."`
+	HTTP2       bool              `alias:"http2" description:"Is http2."`
+	Mutual      bool              `alias:"mutual" description:"Is mutual tls."`
+	Certfile    string            `alias:"certfile" description:"Http server cert file."`
+	Keyfile     string            `alias:"keyfile" description:"Http server key file."`
+	TrustFile   string            `alias:"trustfile" description:"Http client ca file."`
+	Certificate *x509.Certificate `alias:"certificate" description:"https use tls certificate."`
 }
 
 // NewServerStd 创建一个标准server。
@@ -193,7 +194,7 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 	}
 
 	var err error
-	config.Certificates[0], err = loadCertificate(slc.Certfile, slc.Keyfile)
+	config.Certificates[0], slc.Certificate, err = loadCertificate(slc.Certfile, slc.Keyfile)
 	if err != nil {
 		return nil, err
 	}
@@ -218,9 +219,14 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 }
 
 // loadCertificate 实现加载证书，如果证书配置文件为空，则自动创建一个私有证书。
-func loadCertificate(cret, key string) (tls.Certificate, error) {
+func loadCertificate(cret, key string) (tls.Certificate, *x509.Certificate, error) {
 	if cret != "" && key != "" {
-		return tls.LoadX509KeyPair(cret, key)
+		cret509, err := tls.LoadX509KeyPair(cret, key)
+		if err != nil {
+			return cret509, nil, err
+		}
+		ca, _ := x509.ParseCertificate(cret509.Certificate[0])
+		return cret509, ca, err
 	}
 
 	ca := &x509.Certificate{
@@ -238,6 +244,7 @@ func loadCertificate(cret, key string) (tls.Certificate, error) {
 		IsCA:        true,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		DNSNames:    []string{"localhost"},
 		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
 	}
 	pool := x509.NewCertPool()
@@ -249,7 +256,7 @@ func loadCertificate(cret, key string) (tls.Certificate, error) {
 	return tls.Certificate{
 		Certificate: [][]byte{caByte},
 		PrivateKey:  priv,
-	}, err
+	}, ca, err
 }
 
 // TimeDuration 定义time.Duration类型处理json

@@ -31,6 +31,7 @@ RouterCore拥有五种路由器核心实现下列功能：
 import (
 	"fmt"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 )
@@ -427,6 +428,11 @@ func (m *RouterStd) AddHandlerExtend(hs ...interface{}) error {
 			err = fmt.Errorf(ErrFormatRouterStdAddHandlerExtend, path, err)
 			errs.HandleError(err)
 			m.printError(0, err)
+		} else {
+			iValue := reflect.ValueOf(h)
+			if iValue.Kind() == reflect.Func {
+				m.Print("Register extend:", iValue.Type().In(0).String(), runtime.FuncForPC(iValue.Pointer()).Name())
+			}
 		}
 	}
 	return errs.GetError()

@@ -26,6 +26,8 @@ type App struct {
 	GetWarp            `alias:"getwarp"`
 	HandlerFuncs       `alias:"handlerfuncs"`
 	ContextPool        sync.Pool `alias:"contextpool"`
+	CancelError        error     `alias:"cancelerror"`
+	cancelMutex        sync.Mutex
 }
 
 // NewApp 函数创建一个App对象。
@@ -51,7 +53,8 @@ func NewApp(options ...interface{}) *App {
 	return app
 }
 
-// Options 方法加载app组件。
+// Options 方法加载app组件，option类型为context.Context、Logger、Config、Server、Router、Binder、Renderer、Validater时会设置app属性，
+// 并设置组件的print属性，如果类型为error将作为app结束错误返回给Run方法。
 func (app *App) Options(options ...interface{}) {
 	for _, i := range options {
 		if i == nil {
@@ -89,13 +92,19 @@ func (app *App) Options(options ...interface{}) {
 		case error:
 			app.Error("eudore app cannel context on handler error: " + val.Error())
 			app.CancelFunc()
+			app.cancelMutex.Lock()
+			defer app.cancelMutex.Unlock()
+			// 记录第一个错误
+			if app.CancelError == nil {
+				app.CancelError = val
+			}
 		default:
 			app.Logger.Warningf("eudore app invalid option: %v", i)
 		}
 	}
 }
 
-// Run 方法阻塞等待App结束。
+// Run 方法启动App阻塞等待App结束，并周期调用app.Logger.Sync()将日志输出。
 func (app *App) Run() error {
 	ticker := time.NewTicker(time.Millisecond * 80)
 	defer ticker.Stop()
@@ -109,7 +118,9 @@ func (app *App) Run() error {
 	time.Sleep(time.Millisecond * 100)
 	app.Shutdown(context.Background())
 	time.Sleep(time.Millisecond * 100)
-	return app.Err()
+	app.cancelMutex.Lock()
+	defer app.cancelMutex.Unlock()
+	return app.CancelError
 }
 
 // serveContext 实现处理请求上下文函数。
@@ -143,7 +154,7 @@ func (app *App) AddMiddleware(hs ...interface{}) error {
 	return app.Router.AddMiddleware(hs...)
 }
 
-// Listen 方法监听一个http端口
+// Listen 方法监听一个http端口。
 func (app *App) Listen(addr string) error {
 	conf := ServerListenConfig{
 		Addr: addr,
@@ -158,7 +169,7 @@ func (app *App) Listen(addr string) error {
 	return nil
 }
 
-// ListenTLS 方法监听一个https端口，如果支持默认开启h2
+// ListenTLS 方法监听一个https端口，如果支持默认开启h2。
 func (app *App) ListenTLS(addr, key, cert string) error {
 	conf := ServerListenConfig{
 		Addr:     addr,
@@ -172,7 +183,7 @@ func (app *App) ListenTLS(addr, key, cert string) error {
 		app.Error(err)
 		return err
 	}
-	app.Logger.Infof("listen https in %s %s", ln.Addr().Network(), ln.Addr().String())
+	app.Logger.Infof("listen https in %s %s,host name: %v", ln.Addr().Network(), ln.Addr().String(), conf.Certificate.DNSNames)
 	app.Serve(ln)
 	return nil
 }

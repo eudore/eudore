@@ -2,16 +2,16 @@
 
 本部分为演示例子目录功能导航,保存eudore、component、middleware三个实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
 
-exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)测试，可以注释代码`app.CancelFunc()`不终止程序并添加`app.Listen(":8088")`后使用阅览器访问，单元测试执行gotest.sh脚本。
+exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库测试，单元测试执行gotest.sh脚本。
 
 go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/component/ram, github.com/eudore/eudore/component/httptest
 
 
 - Application
-	- [New](appCore.go)
-	- [后台启动](appEudoreDaemon.go)
-	- [启动命令解析](appEudoreCommand.go)
-	- [监听代码自动编译重启](appEudoreNotify.go)
+	- [New](appNew.go)
+	- [后台启动](appDaemon.go)
+	- [启动命令解析](appCommand.go)
+	- [监听代码自动编译重启](appNotify.go)
 	- [静态文件](appStatic.go)
 	- [全局请求中间件](appMiddleware.go)
 	- [自定义app](appExtend.go)

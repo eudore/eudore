@@ -2,23 +2,11 @@ package middleware
 
 import (
 	"fmt"
-	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/eudore/eudore"
 )
-
-// BlackStaticHTML 定义黑名单后台html文件位置，默认是当前文件名后缀改为html。
-var BlackStaticHTML string
-
-// 获取文件定义位置，静态ui文件在同目录。
-func init() {
-	_, file, _, ok := runtime.Caller(0)
-	if ok {
-		BlackStaticHTML = file[:len(file)-2] + "html"
-	}
-}
 
 // Black 定义黑名单中间件后台。
 type black struct {
@@ -123,10 +111,9 @@ func (b *black) DeleteBlack(ip string) {
 
 // blackNode 定义黑名单存储树节点。
 type blackNode struct {
-	Left  *blackNode
-	Right *blackNode
-	Data  bool
-	Count uint64
+	Childrens [2]*blackNode
+	Data      bool
+	Count     uint64
 }
 
 // blackInfo 定义黑名单规则信息。
@@ -137,59 +124,39 @@ type blackInfo struct {
 }
 
 // Insert 方法给黑名单节点新增一个ip或ip段。
-func (node *blackNode) Insert(ip string) {
-	val, bit := ip2intbit(ip)
+func (node *blackNode) Insert(ipstr string) {
+	ip, bit := ip2intbit(ipstr)
 	for num := uint(31); bit > 0; bit-- {
-		if val>>num&1 == 0 {
-			if node.Left == nil {
-				node.Left = new(blackNode)
-			}
-			node = node.Left
-		} else {
-			if node.Right == nil {
-				node.Right = new(blackNode)
-			}
-			node = node.Right
+		i := ip >> num & 0x01
+		if node.Childrens[i] == nil {
+			node.Childrens[i] = new(blackNode)
 		}
+		node = node.Childrens[i]
 		num--
 	}
 	node.Data = true
 }
 
 // Delete 方法给黑名单节点删除一个ip或ip段。
-func (node *blackNode) Delete(ip string) {
+func (node *blackNode) Delete(ipstr string) {
 	var lastnode *blackNode
-	var lastflag bool
+	var lastindex uint64
 	rootnode := node
-	val, bit := ip2intbit(ip)
+	ip, bit := ip2intbit(ipstr)
 	for num := uint(31); bit > 0; bit-- {
-		if val>>num&1 == 0 {
-			if node.Left == nil {
-				return
-			}
-			if node.Right != nil || node.Data {
-				lastnode = node
-				lastflag = true
-			}
-			node = node.Left
-		} else {
-			if node.Right == nil {
-				return
-			}
-			if node.Left != nil {
-				lastnode = node
-				lastflag = false
-			}
-			node = node.Right
+		i := ip >> num & 0x01
+		if node.Childrens[i] == nil {
+			return
 		}
+		if node.Data || node.Childrens[1^i] != nil {
+			lastnode = node
+			lastindex = i
+		}
+		node = node.Childrens[i]
 		num--
 	}
 	if lastnode != nil {
-		if lastflag {
-			lastnode.Left = nil
-		} else {
-			lastnode.Right = nil
-		}
+		lastnode.Childrens[lastindex] = nil
 	} else {
 		*rootnode = blackNode{}
 	}
@@ -202,17 +169,11 @@ func (node *blackNode) Look(ip uint64) bool {
 			node.Count++
 			return true
 		}
-		if ip>>(num-1)&1 == 0 {
-			if node.Left == nil {
-				return false
-			}
-			node = node.Left
-		} else {
-			if node.Right == nil {
-				return false
-			}
-			node = node.Right
+		i := ip >> (num - 1) & 0x01
+		if node.Childrens[i] == nil {
+			return false
 		}
+		node = node.Childrens[i]
 	}
 	node.Count++
 	return true
@@ -227,11 +188,10 @@ func (node *blackNode) List(data []blackInfo, prefix, bit uint64) []blackInfo {
 			Count: node.Count,
 		})
 	}
-	if node.Left != nil {
-		data = node.Left.List(data, prefix<<1, bit-1)
-	}
-	if node.Right != nil {
-		data = node.Right.List(data, prefix<<1|1, bit-1)
+	for _, child := range node.Childrens {
+		if child != nil {
+			data = child.List(data, prefix<<1, bit-1)
+		}
 	}
 	return data
 }

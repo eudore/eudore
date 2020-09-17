@@ -212,7 +212,7 @@ Timeout
 实现难点：写入中超时状态码异常、panic栈无法捕捉信息异常、http.Header并发读写、sync.Pool回收了Context、Context数据竟态检测
 
 */
-package middleware
+package middleware // import "github.com/eudore/eudore/middleware"
 
 import (
 	"github.com/eudore/eudore"

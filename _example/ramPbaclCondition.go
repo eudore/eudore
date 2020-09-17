@@ -25,7 +25,7 @@ func main() {
 		ctx.SetParam(eudore.ParamUID, ctx.GetQuery("id"))
 	})
 	app.AddMiddleware(ram.NewMiddleware(pbac))
-	app.AnyFunc("/* action=hello prefix=/", eudore.HandlerEmpty)
+	app.AnyFunc("/* action=hello resource-prefix=/", eudore.HandlerEmpty)
 
 	client := httptest.NewClient(app)
 	client.NewRequest("PUT", "/hello?id=1").WithTLS().Do().CheckStatus(200)

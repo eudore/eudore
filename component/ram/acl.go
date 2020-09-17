@@ -26,6 +26,11 @@ func NewAcl() *Acl {
 	}
 }
 
+// Name 方法返回acl name。
+func (acl *Acl) Name() string {
+	return "acl"
+}
+
 // Match 方法实现ram.Handler接口，匹配一个请求。
 func (acl *Acl) Match(id int, perm string, ctx eudore.Context) (bool, bool) {
 	acl.RLock()
@@ -34,13 +39,11 @@ func (acl *Acl) Match(id int, perm string, ctx eudore.Context) (bool, bool) {
 	if ok {
 		_, ok = acl.AllowBinds[id][permid]
 		if ok {
-			ctx.SetParam(eudore.ParamRAM, "acl")
 			return true, true
 		}
 
 		_, ok = acl.DenyBinds[id][permid]
 		if ok {
-			ctx.SetParam(eudore.ParamRAM, "acl")
 			return false, true
 		}
 	}

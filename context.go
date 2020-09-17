@@ -174,7 +174,7 @@ func (ctx *ContextBase) SetResponse(w ResponseWriter) {
 
 // SetLogger 方法设置ContextBases输出日志的基础Logout。
 func (ctx *ContextBase) SetLogger(log Logout) {
-	ctx.log = log.WithField("logout", true)
+	ctx.log = log.WithFields(nil)
 }
 
 // WithContext 设置当前请求上下文的ctx，必须是请求上下文的衍生上下文。

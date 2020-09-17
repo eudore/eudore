@@ -37,7 +37,8 @@ func main() {
 	app.Debug("debug")
 	app.WithField("depth", "disable").Info("info")
 
-	logout := app.WithField("caller", "mylogout").WithField("logout", true)
+	// WithFields方法参数为nil会返回一个logout深拷贝
+	logout := app.WithField("caller", "mylogout").WithFields(nil)
 	logout.WithField("level", "debug").Debug("debug")
 	logout.WithField("level", "info").Info("info")
 	logout.WithField("level", "warning").Warning("warning")

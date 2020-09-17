@@ -256,15 +256,8 @@ func (entry *entryInit) WithField(key string, value interface{}) Logout {
 	if entry.logout {
 		entry = entry.newEntry()
 	}
-	switch key {
-	case "depth":
+	if key == "depth" {
 		return entry
-	case "logout":
-		_, ok := value.(bool)
-		if ok {
-			entry.logout = true
-			return entry
-		}
 	}
 	if entry.fields == nil {
 		entry.fields = make(Fields)
@@ -275,6 +268,11 @@ func (entry *entryInit) WithField(key string, value interface{}) Logout {
 
 // WithFields 方法给日志新增多个属性。
 func (entry *entryInit) WithFields(fields Fields) Logout {
+	if fields == nil {
+		entry = entry.newEntry()
+		entry.logout = true
+		return entry
+	}
 	if entry.logout {
 		entry = entry.newEntry()
 	}
@@ -322,7 +320,7 @@ func (l *LoggerLevel) UnmarshalText(text []byte) error {
 //
 // 如果参数是一个error则输出error级别日志，否在输出info级别日志。
 func NewPrintFunc(log Logout) func(...interface{}) {
-	log = log.WithField("depth", 2).WithField("logout", true)
+	log = log.WithField("depth", 2).WithFields(nil)
 	return func(args ...interface{}) {
 		fields, ok := args[0].(Fields)
 		if ok {
