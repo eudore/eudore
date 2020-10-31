@@ -17,11 +17,20 @@ import (
 	"time"
 )
 
-// LoggerLevel 定义日志级别
-type LoggerLevel int32
-
-// Fields 定义多个日志属性
-type Fields map[string]interface{}
+/*
+Logger 定义日志处理器定义
+	5个级别日志格式化输出
+	设置输出条目的field标签
+	处理程序初始化前日志(LoggerInit)
+	JSON格式输出(LoggerStd)
+	输出调用者信息、支持多层封装(LoggerStd)
+	按大小、时间自定义切割输出日志(LoggerStdConfig配置)
+*/
+type Logger interface {
+	Logout
+	Sync() error
+	SetLevel(LoggerLevel)
+}
 
 // Logout 日志输出接口
 type Logout interface {
@@ -39,30 +48,31 @@ type Logout interface {
 	WithFields(fields Fields) Logout
 }
 
-// Logger 定义日志处理器定义
-type Logger interface {
-	Logout
-	Sync() error
-	SetLevel(LoggerLevel)
-}
+// Fields 定义多个日志属性
+type Fields map[string]interface{}
+
+// LoggerLevel 定义日志级别
+type LoggerLevel int32
 
 // loggerInitHandler 定义初始日志处理器必要接口，使用新日志处理器处理当前记录的全部日志。
 type loggerInitHandler interface {
 	NextHandler(Logger)
 }
 
-// LoggerInit the initial log processor only records the log. After setting the log processor,
+// loggerInit the initial log processor only records the log. After setting the log processor,
 // it will forward the log of the current record to the new log processor for processing the log generated before the program is initialized.
 //
-// LoggerInit 初始日志处理器仅记录日志，再设置日志处理器后，
+// loggerInit 初始日志处理器仅记录日志，再设置日志处理器后，
 // 会将当前记录的日志交给新日志处理器处理，用于处理程序初始化之前产生的日志。
-type LoggerInit struct {
+//
+// LoggerInit实现了NextHandler(Logger)方法，断言调用该方法设置next logger就会将LoggerInit的日子输出给next logger。
+type loggerInit struct {
 	data  []*entryInit
 	Mutex sync.Mutex
 	*entryInit
 }
 type entryInit struct {
-	logger  *LoggerInit
+	logger  *loggerInit
 	level   LoggerLevel
 	time    time.Time
 	message string
@@ -82,7 +92,7 @@ const (
 
 // NewLoggerInit 函数创建一个初始化日志处理器。
 func NewLoggerInit() Logger {
-	log := &LoggerInit{}
+	log := &loggerInit{}
 	log.entryInit = &entryInit{
 		logger: log,
 		logout: true,
@@ -91,7 +101,7 @@ func NewLoggerInit() Logger {
 }
 
 // NextHandler 方法实现loggerInitHandler接口。
-func (log *LoggerInit) NextHandler(logger Logger) {
+func (log *loggerInit) NextHandler(logger Logger) {
 	logout := logger.WithField("depth", "disable")
 	for _, entry := range log.data {
 		switch entry.level {
@@ -114,7 +124,7 @@ func (log *LoggerInit) NextHandler(logger Logger) {
 }
 
 // SetLevel 方法设置日志处理级别。
-func (log *LoggerInit) SetLevel(level LoggerLevel) {
+func (log *loggerInit) SetLevel(level LoggerLevel) {
 	entry := log.newEntry()
 	entry.level = logSetLevel
 	entry.WithField("level", level)
@@ -122,7 +132,7 @@ func (log *LoggerInit) SetLevel(level LoggerLevel) {
 }
 
 // Sync 方法
-func (log *LoggerInit) Sync() error {
+func (log *loggerInit) Sync() error {
 	return nil
 }
 
@@ -291,9 +301,8 @@ func (l LoggerLevel) String() string {
 }
 
 // MarshalText 方法实现encoding.TextMarshaler接口，用于编码日志级别。
-func (l LoggerLevel) MarshalText() (text []byte, err error) {
-	text = []byte(l.String())
-	return
+func (l LoggerLevel) MarshalText() ([]byte, error) {
+	return []byte(l.String()), nil
 }
 
 // UnmarshalText 方法实现encoding.TextUnmarshaler接口，用于解码日志级别。

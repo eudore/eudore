@@ -2,57 +2,49 @@
 
 Middleware包实现部分基础eudore请求中间件。
 
-example:
-
-```golang
-func InitMiddleware(app *App) error {
-	// admin
-	admin := app.Group("/eudore/debug godoc=https://golang.org")
-	admin.AddMiddleware(middleware.NewBasicAuthFunc("", map[string]string{
-		"root": "111",
-	}))
-	pprof.Init(admin)
-	admin.AnyFunc("/pprof/look/*", pprof.NewLook(app))
-	admin.AnyFunc("/admin/ui", middleware.HandlerAdmin)
-
-	// 增加全局中间件
-	app.AddMiddleware(
-		middleware.NewLoggerFunc(app.App, "route", "action", "ram", "basicauth", "resource", "browser", "sql"),
-		middleware.NewDumpFunc(admin),
-		middleware.NewBlackFunc(map[string]bool{
-			"0.0.0.0/0":      false,
-			"127.0.0.1/32":   true,
-			"192.168.0.0/16": true,
-			"172.0.0.0./8":   true,
-		}, admin),
-		middleware.NewRateFunc(10, 100, app),
-		middleware.NewBreaker().InjectRoutes(admin).NewBreakFunc(),
-		NewAddHeaderFunc(),
-		middleware.NewTimeoutFunc(5*time.Second),
-		middleware.NewCorsFunc(nil, map[string]string{
-			"Access-Control-Allow-Credentials": "true",
-			"Access-Control-Allow-Headers":     "Authorization,DNT,Keep-Alive,User-Agent,Cache-Control",
-			"Access-Control-Expose-Headers":    "X-Request-Id",
-			"Access-Control-Allow-Methods":     "GET, POST, PUT, DELETE, HEAD",
-			"Access-Control-Max-Age":           "1000",
-		}),
-		middleware.NewGzipFunc(5),
-		middleware.NewRecoverFunc(),
-	)
-	// /api/v1/
-	app.AnyFunc("/api/v1/*", eudore.HandlerRouter404)
-	app.AddMiddleware(
-		"/api/v1/",
-		// 需要自行实现获取用户信息(jwt session)和权限控制(ram casbin)
-		// NewUserInfoFunc(app),
-		// app.RAM.NewRAMFunc(),
-	)
-	// 404 405
-	app.AddHandler("404", "", eudore.HandlerRouter404)
-	app.AddHandler("405", "", eudore.HandlerRouter405)
-	return nil
-}
-```
+- doc:
+	- [BasicAuth](#BasicAuth)
+	- [Black](#Black)
+	- [Breaker](#Breaker)
+	- [ContextWarp](#ContextWarp)
+	- [Cors](#Cors)
+	- [Csrf](#Csrf)
+	- [Dump](#Dump)
+	- [Gzip](#Gzip)
+	- [Logger](#Logger)
+	- [Rate](#Rate)
+	- [Recover](#Recover)
+	- [Referer](#Referer)
+	- [Rewrite](#Rewrite)
+	- [Router](#Router)
+	- [RouterRewrite](#RouterRewrite)
+	- [SingleFlight](#SingleFlight)
+	- [Timeout](#Timeout)
+- example:
+	- [中间件管理后台](middlewareAdmin.go)
+	- [自定义中间件处理函数](../_example/middlewareHandle.go)
+	- [熔断器及管理后台](../_example/middlewareBreaker.go)
+	- [BasicAuth](../_example/middlewareBasicAuth.go)
+	- [CORS跨域资源共享](../_example/middlewareCors.go)
+	- [gzip压缩](../_example/middlewareGzip.go)
+	- [限流](../_example/middlewareRate.go)
+	- [异常捕捉](../_example/middlewareRecover.go)
+	- [请求超时](../_example/middlewareTimeout.go)
+	- [访问日志](../_example/middlewareLogger.go)
+	- [黑名单](../_example/middlewareBlack.go)
+	- [路径重写](../_example/middlewareRewrite.go)
+	- [Referer检查](../_example/middlewareReferer.go)
+	- [RequestID](../_example/middlewareRequestID.go)
+	- [CSRF](../_example/middlewareCsrf.go)
+	- [SingleFlight](../_example/middlewareSingleFlight.go)
+	- [Router匹配](../_example/middlewareRouter.go)
+	- [Router方法实现Rewrite](../_example/middlewareRouterRewrite.go)
+	- [ContextWarp](../_example/middlewareContextWarp.go)
+- net/http example:
+	- [中间件 黑名单](../_example/nethttpBalck.go)
+	- [中间件 路径重写](../_example/nethttpRewrite.go)
+	- [中间件 BasicAuth](../_example/nethttpBasicAuth.go)
+	- [中间件 限流](../_example/nethttpRate.go)
 
 ## BasicAuth
 
@@ -87,7 +79,25 @@ app.AddMiddleware(middleware.NewBlackFunc(map[string]bool{
 
 ## Breaker
 
-重构中
+实现路由规则熔断
+
+参数:
+- eudore.Router
+属性:
+- MaxConsecutiveSuccesses uint32                   最大连续成功次数
+- MaxConsecutiveFailures  uint32                   最大连续失败次数
+- OpenWait                time.Duration            打开状态恢复到半开状态下等待时间
+- NewHalfOpen             func(string) func() bool 创建一个路由规则半开状态下的限流函数
+
+example:
+
+	app.AddMiddleware(middleware.NewBreakerFunc(app.Group("/eudore/debug")))
+
+	breaker := middleware.NewBreaker()
+	breaker.OpenWait = 0
+	app.AddMiddleware(breaker.NewBreakerFunc(app.Group("/eudore/debug")))
+
+在关闭状态下连续错误一定次数后熔断器进入半开状态；在半开状态下请求将进入限流状态，半开连续错误一定次数后进入打开状态，半开连续成功一定次数后回到关闭状态；在进入关闭状态后等待一定时间后恢复到半开状态。
 
 ## ContextWarp
 
@@ -113,7 +123,7 @@ func newContextParams(ctx eudore.Context) eudore.Context {
 
 example:
 ```
-app.AddMiddleware(middleware.NewCorsFunc([]string{"www.*.com", "example.com", "127.0.0.1:*"}, map[string]string{
+app.AddMiddleware("global", middleware.NewCorsFunc([]string{"www.*.com", "example.com", "127.0.0.1:*"}, map[string]string{
 	"Access-Control-Allow-Credentials": "true",
 	"Access-Control-Allow-Headers":     "Authorization,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,X-Parent-Id",
 	"Access-Control-Expose-Headers":    "X-Request-Id",
@@ -121,6 +131,8 @@ app.AddMiddleware(middleware.NewCorsFunc([]string{"www.*.com", "example.com", "1
 	"access-control-max-age":           "1000",
 }))
 ```
+
+Cors中间件注册不是全局中间件时，需要最后注册一次Options /*或404方法，否则Options请求匹配了默认404没有经过Cors中间件处理。
 
 ## Csrf
 
@@ -220,6 +232,18 @@ app.AddMiddleware(middleware.NewRefererFunc(map[string]bool{
 }))
 ```
 
+## RequestID
+
+给请求、响应、日志设置一个请求ID
+
+参数:
+- func() string		用于创建一个请求ID，默认使用时间戳随机数
+
+example:
+```
+app.AddMiddleware(middleware.NewRequestIDFunc(nil))
+```
+
 ## Rewrite
 
 重写请求路径，需要注册全局中间件
@@ -289,12 +313,10 @@ example:
 
 实现难点：写入中超时状态码异常、panic栈无法捕捉信息异常、http.Header并发读写、sync.Pool回收了Context、Context数据竟态检测
 
-
-不将实现中间件及原因：
+# 不将实现中间件及原因：
 - BodyLimit 实现太简单不具有技术含量，自行重定义Request.Body。
 - Casbin 实现太简单不具有技术含量，自行添加判断逻辑；不支持pbac实现。
 - Jaeger 简单的全局中间件初始化sp效果太差，需要依赖Context.Logger完整封装。
 - Jwt 无明显效果，不如Context扩展实现相关功能。
-- RequestID 实现太简单不具有技术含量，自己添加第三方库生成ID加入Header。
 - Secure 实现太简单不具有技术含量，自行添加Header。
 - Session 无明显效果，不如Context扩展实现相关功能。

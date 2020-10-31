@@ -14,8 +14,6 @@ func main() {
 	app := eudore.NewApp()
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AddController(new(mySingletonController))
-	// enable-route-extend 参数启用使用请求上下文扩展
-	app.Group(" controllergroup=name enable-route-extend=0").AddController(new(mySingletonController))
 
 	// 请求测试
 	client := httptest.NewClient(app)

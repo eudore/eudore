@@ -18,14 +18,14 @@ import (
 
 func main() {
 	pbac := ram.NewPbac()
-	pbac.AddPolicyStringJson(1, `{"version":"1","description":"access action 1","statement":[{"effect":true,"action":["1"],"resource":["*"]}]}`)
-	pbac.AddPolicyStringJson(2, `{"version":"1","description":"get resource /2","statement":[{"effect":true,"action":["*"],"resource":["/2"],"conditions":{"method":["GET"]}}]}`)
-	pbac.AddPolicyStringJson(3, `{"version":"1","description":"test error","statement":[{"effect":true,"action":["*"],"resource":["/2"],"conditions":{"browser":["GET"],"or":"or","and":"and"}},{"effect":"error test"}]}`)
-	pbac.AddPolicyStringJson(4, `{"version":"1","description":"test or、get","statement":[{"effect":true,"action":["*"],"resource":["*"],"conditions":{"or":{"method":["GET"],"method":["POST"]}}}]}`)
-	pbac.AddPolicyStringJson(5, `{"version":"1","description":"test time","statement":[{"effect":true,"action":["*"],"resource":["*"],"conditions":{"or":{"method":["GET"],"time":{"after":"2020-01-01"}}}}]}`)
-	pbac.AddPolicyStringJson(6, `{"version":"1","description":"local api","statement":[{"effect":true,"action":["*"],"resource":["api/*"],"conditions":{"and":{"method":["GET"],"sourceip":["127.0.0.1","192.168.0.0/24"]}}}]}`)
-	pbac.AddPolicyStringJson(7, `{"version":"1","description":"AdministratorAccess","statement":[{"effect":true,"action":["*"],"resource":["*"]}]}`)
-	pbac.AddPolicyStringJson(8, `{"version":"1","description":"AdministratorAccess","statement":[{"effect":true,"action":["*"],"resource":["api/*/user/*"]}]}`)
+	pbac.AddPolicyStringJSON(1, `{"version":"1","description":"access action 1","statement":[{"effect":true,"action":["1"],"resource":["*"]}]}`)
+	pbac.AddPolicyStringJSON(2, `{"version":"1","description":"get resource /2","statement":[{"effect":true,"action":["*"],"resource":["/2"],"conditions":{"method":["GET"]}}]}`)
+	pbac.AddPolicyStringJSON(3, `{"version":"1","description":"test error","statement":[{"effect":true,"action":["*"],"resource":["/2"],"conditions":{"browser":["GET"],"or":"or","and":"and"}},{"effect":"error test"}]}`)
+	pbac.AddPolicyStringJSON(4, `{"version":"1","description":"test or、get","statement":[{"effect":true,"action":["*"],"resource":["*"],"conditions":{"or":{"method":["GET"],"method":["POST"]}}}]}`)
+	pbac.AddPolicyStringJSON(5, `{"version":"1","description":"test time","statement":[{"effect":true,"action":["*"],"resource":["*"],"conditions":{"or":{"method":["GET"],"time":{"after":"2020-01-01"}}}}]}`)
+	pbac.AddPolicyStringJSON(6, `{"version":"1","description":"local api","statement":[{"effect":true,"action":["*"],"resource":["api/*"],"conditions":{"and":{"method":["GET"],"sourceip":["127.0.0.1","192.168.0.0/24"]}}}]}`)
+	pbac.AddPolicyStringJSON(7, `{"version":"1","description":"AdministratorAccess","statement":[{"effect":true,"action":["*"],"resource":["*"]}]}`)
+	pbac.AddPolicyStringJSON(8, `{"version":"1","description":"AdministratorAccess","statement":[{"effect":true,"action":["*"],"resource":["api/*/user/*"]}]}`)
 
 	// id=1 测试stmt
 	pbac.BindPolicy(1, 0, 1)

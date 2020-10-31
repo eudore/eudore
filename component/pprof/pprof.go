@@ -46,11 +46,16 @@ func Init(r eudore.Router) {
 
 	r.AddMiddleware(pprofMiddleware(server))
 	r.AnyFunc("/", pprof.Index)
-	r.AnyFunc("/*", fixpath, pprof.Index)
 	r.AnyFunc("/cmdline", pprof.Cmdline)
 	r.AnyFunc("/profile", pprof.Profile)
 	r.AnyFunc("/symbol", pprof.Symbol)
 	r.AnyFunc("/trace", pprof.Trace)
+	r.AnyFunc("/allocs", pprof.Handler("allocs"))
+	r.AnyFunc("/block", pprof.Handler("block"))
+	r.AnyFunc("/goroutine", pprof.Handler("goroutine"))
+	r.AnyFunc("/heap", pprof.Handler("heap"))
+	r.AnyFunc("/mutex", pprof.Handler("mutex"))
+	r.AnyFunc("/threadcreate", pprof.Handler("threadcreate"))
 	r.AnyFunc("/expvar", Expvar)
 	r.AnyFunc("/look godoc="+server, Look)
 	r.AnyFunc("/look/* godoc="+server, Look)
@@ -70,11 +75,6 @@ func fixgodoc(route string) eudore.HandlerFunc {
 			w.ResponseWriter.Write(w.Buffer.Bytes())
 		}
 	}
-}
-
-// 修复pprof前缀要求
-func fixpath(ctx eudore.Context) {
-	ctx.Request().URL.Path = "/debug/pprof/" + ctx.GetParam("*")
 }
 
 func pprofMiddleware(server string) eudore.HandlerFunc {

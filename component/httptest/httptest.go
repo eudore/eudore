@@ -2,6 +2,7 @@ package httptest
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -93,11 +94,17 @@ func (clt *Client) AddHeaderValue(key, val string) *Client {
 	return clt
 }
 
+// AddBasicAuth 方法给客户端设置basicauth信息。
+func (clt *Client) AddBasicAuth(name, pass string) *Client {
+	clt.Headers.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(name+":"+pass)))
+	return clt
+}
+
 // AddCookie 方法指定url添加cookie
 func (clt *Client) AddCookie(path, key, val string) *Client {
 	u, err := url.Parse(path)
 	if err != nil {
-		clt.Printf("GetCookie parse url %s error: %s", path, err.Error)
+		clt.Printf("GetCookie parse url %s error: %s", path, err.Error())
 		return clt
 	}
 	clt.CookieJar.SetCookies(u, []*http.Cookie{{Name: key, Value: val}})
@@ -108,7 +115,7 @@ func (clt *Client) AddCookie(path, key, val string) *Client {
 func (clt *Client) GetCookie(path, key string) string {
 	u, err := url.Parse(path)
 	if err != nil {
-		clt.Printf("GetCookie parse url %s error: %s", path, err.Error)
+		clt.Printf("GetCookie parse url %s error: %s", path, err.Error())
 		return ""
 	}
 	if u.Host == "" {

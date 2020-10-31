@@ -41,7 +41,7 @@ func TestConfigEudore2(t *testing.T) {
 func TestConfigNoread2(t *testing.T) {
 	conf := eudore.NewConfigEudore(nil)
 	conf.Set("print", t.Log)
-	conf.Set("keys.config", "notfound-file")
+	conf.Set("config", "notfound-file")
 	conf.Parse()
 }
 
@@ -51,8 +51,8 @@ func TestConfigReadError2(t *testing.T) {
 	defer os.Remove(filename)
 
 	app := eudore.NewApp()
-	app.Set("keys.config", filename)
-	app.Set("keys.help", true)
+	app.Set("config", filename)
+	app.Set("help", true)
 	app.Options(app.Parse())
 	app.CancelFunc()
 	app.Run()

@@ -19,7 +19,7 @@ type (
 )
 
 var (
-	_ Handler = (*Acl)(nil)
+	_ Handler = (*ACL)(nil)
 	_ Handler = (*Rbac)(nil)
 	_ Handler = (*Pbac)(nil)
 	_ Handler = (*Allow)(nil)

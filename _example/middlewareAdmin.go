@@ -11,7 +11,7 @@ func main() {
 	app := eudore.NewApp(eudore.NewRouterStd(eudore.NewRouterCoreDebug(nil)))
 
 	admin := app.Group("/eudore/debug")
-	admin.AddMiddleware(middleware.NewBasicAuthFunc(map[string]string{"user": "pw"}))
+	admin.AddMiddleware("global", middleware.NewBasicAuthFunc(map[string]string{"user": "pw"}))
 	pprof.Init(admin)
 	admin.AnyFunc("/pprof/look/* godoc=/eudore/debug/pprof/godoc", pprof.NewLook(app))
 	admin.AnyFunc("/pprof/expvar godoc=/eudore/debug/pprof/godoc", pprof.Expvar)
@@ -26,17 +26,23 @@ func main() {
 		"access-control-allow-methods":     "GET, POST, PUT, DELETE, HEAD",
 		"access-control-max-age":           "1000",
 	}))
+	app.AddMiddleware(middleware.NewBreakerFunc(admin))
+	app.AddHandler("404", "", eudore.HandlerRouter404)
+	app.AddHandler("405", "", eudore.HandlerRouter405)
 	app.AnyFunc("/echo", func(ctx eudore.Context) {
 		ctx.Write(ctx.Body())
 	})
 	app.AnyFunc("/eudore/debug/admin/ui", middleware.HandlerAdmin)
-	app.AnyFunc("/*", eudore.HandlerEmpty)
+	app.AnyFunc("/", func(ctx eudore.Context) {
+		ctx.Redirect(301,"/eudore/debug/admin/ui")	
+	})
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/1").Do()
 	client.NewRequest("GET", "/eudore/debug/admin/ui").Do()
 
 	app.Listen(":8088")
+	app.ListenTLS(":8089", "", "")
 	// app.CancelFunc()
 	app.Run()
 }

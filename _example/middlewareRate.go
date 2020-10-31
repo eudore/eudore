@@ -69,16 +69,15 @@ func middlewareRate3() {
 	app := eudore.NewApp()
 	app.AddMiddleware("/out", func(ctx eudore.Context) {
 		cctx, cannel := context.WithTimeout(ctx.GetContext(), time.Millisecond*2)
-		go func() {
-			<-cctx.Done()
-			cannel()
-		}()
+		cannel()
 		ctx.WithContext(cctx)
 	})
 	app.AddMiddleware(middleware.NewRateFunc(1, 3, app.Context, time.Millisecond*10, func(ctx eudore.Context) string {
 		return ctx.RealIP()
 	}))
-	app.AnyFunc("/out", eudore.HandlerEmpty)
+	app.AnyFunc("/out", func(ctx eudore.Context) {
+		time.Sleep(time.Millisecond * 5)
+	})
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
 	client := httptest.NewClient(app)
@@ -86,6 +85,7 @@ func middlewareRate3() {
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/").Do().CheckStatus(200)
+	client.NewRequest("PUT", "/out").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/out").Do().CheckStatus(200)
 
 	app.Listen(":8088")

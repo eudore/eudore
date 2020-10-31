@@ -48,7 +48,7 @@ func main() {
 		Mutual:    true,
 		Keyfile:   "server.key",
 		Certfile:  "server.cer",
-		TrustFile: "ca.cer",
+		Trustfile: "ca.cer",
 	}).Listen()
 	if err == nil {
 		app.Serve(ln)

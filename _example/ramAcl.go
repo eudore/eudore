@@ -20,7 +20,7 @@ import (
 )
 
 func main() {
-	acl := ram.NewAcl()
+	acl := ram.NewACL()
 	acl.AddPermission(1, "1")
 	acl.AddPermission(2, "2")
 	acl.AddPermission(3, "3")

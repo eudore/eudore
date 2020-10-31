@@ -16,7 +16,7 @@ import (
 )
 
 func main() {
-	acl := ram.NewAcl()
+	acl := ram.NewACL()
 	acl.AddPermission(1, "GetUserInfo")
 	acl.BindAllowPermission(2, 1)
 

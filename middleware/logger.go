@@ -34,7 +34,7 @@ func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
 		if 300 < status && status < 400 && status != 304 {
 			out = out.WithField("location", ctx.Response().Header().Get(eudore.HeaderLocation))
 		}
-		if status < 400 {
+		if status < 500 {
 			out.Info()
 		} else {
 			if err := ctx.Err(); err != nil {

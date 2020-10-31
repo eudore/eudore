@@ -103,8 +103,8 @@ func (p *Pbac) AddPolicy(id int, policy *Policy) {
 	p.Policys[id] = policy
 }
 
-// AddPolicyStringJson 方法给PBAC添加一个策略，策略类型是JSON字符串。
-func (p *Pbac) AddPolicyStringJson(id int, str string) error {
+// AddPolicyStringJSON 方法给PBAC添加一个策略，策略类型是JSON字符串。
+func (p *Pbac) AddPolicyStringJSON(id int, str string) error {
 	policy, err := ParsePolicyString(str)
 	if err == nil {
 		p.AddPolicy(id, policy)

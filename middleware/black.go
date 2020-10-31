@@ -10,15 +10,15 @@ import (
 
 // Black 定义黑名单中间件后台。
 type black struct {
-	White *blackNode
-	Black *blackNode
+	White *BlackNode
+	Black *BlackNode
 }
 
 // newBlack 函数创建一个黑名单后台。
 func newBlack() *black {
 	return &black{
-		White: new(blackNode),
-		Black: new(blackNode),
+		White: new(BlackNode),
+		Black: new(BlackNode),
 	}
 }
 
@@ -109,27 +109,27 @@ func (b *black) DeleteBlack(ip string) {
 	b.Black.Delete(ip)
 }
 
-// blackNode 定义黑名单存储树节点。
-type blackNode struct {
-	Childrens [2]*blackNode
+// BlackNode 定义黑名单存储树节点。
+type BlackNode struct {
+	Childrens [2]*BlackNode
 	Data      bool
 	Count     uint64
 }
 
-// blackInfo 定义黑名单规则信息。
-type blackInfo struct {
+// BlackInfo 定义黑名单规则信息。
+type BlackInfo struct {
 	Addr  string `alias:"addr" json:"addr"`
 	Mask  uint64 `alias:"mask" json:"mask"`
 	Count uint64 `alias:"count" json:"count"`
 }
 
 // Insert 方法给黑名单节点新增一个ip或ip段。
-func (node *blackNode) Insert(ipstr string) {
+func (node *BlackNode) Insert(ipstr string) {
 	ip, bit := ip2intbit(ipstr)
 	for num := uint(31); bit > 0; bit-- {
 		i := ip >> num & 0x01
 		if node.Childrens[i] == nil {
-			node.Childrens[i] = new(blackNode)
+			node.Childrens[i] = new(BlackNode)
 		}
 		node = node.Childrens[i]
 		num--
@@ -138,8 +138,8 @@ func (node *blackNode) Insert(ipstr string) {
 }
 
 // Delete 方法给黑名单节点删除一个ip或ip段。
-func (node *blackNode) Delete(ipstr string) {
-	var lastnode *blackNode
+func (node *BlackNode) Delete(ipstr string) {
+	var lastnode *BlackNode
 	var lastindex uint64
 	rootnode := node
 	ip, bit := ip2intbit(ipstr)
@@ -158,12 +158,12 @@ func (node *blackNode) Delete(ipstr string) {
 	if lastnode != nil {
 		lastnode.Childrens[lastindex] = nil
 	} else {
-		*rootnode = blackNode{}
+		*rootnode = BlackNode{}
 	}
 }
 
 // Look 方法匹配ip是否在黑名单节点，命中则节点计数加一。
-func (node *blackNode) Look(ip uint64) bool {
+func (node *BlackNode) Look(ip uint64) bool {
 	for num := uint(32); num > 0; num-- {
 		if node.Data {
 			node.Count++
@@ -180,9 +180,9 @@ func (node *blackNode) Look(ip uint64) bool {
 }
 
 // List 方法递归获取全部黑名单规则信息。
-func (node *blackNode) List(data []blackInfo, prefix, bit uint64) []blackInfo {
+func (node *BlackNode) List(data []BlackInfo, prefix, bit uint64) []BlackInfo {
 	if node.Data {
-		data = append(data, blackInfo{
+		data = append(data, BlackInfo{
 			Addr:  int2ip(prefix << bit),
 			Mask:  32 - bit,
 			Count: node.Count,

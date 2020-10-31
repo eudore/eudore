@@ -17,8 +17,8 @@ func main() {
 	app.ParseOption(func([]eudore.ConfigParseFunc) []eudore.ConfigParseFunc {
 		return []eudore.ConfigParseFunc{readHttp, eudore.ConfigParseArgs, eudore.ConfigParseEnvs, eudore.ConfigParseMods, eudore.ConfigParseWorkdir, eudore.ConfigParseHelp}
 	})
-	app.Set("keys.config", []string{"http://127.0.0.1:8089/xxx", "http://127.0.0.1:8088/xxx"})
-	app.Set("keys.help", true)
+	app.Set("config", []string{"http://127.0.0.1:8089/xxx", "http://127.0.0.1:8088/xxx"})
+	app.Set("help", true)
 
 	go func(app2 *eudore.App) {
 		app := eudore.NewApp()
@@ -40,7 +40,7 @@ func main() {
 }
 
 func readHttp(c eudore.Config) error {
-	for _, path := range eudore.GetStrings(c.Get("keys.config")) {
+	for _, path := range eudore.GetStrings(c.Get("config")) {
 		if !strings.HasPrefix(path, "http://") && !strings.HasPrefix(path, "https://") {
 			continue
 		}

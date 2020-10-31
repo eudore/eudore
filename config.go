@@ -10,6 +10,8 @@ import (
 )
 
 // ConfigParseFunc 定义配置解析函数。
+//
+// Config 默认解析函数为eudore.ConfigAllParseFunc
 type ConfigParseFunc func(Config) error
 
 // ConfigParseOption 定义配置解析选项，用于修改配置解析函数。
@@ -23,16 +25,16 @@ type Config interface {
 	Parse() error
 }
 
-// ConfigMap 使用map保存配置。
-type ConfigMap struct {
+// configMap 使用map保存配置。
+type configMap struct {
 	Keys   map[string]interface{} `alias:"keys"`
 	Print  func(...interface{})   `alias:"print"`
 	funcs  []ConfigParseFunc      `alias:"-"`
 	Locker sync.RWMutex           `alias:"-"`
 }
 
-// ConfigEudore 使用结构体或map保存配置，通过反射来读写属性。
-type ConfigEudore struct {
+// configEudore 使用结构体或map保存配置，通过反射来读写属性。
+type configEudore struct {
 	Keys          interface{}          `alias:"keys"`
 	Print         func(...interface{}) `alias:"print"`
 	funcs         []ConfigParseFunc    `alias:"-"`
@@ -46,6 +48,10 @@ type configRLocker interface {
 }
 
 // NewConfigMap 创建一个ConfigMap，如果传入参数为map[string]interface{},则作为初始化数据。
+//
+// ConfigMap将使用传入的map作为配置存储去Get/Set一个键值。
+//
+// ConfigMap已实现json.Marshaler和json.Unmarshaler接口.
 func NewConfigMap(arg interface{}) Config {
 	var keys map[string]interface{}
 	if ks, ok := arg.(map[string]interface{}); ok {
@@ -53,7 +59,7 @@ func NewConfigMap(arg interface{}) Config {
 	} else {
 		keys = make(map[string]interface{})
 	}
-	return &ConfigMap{
+	return &configMap{
 		Keys:  keys,
 		Print: printEmpty,
 		funcs: ConfigAllParseFunc,
@@ -61,7 +67,7 @@ func NewConfigMap(arg interface{}) Config {
 }
 
 // Get 方法获取一个属性，如果键为空字符串，返回保存全部数据的map对象。
-func (c *ConfigMap) Get(key string) interface{} {
+func (c *configMap) Get(key string) interface{} {
 	c.Locker.RLock()
 	defer c.Locker.RUnlock()
 	if len(key) == 0 {
@@ -71,7 +77,7 @@ func (c *ConfigMap) Get(key string) interface{} {
 }
 
 // Set 方法设置一个属性，如果键为空字符串且值类型是map[string]interface{},则替换保存全部数据的map对象。
-func (c *ConfigMap) Set(key string, val interface{}) error {
+func (c *configMap) Set(key string, val interface{}) error {
 	c.Locker.Lock()
 	if len(key) == 0 {
 		keys, ok := val.(map[string]interface{})
@@ -93,12 +99,12 @@ func (c *ConfigMap) Set(key string, val interface{}) error {
 }
 
 // ParseOption 执行一个配置解析函数选项。
-func (c *ConfigMap) ParseOption(fn ConfigParseOption) {
+func (c *configMap) ParseOption(fn ConfigParseOption) {
 	c.funcs = fn(c.funcs)
 }
 
 // Parse 方法执行全部配置解析函数，如果其中解析函数返回err，则停止解析并返回err。
-func (c *ConfigMap) Parse() (err error) {
+func (c *configMap) Parse() (err error) {
 	for _, fn := range c.funcs {
 		err = fn(c)
 		if err != nil {
@@ -110,20 +116,26 @@ func (c *ConfigMap) Parse() (err error) {
 }
 
 // MarshalJSON 实现json.Marshaler接口，试json序列化直接操作保存的数据。
-func (c *ConfigMap) MarshalJSON() ([]byte, error) {
+func (c *configMap) MarshalJSON() ([]byte, error) {
 	c.Locker.RLock()
 	defer c.Locker.RUnlock()
 	return json.Marshal(c.Keys)
 }
 
 // UnmarshalJSON 实现json.Unmarshaler接口，试json反序列化直接操作保存的数据。
-func (c *ConfigMap) UnmarshalJSON(data []byte) error {
+func (c *configMap) UnmarshalJSON(data []byte) error {
 	c.Locker.Lock()
 	defer c.Locker.Unlock()
 	return json.Unmarshal(data, &c.Keys)
 }
 
 // NewConfigEudore 创建一个ConfigEudore，如果传入参数为空，使用空map[string]interface{}作为初始化数据。
+//
+// ConfigEduoew允许传入一个map或struct作为配置存储，使用eudore.Set和eudore.Get方法去读写数据。
+//
+// 如果传入的配置对象实现sync.RLock一样的读写锁，则使用配置的读写锁，否则会创建一个sync.RWMutex锁。
+//
+// ConfigEduoe已实现json.Marshaler和json.Unmarshaler接口.
 func NewConfigEudore(i interface{}) Config {
 	if i == nil {
 		i = make(map[string]interface{})
@@ -132,7 +144,7 @@ func NewConfigEudore(i interface{}) Config {
 	if !ok {
 		mu = new(sync.RWMutex)
 	}
-	return &ConfigEudore{
+	return &configEudore{
 		Keys:          i,
 		Print:         printEmpty,
 		funcs:         ConfigAllParseFunc,
@@ -141,7 +153,7 @@ func NewConfigEudore(i interface{}) Config {
 }
 
 // Get 方法实现读取数据属性的一个属性。
-func (c *ConfigEudore) Get(key string) (i interface{}) {
+func (c *configEudore) Get(key string) (i interface{}) {
 	if len(key) == 0 {
 		return c.Keys
 	}
@@ -152,7 +164,7 @@ func (c *ConfigEudore) Get(key string) (i interface{}) {
 }
 
 // Set 方法实现设置数据的一个属性。
-func (c *ConfigEudore) Set(key string, val interface{}) (err error) {
+func (c *configEudore) Set(key string, val interface{}) (err error) {
 	c.Lock()
 	if len(key) == 0 {
 		c.Keys = val
@@ -171,12 +183,12 @@ func (c *ConfigEudore) Set(key string, val interface{}) (err error) {
 }
 
 // ParseOption 执行一个配置解析函数选项。
-func (c *ConfigEudore) ParseOption(fn ConfigParseOption) {
+func (c *configEudore) ParseOption(fn ConfigParseOption) {
 	c.funcs = fn(c.funcs)
 }
 
 // Parse 方法执行全部配置解析函数，如果其中解析函数返回err，则停止解析并返回err。
-func (c *ConfigEudore) Parse() (err error) {
+func (c *configEudore) Parse() (err error) {
 	for _, fn := range c.funcs {
 		err = fn(c)
 		if err != nil {
@@ -188,14 +200,14 @@ func (c *ConfigEudore) Parse() (err error) {
 }
 
 // MarshalJSON 实现json.Marshaler接口，试json序列化直接操作保存的数据。
-func (c *ConfigEudore) MarshalJSON() ([]byte, error) {
+func (c *configEudore) MarshalJSON() ([]byte, error) {
 	c.RLock()
 	defer c.RUnlock()
 	return json.Marshal(c.Keys)
 }
 
 // UnmarshalJSON 实现json.Unmarshaler接口，试json反序列化直接操作保存的数据。
-func (c *ConfigEudore) UnmarshalJSON(data []byte) error {
+func (c *configEudore) UnmarshalJSON(data []byte) error {
 	c.Lock()
 	defer c.Unlock()
 	return json.Unmarshal(data, &c.Keys)
@@ -207,8 +219,8 @@ func configPrint(c Config, args ...interface{}) {
 
 // ConfigParseJSON 方法解析json文件配置。
 func ConfigParseJSON(c Config) error {
-	configPrint(c, "config read paths: ", c.Get("keys.config"))
-	for _, path := range GetStrings(c.Get("keys.config")) {
+	configPrint(c, "config read paths: ", c.Get("config"))
+	for _, path := range GetStrings(c.Get("config")) {
 		file, err := os.Open(path)
 		if err == nil {
 			err = json.NewDecoder(file).Decode(c)
@@ -283,9 +295,9 @@ func ConfigParseWorkdir(c Config) error {
 	return nil
 }
 
-// ConfigParseHelp 函数测试配置内容，如果存在'keys.help'项会使用JSON标准化输出配置到标准输出。
+// ConfigParseHelp 函数测试配置内容，如果存在help'项会使用JSON标准化输出配置到标准输出。
 func ConfigParseHelp(c Config) error {
-	ok := c.Get("keys.help") != nil
+	ok := c.Get("help") != nil
 	if ok {
 		indent, err := json.MarshalIndent(&c, "", "\t")
 		fmt.Println(string(indent), err)

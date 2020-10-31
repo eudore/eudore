@@ -7,7 +7,7 @@ import (
 
 // NewBasicAuthFunc 创建一个Basic auth认证中间件。
 //
-// namews为保存用户密码的map。
+// names为保存用户密码的map。
 func NewBasicAuthFunc(names map[string]string) eudore.HandlerFunc {
 	checks := make(map[string]string, len(names))
 	for name, pass := range names {

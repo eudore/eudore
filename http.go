@@ -27,8 +27,8 @@ type ResponseWriter interface {
 	Status() int
 }
 
-// ResponseWriterHTTP 是对net/http.ResponseWriter接口封装
-type ResponseWriterHTTP struct {
+// responseWriterHTTP 是对net/http.ResponseWriter接口封装
+type responseWriterHTTP struct {
 	http.ResponseWriter
 	code int
 	size int
@@ -138,41 +138,41 @@ func (p *Params) Del(key string) {
 	}
 }
 
-// Reset 方法重置ResponseWriterHTTP对象。
-func (w *ResponseWriterHTTP) Reset(writer http.ResponseWriter) {
+// Reset 方法重置responseWriterHTTP对象。
+func (w *responseWriterHTTP) Reset(writer http.ResponseWriter) {
 	w.ResponseWriter = writer
 	w.code = http.StatusOK
 	w.size = 0
 }
 
 // Write 方法实现io.Writer接口。
-func (w *ResponseWriterHTTP) Write(data []byte) (int, error) {
+func (w *responseWriterHTTP) Write(data []byte) (int, error) {
 	n, err := w.ResponseWriter.Write(data)
 	w.size = w.size + n
 	return n, err
 }
 
 // WriteHeader 方法实现写入http请求状态码。
-func (w *ResponseWriterHTTP) WriteHeader(codeCode int) {
+func (w *responseWriterHTTP) WriteHeader(codeCode int) {
 	w.code = codeCode
 	w.ResponseWriter.WriteHeader(w.code)
 }
 
 // Flush 方法实现刷新缓冲，将缓冲的请求发送给客户端。
-func (w *ResponseWriterHTTP) Flush() {
+func (w *responseWriterHTTP) Flush() {
 	w.ResponseWriter.(http.Flusher).Flush()
 }
 
 // Hijack 方法实现劫持http连接。
-func (w *ResponseWriterHTTP) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+func (w *responseWriterHTTP) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if hj, ok := w.ResponseWriter.(http.Hijacker); ok {
 		return hj.Hijack()
 	}
 	return nil, nil, ErrResponseWriterHTTPNotHijacker
 }
 
-// Push 方法实现http Psuh，如果ResponseWriterHTTP实现http.Push接口，则Push资源。
-func (w *ResponseWriterHTTP) Push(target string, opts *http.PushOptions) error {
+// Push 方法实现http Psuh，如果responseWriterHTTP实现http.Push接口，则Push资源。
+func (w *responseWriterHTTP) Push(target string, opts *http.PushOptions) error {
 	if pusher, ok := w.ResponseWriter.(http.Pusher); ok {
 		return pusher.Push(target, opts)
 	}
@@ -180,12 +180,12 @@ func (w *ResponseWriterHTTP) Push(target string, opts *http.PushOptions) error {
 }
 
 // Size 方法获得写入的数据长度。
-func (w *ResponseWriterHTTP) Size() int {
+func (w *responseWriterHTTP) Size() int {
 	return w.size
 }
 
 // Status 方法获得设置的http状态码。
-func (w *ResponseWriterHTTP) Status() int {
+func (w *responseWriterHTTP) Status() int {
 	return w.code
 }
 

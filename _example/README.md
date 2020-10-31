@@ -1,8 +1,8 @@
 # example
 
-本部分为演示例子目录功能导航,保存eudore、component、middleware三个实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
+本部分为演示例子目录功能导航,保存eudore、component、middleware三个库实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
 
-exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库测试，单元测试执行gotest.sh脚本。
+exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库测试，单元测试执行gotest.sh脚本(OUT=coverage.html GOROOT=/usr/local/go1.11 bash gotest.sh),未完成单元测试覆盖的库不保证稳定性。
 
 go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/component/ram, github.com/eudore/eudore/component/httptest
 
@@ -15,6 +15,8 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [静态文件](appStatic.go)
 	- [全局请求中间件](appMiddleware.go)
 	- [自定义app](appExtend.go)
+	- [反向代理](appProxy.go)
+	- [隧道代理](appTunnel.go)
 - Config
 	- [解析命令行参数](configArgs.go)
 	- [解析环境变量](configEnvs.go)
@@ -82,6 +84,7 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [使用jwt](handlerJwt.go)
 - Controller
 	- [基础控制器](controllerBase.go)
+	- [路由控制器](controllerAutoRoute.go)
 	- [单例控制器](controllerSingleton.go)
 	- [视图控制器](controllerView.go)
 	- [控制器组合路由](controllerComposeRoute.go)
@@ -89,7 +92,8 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [控制器自定义参数](controllerParams.go)
 	- [控制器只读属性](controllerReadFields.go)
 	- Controller Handler扩展
-- Middlewar
+- Middleware
+	- [中间件管理后台](middlewareAdmin.go)
 	- [自定义中间件处理函数](middlewareHandle.go)
 	- [熔断器及管理后台](middlewareBreaker.go)
 	- [BasicAuth](middlewareBasicAuth.go)
@@ -134,7 +138,6 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [结构体和变量校验](toolValidate.go)
 - 组件
 	- [pprof](componentPprof.go)
-	- [http代理实现](componentProxy.go)
 	- [运行时对象数据显示](componentLook.go)
 	- 生成对象帮助信息
 	- SRI值自动设置

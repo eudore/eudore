@@ -37,9 +37,9 @@ type (
 	conditionAnd struct {
 		Conditions []Condition `json:"conditions,omitempty"`
 	}
-	// conditionSourceIp 定义ip检查条件。
-	conditionSourceIp struct {
-		SourceIp []*net.IPNet `json:"sourceip,omitempty"`
+	// conditionSourceIP 定义ip检查条件。
+	conditionSourceIP struct {
+		SourceIP []*net.IPNet `json:"sourceip,omitempty"`
 	}
 	// conditionTime 定义当前时间现在条件。
 	conditionTime struct {
@@ -61,7 +61,7 @@ var conditionnews = make(map[string]func(interface{}) Condition)
 func init() {
 	conditionnews["or"] = NewConditionOr
 	conditionnews["and"] = NewConditionAnd
-	conditionnews["sourceip"] = NewConditionSourceIp
+	conditionnews["sourceip"] = NewConditionSourceIP
 	conditionnews["time"] = NewConditionTime
 	conditionnews["method"] = NewConditionMethod
 }
@@ -211,8 +211,8 @@ func (cond conditionAnd) MarshalJSON() ([]byte, error) {
 	return json.Marshal(data)
 }
 
-// NewConditionSourceIp 方法创建一个ip匹配条件。
-func NewConditionSourceIp(i interface{}) Condition {
+// NewConditionSourceIP 方法创建一个ip匹配条件。
+func NewConditionSourceIP(i interface{}) Condition {
 	var ipnets []*net.IPNet
 	for _, i := range eudore.GetStrings(i) {
 		if strings.IndexByte(i, '/') == -1 {
@@ -223,17 +223,17 @@ func NewConditionSourceIp(i interface{}) Condition {
 			ipnets = append(ipnets, ipnet)
 		}
 	}
-	return &conditionSourceIp{SourceIp: ipnets}
+	return &conditionSourceIP{SourceIP: ipnets}
 }
 
 // Name 方法返回条件名称。
-func (cond conditionSourceIp) Name() string {
+func (cond conditionSourceIP) Name() string {
 	return "sourceip"
 }
 
 // Match 方法匹配ip段。
-func (cond conditionSourceIp) Match(ctx eudore.Context) bool {
-	for _, i := range cond.SourceIp {
+func (cond conditionSourceIP) Match(ctx eudore.Context) bool {
+	for _, i := range cond.SourceIP {
 		if i.Contains(net.ParseIP(ctx.RealIP())) {
 			return true
 		}
@@ -242,9 +242,9 @@ func (cond conditionSourceIp) Match(ctx eudore.Context) bool {
 }
 
 // MarshalJSON 方法实现ip条件的序列化。
-func (cond conditionSourceIp) MarshalJSON() ([]byte, error) {
-	data := make([]string, 0, len(cond.SourceIp))
-	for _, i := range cond.SourceIp {
+func (cond conditionSourceIP) MarshalJSON() ([]byte, error) {
+	data := make([]string, 0, len(cond.SourceIP))
+	for _, i := range cond.SourceIP {
 		data = append(data, i.IP.String())
 	}
 	return json.Marshal(data)

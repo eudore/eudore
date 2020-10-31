@@ -68,7 +68,7 @@ func NewvalidaterBase() Validater {
 
 // RegisterValidations 函数给一个名称注册多个类型的的ValidateFunc或ValidateNewFunc。
 //
-// ValidateFunc 一个任意参数，返回值类型为为bool或error。
+// ValidateFunc 一个任意参数，返回值类型为为bool。
 //
 // ValidateNewFunc 一个字符串参数，返回值为interface{}或ValidateFunc，若返回值为interface{}，实际调用返回值类型为nil或ValidateFunc。
 func (v *validaterBase) RegisterValidations(name string, fns ...interface{}) {
@@ -93,10 +93,7 @@ func (v *validaterBase) registerValidateFunc(name string, fn interface{}) {
 	}
 
 	// ValidateNewFunc
-	if iType.In(0) != typeString {
-		return
-	}
-	if iType.Out(0) == typeInterface || checkValidateFunc(iType.Out(0)) {
+	if iType.In(0) == typeString && (iType.Out(0) == typeInterface || checkValidateFunc(iType.Out(0))) {
 		v.ValidateNewFuncs[name] = append(v.ValidateNewFuncs[name], fn)
 	}
 }
@@ -163,12 +160,10 @@ func (v *validaterBase) ParseValidateFields(iType reflect.Type) (validateBaseFie
 	for i := 0; i < iType.NumField(); i++ {
 		field := iType.Field(i)
 		tags := field.Tag.Get("validate")
-		isImple := field.Type.Implements(typeValidateInterface)
-
-		if isImple && tags != "-" {
+		if field.Type.Implements(typeValidateInterface) && tags == "" {
 			vfs = append(vfs, validateBaseField{
 				Index:   i,
-				IsImple: isImple,
+				IsImple: true,
 				Format:  fmt.Sprintf("validate %s.%s field '%s' type is '%s', check Validate method error: %%v", iType.PkgPath(), iType.Name(), field.Name, field.Type),
 			})
 			continue

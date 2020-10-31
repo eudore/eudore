@@ -65,6 +65,8 @@ func TestHandlerReister2(t *testing.T) {
 	app.AnyFunc("/2/7", func(eudore.Context, map[string]interface{}) (interface{}, error) {
 		return "hello", nil
 	})
+	app.AnyFunc("/2/8", func() {
+	})
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/1/1").Do()
@@ -84,6 +86,7 @@ func TestHandlerReister2(t *testing.T) {
 	client.NewRequest("GET", "/2/5").Do()
 	client.NewRequest("GET", "/2/6").Do()
 	client.NewRequest("GET", "/2/7").Do()
+	client.NewRequest("GET", "/2/8").Do()
 
 	app.Renderer = func(eudore.Context, interface{}) error {
 		return errors.New("test render error")
@@ -156,6 +159,7 @@ func TestHandlerRPC2(t *testing.T) {
 }
 
 func TestHandlerFunc2(t *testing.T) {
+	eudore.SetHandlerAliasName(new(handlerHttp1), "")
 	eudore.SetHandlerAliasName(new(handlerHttp1), "handlerHttp1-test")
 	defer func() {
 		recover()

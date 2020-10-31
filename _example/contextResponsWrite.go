@@ -46,6 +46,7 @@ func main() {
 	app := eudore.NewApp()
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteHeader(201)
+		ctx.WriteHeader(202)
 		ctx.WriteString("host: " + ctx.Host())
 
 		// 等待

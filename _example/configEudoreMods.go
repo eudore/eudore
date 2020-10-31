@@ -11,13 +11,16 @@ enable获得到的数组为需要加载的模式，额外会加载为当前操�
 import (
 	"github.com/eudore/eudore"
 	"os"
+"fmt"
+"encoding/json"
 )
 
 type conf struct {
-	Keys      map[string]interface{} `alias:"keys"`
-	Component *componentConfig       `alias:"component"`
-	Enable    []string               `alias:"enable"`
-	Mods      map[string]*conf       `alias:"mods"`
+	Keys      map[string]interface{} `alias:"keys" json:"keys"`
+	Config string `alias:"config" json:"config"`
+	Component *componentConfig       `alias:"component" json:"component"`
+	Enable    []string               `alias:"enable" json:"enable"`
+	Mods      map[string]*conf       `alias:"mods" json:"mods"`
 }
 type componentConfig struct {
 	Logger *eudore.LoggerStdConfig `json:"logger" alias:"logger"`
@@ -52,11 +55,13 @@ func main() {
 	tmpfile.Write(content)
 
 	app := eudore.NewApp(eudore.NewConfigEudore(new(conf)))
-	app.Config.Set("keys.config", configfilepath)
+	app.Config.Set("config", configfilepath)
 	app.Config.Set("enable", []string{"debug"})
 	app.Options(app.Parse())
 	app.Info(app.Get("component.server.readtimeout"))
 
+        indent, err := json.MarshalIndent(app.Config, "", "\t")
+        fmt.Println(string(indent), err)
 	app.Listen(":8088")
 	// app.CancelFunc()
 	app.Run()

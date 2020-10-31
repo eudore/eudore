@@ -7,7 +7,7 @@ package main
 
 如果配置类型是ConfigEudore,那么调用Set设置的属性会按照属性一层层去选择然后设置，具体参数configEudore.go中的演示。
 
-go run configArgs.go --keys.help=true --k=0 --key=value
+go run configArgs.go --help=true --k=0 --key=value
 
 实现参考eudore.ConfigParseArgs
 */

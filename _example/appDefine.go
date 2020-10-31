@@ -25,6 +25,8 @@ type App struct {
 	GetWarp            `alias:"getwarp"`
 	HandlerFuncs       `alias:"handlerfuncs"`
 	ContextPool        sync.Pool `alias:"contextpool"`
+	CancelError        error     `alias:"cancelerror"`
+	cancelMutex        sync.Mutex
 }
 
 func main() {
@@ -89,22 +91,11 @@ type Server interface {
 //
 // RouterCore实现路由匹配细节，RouterMethod调用RouterCore提供对外使用的方法。
 //
+// RouterMethod 路由默认直接注册的接口，设置路由参数、组路由、中间件、函数扩展、控制器等行为。
+//
 // 任何时候请不要使用RouterCore的方法直接注册路由，应该使用RouterMethod的Add...方法。
 type Router interface {
 	RouterCore
-	RouterMethod
-}
-
-// RouterCore接口，执行路由的注册和匹配一个请求并返回处理者。
-//
-// RouterCore主要实现路由匹配相关细节。
-type RouterCore interface {
-	HandleFunc(string, string, HandlerFuncs)
-	Match(string, string, Params) HandlerFuncs
-}
-
-// RouterMethod 路由默认直接注册的接口，设置路由参数、组路由、中间件、函数扩展、控制器等行为。
-type RouterMethod interface {
 	Group(string) Router
 	Params() *Params
 	AddHandler(string, string, ...interface{}) error
@@ -119,6 +110,14 @@ type RouterMethod interface {
 	HeadFunc(string, ...interface{})
 	PatchFunc(string, ...interface{})
 	OptionsFunc(string, ...interface{})
+}
+
+// RouterCore接口，执行路由的注册和匹配一个请求并返回处理者。
+//
+// RouterCore主要实现路由匹配相关细节。
+type RouterCore interface {
+	HandleFunc(string, string, HandlerFuncs)
+	Match(string, string, Params) HandlerFuncs
 }
 
 // Controller 定义控制器必要的接口。
@@ -200,10 +199,10 @@ type Context interface {
 	AddParam(string, string)
 	Querys() url.Values
 	GetQuery(string) string
-	GetHeader(name string) string
+	GetHeader(string) string
 	SetHeader(string, string)
 	Cookies() []Cookie
-	GetCookie(name string) string
+	GetCookie(string) string
 	SetCookie(cookie *SetCookie)
 	SetCookieValue(string, string, int)
 	FormValue(string) string
@@ -269,3 +268,6 @@ type Params struct {
 	Keys []string
 	Vals []string
 }
+
+// GetWarp 对象封装Get函数提供类型转换功能。
+type GetWarp func(string) interface{}

@@ -17,10 +17,10 @@ var configmapfilepath = "example.json"
 
 func main() {
 	content := []byte(`{
-	"keys.default": true,
-	"keys.help": true,
+	"default": true,
+	"help": true,
 	"mods.debug": {
-		"keys.debug": true
+		"debug": true
 	}
 }
 `)
@@ -32,7 +32,7 @@ func main() {
 	defer os.Remove("/.dockerenv")
 
 	app := eudore.NewApp()
-	app.Config.Set("keys.config", configmapfilepath)
+	app.Config.Set("config", configmapfilepath)
 	app.Config.Set("enable", []string{"debug"})
 	app.Options(app.Parse())
 

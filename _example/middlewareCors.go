@@ -22,7 +22,7 @@ func main() {
 
 	app := eudore.NewApp()
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
-	app.AddMiddleware(middleware.NewCorsFunc([]string{"www.*.com", "example.com", "127.0.0.1:*"}, map[string]string{
+	app.AddMiddleware("global", middleware.NewCorsFunc([]string{"www.*.com", "example.com", "127.0.0.1:*"}, map[string]string{
 		"Access-Control-Allow-Credentials": "true",
 		"Access-Control-Allow-Headers":     "Authorization,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,X-Parent-Id",
 		"Access-Control-Expose-Headers":    "X-Request-Id",
@@ -30,6 +30,7 @@ func main() {
 		"access-control-max-age":           "1000",
 	}))
 	app.AnyFunc("/*", eudore.HandlerEmpty)
+	app.AddHandler("404", "", eudore.HandlerRouter404)
 
 	client := httptest.NewClient(app)
 	client.NewRequest("OPTIONS", "/1").Do()

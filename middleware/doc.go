@@ -30,7 +30,25 @@ example:
 
 Breaker
 
-重构中
+实现路由规则熔断
+
+参数:
+- eudore.Router
+属性:
+- MaxConsecutiveSuccesses uint32                   最大连续成功次数
+- MaxConsecutiveFailures  uint32                   最大连续失败次数
+- OpenWait                time.Duration            打开状态恢复到半开状态下等待时间
+- NewHalfOpen             func(string) func() bool 创建一个路由规则半开状态下的限流函数
+
+example:
+
+	app.AddMiddleware(middleware.NewBreakerFunc(app.Group("/eudore/debug")))
+
+	breaker := middleware.NewBreaker()
+	breaker.OpenWait = 0
+	app.AddMiddleware(breaker.NewBreakerFunc(app.Group("/eudore/debug")))
+
+在关闭状态下连续错误一定次数后熔断器进入半开状态；在半开状态下请求将进入限流状态，半开连续错误一定次数后进入打开状态，半开连续成功一定次数后回到关闭状态；在进入关闭状态后等待一定时间后恢复到半开状态。
 
 ContextWarp
 
@@ -52,13 +70,15 @@ Cors
 	[]string             允许使用的origin，默认值为:[]string{"*"}
 	map[string]string    CORS验证通过后给请求添加的协议headers，用来设置CORS控制信息
 example:
-	app.AddMiddleware(middleware.NewCorsFunc([]string{"www.*.com", "example.com", "127.0.0.1:*"}, map[string]string{
+	app.AddMiddleware("global", middleware.NewCorsFunc([]string{"www.*.com", "example.com", "127.0.0.1:*"}, map[string]string{
 		"Access-Control-Allow-Credentials": "true",
 		"Access-Control-Allow-Headers":     "Authorization,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,X-Parent-Id",
 		"Access-Control-Expose-Headers":    "X-Request-Id",
 		"access-control-allow-methods":     "GET, POST, PUT, DELETE, HEAD",
 		"access-control-max-age":           "1000",
 	}))
+
+Cors中间件注册不是全局中间件时，需要最后注册一次Options /*或404方法，否则Options请求匹配了默认404没有经过Cors中间件处理。
 
 Csrf
 
@@ -149,6 +169,15 @@ example:
 		"www.example.com/*":        true,
 	}))
 
+RequestID
+
+给请求、响应、日志设置一个请求ID
+
+参数:
+	func() string     用于创建一个请求ID，默认使用时间戳随机数
+example:
+	app.AddMiddleware(middleware.NewRequestIDFunc(nil))
+
 Rewrite
 
 重写请求路径，需要注册全局中间件
@@ -229,7 +258,7 @@ func init() {
 	}
 }
 
-// HandlerAdmin 函数返回admin ui请求。
+// HandlerAdmin 函数返回Admin UI界面。
 func HandlerAdmin(ctx eudore.Context) {
 	ctx.SetHeader("X-Eudore-Admin", "ui")
 	ctx.WriteFile(adminStaticFile)

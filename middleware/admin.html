@@ -1,7 +1,71 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-	<title></title>
+	<title>Eudore Admin</title>
+	<meta charset="utf-8">
+	<meta name="author" content="eudore">
+	<meta name="referrer" content="always">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="description" content="Eudore admin manage all eudore web ui">
+<style type="text/css">
+*{margin: 0px;padding: 0px;} 
+html,body,#app,iframe{width: 100%; height: 100%;}
+#nav{display: block;width: 100%;height: 40px;background-color: #000;}
+#nav>ul{max-width: 960px;margin: auto;}
+#nav li{height: 100%;line-height: 40px;float: left;list-style: none;padding: 0 10px;}
+#nav li a:link{color: #ccc;text-decoration:none;}
+#app{max-width:960px;margin:auto;}
+#app>div{margin:5px}
+
+#dump-search input{width: 200px;height: 30px;font-size: 20px;}
+#dump-search2 input:focus {border-color: #6cbbf7;box-shadow: 0 0 0 4px #6cbbf7;}
+.dump-message{border:2px solid #49cc90 ;border-radius:7px;background-color: #ecfaf4;}
+.dump-message>div{width:100%;}
+.dump-message>span:first-child{padding-left:10px;height:40px;line-height:40px;display:inline-block;width:10%}
+.dump-message>span:nth-of-type(2){display:inline-block;width:70%}
+.dump-info{background-color: #bfe1ac;}
+.dump-info>ul{display: block;height: 30px;}
+.dump-info ul>li{float: left;list-style: none;width: 100px;background: #aaa;height: 100%;}
+.dump-info, dump-info-basic,.dump-info-request,.dump-info-response{display: flex;flex-direction: column;}
+.dump-info-request>div,.dump-info-response>div {word-break:break-all; overflow: hidden;}
+
+.black-node{border:2px solid;border-radius:7px}
+.black-node span:first-child{padding-left:10px;height:40px;line-height:40px;display:inline-block;width:65%}
+.black-node span {display:inline-block;width:10%}
+.black-node > button {display: inline-block;width: 10%}
+.black-white{background-color:#ecfaf4;border-color:#49cc90}
+.black-black{background-color:#feebeb;border-color:#f93e3e}
+
+#request-ui fieldset {border: 0; }
+#request-ui legend {display: block; width: 100%; padding: 0; margin-bottom: 20px; font-size: 21px; line-height: inherit; color: #2e2e2e; border: 0; border-bottom: 1px solid #e5e5e5; }
+#request-ui input {display: inline-block; width: 40%; height: 24px; padding: 6px 16px; margin: 4px; font-size: 14px; line-height: 1.42857143; color: #2e2e2e; background-color: #fff; background-image: none; border: 1px solid #e5e5e5; }
+li {list-style: none; display: block; height: 24px; line-height: 24px; border-bottom: 4px solid transparent; box-sizing: border-box; font-size: 12px; letter-spacing: .05em; white-space: nowrap; } 
+#request-ui {width: 960px; margin-left: auto; margin-right: auto; }
+#request-ui > * {margin-top: 10px }
+#request-line {display: flex; }
+#request-line > div {width: 40%; }
+#request-uri {width: 100%; }
+#request-line > button {display: inline-block; }
+#request-body-input-text > textarea {width: 100%; }
+#response-header > div > span:first-child {display: inline-block; line-height: 30px; width: 200px; }
+
+#request-prompt {position: absolute; z-index: 1000; height: 200px; width: 40%; border: 1px; border-style: solid; overflow-y: auto; overflow-x: all; background-color: #444; }
+.prompt-select {border: 2px; border-style: solid; background-color: #aaa; }
+#request-prompt::-webkit-scrollbar-track {-webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3); border-radius: 10px; background-color: #F5F5F5; }
+#request-prompt::-webkit-scrollbar {width: 12px; background-color: #F5F5F5; }
+#request-prompt::-webkit-scrollbar-thumb {border-radius: 10px; -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,.3); background-color: #555; }
+#dump-search,#black-insert{display: none;}
+
+#routes>div{margin:5px}
+.route>div{width:100%}
+.route-line span:first-child{padding-left:10px;height:40px;line-height:40px;display:inline-block;width:75%}
+.route-line span:nth-of-type(2){display:inline-block;width:15%}
+.route-line svg{width:25px;height:25px;vertical-align:middle;fill:currentColor;overflow:hidden}
+.route-line{border:2px solid;border-radius:7px}
+.closed{background-color:#ecfaf4;border-color:#49cc90}
+.half-open{background-color:#fff5ea;border-color:#fca130}
+.open{background-color:#feebeb;border-color:#f93e3e}
+</style>
 </head>
 <body>
 <div id='nav'>
@@ -354,7 +418,199 @@ function blackCreateList(data, state) {
 }
 
 function initbreaker(){
-	document.getElementById("app").innerHTML=`middleware.Breaker 重构中`
+	var states = ["closed", "half-open", "open"]
+	var globaldata = {}
+
+    CreateJsonDom({
+        div: [
+			{id:"state"},
+        	{id:"routes"}
+		]
+    }, document.getElementById("app"))
+
+
+	fetch(apiGroup+"/breaker/data",  {
+		method: 'GET',
+		cache: 'no-cache',
+		headers: {
+			Accept: 'application/json',
+		},
+	}).then(function(response){
+		return response.json()
+	}).then(function(data){
+		var totalSuccesses = 0
+		var totalFailures = 0
+		var closed = 0
+		var halfOpen = 0
+		var open = 0
+		for(var i in data) {
+			var route = data[i]
+			globaldata[route.id] = route
+			CreateJsonDom({
+				'div': {
+					id: "route-" + route.id,
+					className: "route",
+					div: {
+						className: "route-line " + route.state,
+						span: [
+							{innerText: i},
+							{innerText: (route.totalsuccesses.toFixed(2) / (route.totalsuccesses + route.totalfailures).toFixed(2) * 100).toFixed(2) + "%"}
+						],
+						svg: {
+							viewBox: "0 0 1024 1024",
+							ns: "http://www.w3.org/2000/svg",
+							innerHTML: '<path d="M513.3 101.9c-190.7 0-348.6 138.8-379.2 320.8H0l160.4 192.5 160.4-192.5H199C228.8 276.4 358.4 166 513.3 166c176.9 0 320.8 143.9 320.8 320.8S690.2 807.7 513.3 807.7c-78 0-148.7-29.1-204.4-75.6l-42.1 50.5c66.8 55.7 152.7 89.3 246.4 89.3 212.6 0 385-172.4 385-385s-172.2-385-384.9-385z" p-id="1482"></path>',
+						},
+					},
+				}
+			}, document.getElementById("routes"))
+			// 统计信息
+			totalSuccesses += route.totalsuccesses
+			totalFailures += route.totalfailures
+			if(route.state == "closed") {
+				closed++
+			}else if (route.state == "open") {
+				open++
+			}else {
+				halfOpen++
+			}
+		}
+		globaldata.result = {
+			totalsuccesses: totalSuccesses,
+			totalfailures: totalFailures,
+			closed: closed,
+			"half-open": halfOpen,
+			open: open,
+		}
+		CreateJsonDom({
+			p: [
+				{innerText: 'totalsuccesses: ' + totalSuccesses + " totalfailures: " + totalFailures},
+				{innerText: "closed: " + closed + " half-open: " + halfOpen + " open: " + open}
+			]
+		}, document.getElementById('state'))
+
+
+	})
+	// 注册click，svg刷新数据，spac展开/隐藏详细信息。
+	document.getElementById("routes").addEventListener("click", function(e){
+		if(e.target.tagName == "svg") {
+			updateRoute(parseInt(e.target.parentElement.parentElement.id.slice(6)))
+		}
+		if(e.target.tagName != "SPAN") {
+			return
+		}
+		var routeDom = e.target.parentElement.parentElement
+		var dom = routeDom.querySelector("table")
+		if(dom != null) {
+			if(dom.style.display == "none") {
+				dom.style.display = "block"
+			}else {
+				dom.style.display = "none"
+			}
+			return
+		}
+
+		var route = globaldata[parseInt(routeDom.id.slice(6))]
+		CreateJsonDom({
+			table: {
+				className: "route-info",
+				tbody: {
+					tr: [
+						{td: [{innerText: 'state'}, {select: {
+							id: "select-" + routeDom.id.slice(6),
+							option: [
+								{innerText: "closed", selected: "selected"},
+								{innerText: "half-open"},
+								{innerText: "open"},
+							]
+						}}]},
+						{td: [{innerText: 'LastTime'}, {innerText: route.lasttime.slice(0, 19).replace("T", " ")}]},
+						{td: [{innerText: 'totalsuccesses'}, {innerText: route.totalsuccesses}]},
+						{td: [{innerText: 'totalfailures'}, {innerText: route.totalfailures}]},
+						{td: [{innerText: 'consecutivesuccesses'}, {innerText: route.consecutivesuccesses}]},
+						{td: [{innerText: 'consecutivefailures'}, {innerText: route.consecutivefailures}]},
+					],
+				},
+			}
+		}, routeDom)
+// 3333
+console.log(route,routeDom)
+		if(route.state!="closed") {
+			var sl = routeDom.querySelector("select")
+			sl.selectedIndex = route.state == "half-open" ? 1 : 2
+		}
+	});
+	// select选择修改，提交修改状态并刷新。
+	document.addEventListener("change",function(e) {
+	 	if(e.target.tagName!="SELECT") {
+	 		return
+	 	}
+	 	var id = e.target.id.slice(7)
+	 	var state = e.target.selectedIndex
+	 	fetch(apiGroup+"/breaker/"+ id + "/state/" + state, {
+			method: 'PUT',
+			cache: 'no-cache',
+	 	}).then(function(response){
+	 		updateRoute(id)
+	 		if(response.status == 200) {
+	 			document.getElementById("route-" + id).querySelector(".route-line").className = "route-line " + states[state]
+	 		}
+		})
+	})
+	// 更新数据
+	function updateRoute(id) {
+		fetch(apiGroup+"/breaker/"+id,  {
+			method: 'GET',
+			cache: 'no-cache',
+			headers: {
+				Accept: 'application/json',
+			},
+		}).then(function(response){
+			return response.json()
+		}).then(function(route){
+			var routeDom = document.getElementById("route-" + id)
+			// 更新缓存数据
+			globaldata.result.totalsuccesses = globaldata.result.totalsuccesses - globaldata[id].totalsuccesses + route.totalsuccesses
+			globaldata.result.totalfailures = globaldata.result.totalfailures - globaldata[id].totalfailures + route.totalfailures
+			globaldata.result[globaldata[id].state]--
+			globaldata.result[route.state]++
+			globaldata[id] = route
+			// 更新统计数据
+			CreateJsonDom({
+				p: [
+					{innerText: 'totalsuccesses: ' + globaldata.result.totalsuccesses + " totalfailures: " + globaldata.result.totalfailures},
+					{innerText: "closed: " + globaldata.result.closed + " half-open: " + globaldata.result["half-open"] + " open: " + globaldata.result.open}
+				]
+			}, document.getElementById('state'), true)
+			// 更新状态
+			routeDom.querySelector(".route-line").className = "route-line " + route.state
+			// 更新显示百分比
+			routeDom.querySelector("span:nth-of-type(2)").innerText = (route.totalsuccesses.toFixed(2) / (route.totalsuccesses + route.totalfailures).toFixed(2) * 100).toFixed(2) + "%"
+			// 更新信息内容
+			CreateJsonDom({
+				tr: [
+					{td: [{innerText: 'state'}, {select: {
+						id: "select-" + routeDom.id.slice(6),
+						option: [
+							{innerText: "closed", selected: "selected"},
+							{innerText: "half-open"},
+							{innerText: "open"},
+						]
+					}}]},
+					{td: [{innerText: 'LastTime'}, {innerText: route.lasttime.slice(0, 19).replace("T", " ")}]},
+					{td: [{innerText: 'totalsuccesses'}, {innerText: route.totalsuccesses}]},
+					{td: [{innerText: 'totalfailures'}, {innerText: route.totalfailures}]},
+					{td: [{innerText: 'consecutivesuccesses'}, {innerText: route.consecutivesuccesses}]},
+					{td: [{innerText: 'consecutivefailures'}, {innerText: route.consecutivefailures}]},
+				],
+			}, routeDom.querySelector("tbody"), true)
+			if(route.state!="closed") {
+				var sl = routeDom.querySelector("select")
+				sl.selectedIndex = route.state == "half-open" ? 1 : 2
+			}
+		})
+	}
+//	document.getElementById("app").innerHTML=`middleware.Breaker 重构中`
 }
 
 
@@ -844,67 +1100,4 @@ function initexpvar(){
 	}
 
 </script>
-<style type="text/css">
-	*{margin: 0px;padding: 0px;} 
-	html,body,#app,iframe{width: 100%; height: 100%;}
-	#nav{display: block;width: 100%;height: 40px;background-color: #000;}
-	#nav>ul{max-width: 960px;margin: auto;}
-	#nav li{height: 100%;line-height: 40px;float: left;list-style: none;padding: 0 10px;}
-	#nav li a:link{color: #ccc;text-decoration:none;}
-	#app{max-width:960px;margin:auto;}
-	#app>div{margin:5px}
-
-	#dump-search input{width: 200px;height: 30px;font-size: 20px;}
-	#dump-search2 input:focus {border-color: #6cbbf7;box-shadow: 0 0 0 4px #6cbbf7;}
-	.dump-message{border:2px solid #49cc90 ;border-radius:7px;background-color: #ecfaf4;}
-	.dump-message>div{width:100%;}
-	.dump-message>span:first-child{padding-left:10px;height:40px;line-height:40px;display:inline-block;width:10%}
-	.dump-message>span:nth-of-type(2){display:inline-block;width:70%}
-	.dump-info{background-color: #bfe1ac;}
-	.dump-info>ul{display: block;height: 30px;}
-	.dump-info ul>li{float: left;list-style: none;width: 100px;background: #aaa;height: 100%;}
-	.dump-info, dump-info-basic,.dump-info-request,.dump-info-response{display: flex;flex-direction: column;}
-	.dump-info-request>div,.dump-info-response>div {word-break:break-all; overflow: hidden;}
-
-	.black-node{border:2px solid;border-radius:7px}
-	.black-node span:first-child{padding-left:10px;height:40px;line-height:40px;display:inline-block;width:65%}
-	.black-node span {display:inline-block;width:10%}
-	.black-node > button {display: inline-block;width: 10%}
-	.black-white{background-color:#ecfaf4;border-color:#49cc90}
-	.black-black{background-color:#feebeb;border-color:#f93e3e}
-
-
-#request-ui fieldset {border: 0; }
-#request-ui legend {display: block; width: 100%; padding: 0; margin-bottom: 20px; font-size: 21px; line-height: inherit; color: #2e2e2e; border: 0; border-bottom: 1px solid #e5e5e5; }
-#request-ui input {display: inline-block; width: 40%; height: 24px; padding: 6px 16px; margin: 4px; font-size: 14px; line-height: 1.42857143; color: #2e2e2e; background-color: #fff; background-image: none; border: 1px solid #e5e5e5; }
-li {
-	list-style: none; 
-	display: block;
-	height: 24px;
-	/*padding: 8px 10px;*/
-	line-height: 24px;
-	border-bottom: 4px solid transparent;
-	box-sizing: border-box;
-	font-size: 12px;
-	letter-spacing: .05em;
-	white-space: nowrap;
-}
-#request-ui {width: 960px; margin-left: auto; margin-right: auto; }
-#request-ui > * {margin-top: 10px }
-#request-line {display: flex; }
-#request-line > div {width: 40%; }
-#request-uri {width: 100%; }
-#request-line > button {display: inline-block; }
-#request-body-input-text > textarea {width: 100%; }
-#response-header > div > span:first-child {display: inline-block; line-height: 30px; width: 200px; }
-
-#request-prompt {position: absolute; z-index: 1000; height: 200px; width: 40%; border: 1px; border-style: solid; overflow-y: auto; overflow-x: all; background-color: #444; }
-.prompt-select {border: 2px; border-style: solid; background-color: #aaa; }
-#request-prompt::-webkit-scrollbar-track {-webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3); border-radius: 10px; background-color: #F5F5F5; }
-#request-prompt::-webkit-scrollbar {width: 12px; background-color: #F5F5F5; }
-#request-prompt::-webkit-scrollbar-thumb {border-radius: 10px; -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,.3); background-color: #555; }
-
-
-	#dump-search,#black-insert{display: none;}
-/style>
 </html>

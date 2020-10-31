@@ -13,10 +13,10 @@ var filepath = "example.json"
 
 func main() {
 	content := []byte(`{
-	"keys.default": true,
-	"keys.help": true,
+	"default": true,
+	"help": true,
 	"mods.debug": {
-		"keys.debug": true
+		"debug": true
 	}
 }
 `)
@@ -25,9 +25,9 @@ func main() {
 	tmpfile.Write(content)
 
 	app := eudore.NewApp()
-	app.Set("keys.config", filepath)
-	app.Set("keys.help", true)
+	app.Set("config", filepath)
+	app.Set("help", true)
 	app.Options(app.Parse())
-	app.CancelFunc()
+	// app.CancelFunc()
 	app.Run()
 }

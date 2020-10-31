@@ -1,7 +1,7 @@
 package main
 
 /*
-eudore.Controller是一个接口，可自行实现，eudore.ControllerBase只是其中一种默认实现。
+ControllerAutoRoute将控制器方法转换成处理函数注册。
 */
 
 import (
@@ -11,7 +11,7 @@ import (
 
 func main() {
 	app := eudore.NewApp()
-	app.AddController(new(myBaseController))
+	app.AddController(new(myAutoController))
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/index").Do()
@@ -23,40 +23,41 @@ func main() {
 	app.Run()
 }
 
-type myBaseController struct {
-	eudore.ControllerBase
+type myAutoController struct {
+	eudore.ControllerAutoRoute
 }
 
 // Any 方法注册 Any /*路径。
-func (ctl *myBaseController) Any() {
-	ctl.Info("myBaseController Any")
+func (*myAutoController) Any(ctx eudore.Context) {
+	ctx.Info("myAutoController Any")
 }
 
 // Get 方法注册 Get /*路径。
-func (ctl *myBaseController) Get() interface{} {
-	ctl.Debug("ctl get")
-	return "get myBaseController"
+func (*myAutoController) Get(ctx eudore.Context) interface{} {
+	ctx.Debug("get")
+	return "get myAutoController"
 }
 
 // GetInfoById 方法注册GET /info/:id 路由路径。
-func (ctl *myBaseController) GetInfoById() interface{} {
-	return ctl.GetParam("id")
+func (*myAutoController) GetInfoById(ctx eudore.Context) interface{} {
+	return ctx.GetParam("id")
 }
 
-func (ctl *myBaseController) GetApiBy() {
-
+// Error 方法触发路由注册报错
+func (*myAutoController) Error(myAutoController) error {
+	return nil
 }
 
 // String 方法返回控制器名称，响应Router.AddController输出的名称。
-func (ctl *myBaseController) String() string {
-	return "hello.myBaseController"
+func (*myAutoController) String() string {
+	return "hello.myAutoController"
 }
 
 // Help 方法定义一个控制器本身的方法。
-func (ctl *myBaseController) Help(ctx eudore.Context) {}
+func (*myAutoController) Help(ctx eudore.Context) {}
 
 // ControllerRoute 方法返回控制器路由推导修改信息。
-func (*myBaseController) ControllerRoute() map[string]string {
+func (*myAutoController) ControllerRoute() map[string]string {
 	return map[string]string{
 		// 修改Path方法的路由注册,路径为空就是忽略改方法
 		"Help":   "",

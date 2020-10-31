@@ -14,13 +14,13 @@ const (
 	radixNodeKindWildcard
 )
 
-// RouterCoreRadix basic function router based on radix tree implementation.
+// routerCoreRadix basic function router based on radix tree implementation.
 //
 // There are three basic functions: path parameter, wildcard parameter, default parameter, and parameter verification.
 // RouterRadix基于基数树实现的基本功能路由器。
 //
 // 具有路径参数、通配符参数、默认参数三项基本功能。
-type RouterCoreRadix struct {
+type routerCoreRadix struct {
 	// exception handling method
 	// 异常处理方法
 	node404 radixNode
@@ -31,9 +31,11 @@ type RouterCoreRadix struct {
 	post    radixNode
 	put     radixNode
 	delete  radixNode
-	options radixNode
 	head    radixNode
 	patch   radixNode
+	options radixNode
+	connect radixNode
+	trace   radixNode
 }
 
 // radix节点的定义
@@ -55,7 +57,7 @@ type radixNode struct {
 
 // NewRouterCoreRadix 函数创建一个Full路由器核心，使用radix匹配。
 func NewRouterCoreRadix() RouterCore {
-	return &RouterCoreRadix{
+	return &routerCoreRadix{
 		node404: radixNode{
 			params:   &Params{Keys: []string{ParamRoute}, Vals: []string{"404"}},
 			handlers: HandlerFuncs{HandlerRouter404},
@@ -74,7 +76,7 @@ func NewRouterCoreRadix() RouterCore {
 // HandleFunc 给路由器注册一个新的方法请求路径。
 //
 // 如果方法是Any会注册全部方法，同时非Any方法路由和覆盖Any方法路由。
-func (r *RouterCoreRadix) HandleFunc(method string, path string, handler HandlerFuncs) {
+func (r *routerCoreRadix) HandleFunc(method string, path string, handler HandlerFuncs) {
 	switch method {
 	case "NotFound", "404":
 		r.node404.handlers = handler
@@ -94,7 +96,7 @@ func (r *RouterCoreRadix) HandleFunc(method string, path string, handler Handler
 // Note: 404 does not support extra parameters, not implemented.
 //
 // 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
-func (r *RouterCoreRadix) Match(method, path string, params *Params) HandlerFuncs {
+func (r *routerCoreRadix) Match(method, path string, params *Params) HandlerFuncs {
 	if n := r.getTree(method).lookNode(path, params); n != nil {
 		return n
 	}
@@ -111,7 +113,7 @@ func (r *RouterCoreRadix) Match(method, path string, params *Params) HandlerFunc
 // 获取对应方法的树。
 //
 // 支持eudore.RouterAllMethod这些方法,弱不支持会返回405处理树。
-func (r *RouterCoreRadix) getTree(method string) *radixNode {
+func (r *routerCoreRadix) getTree(method string) *radixNode {
 	switch method {
 	case MethodGet:
 		return &r.get
@@ -123,10 +125,14 @@ func (r *RouterCoreRadix) getTree(method string) *radixNode {
 		return &r.put
 	case MethodHead:
 		return &r.head
-	case MethodOptions:
-		return &r.options
 	case MethodPatch:
 		return &r.patch
+	case MethodOptions:
+		return &r.options
+	case MethodConnect:
+		return &r.connect
+	case MethodTrace:
+		return &r.trace
 	default:
 		return &r.node405
 	}
@@ -147,7 +153,7 @@ func (r *RouterCoreRadix) getTree(method string) *radixNode {
 // 将路径按节点类型切割，每段路径即为一种类型的节点，然后依次向树追加，然后给最后的节点设置数据。
 //
 // insertRoute 路径切割见getSpiltPath函数，当前未完善，处理正则可能异常。
-func (r *RouterCoreRadix) insertRoute(method, key string, isany bool, val HandlerFuncs) {
+func (r *routerCoreRadix) insertRoute(method, key string, isany bool, val HandlerFuncs) {
 	var currentNode = r.getTree(method)
 	if currentNode == &r.node405 {
 		return

@@ -53,9 +53,9 @@ type handlerHTTP interface {
 
 var (
 	// contextFuncName key类型一定为HandlerFunc类型，保存函数可能正确的名称。
-	contextFuncName  = make(map[uintptr]string)
-	contextSaveName  = make(map[uintptr]string)
-	contextAliasName = make(map[uintptr]string)
+	contextFuncName  = make(map[uintptr]string)   // 最终名称
+	contextSaveName  = make(map[uintptr]string)   // 函数名称
+	contextAliasName = make(map[uintptr][]string) // 对象名称
 )
 
 // init 函数初始化内置扩展的请求上下文处理函数。
@@ -141,15 +141,21 @@ func (ext *handlerExtendBase) RegisterHandlerExtend(_ string, fn interface{}) er
 
 // NewHandlerFuncs 函数根据参数返回一个HandlerFuncs。
 func (ext *handlerExtendBase) NewHandlerFuncs(_ string, i interface{}) HandlerFuncs {
-	return HandlerFuncsFilter(ext.newHandlerFuncs(reflect.ValueOf(i)))
+	val, ok := i.(reflect.Value)
+	if !ok {
+		val = reflect.ValueOf(i)
+	}
+	return HandlerFuncsFilter(ext.newHandlerFuncs(val))
 }
 
 func (ext *handlerExtendBase) newHandlerFuncs(iValue reflect.Value) HandlerFuncs {
 	// 基础类型返回
 	switch fn := iValue.Interface().(type) {
 	case func(Context):
+		SetHandlerFuncName(fn, getHandlerAliasName(iValue))
 		return HandlerFuncs{fn}
 	case HandlerFunc:
+		SetHandlerFuncName(fn, getHandlerAliasName(iValue))
 		return HandlerFuncs{fn}
 	case []HandlerFunc:
 		return fn
@@ -241,7 +247,7 @@ func (ext *handlerExtendBase) createHandlerFunc(fn, iValue reflect.Value) Handle
 	name := contextSaveName[hptr]
 	// 使用原值名称
 	if name == "" && iValue.Kind() != reflect.Struct {
-		name = contextAliasName[getFuncPointer(iValue)]
+		name = getHandlerAliasName(iValue)
 	}
 	// 推断名称
 	if name == "" {
@@ -447,13 +453,49 @@ func HandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	return hs
 }
 
+type reflectValue struct {
+	_    *uintptr
+	ptr  uintptr
+	flag uintptr
+}
+
 // getFuncPointer 函数获取一个reflect值的地址作为唯一标识id。
 func getFuncPointer(iValue reflect.Value) uintptr {
-	val := *(*struct {
-		_   *uintptr
-		ptr uintptr
-	})(unsafe.Pointer(&iValue))
+	val := *(*reflectValue)(unsafe.Pointer(&iValue))
 	return val.ptr
+}
+
+// SetHandlerAliasName 函数设置一个函数处理对象原始名称，如果扩展未生成名称，使用此值。
+//
+// 在handlerExtendBase对象和ControllerInjectSingleton函数中使用到，用于传递控制器函数名称。
+func SetHandlerAliasName(i interface{}, name string) {
+	if name == "" {
+		return
+	}
+	iValue, ok := i.(reflect.Value)
+	if !ok {
+		iValue = reflect.ValueOf(i)
+	}
+	val := *(*reflectValue)(unsafe.Pointer(&iValue))
+	names := contextAliasName[val.ptr]
+	index := int(val.flag >> 10)
+	if len(names) <= index {
+		newnames := make([]string, index+1)
+		copy(newnames, names)
+		names = newnames
+		contextAliasName[val.ptr] = names
+	}
+	names[index] = name
+}
+
+func getHandlerAliasName(iValue reflect.Value) string {
+	val := *(*reflectValue)(unsafe.Pointer(&iValue))
+	names := contextAliasName[val.ptr]
+	index := int(val.flag >> 10)
+	if len(names) > index {
+		return names[index]
+	}
+	return ""
 }
 
 // SetHandlerFuncName function sets the name of a request context handler.
@@ -464,20 +506,10 @@ func getFuncPointer(iValue reflect.Value) uintptr {
 //
 // 注意：函数不具有可比性，对象的方法的名称会被其他方法名称覆盖。
 func SetHandlerFuncName(i HandlerFunc, name string) {
+	if name == "" {
+		return
+	}
 	contextSaveName[getFuncPointer(reflect.ValueOf(i))] = name
-}
-
-// SetHandlerAliasName 函数设置一个函数处理对象原始名称，如果扩展未生成名称，使用此值。
-//
-// 在handlerExtendBase对象和ControllerInjectSingleton函数中使用到，用于传递控制器函数名称。
-func SetHandlerAliasName(i interface{}, name string) {
-	iValue, ok := i.(reflect.Value)
-	if !ok {
-		iValue = reflect.ValueOf(i)
-	}
-	if iValue.Kind() == reflect.Func || iValue.Kind() == reflect.Ptr {
-		contextAliasName[getFuncPointer(iValue)] = name
-	}
 }
 
 // String method implements the fmt.Stringer interface and implements the output function name.
@@ -707,16 +739,20 @@ func NewExtendFuncString(fn func() string) HandlerFunc {
 }
 
 // NewStaticHandler 函数更加目标创建一个静态文件处理函数。
+//
+// 参数dir指导打开文件的根目录，默认未"."
+//
+// 路由规则可以指导path参数为请求文件路径，例如/static/*path，将会去打开path参数路径的文件，否在使用ctx.Path().
 func NewStaticHandler(dir string) HandlerFunc {
 	if dir == "" {
 		dir = "."
 	}
 	return func(ctx Context) {
-		upath := ctx.GetParam("path")
-		if upath == "" {
-			upath = ctx.Path()
+		path := ctx.GetParam("path")
+		if path == "" {
+			path = ctx.Path()
 		}
-		ctx.WriteFile(filepath.Join(dir, filepath.Clean("/"+upath)))
+		ctx.WriteFile(filepath.Join(dir, filepath.Clean("/"+path)))
 	}
 }
 

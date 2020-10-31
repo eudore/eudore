@@ -27,8 +27,8 @@ var (
 	DefaultRecoverDepth = 20
 	// LogLevelString 定义日志级别输出字符串。
 	LogLevelString = [5]string{"DEBUG", "INFO", "WARNING", "ERROR", "FATAL"}
-	// RouterAllMethod 定义全部的方法，影响Any方法的注册。
-	RouterAllMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions}
+	// RouterAllMethod 定义全部的方法，是Any方法的注册使用的方法。
+	RouterAllMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch}
 	// ConfigAllParseFunc 定义ConfigMap和ConfigEudore默认使用的解析函数。
 	ConfigAllParseFunc = []ConfigParseFunc{ConfigParseJSON, ConfigParseArgs, ConfigParseEnvs, ConfigParseMods, ConfigParseWorkdir, ConfigParseHelp}
 	// DefaultHandlerExtend 为默认的函数扩展处理者，是RouterStd使用的最顶级的函数扩展处理者。
@@ -55,18 +55,21 @@ var (
 
 // 检测各类接口
 var (
-	_ Context    = (*ContextBase)(nil)
-	_ Config     = (*ConfigMap)(nil)
-	_ Config     = (*ConfigEudore)(nil)
-	_ Logger     = (*LoggerInit)(nil)
-	_ Logger     = (*LoggerStd)(nil)
-	_ Server     = (*ServerStd)(nil)
-	_ Server     = (*ServerFcgi)(nil)
+	_ Context    = (*contextBase)(nil)
+	_ Config     = (*configMap)(nil)
+	_ Config     = (*configEudore)(nil)
+	_ Logger     = (*loggerInit)(nil)
+	_ Logger     = (*loggerStd)(nil)
+	_ Server     = (*serverStd)(nil)
+	_ Server     = (*serverFcgi)(nil)
 	_ Router     = (*RouterStd)(nil)
-	_ RouterCore = (*RouterCoreRadix)(nil)
-	_ RouterCore = (*RouterCoreFull)(nil)
+	_ RouterCore = (*routerCoreRadix)(nil)
+	_ RouterCore = (*routerCoreFull)(nil)
+	_ RouterCore = (*routerCoreDebug)(nil)
+	_ RouterCore = (*routerCoreHost)(nil)
+	_ RouterCore = (*routerCoreLock)(nil)
 
-	_ ResponseWriter  = (*ResponseWriterHTTP)(nil)
+	_ ResponseWriter  = (*responseWriterHTTP)(nil)
 	_ Controller      = (*ControllerBase)(nil)
 	_ Controller      = (*ControllerData)(nil)
 	_ Controller      = (*ControllerSingleton)(nil)

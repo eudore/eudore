@@ -17,23 +17,25 @@ const (
 	fullNodeKindAnyMethod
 )
 
-// RouterCoreFull is implemented based on the radix tree to implement all router related features.
+// routerCoreFull is implemented based on the radix tree to implement all router related features.
 //
 // With path parameters, wildcard parameters, default parameters, parameter verification, wildcard verification, multi-parameter regular capture is not implemented.
 //
 // RouterFull基于基数树实现，实现全部路由器相关特性。
 //
 // 具有路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
-type RouterCoreFull struct {
+type routerCoreFull struct {
 	node404 fullNode
 	node405 fullNode
 	get     fullNode
 	post    fullNode
 	put     fullNode
 	delete  fullNode
-	options fullNode
 	head    fullNode
 	patch   fullNode
+	options fullNode
+	connect fullNode
+	trace   fullNode
 }
 type fullNode struct {
 	kind uint8
@@ -56,7 +58,7 @@ type fullNode struct {
 
 // NewRouterCoreFull 函数创建一个Full路由器核心，使用radix匹配。
 func NewRouterCoreFull() RouterCore {
-	return &RouterCoreFull{
+	return &routerCoreFull{
 		node404: fullNode{
 			params:   &Params{Keys: []string{ParamRoute}, Vals: []string{"404"}},
 			handlers: HandlerFuncs{HandlerRouter404},
@@ -77,7 +79,7 @@ func NewRouterCoreFull() RouterCore {
 // HandleFunc 给路由器注册一个新的方法请求路径
 //
 // 路由器会从中间件树中匹配当前路径可使用的处理者，并添加到处理者前方。
-func (r *RouterCoreFull) HandleFunc(method string, path string, handler HandlerFuncs) {
+func (r *routerCoreFull) HandleFunc(method string, path string, handler HandlerFuncs) {
 	switch method {
 	case "NotFound", "404":
 		r.node404.handlers = handler
@@ -97,7 +99,7 @@ func (r *RouterCoreFull) HandleFunc(method string, path string, handler HandlerF
 // Note: 404 does not support extra parameters, not implemented.
 //
 // 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
-func (r *RouterCoreFull) Match(method, path string, params *Params) HandlerFuncs {
+func (r *routerCoreFull) Match(method, path string, params *Params) HandlerFuncs {
 	if n := r.getTree(method).lookNode(path, params); n != nil {
 		return n
 	}
@@ -114,7 +116,7 @@ func (r *RouterCoreFull) Match(method, path string, params *Params) HandlerFuncs
 // 获取对应方法的树。
 //
 // 支持eudore.RouterAllMethod这些方法,弱不支持会返回405处理树。
-func (r *RouterCoreFull) getTree(method string) *fullNode {
+func (r *routerCoreFull) getTree(method string) *fullNode {
 	switch method {
 	case MethodGet:
 		return &r.get
@@ -126,10 +128,14 @@ func (r *RouterCoreFull) getTree(method string) *fullNode {
 		return &r.put
 	case MethodHead:
 		return &r.head
-	case MethodOptions:
-		return &r.options
 	case MethodPatch:
 		return &r.patch
+	case MethodOptions:
+		return &r.options
+	case MethodConnect:
+		return &r.connect
+	case MethodTrace:
+		return &r.trace
 	default:
 		return &r.node405
 	}
@@ -142,7 +148,7 @@ func (r *RouterCoreFull) getTree(method string) *fullNode {
 // 添加一个新的路由Node。
 //
 // 如果方法不支持则不会添加，请求改路径会响应405
-func (r *RouterCoreFull) insertRoute(method, key string, isany bool, val HandlerFuncs) {
+func (r *routerCoreFull) insertRoute(method, key string, isany bool, val HandlerFuncs) {
 	var currentNode = r.getTree(method)
 	if currentNode == &r.node405 {
 		return

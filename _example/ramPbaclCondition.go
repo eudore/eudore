@@ -15,7 +15,7 @@ import (
 func main() {
 	ram.RegisterCondition("https", newHttpsCondistion)
 	pbac := ram.NewPbac()
-	pbac.AddPolicyStringJson(1, `{"version":"1","description":"get resource /2","statement":[{"effect":true,"action":["*"],"resource":["/2"],"conditions":{"https":true}}]}`)
+	pbac.AddPolicyStringJSON(1, `{"version":"1","description":"get resource /2","statement":[{"effect":true,"action":["*"],"resource":["/2"],"conditions":{"https":true}}]}`)
 	pbac.BindPolicy(1, 0, 1)
 
 	app := eudore.NewApp()

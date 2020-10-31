@@ -4,28 +4,6 @@ package eudore
 Router对象用于定义请求的路由器
 
 文件：router.go routerradix.go routerfull.go
-
-
-Router接口分为RouterCore和RouterMethod，RouterCore实现路由器匹配算法和逻辑，RouterMethod实现路由规则注册的封装。
-
-RouterMethod实现下列功能：
-	组路由
-	中间件或函数扩展注册在局部作用域/全局作用域
-	添加控制器
-	显示路由注册debug信息
-
-RouterCore拥有五种路由器核心实现下列功能：
-	高性能
-	低代码复杂度(RouterCoreFull支持5级优先级 一处代码复杂度19不满足)
-	请求获取额外的默认参数(包含当前路由匹配规则)
-	变量和通配符匹配
-	匹配优先级 常量 > 变量校验 > 变量 > 通配符校验 > 通配符(RouterCoreRadix三级优先级 RouterCoreFull五级优先级)
-	方法优先级 指定方法 > Any方法
-	变量和通配符支持正则和自定义函数进行校验数据(RouterCoreFull特性)
-	变量和通配符支持常量前缀
-	获取注册的全部路由规则信息(RouterCoreBebug实现)
-	基于Host进行路由规则匹配(RouterCoreHost实现)
-	允许运行时进行动态增删路由器规则(RouterCoreRadix和RouterCoreFull实现，外层需要RouterCoreLock包装一层)
 */
 
 import (
@@ -36,20 +14,77 @@ import (
 	"sync"
 )
 
-// Router interface needs to implement the router method and the router core two interfaces.
-//
-// RouterCore implements route matching details. RouterMethod calls RouterCore to provide methods for external use.
-//
-// Do not use the RouterCore method to register routes directly at any time. You should use the Add ... method of RouterMethod.
-//
-// Router 接口，需要实现路由器方法、路由器核心两个接口。
-//
-// RouterCore实现路由匹配细节，RouterMethod调用RouterCore提供对外使用的方法。
-//
-// 任何时候请不要使用RouterCore的方法直接注册路由，应该使用RouterMethod的Add...方法。
+/*
+Router interface is divided into RouterCore and RouterMethod. RouterCore implements router matching algorithm and logic, and RouterMethod implements the encapsulation of routing rule registration.
+
+RouterCore implements route matching details. RouterMethod calls RouterCore to provide methods for external use.
+
+RouterMethod The default directly registered interface of the route. Set the routing parameters, group routing, middleware, function extensions, controllers and other behaviors.
+
+Do not use the RouterCore method to register routes directly at any time. You should use the Add ... method of RouterMethod.
+
+RouterMethod implements the following functions:
+    Group routing
+    The middleware or function extension is registered in the local scope/global scope
+    Add controller
+    Display routing registration debug information
+
+RouterCore has five router cores to implement the following functions:
+    High performance (70%-90% of httprouter performance, using less memory)
+    Low code complexity (RouterCoreFull supports 5 levels of priority, a code complexity of 19 is not satisfied)
+    Request for additional default parameters (including current routing matching rules)
+    Variable and wildcard matching
+    Matching priority Constant > Variable verification > Variable > Wildcard verification > Wildcard (RouterCoreRadix three-level priority RouterCoreFull five-level priority)
+    Method priority Specify method > Any method (The specified method will override the Any method, and vice versa)
+    Variables and wildcards support regular and custom functions to verify data (RouterCoreFull feature)
+    Variables and wildcards support constant prefix
+    Get all registered routing rule information (RouterCoreBebug implementation)
+    Routing rule matching based on Host (implemented by RouterCoreHost)
+    Allows dynamic addition and deletion of router rules at runtime (RouterCoreRadix and RouterCoreFull implementation, the outer layer requires RouterCoreLock packaging layer)
+
+Router 接口分为RouterCore和RouterMethod，RouterCore实现路由器匹配算法和逻辑，RouterMethod实现路由规则注册的封装。
+
+RouterCore实现路由匹配细节，RouterMethod调用RouterCore提供对外使用的方法。
+
+RouterMethod 路由默认直接注册的接口，设置路由参数、组路由、中间件、函数扩展、控制器等行为。
+
+任何时候请不要使用RouterCore的方法直接注册路由，应该使用RouterMethod的Add...方法。
+
+RouterMethod实现下列功能：
+    组路由
+    中间件或函数扩展注册在局部作用域/全局作用域
+    添加控制器
+    显示路由注册debug信息
+
+RouterCore拥有五种路由器核心实现下列功能：
+    高性能(httprouter性能的70%-90%，使用更少的内存)
+    低代码复杂度(RouterCoreFull支持5级优先级 一处代码复杂度19不满足)
+    请求获取额外的默认参数(包含当前路由匹配规则)
+    变量和通配符匹配
+    匹配优先级 常量 > 变量校验 > 变量 > 通配符校验 > 通配符(RouterCoreRadix三级优先级 RouterCoreFull五级优先级)
+    方法优先级 指定方法 > Any方法(指定方法会覆盖Any方法，反之不行)
+    变量和通配符支持正则和自定义函数进行校验数据(RouterCoreFull特性)
+    变量和通配符支持常量前缀
+    获取注册的全部路由规则信息(RouterCoreBebug实现)
+    基于Host进行路由规则匹配(RouterCoreHost实现)
+    允许运行时进行动态增删路由器规则(RouterCoreRadix和RouterCoreFull实现，外层需要RouterCoreLock包装一层)
+*/
 type Router interface {
 	RouterCore
-	RouterMethod
+	// RouterMethod method
+	Group(string) Router
+	Params() *Params
+	AddHandler(string, string, ...interface{}) error
+	AddController(...Controller) error
+	AddMiddleware(...interface{}) error
+	AddHandlerExtend(...interface{}) error
+	AnyFunc(string, ...interface{})
+	GetFunc(string, ...interface{})
+	PostFunc(string, ...interface{})
+	PutFunc(string, ...interface{})
+	DeleteFunc(string, ...interface{})
+	HeadFunc(string, ...interface{})
+	PatchFunc(string, ...interface{})
 }
 
 // The RouterCore interface performs registration of the route and matches a request and returns the handler.
@@ -64,35 +99,16 @@ type RouterCore interface {
 	Match(string, string, *Params) HandlerFuncs
 }
 
-// RouterMethod The default directly registered interface of the route. Set the routing parameters, group routing, middleware, function extensions, controllers and other behaviors.
-//
-// RouterMethod 路由默认直接注册的接口，设置路由参数、组路由、中间件、函数扩展、控制器等行为。
-type RouterMethod interface {
-	Group(string) Router
-	Params() *Params
-	AddHandler(string, string, ...interface{}) error
-	AddController(...Controller) error
-	AddMiddleware(...interface{}) error
-	AddHandlerExtend(...interface{}) error
-	AnyFunc(string, ...interface{})
-	GetFunc(string, ...interface{})
-	PostFunc(string, ...interface{})
-	PutFunc(string, ...interface{})
-	DeleteFunc(string, ...interface{})
-	HeadFunc(string, ...interface{})
-	PatchFunc(string, ...interface{})
-	OptionsFunc(string, ...interface{})
-}
-
 // RouterStd 默认路由器注册实现。
 //
 // 需要指定一个路由核心，处理函数扩展者默认为DefaultHandlerExtend。
+// 作为公开属性仅用于godoc展示相关方法文档说明。
 type RouterStd struct {
 	RouterCore      `alias:"routercore"`
 	HandlerExtender `alias:"handlerextender"`
-	params          *Params              `alias:"params"`
 	Middlewares     *middlewareTree      `alias:"middlewares"`
 	Print           func(...interface{}) `alias:"print"`
+	params          *Params              `alias:"params"`
 }
 
 // HandlerRouter405 函数定义默认405处理
@@ -110,7 +126,9 @@ func HandlerRouter404(ctx Context) {
 	ctx.WriteString(page404)
 }
 
-// NewRouterStd 方法创建使用RouterCore一个Router对象。
+// NewRouterStd 方法使用一个RouterCore创建Router对象。
+//
+// RouterStd实现RouterMethod接口注册相关细节，路由匹配由RouterCore实现。
 func NewRouterStd(core RouterCore) Router {
 	return &RouterStd{
 		RouterCore: core,
@@ -124,12 +142,12 @@ func NewRouterStd(core RouterCore) Router {
 	}
 }
 
-// NewRouterRadix 创建一个Radix路由器。
+// NewRouterRadix 函数使用NewRouterStd创建一个Radix路由器，详细参考NewRouterCoreRadix函数。
 func NewRouterRadix() Router {
 	return NewRouterStd(NewRouterCoreRadix())
 }
 
-// NewRouterFull 函数创建一个Full路由器。
+// NewRouterFull 函数使用NewRouterStd创建一个Full路由器，详细参考NewRouterCoreFull函数。
 func NewRouterFull() Router {
 	return NewRouterStd(NewRouterCoreFull())
 }
@@ -164,6 +182,8 @@ func (m *RouterStd) Group(path string) Router {
 	}
 }
 
+// Params method returns the current route parameters, and the route parameter value is an empty string will not be used.
+//
 // Params 方法返回当前路由参数，路由参数值为空字符串不会被使用。
 func (m *RouterStd) Params() *Params {
 	return m.params
@@ -171,7 +191,7 @@ func (m *RouterStd) Params() *Params {
 
 // paramsCombine method parses a string path and merges it into a copy of the current routing parameters.
 //
-// For example, the path format is: / user action = user
+// For example, the path format is: /user action=user
 //
 // paramsCombine 方法解析一个字符串路径，并合并到一个当前路由参数的副本中。
 //
@@ -189,11 +209,13 @@ func (m *RouterStd) paramsCombine(path string) *Params {
 // printError 方法输出一个err，附加错误的函数名称和文件位置。
 func (m *RouterStd) printError(depth int, err error) {
 	// 兼容添加控制器错误输出
-	name, _, _ := logFormatNameFileLine(depth + 5)
-	if name == "github.com/eudore/eudore.(*RouterStd).AddController" {
-		depth += 3
+	for i := 6; i < 9; i++ {
+		name, _, _ := logFormatNameFileLine(depth + 0 + i)
+		if name == "github.com/eudore/eudore.(*RouterStd).AddController" {
+			depth = depth + i - 2
+			break
+		}
 	}
-
 	name, file, line := logFormatNameFileLine(depth + 3)
 	m.Print(Fields{"params": m.params, "func": name, "file": file, "line": line}, err)
 }
@@ -234,21 +256,31 @@ func getRouteParam(path, key string) string {
 	return ""
 }
 
-// AddHandler adds a new route, allowing multiple request methods to be separated using ','.
+// AddHandler method adds a new route, allowing multiple request methods to be added separately using','.
 //
-// The handler parameter is processed using the current HandlerExtender.NewHandlerFuncs () method of RouterStd to generate the corresponding HandlerFuncs.
+// You can register 9 methods defined by http (three of the Router interfaces do not provide direct registration),
+// or you can register the method as: ANY TEST 404 405 NotFound MethodNotAllowed, register Any, TEST, 404, 405 routing rules.
+// the registration method is ANY to register all methods, the ANY method route will be covered by the same path non-ANY method,
+// and vice versa; the registration method is TEST will output the debug information related to the route registration,
+// but the registration behavior will not be performed;
 //
-// The current Router cannot process, then call the HandlerExtender or defaultHandlerExtend before the group, and output all error logs if it cannot process all.
+// The handler parameter is processed using the HandlerExtender.NewHandlerFuncs() method of the current RouterStd to generate the corresponding HandlerFuncs.
 //
-// will match the aligned request middleware and append to the request based on the current routing path.
+// If the current Router cannot be processed, call the HandlerExtender or defaultHandlerExtend of the upper-level group for processing,
+// and output the error log if all of them cannot be processed.
 //
-// AddHandler 添加一个新路由, 允许添加多个请求方法使用','分开。
+// The middleware data will be matched from the data according to the current routing path, and then the request processing function will be appended before the processing function.
+//
+// AddHandler 方法添加一条新路由, 允许添加多个请求方法使用','分开。
+//
+// 可以注册http定义的9种方法(其中三种Router接口未提供直接注册),也可以注册方法为：ANY TEST 404 405 NotFound MethodNotAllowed，注册Any、TEST、404、405路由规则。注册方法为ANY注册全部方法，ANY方法路由会被同路径非ANY方法覆盖，反之不行；注册方法为TEST会输出路由注册相关debug信息，但不执行注册行为;
 //
 // handler参数使用当前RouterStd的HandlerExtender.NewHandlerFuncs()方法处理，生成对应的HandlerFuncs。
 //
-// 当前Router无法处理，则调用group前的HandlerExtender或defaultHandlerExtend处理，全部无法处理则输出error日志。
+// 如果当前Router无法处理，则调用上一级group的HandlerExtender或defaultHandlerExtend处理，全部无法处理则输出error日志。
 //
-// 会根据当前路由路径匹配到对齐的请求中间件并附加到请求中。
+// 中间件数据会根据当前路由路径从数据中匹配，然后将请求处理函数附加到处理函数之前。
+//
 func (m *RouterStd) AddHandler(method, path string, hs ...interface{}) error {
 	return m.registerHandlers(method, path, hs...)
 }
@@ -316,7 +348,12 @@ func (m *RouterStd) newHandlerFuncs(path string, hs []interface{}) (HandlerFuncs
 		if handler != nil && len(handler) > 0 {
 			handlers = HandlerFuncsCombine(handlers, handler)
 		} else {
-			errs.HandleError(fmt.Errorf(ErrFormatRouterStdNewHandlerFuncsUnregisterType, path, i, reflect.TypeOf(h).String()))
+			fname := reflect.TypeOf(h).String()
+			cf, ok := h.(ControllerFuncExtend)
+			if ok {
+				fname = "Controller " + reflect.ValueOf(cf.Controller).Method(cf.Index).Type().String()
+			}
+			errs.HandleError(fmt.Errorf(ErrFormatRouterStdNewHandlerFuncsUnregisterType, path, i, fname))
 		}
 	}
 	return handlers, errs.GetError()
@@ -324,7 +361,7 @@ func (m *RouterStd) newHandlerFuncs(path string, hs []interface{}) (HandlerFuncs
 
 func checkMethod(method string) bool {
 	switch method {
-	case "ANY", "404", "405", "NotFound", "MethodNotAllowed":
+	case "ANY", "404", "405", "NotFound", "MethodNotAllowed", MethodOptions, MethodConnect, MethodTrace:
 		return true
 	}
 	for _, i := range RouterAllMethod {
@@ -438,7 +475,16 @@ func (m *RouterStd) AddHandlerExtend(hs ...interface{}) error {
 	return errs.GetError()
 }
 
+// AnyFunc method realizes the http request processing function that registers an Any method.
+//
+// The routing rules registered by the Any method will be overwritten by the specified method registration, and vice versa.
+// Any default registration method includes six types of Get Post Put Delete Head Patch,
+// which are defined in the global variable RouterAllMethod.
+//
 // AnyFunc 方法实现注册一个Any方法的http请求处理函数。
+//
+// Any方法注册的路由规则会被指定方法注册覆盖，反之不行。
+// Any默认注册方法包含Get Post Put Delete Head Patch六种，定义在全局变量RouterAllMethod。
 func (m *RouterStd) AnyFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodAny, path, h...)
 }
@@ -471,11 +517,6 @@ func (m *RouterStd) HeadFunc(path string, h ...interface{}) {
 // PatchFunc 方法实现注册一个Patch方法的http请求处理函数。
 func (m *RouterStd) PatchFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodPatch, path, h...)
-}
-
-// OptionsFunc 方法实现注册一个Options方法的http请求处理函数。
-func (m *RouterStd) OptionsFunc(path string, h ...interface{}) {
-	m.registerHandlers(MethodOptions, path, h...)
 }
 
 // middlewareTree 定义中间件信息存储树
@@ -585,19 +626,19 @@ func indexsCombine(hs1, hs2 []int) []int {
 	return hs
 }
 
-// RouterCoreLock 允许对RouterCore读写进行加锁，用于运行时动态增删路由规则。
-type RouterCoreLock struct {
+// routerCoreLock 允许对RouterCore读写进行加锁，用于运行时动态增删路由规则。
+type routerCoreLock struct {
 	sync.RWMutex
 	RouterCore
 }
 
-// NewRouterCoreLock 函数创建一个带读写锁的路由器核心。
+// NewRouterCoreLock 函数创建一个带读写锁的路由器核心，其他路由器核心在需要动态修改规则时使用Lock核心包装。
 func NewRouterCoreLock(core RouterCore) RouterCore {
-	return &RouterCoreLock{RouterCore: core}
+	return &routerCoreLock{RouterCore: core}
 }
 
 // HandleFunc 方法对路由器核心加写锁进行注册路由规则。
-func (r *RouterCoreLock) HandleFunc(method, path string, hs HandlerFuncs) {
+func (r *routerCoreLock) HandleFunc(method, path string, hs HandlerFuncs) {
 	r.Lock()
 	// defer 防止panic导致无法解锁
 	defer r.Unlock()
@@ -605,29 +646,31 @@ func (r *RouterCoreLock) HandleFunc(method, path string, hs HandlerFuncs) {
 }
 
 // Match 方法对路由器加读锁进行匹配请求。
-func (r *RouterCoreLock) Match(method, path string, params *Params) (hs HandlerFuncs) {
+func (r *routerCoreLock) Match(method, path string, params *Params) (hs HandlerFuncs) {
 	r.RLock()
 	hs = r.RouterCore.Match(method, path, params)
 	r.RUnlock()
 	return
 }
 
-// RouterCoreDebug 定义debug路由器。
-type RouterCoreDebug struct {
+// routerCoreDebug 定义debug路由器。
+type routerCoreDebug struct {
 	RouterCore   `json:"-" xml:"-"`
 	Methods      []string   `json:"methods" xml:"methods"`
 	Paths        []string   `json:"paths" xml:"paths"`
 	HandlerNames [][]string `json:"handlernames" xml:"handlernames"`
 }
 
-var _ RouterCore = (*RouterCoreDebug)(nil)
+var _ RouterCore = (*routerCoreDebug)(nil)
 
 // NewRouterCoreDebug 函数指定路由核心创建一个debug核心,默认使用eudore.RouterCoreRadix为核心。
+//
+// 访问 GET /eudore/debug/router/data 可以获取路由器注册信息。
 func NewRouterCoreDebug(core RouterCore) RouterCore {
 	if core == nil {
 		core = NewRouterRadix()
 	}
-	r := &RouterCoreDebug{
+	r := &routerCoreDebug{
 		RouterCore: core,
 	}
 	r.HandleFunc("GET", "/eudore/debug/router/data", HandlerFuncs{r.getData})
@@ -635,7 +678,7 @@ func NewRouterCoreDebug(core RouterCore) RouterCore {
 }
 
 // HandleFunc 实现eudore.RouterCore接口，记录全部路由信息。
-func (r *RouterCoreDebug) HandleFunc(method, path string, hs HandlerFuncs) {
+func (r *routerCoreDebug) HandleFunc(method, path string, hs HandlerFuncs) {
 	r.RouterCore.HandleFunc(method, path, hs)
 	names := make([]string, len(hs))
 	for i := range hs {
@@ -647,13 +690,13 @@ func (r *RouterCoreDebug) HandleFunc(method, path string, hs HandlerFuncs) {
 }
 
 // getData 方法返回debug路由信息数据。
-func (r *RouterCoreDebug) getData(ctx Context) {
+func (r *routerCoreDebug) getData(ctx Context) {
 	ctx.SetHeader("X-Eudore-Admin", "router-debug")
 	ctx.Render(r)
 }
 
-// RouterCoreHost 实现基于host进行路由匹配
-type RouterCoreHost struct {
+// routerCoreHost 实现基于host进行路由匹配
+type routerCoreHost struct {
 	routertree   wildcardHostNode
 	routers      map[string]RouterCore
 	newRouteCore func(string) RouterCore
@@ -661,7 +704,7 @@ type RouterCoreHost struct {
 
 // NewRouterCoreHost h函数创建一个Host路由核心，需要给定一个根据host值创建路由核心的函数。
 func NewRouterCoreHost(newfn func(string) RouterCore) RouterCore {
-	r := &RouterCoreHost{
+	r := &routerCoreHost{
 		newRouteCore: newfn,
 		routers:      make(map[string]RouterCore),
 	}
@@ -674,7 +717,7 @@ func NewRouterCoreHost(newfn func(string) RouterCore) RouterCore {
 // host值为一个host模式，允许存在*，表示当前任意字符到下一个'.'或结尾。
 //
 // 如果host值为'*'将注册添加给当前全部路由器核心，如果host值为空注册给'*'的路由器黑心，允许多个host使用','分割一次注册给多host。
-func (r *RouterCoreHost) HandleFunc(method, path string, hs HandlerFuncs) {
+func (r *routerCoreHost) HandleFunc(method, path string, hs HandlerFuncs) {
 	host := getRouteParam(path, "host")
 	switch host {
 	case "*":
@@ -691,7 +734,7 @@ func (r *RouterCoreHost) HandleFunc(method, path string, hs HandlerFuncs) {
 }
 
 // getRouterCore 方法寻找参数对应的路由器核心，如果不存在则调用函数创建并存储。
-func (r *RouterCoreHost) getRouterCore(host string) RouterCore {
+func (r *routerCoreHost) getRouterCore(host string) RouterCore {
 	core, ok := r.routers[host]
 	if ok {
 		return core
@@ -702,12 +745,12 @@ func (r *RouterCoreHost) getRouterCore(host string) RouterCore {
 	return core
 }
 
-// Match 方法返回RouterCoreHost.matchHost函数处理请求，在matchHost函数中使用host值进行二次匹配并拼接请求处理函数。
-func (r *RouterCoreHost) Match(method, path string, params *Params) HandlerFuncs {
+// Match 方法返回routerCoreHost.matchHost函数处理请求，在matchHost函数中使用host值进行二次匹配并拼接请求处理函数。
+func (r *routerCoreHost) Match(method, path string, params *Params) HandlerFuncs {
 	return HandlerFuncs{r.matchHost}
 }
 
-func (r *RouterCoreHost) matchHost(ctx Context) {
+func (r *routerCoreHost) matchHost(ctx Context) {
 	hs := r.routertree.matchNode(ctx.Host()).Match(ctx.Method(), ctx.Path(), ctx.Params())
 	index, handlers := ctx.GetHandler()
 	ctx.SetHandler(index, HandlerFuncsCombine(HandlerFuncsCombine(handlers[:index+1], hs), handlers[index+1:]))

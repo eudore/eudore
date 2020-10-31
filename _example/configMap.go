@@ -3,7 +3,7 @@ package main
 /*
 默认使用ConfigMap，配置使用map[string]interface{}存储。
 
-如果访问keys.help对象，返回的数据map["keys.help"]，不会像ConfigEudore一样层层选择对象去访问数据。
+如果访问help对象，返回的数据map["help"]，不会像ConfigEudore一样层层选择对象去访问数据。
 
 */
 

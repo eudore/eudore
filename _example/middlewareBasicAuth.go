@@ -16,7 +16,9 @@ func main() {
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/1").Do()
-	client.NewRequest("GET", "/2").WithHeaderValue("Authorization", "Basic dXNlcjpwdw==").Do()
+	// 全局设置basic auth信息
+	client.AddBasicAuth("user", "pw")
+	client.NewRequest("GET", "/2").Do()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

@@ -36,8 +36,8 @@ var (
 	part7 = []byte("}\n")
 )
 
-// LoggerStd 标准日志处理实现，将日志输出到标准输出或者文件。
-type LoggerStd struct {
+// loggerStd 标准日志处理实现，将日志输出到标准输出或者文件。
+type loggerStd struct {
 	LoggerStdConfig
 	Writer LoggerWriter `json:"-" alias:"writer"`
 	Pool   sync.Pool    `json:"-" alias:"pool"`
@@ -45,7 +45,23 @@ type LoggerStd struct {
 	*entryStd
 }
 
-// LoggerStdConfig 定义LoggerStd配置信息。
+// LoggerStdConfig 定义loggerStd配置信息。
+//
+// Writer 设置日志输出流，如果为空会使用Std和Path创建一个LoggerWriter。
+//
+// Std 是否输出日志到os.Stdout标准输出流。
+//
+// Path 指定文件输出路径,如果为空强制指定Std为true。
+//
+// MaxSize 指定文件切割大小，需要Path中存在index字符串,用于替换成切割文件索引。
+//
+// Link 如果非空会作为软连接的目标路径。
+//
+// Level 日志输出级别。
+//
+// TimeFormat 日志输出时间格式化格式。
+//
+// FileLine 是否输出调用日志输出的函数和文件位置
 type LoggerStdConfig struct {
 	Writer     LoggerWriter `json:"-" alias:"writer"`
 	Std        bool         `json:"std" alias:"std"`
@@ -59,7 +75,7 @@ type LoggerStdConfig struct {
 
 // 标准日志条目
 type entryStd struct {
-	logger     *LoggerStd
+	logger     *loggerStd
 	level      LoggerLevel
 	time       time.Time
 	message    string
@@ -70,9 +86,11 @@ type entryStd struct {
 }
 
 // NewLoggerStd 创建一个标准日志处理器。
+//
+// 参数为一个eudore.LoggerStdConfig或map保存的创建配置,配置选项含义参考eudore.LoggerStdConfig说明。
 func NewLoggerStd(arg interface{}) Logger {
 	// 解析配置
-	log := &LoggerStd{}
+	log := &loggerStd{}
 	log.TimeFormat = "2006-01-02 15:04:05"
 	ConvertTo(arg, &log.LoggerStdConfig)
 	logdepath := 4
@@ -94,7 +112,7 @@ func NewLoggerStd(arg interface{}) Logger {
 }
 
 // initOut 方法初始化输出流。
-func (log *LoggerStd) initOut() {
+func (log *loggerStd) initOut() {
 	if log.LoggerStdConfig.Writer != nil {
 		log.Writer = log.LoggerStdConfig.Writer
 		return
@@ -107,14 +125,14 @@ func (log *LoggerStd) initOut() {
 }
 
 // SetLevel 方法设置日志输出级别。
-func (log *LoggerStd) SetLevel(level LoggerLevel) {
+func (log *loggerStd) SetLevel(level LoggerLevel) {
 	log.Mutex.Lock()
 	log.Level = level
 	log.Mutex.Unlock()
 }
 
 // Sync 方法将缓冲写入到输出流。
-func (log *LoggerStd) Sync() error {
+func (log *loggerStd) Sync() error {
 	log.Mutex.Lock()
 	err := log.Writer.Sync()
 	log.Mutex.Unlock()
@@ -501,7 +519,6 @@ func (entry *entryStd) writeTo(w io.Writer) {
 		entry.WithField("name", name)
 		entry.WithField("file", file)
 		entry.WithField("line", line)
-		// entry.WithField("stat",GetPanicStack(0))
 	}
 
 	if len(entry.data) > 1 {

@@ -52,6 +52,9 @@ func TestRouterFullCheck2(t *testing.T) {
 	app.AnyFunc("/4/*num|isnum", eudore.HandlerEmpty)
 	app.AnyFunc("/4/*", eudore.HandlerEmpty)
 	app.AnyFunc("/5/*num|num", eudore.HandlerEmpty)
+	app.AddHandler(eudore.MethodOptions, "/", eudore.HandlerEmpty)
+	app.AddHandler(eudore.MethodConnect, "/", eudore.HandlerEmpty)
+	app.AddHandler(eudore.MethodTrace, "/", eudore.HandlerEmpty)
 
 	// 请求测试
 	client := httptest.NewClient(app)
@@ -86,8 +89,10 @@ func TestRouter2(t *testing.T) {
 	api1.AnyFunc("/any", eudore.HandlerEmpty)
 	api1.DeleteFunc("/delete", eudore.HandlerEmpty)
 	api1.HeadFunc("/head", eudore.HandlerEmpty)
-	api1.PatchFunc("/patch", eudore.HandlerEmpty)
-	api1.OptionsFunc("route=/options", eudore.HandlerEmpty)
+	api1.PatchFunc("route=/patch", eudore.HandlerEmpty)
+	api1.AddHandler(eudore.MethodOptions, "route=/options", eudore.HandlerEmpty)
+	api1.AddHandler(eudore.MethodConnect, "/", eudore.HandlerEmpty)
+	api1.AddHandler(eudore.MethodTrace, "/", eudore.HandlerEmpty)
 	app.CancelFunc()
 	app.Run()
 }
