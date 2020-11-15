@@ -12,7 +12,7 @@ func main() {
 
 	admin := app.Group("/eudore/debug")
 	admin.AddMiddleware("global", middleware.NewBasicAuthFunc(map[string]string{"user": "pw"}))
-	pprof.Init(admin)
+	pprof.Init(admin.Group(" godoc=https://golang.org"))
 	admin.AnyFunc("/pprof/look/* godoc=/eudore/debug/pprof/godoc", pprof.NewLook(app))
 	admin.AnyFunc("/pprof/expvar godoc=/eudore/debug/pprof/godoc", pprof.Expvar)
 
@@ -34,7 +34,7 @@ func main() {
 	})
 	app.AnyFunc("/eudore/debug/admin/ui", middleware.HandlerAdmin)
 	app.AnyFunc("/", func(ctx eudore.Context) {
-		ctx.Redirect(301,"/eudore/debug/admin/ui")	
+		ctx.Redirect(301, "/eudore/debug/admin/ui")
 	})
 
 	client := httptest.NewClient(app)

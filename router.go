@@ -1,10 +1,6 @@
 package eudore
 
-/*
-Router对象用于定义请求的路由器
-
-文件：router.go routerradix.go routerfull.go
-*/
+// Router对象用于定义请求的路由器
 
 import (
 	"fmt"
@@ -31,16 +27,16 @@ RouterMethod implements the following functions:
 
 RouterCore has five router cores to implement the following functions:
     High performance (70%-90% of httprouter performance, using less memory)
-    Low code complexity (RouterCoreFull supports 5 levels of priority, a code complexity of 19 is not satisfied)
+    Low code complexity (RouterCoreStd supports 5 levels of priority, a code complexity of 19 is not satisfied)
     Request for additional default parameters (including current routing matching rules)
     Variable and wildcard matching
-    Matching priority Constant > Variable verification > Variable > Wildcard verification > Wildcard (RouterCoreRadix three-level priority RouterCoreFull five-level priority)
+    Matching priority Constant > Variable verification > Variable > Wildcard verification > Wildcard (RouterCoreStd five-level priority)
     Method priority Specify method > Any method (The specified method will override the Any method, and vice versa)
-    Variables and wildcards support regular and custom functions to verify data (RouterCoreFull feature)
+    Variables and wildcards support regular and custom functions to verify data
     Variables and wildcards support constant prefix
     Get all registered routing rule information (RouterCoreBebug implementation)
     Routing rule matching based on Host (implemented by RouterCoreHost)
-    Allows dynamic addition and deletion of router rules at runtime (RouterCoreRadix and RouterCoreFull implementation, the outer layer requires RouterCoreLock packaging layer)
+    Allows dynamic addition and deletion of router rules at runtime (RouterCoreStd implementation, the outer layer requires RouterCoreLock packaging layer)
 
 Router 接口分为RouterCore和RouterMethod，RouterCore实现路由器匹配算法和逻辑，RouterMethod实现路由规则注册的封装。
 
@@ -58,16 +54,16 @@ RouterMethod实现下列功能：
 
 RouterCore拥有五种路由器核心实现下列功能：
     高性能(httprouter性能的70%-90%，使用更少的内存)
-    低代码复杂度(RouterCoreFull支持5级优先级 一处代码复杂度19不满足)
+    低代码复杂度(RouterCoreStd支持5级优先级 一处代码复杂度19不满足)
     请求获取额外的默认参数(包含当前路由匹配规则)
     变量和通配符匹配
-    匹配优先级 常量 > 变量校验 > 变量 > 通配符校验 > 通配符(RouterCoreRadix三级优先级 RouterCoreFull五级优先级)
+    匹配优先级 常量 > 变量校验 > 变量 > 通配符校验 > 通配符(RouterCoreStd五级优先级)
     方法优先级 指定方法 > Any方法(指定方法会覆盖Any方法，反之不行)
-    变量和通配符支持正则和自定义函数进行校验数据(RouterCoreFull特性)
+    变量和通配符支持正则和自定义函数进行校验数据
     变量和通配符支持常量前缀
     获取注册的全部路由规则信息(RouterCoreBebug实现)
     基于Host进行路由规则匹配(RouterCoreHost实现)
-    允许运行时进行动态增删路由器规则(RouterCoreRadix和RouterCoreFull实现，外层需要RouterCoreLock包装一层)
+    允许运行时进行动态增删路由器规则(RouterCoreStd实现，外层需要RouterCoreLock包装一层)
 */
 type Router interface {
 	RouterCore
@@ -130,6 +126,9 @@ func HandlerRouter404(ctx Context) {
 //
 // RouterStd实现RouterMethod接口注册相关细节，路由匹配由RouterCore实现。
 func NewRouterStd(core RouterCore) Router {
+	if core == nil {
+		core = NewRouterCoreStd()
+	}
 	return &RouterStd{
 		RouterCore: core,
 		params: &Params{
@@ -140,16 +139,6 @@ func NewRouterStd(core RouterCore) Router {
 		Middlewares:     newMiddlewareTree(),
 		Print:           printEmpty,
 	}
-}
-
-// NewRouterRadix 函数使用NewRouterStd创建一个Radix路由器，详细参考NewRouterCoreRadix函数。
-func NewRouterRadix() Router {
-	return NewRouterStd(NewRouterCoreRadix())
-}
-
-// NewRouterFull 函数使用NewRouterStd创建一个Full路由器，详细参考NewRouterCoreFull函数。
-func NewRouterFull() Router {
-	return NewRouterStd(NewRouterCoreFull())
 }
 
 // Group method returns a new group router.
@@ -288,7 +277,7 @@ func (m *RouterStd) AddHandler(method, path string, hs ...interface{}) error {
 // registerHandlers 方法将handler转换成HandlerFuncs，添加路由路径对应的请求中间件，并调用RouterCore对象注册路由方法。
 func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (err error) {
 	defer func() {
-		// RouterCoreFull 注册未知校验规则存在panic,或者其他自定义路由注册出现panic。
+		// RouterCoreStd 注册未知校验规则存在panic,或者其他自定义路由注册出现panic。
 		if rerr := recover(); rerr != nil {
 			err = fmt.Errorf(ErrFormatRouterStdRegisterHandlersRecover, method, path, rerr)
 			m.printPanic(err)
@@ -663,12 +652,12 @@ type routerCoreDebug struct {
 
 var _ RouterCore = (*routerCoreDebug)(nil)
 
-// NewRouterCoreDebug 函数指定路由核心创建一个debug核心,默认使用eudore.RouterCoreRadix为核心。
+// NewRouterCoreDebug 函数指定路由核心创建一个debug核心,默认使用eudore.RouterCoreStd为核心。
 //
 // 访问 GET /eudore/debug/router/data 可以获取路由器注册信息。
 func NewRouterCoreDebug(core RouterCore) RouterCore {
 	if core == nil {
-		core = NewRouterRadix()
+		core = NewRouterCoreStd()
 	}
 	r := &routerCoreDebug{
 		RouterCore: core,
@@ -703,7 +692,14 @@ type routerCoreHost struct {
 }
 
 // NewRouterCoreHost h函数创建一个Host路由核心，需要给定一个根据host值创建路由核心的函数。
+//
+// 如果参数为空默认每个路由Host都创建NewRouterCoreStd。
 func NewRouterCoreHost(newfn func(string) RouterCore) RouterCore {
+	if newfn == nil {
+		newfn = func(string) RouterCore {
+			return NewRouterCoreStd()
+		}
+	}
 	r := &routerCoreHost{
 		newRouteCore: newfn,
 		routers:      make(map[string]RouterCore),

@@ -37,7 +37,7 @@ export CGO_ENABLED=1
 if [ $# -ne 0 ];then
 	$*
 elif [ -z $OUT ];then
-	$GOROOT/bin/go test -v -timeout=2m -reace -cover -coverpkg=$COVERPKG $OPTION
+	$GOROOT/bin/go test -v -timeout=2m -race -cover -coverpkg=$COVERPKG $OPTION
 else
 	$GOROOT/bin/go test -v -timeout=2m -race -cover -coverpkg=$COVERPKG -coverprofile=coverage.txt $OPTION && go tool cover -html=coverage.txt -o $OUT 
 fi

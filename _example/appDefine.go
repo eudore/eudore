@@ -47,15 +47,8 @@ type ConfigParseFunc func(Config) error
 // ConfigParseOption 定义配置解析选项，用于修改配置解析函数。
 type ConfigParseOption func([]ConfigParseFunc) []ConfigParseFunc
 
-// Logger 定义日志处理器定义
+// Logger 日志输出接口
 type Logger interface {
-	Logout
-	Sync() error
-	SetLevel(LoggerLevel)
-}
-
-// Logout 日志输出接口
-type Logout interface {
 	Debug(...interface{})
 	Info(...interface{})
 	Warning(...interface{})
@@ -66,8 +59,10 @@ type Logout interface {
 	Warningf(string, ...interface{})
 	Errorf(string, ...interface{})
 	Fatalf(string, ...interface{})
-	WithField(key string, value interface{}) Logout
-	WithFields(fields Fields) Logout
+	WithField(key string, value interface{}) Logger
+	WithFields(fields Fields) Logger
+	Sync() error
+	SetLevel(LoggerLevel)
 }
 
 // LoggerLevel 定义日志级别
@@ -166,11 +161,11 @@ type Context interface {
 	GetContext() context.Context
 	Request() *http.Request
 	Response() ResponseWriter
-	Logger() Logout
+	Logger() Logger
 	WithContext(context.Context)
 	SetRequest(*http.Request)
 	SetResponse(ResponseWriter)
-	SetLogger(Logout)
+	SetLogger(Logger)
 	SetHandler(int, HandlerFuncs)
 	GetHandler() (int, HandlerFuncs)
 	Next()
@@ -221,7 +216,7 @@ type Context interface {
 	WriteJSON(interface{}) error
 	WriteFile(string) error
 
-	// log Logout interface
+	// log Logger interface
 	Debug(...interface{})
 	Info(...interface{})
 	Warning(...interface{})
@@ -232,8 +227,8 @@ type Context interface {
 	Warningf(string, ...interface{})
 	Errorf(string, ...interface{})
 	Fatalf(string, ...interface{})
-	WithField(key string, value interface{}) Logout
-	WithFields(fields Fields) Logout
+	WithField(key string, value interface{}) Logger
+	WithFields(fields Fields) Logger
 }
 
 // ResponseWriter 接口用于写入http请求响应体status、header、body。

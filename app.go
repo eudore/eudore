@@ -38,7 +38,7 @@ func NewApp(options ...interface{}) *App {
 		Config:    NewConfigMap(nil),
 		Logger:    NewLoggerStd(nil),
 		Server:    NewServerStd(nil),
-		Router:    NewRouterRadix(),
+		Router:    NewRouterStd(nil),
 		Binder:    BindDefault,
 		Renderer:  RenderDefault,
 		Validater: DefaultValidater,
@@ -70,14 +70,14 @@ func (app *App) Options(options ...interface{}) {
 			app.Context = val
 			app.Context, app.CancelFunc = context.WithCancel(app.Context)
 		case Logger:
+			initlog, ok := app.Logger.(loggerInitHandler)
+			app.Logger = val
 			Set(app.Config, "print", NewPrintFunc(val))
 			Set(app.Server, "print", NewPrintFunc(val))
 			Set(app.Router, "print", NewPrintFunc(val))
-			initlog, ok := app.Logger.(loggerInitHandler)
 			if ok {
 				initlog.NextHandler(val)
 			}
-			app.Logger = val
 		case Config:
 			app.Config = val
 			Set(app.Config, "print", NewPrintFunc(app))

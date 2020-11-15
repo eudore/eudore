@@ -9,15 +9,15 @@ enable获得到的数组为需要加载的模式，额外会加载为当前操�
 */
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/eudore/eudore"
 	"os"
-"fmt"
-"encoding/json"
 )
 
 type conf struct {
 	Keys      map[string]interface{} `alias:"keys" json:"keys"`
-	Config string `alias:"config" json:"config"`
+	Config    string                 `alias:"config" json:"config"`
 	Component *componentConfig       `alias:"component" json:"component"`
 	Enable    []string               `alias:"enable" json:"enable"`
 	Mods      map[string]*conf       `alias:"mods" json:"mods"`
@@ -60,8 +60,8 @@ func main() {
 	app.Options(app.Parse())
 	app.Info(app.Get("component.server.readtimeout"))
 
-        indent, err := json.MarshalIndent(app.Config, "", "\t")
-        fmt.Println(string(indent), err)
+	indent, err := json.MarshalIndent(app.Config, "", "\t")
+	fmt.Println(string(indent), err)
 	app.Listen(":8088")
 	// app.CancelFunc()
 	app.Run()

@@ -35,7 +35,7 @@ var (
 	DefaultHandlerExtend = NewHandlerExtendBase()
 	// DefaultValidater 定义默认的验证器
 	DefaultValidater = NewvalidaterBase()
-	// DefaultRouterValidater 为RouterFull提供生成ValidateStringFunc功能,需要实现interface{GetValidateStringFunc(string) ValidateStringFunc}接口。
+	// DefaultRouterValidater 为RouterStd提供生成ValidateStringFunc功能,需要实现interface{GetValidateStringFunc(string) ValidateStringFunc}接口。
 	DefaultRouterValidater = DefaultValidater
 )
 
@@ -59,12 +59,11 @@ var (
 	_ Config     = (*configMap)(nil)
 	_ Config     = (*configEudore)(nil)
 	_ Logger     = (*loggerInit)(nil)
-	_ Logger     = (*loggerStd)(nil)
+	_ Logger     = (*LoggerStd)(nil)
 	_ Server     = (*serverStd)(nil)
 	_ Server     = (*serverFcgi)(nil)
 	_ Router     = (*RouterStd)(nil)
-	_ RouterCore = (*routerCoreRadix)(nil)
-	_ RouterCore = (*routerCoreFull)(nil)
+	_ RouterCore = (*routerCoreStd)(nil)
 	_ RouterCore = (*routerCoreDebug)(nil)
 	_ RouterCore = (*routerCoreHost)(nil)
 	_ RouterCore = (*routerCoreLock)(nil)
@@ -80,6 +79,27 @@ var (
 	_ HandlerExtender = (*handlerExtendWarp)(nil)
 	_ HandlerExtender = (*handlerExtendTree)(nil)
 	_ Validater       = (*validaterBase)(nil)
+)
+
+// 定义日志级别
+const (
+	LogDebug LoggerLevel = iota
+	LogInfo
+	LogWarning
+	LogError
+	LogFatal
+	_hex = "0123456789abcdef"
+)
+
+var (
+	loggerlevels = [][]byte{[]byte("DEBUG"), []byte("INFO"), []byte("WARIRNG"), []byte("ERROR"), []byte("FATAL")}
+	loggerpart1  = []byte(`{"time":"`)
+	loggerpart2  = []byte(`","level":"`)
+	loggerpart3  = []byte(`","fields":{`)
+	loggerpart4  = []byte("\"")
+	loggerpart5  = []byte(`,"message":"`)
+	loggerpart6  = []byte("\"}\n")
+	loggerpart7  = []byte("}\n")
 )
 
 // 定义默认错误

@@ -1,5 +1,10 @@
 # Change Log
 
+2020年11月15日
+ - Logger	移除Logout接口、重构Logger实现方式、抽象LoggerStd
+ - Router	移除RouterCoreRadix，重命名RouterCoreFull为RouterCoreStd
+ - ContextBase	SetLogger方法不会自动WithFiles(nil)设置Logger属性
+
 2020年10月31日
  - ContextBase、ConfigMap、ConfigEudore、LoggerInit、LoggerStd、ServerStd、ServerFcgi、RouterCoreRadix、RouterCoreFull、RouterCoreDebug、RouterCoreHost、RouterCoreLock、ResponseWriterHTTP不再可导出，不再显示在godoc索引中
  - RouterStd checkMethod新增允许trace和connnet，优化printerror时堆栈信息，ControllerFuncExtend扩展会提示控制器方法类型

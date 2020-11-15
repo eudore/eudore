@@ -1,17 +1,19 @@
 package main
 
 /*
-RouterRadix是eudore默认路由，使用基数树算法实现。
-RouterFull是基于RouterRadix强化实现，额外实现参数校验功能，使用Validate注册的校验函数。
+RouterStd是eudore的默认路由器，使用基数树算法独立实现，性能与httprouter相识。
 
 具有路由匹配优先级： 常量匹配 > 变量校验匹配 >变量匹配 > 通配符校验匹配 > 通配符匹配
 方法优先级： 具体方法 > Any方法
 
 用法：在正常变量和通配符后，使用'|'符号分割，后为校验规则，isnum是校验函数；{min:100}为动态检验函数，min是动态校验函数名称，':'后为参数；如果为'^'开头为正则校验,并且要使用'$'作为结尾。
 
-在路径中使用'{}'包裹的一段字符串为块模式，切分时将整块紧跟上一个字符串，这样允许在校验规则内使用任何字符，可以使用app.AddHandler("TEST","/api/v:v/user/*name", eudore.HandlerEmpty)查看debug信息。
-
+在路径中使用'{}'包裹的一段字符串为块模式，切分时将整块紧跟上一个字符串，这样允许在校验规则内使用任何字符,
 字符空格、冒号、星号、前花括号、后花括号、斜杠均为特殊符号（' '、':'、'*'、'{'、'}'、'/'），一定需要使用块模式包裹字符串。
+
+可以使用app.AddHandler("TEST","/api/v:v/user/*name", eudore.HandlerEmpty)查看debug信息。
+例如路径切割的切片，首字符为':'是变量匹配，首字符为'*'是通配符匹配，其他都是常量字符串匹配。
+变量匹配从当前到下一个斜杠('/')处或结尾，通配符匹配当前位置到结尾，常量匹配对应的字符串。
 ```
 :num|isnum
 :num|{min:100}
@@ -28,7 +30,8 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(eudore.NewRouterFull())
+	// 默认路由器就是 NewRouterStd(nil)
+	app := eudore.NewApp()
 
 	app.AddMiddleware(func(ctx eudore.Context) {
 		ctx.WriteString("route: " + ctx.GetParam("route") + "\n")
@@ -48,7 +51,7 @@ func main() {
 	app.AddHandler("404", "", eudore.HandlerRouter404)
 	app.AddHandler("405", "", eudore.HandlerRouter405)
 
-	// ---------- 分割线 -----上面是routerRadix.go例子复制的路由 下面注册RouterFull路由 ----------
+	// ---------- 分割线 -----上面是基础路由 下面注册校验路由 ----------
 
 	// 正则校验，相当于 regexp:{^0.*$}，是一个动态校验函数。
 	app.GetFunc("/get/:num|{^0.*$}", func(ctx eudore.Context) {

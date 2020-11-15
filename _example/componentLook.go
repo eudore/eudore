@@ -8,7 +8,7 @@ import (
 
 func main() {
 	app := eudore.NewApp()
-	pprof.Init(app.Group("/eudore/debug"))
+	pprof.Init(app.Group("/eudore/debug godoc=https://golang.org"))
 	app.AnyFunc("/eudore/debug/pprof/look/* godoc=/eudore/debug/pprof/godoc", pprof.NewLook(app))
 
 	client := httptest.NewClient(app)

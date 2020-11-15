@@ -40,6 +40,7 @@ Middleware包实现部分基础eudore请求中间件。
 	- [Router匹配](../_example/middlewareRouter.go)
 	- [Router方法实现Rewrite](../_example/middlewareRouterRewrite.go)
 	- [ContextWarp](../_example/middlewareContextWarp.go)
+	- [请求设置独立的日志级别](../_example/middlewareLoggerLevel.go)
 - net/http example:
 	- [中间件 黑名单](../_example/nethttpBalck.go)
 	- [中间件 路径重写](../_example/nethttpRewrite.go)

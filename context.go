@@ -23,11 +23,11 @@ type Context interface {
 	GetContext() context.Context
 	Request() *http.Request
 	Response() ResponseWriter
-	Logger() Logout
+	Logger() Logger
 	WithContext(context.Context)
 	SetRequest(*http.Request)
 	SetResponse(ResponseWriter)
-	SetLogger(Logout)
+	SetLogger(Logger)
 	SetHandler(int, HandlerFuncs)
 	GetHandler() (int, HandlerFuncs)
 	Next()
@@ -78,7 +78,7 @@ type Context interface {
 	WriteJSON(interface{}) error
 	WriteFile(string) error
 
-	// log Logout interface
+	// log Logger interface
 	Debug(...interface{})
 	Info(...interface{})
 	Warning(...interface{})
@@ -89,8 +89,8 @@ type Context interface {
 	Warningf(string, ...interface{})
 	Errorf(string, ...interface{})
 	Fatalf(string, ...interface{})
-	WithField(key string, value interface{}) Logout
-	WithFields(fields Fields) Logout
+	WithField(key string, value interface{}) Logger
+	WithFields(fields Fields) Logger
 }
 
 // contextBase 实现Context接口。
@@ -109,12 +109,12 @@ type contextBase struct {
 	postBody       []byte
 	// component
 	app *App
-	log Logout
+	log Logger
 }
 
-// entryContextBase 实现ContextBase使用的Logout对象。
+// entryContextBase 实现ContextBase使用的Logger对象。
 type entryContextBase struct {
-	Logout
+	Logger
 	Context *contextBase
 }
 
@@ -159,8 +159,8 @@ func (ctx *contextBase) Response() ResponseWriter {
 	return ctx.ResponseWriter
 }
 
-// Logger 直接返回app的Logger对象，通常用于Hijack并释放Context后使用Logout。
-func (ctx *contextBase) Logger() Logout {
+// Logger 直接返回app的Logger对象，通常用于Hijack并释放Context后使用Logger。
+func (ctx *contextBase) Logger() Logger {
 	return ctx.log
 }
 
@@ -174,9 +174,11 @@ func (ctx *contextBase) SetResponse(w ResponseWriter) {
 	ctx.ResponseWriter = w
 }
 
-// SetLogger 方法设置ContextBases输出日志的基础Logout。
-func (ctx *contextBase) SetLogger(log Logout) {
-	ctx.log = log.WithFields(nil)
+// SetLogger 方法设置ContextBases输出日志的基础Logger。
+//
+// 注意确保设置的是Logger，而不是一个Entry。
+func (ctx *contextBase) SetLogger(log Logger) {
+	ctx.log = log
 }
 
 // WithContext 设置当前请求上下文的ctx，必须是请求上下文的衍生上下文。
@@ -622,23 +624,23 @@ func (ctx *contextBase) logFatal() {
 	ctx.End()
 }
 
-// WithField 方法增加一个日志属性，返回一个新的Logout。
-func (ctx *contextBase) WithField(key string, value interface{}) Logout {
+// WithField 方法增加一个日志属性，返回一个新的Logger。
+func (ctx *contextBase) WithField(key string, value interface{}) Logger {
 	return &entryContextBase{
-		Logout:  ctx.log.WithField(key, value),
+		Logger:  ctx.log.WithField(key, value),
 		Context: ctx,
 	}
 }
 
-// WithFields 方法增加多个日志属性，返回一个新的Logout。
+// WithFields 方法增加多个日志属性，返回一个新的Logger。
 //
 // 如果fields包含file条目属性，则不会添加调用位置信息。
-func (ctx *contextBase) WithFields(fields Fields) Logout {
+func (ctx *contextBase) WithFields(fields Fields) Logger {
 	if fields != nil {
 		fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
 	}
 	return &entryContextBase{
-		Logout:  ctx.log.WithFields(fields),
+		Logger:  ctx.log.WithFields(fields),
 		Context: ctx,
 	}
 }
@@ -647,7 +649,7 @@ func (ctx *contextBase) WithFields(fields Fields) Logout {
 func (e *entryContextBase) Fatal(args ...interface{}) {
 	msg := fmt.Sprintln(args...)
 	e.Context.err = msg[:len(msg)-1]
-	e.Logout.WithField("depth", 1).Error(msg)
+	e.Logger.WithField("depth", 1).Error(msg)
 	e.Context.logFatal()
 
 }
@@ -655,19 +657,19 @@ func (e *entryContextBase) Fatal(args ...interface{}) {
 // Fatalf 方法重写Context的Fatalf方法，不执行panic，http返回500和请求id。
 func (e *entryContextBase) Fatalf(format string, args ...interface{}) {
 	e.Context.err = fmt.Sprintf(format, args...)
-	e.Logout.WithField("depth", 1).Error(e.Context.err)
+	e.Logger.WithField("depth", 1).Error(e.Context.err)
 	e.Context.logFatal()
 }
 
 // WithField 方法增加一个日志属性。
-func (e *entryContextBase) WithField(key string, value interface{}) Logout {
-	e.Logout = e.Logout.WithField(key, value)
+func (e *entryContextBase) WithField(key string, value interface{}) Logger {
+	e.Logger = e.Logger.WithField(key, value)
 	return e
 }
 
 // WithFields 方法增加多个日志属性。
-func (e *entryContextBase) WithFields(fields Fields) Logout {
-	e.Logout = e.Logout.WithFields(fields)
+func (e *entryContextBase) WithFields(fields Fields) Logger {
+	e.Logger = e.Logger.WithFields(fields)
 	return e
 }
 

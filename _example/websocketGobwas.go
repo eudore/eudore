@@ -21,7 +21,7 @@ func main() {
 			return
 		}
 
-        // 取出请求上下文的Logger，否则Context在sync.Pool再次分配后可能竞态冲突。
+		// 取出请求上下文的Logger，否则Context在sync.Pool再次分配后可能竞态冲突。
 		log := ctx.Logger()
 		go func() {
 			defer conn.Close()

@@ -13,7 +13,7 @@ import (
 func main() {
 	app := eudore.NewApp(
 		eudore.NewRouterStd(eudore.NewRouterCoreDebug(nil)),
-		eudore.NewRouterStd(eudore.NewRouterCoreDebug(eudore.NewRouterCoreFull())),
+		eudore.NewRouterStd(eudore.NewRouterCoreDebug(eudore.NewRouterCoreStd())),
 	)
 
 	api := app.Group("/api/{v 1} version=v1")

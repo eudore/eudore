@@ -15,7 +15,7 @@ func NewRouterFunc(data map[string]interface{}) eudore.HandlerFunc {
 	router, ok := data["router"].(eudore.Router)
 	delete(data, "router")
 	if !ok {
-		router = eudore.NewRouterRadix()
+		router = eudore.NewRouterStd(nil)
 		router.AddHandler("404", "", eudore.HandlerEmpty)
 		router.AddHandler("405", "", eudore.HandlerEmpty)
 	}

@@ -82,7 +82,7 @@ type serverFcgi struct {
 
 // ServerListenConfig 定义一个通用的端口监听配置,监听https仅支持单证书。
 type ServerListenConfig struct {
-	NewListen   func(string, string) (net.Listener, error) `alias:"newlisten" json:"newlisten" description:"create listener func, default: net.Listen"`
+	NewListen   func(string, string) (net.Listener, error) `alias:"newlisten" json:"-" description:"create listener func, default: net.Listen"`
 	Addr        string                                     `alias:"addr" json:"addr" description:"Listen addr."`
 	HTTPS       bool                                       `alias:"https" json:"https" description:"Is https."`
 	HTTP2       bool                                       `alias:"http2" json:"http2" description:"Is http2."`

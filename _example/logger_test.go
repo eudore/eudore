@@ -17,6 +17,19 @@ type loggerInitHandler2 interface {
 
 func TestLoggerInit2(t *testing.T) {
 	log := eudore.NewLoggerInit()
+
+	log.SetLevel(eudore.LogFatal)
+	log.Debug("0")
+	log.Debugf("0")
+	log.Info("1")
+	log.Infof("1")
+	log.Warning("2")
+	log.Warningf("2")
+	log.Error("3")
+	log.Errorf("3")
+	log.Fatal("4")
+	log.Fatalf("4")
+
 	log.SetLevel(eudore.LogInfo)
 	log.Debug("0")
 	log.Debugf("0")
@@ -258,7 +271,7 @@ func TestLoggerCaller5(t *testing.T) {
 	defer patch1.Unpatch()
 	defer patch2.Unpatch()
 
-	app := eudore.NewApp(eudore.NewRouterFull())
+	app := eudore.NewApp()
 	app.AddMiddleware("8888")
 	app.AnyFunc("/:path|panic", eudore.HandlerEmpty)
 	app.AnyFunc("/*", eudore.HandlerRouter404)
@@ -267,7 +280,7 @@ func TestLoggerCaller5(t *testing.T) {
 	app.Run()
 }
 
-func BenchmarkLogerStd(b *testing.B) {
+func BenchmarkLoggerStd(b *testing.B) {
 	data := map[string]interface{}{
 		"a": 1,
 		"b": 2,

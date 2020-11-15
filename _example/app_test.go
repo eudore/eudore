@@ -21,7 +21,7 @@ func TestAppNew2(*testing.T) {
 	app := eudore.NewApp(
 		context.Background(),
 		eudore.NewConfigEudore(nil),
-		eudore.NewRouterFull(),
+		eudore.NewRouterStd(nil),
 		eudore.NewLoggerStd(nil),
 		eudore.NewServerStd(nil),
 		eudore.Binder(eudore.BindDefault),

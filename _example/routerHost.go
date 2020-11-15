@@ -6,12 +6,7 @@ import (
 )
 
 func main() {
-	router := eudore.NewRouterStd(eudore.NewRouterCoreHost(func(string) eudore.RouterCore {
-		// 所以host都使用RouterRadix
-		return eudore.NewRouterRadix()
-	}))
-
-	app := eudore.NewApp(router)
+	app := eudore.NewApp(eudore.NewRouterStd(eudore.NewRouterCoreHost(nil)))
 	app.AnyFunc("/* host=eudore.com", echoHandleHost)
 	app.AnyFunc("/* host=eudore.cn", echoHandleHost)
 	app.AnyFunc("/* host=eudore.*", echoHandleHost)

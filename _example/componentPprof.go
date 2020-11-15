@@ -14,7 +14,7 @@ import (
 
 func main() {
 	app := eudore.NewApp()
-	pprof.Init(app.Group("/eudore/debug"))
+	pprof.Init(app.Group("/eudore/debug godoc=https://golang.org"))
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/eudore/debug/pprof/expvar").WithHeaderValue(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do().OutBody()

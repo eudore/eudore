@@ -13,7 +13,7 @@ import (
 
 func main() {
 	app := eudore.NewApp(
-		eudore.NewRouterStd(eudore.NewRouterCoreLock(eudore.NewRouterCoreRadix())),
+		eudore.NewRouterStd(eudore.NewRouterCoreLock(eudore.NewRouterCoreStd())),
 	)
 	client := httptest.NewClient(app)
 
@@ -37,9 +37,9 @@ func main() {
 	register.AnyFunc("/api/v:v1/*", eudore.HandlerEmpty)
 	register.AnyFunc("/api/v:v2/*", eudore.HandlerEmpty)
 
-	// ---------------- RouterFull测试 ----------------
+	// ---------------- 测试 ----------------
 
-	app.Options(eudore.NewRouterStd(eudore.NewRouterCoreLock(eudore.NewRouterCoreFull())))
+	app.Options(eudore.NewRouterStd(eudore.NewRouterCoreLock(eudore.NewRouterCoreStd())))
 	register = app.Group(" register=off")
 	app.AnyFunc("/eudore/debug/pprof/look/* godoc=/eudore/debug/pprof/godoc", pprof.NewLook(app))
 	app.AnyFunc("/verison", echoStringHandler("any verison"))

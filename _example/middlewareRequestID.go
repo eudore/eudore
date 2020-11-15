@@ -11,7 +11,7 @@ func main() {
 	app := eudore.NewApp()
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware(middleware.NewRequestIDFunc(nil))
-/*	app.AddMiddleware(middleware.NewRequestIDFunc(func() string {
+	/*	app.AddMiddleware(middleware.NewRequestIDFunc(func() string {
 		return uuid.New().String()
 	}))	*/
 	app.AnyFunc("/*", func(ctx eudore.Context) {

@@ -8,8 +8,8 @@ import (
 	"github.com/eudore/eudore/middleware"
 )
 
-func TestRouterFullAny2(t *testing.T) {
-	app := eudore.NewApp(eudore.NewRouterFull())
+func TestRouterStdAny2(t *testing.T) {
+	app := eudore.NewApp()
 	// Any方法覆盖
 	app.GetFunc("/get/:val", func(ctx eudore.Context) {
 		ctx.WriteString("method is get\n")
@@ -38,8 +38,8 @@ func TestRouterFullAny2(t *testing.T) {
 	app.Run()
 }
 
-func TestRouterFullCheck2(t *testing.T) {
-	app := eudore.NewApp(eudore.NewRouterFull())
+func TestRouterStdCheck2(t *testing.T) {
+	app := eudore.NewApp()
 
 	app.AnyFunc("/1/:num|isnum version=1", eudore.HandlerEmpty)
 	app.AnyFunc("/1/222", eudore.HandlerEmpty)

@@ -39,7 +39,7 @@ func main() {
 				err = wsutil.WriteServerMessage(conn, op, msg)
 				if err != nil {
 					// handle error
-				log.Error(err)
+					log.Error(err)
 					break
 				}
 			}
