@@ -69,6 +69,7 @@ func init() {
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFunc)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncRender)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncError)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncRenderError)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncContextError)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncContextRender)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncContextRenderError)
@@ -585,6 +586,20 @@ func NewExtendFuncError(fn func() error) HandlerFunc {
 	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
 	return func(ctx Context) {
 		err := fn()
+		if err != nil {
+			ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
+		}
+	}
+}
+
+// NewExtendFuncRenderError 函数处理func() (interface{}, error)返回数据渲染和error处理。
+func NewExtendFuncRenderError(fn func() (interface{}, error)) HandlerFunc {
+	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
+	return func(ctx Context) {
+		data, err := fn()
+		if err == nil && ctx.Response().Size() == 0 {
+			err = ctx.Render(data)
+		}
 		if err != nil {
 			ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
 		}

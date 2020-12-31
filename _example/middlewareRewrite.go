@@ -10,12 +10,12 @@ func main() {
 	rewritedata := map[string]string{
 		"/js/*":                    "/public/js/$0",
 		"/api/v1/users/*/orders/*": "/api/v3/user/$0/order/$1",
-		"/d/*":           "/d/$0-$0",
-		"/api/v1/*":      "/api/v3/$0",
-		"/api/v2/*":      "/api/v3/$0",
-		"/help/history*": "/api/v3/history",
-		"/help/history":  "/api/v3/history",
-		"/help/*":        "$0",
+		"/d/*":                     "/d/$0-$0",
+		"/api/v1/*":                "/api/v3/$0",
+		"/api/v2/*":                "/api/v3/$0",
+		"/help/history*":           "/api/v3/history",
+		"/help/history":            "/api/v3/history",
+		"/help/*":                  "$0",
 	}
 
 	app := eudore.NewApp()

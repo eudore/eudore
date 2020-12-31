@@ -75,7 +75,7 @@ func TestStdPath1(*testing.T) {
 	tree.HandleFunc(newNodeData("/"))
 	ctx := &Context{}
 	tree.HandleFunc("404", "", eudore.HandlerFuncs{echoRoute("404")})
-	tree.HandleFunc("405", "", eudore.HandlerFuncs{echoRoute("405")})
+	tree.HandleFunc("405", "", eudore.HandlerFuncs{echoRoute("/")})
 	runCheck(tree.Match("GET", "/", ctx.Params()), ctx)
 	runCheck(tree.Match("GET", "/index", ctx.Params()), ctx)
 	runCheck(tree.Match("11", "/", ctx.Params()), ctx)

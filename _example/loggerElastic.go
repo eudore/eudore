@@ -1,5 +1,11 @@
 package main
 
+/*
+通过设置LoggerStd的Writer获取json日志。
+LoggerStd每次Write一次是一个完整的json日志的[]byte数据，将json数据匹配put到es。
+也可以实现LoggerStdData接口处理日志。
+*/
+
 import (
 	"bytes"
 	"fmt"
@@ -32,15 +38,13 @@ type syncWriterElastic struct {
 	index string
 	sync.Mutex
 	Datas []byte
-	*bytes.Buffer
 }
 
 func NewSyncWriterElastic(addr, index string) eudore.LoggerWriter {
 	index = fmt.Sprintf("{\"index\":{\"_index\": \"%s\",\"_type\":\"doc\"}}\n", index)
 	return &syncWriterElastic{
-		addr:   addr,
-		index:  index,
-		Buffer: bytes.NewBufferString(index),
+		addr:  addr,
+		index: index,
 	}
 }
 
@@ -64,15 +68,12 @@ func (w *syncWriterElastic) Sync() error {
 }
 
 func (w *syncWriterElastic) Write(p []byte) (n int, err error) {
-	n, err = w.Buffer.Write(p)
-	if len(p) < 4 && (string(p) == "\"}\n" || string(p) == "}\n") {
-		w.Lock()
-		w.Datas = append(w.Datas, w.Buffer.Bytes()...)
-		w.Buffer = bytes.NewBufferString(w.index)
-		w.Unlock()
-		if len(w.Datas) > 3000 {
-			w.Sync()
-		}
+	w.Lock()
+	w.Datas = append(w.Datas, p...)
+	w.Unlock()
+	n = len(p)
+	if len(w.Datas) > 3000 {
+		err = w.Sync()
 	}
 	return
 }

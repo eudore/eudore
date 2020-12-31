@@ -168,8 +168,9 @@ func (app *App) AddMiddleware(hs ...interface{}) error {
 		if ok && name == "global" {
 			handler := DefaultHandlerExtend.NewHandlerFuncs("", hs[1:])
 			app.Info("Register app global middleware:", handler)
+			last := app.HandlerFuncs[len(app.HandlerFuncs)-1]
 			app.HandlerFuncs = HandlerFuncsCombine(app.HandlerFuncs[0:len(app.HandlerFuncs)-1], handler)
-			app.HandlerFuncs = HandlerFuncsCombine(app.HandlerFuncs, HandlerFuncs{app.serveContext})
+			app.HandlerFuncs = HandlerFuncsCombine(app.HandlerFuncs, HandlerFuncs{last})
 			return nil
 		}
 	}

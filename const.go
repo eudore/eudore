@@ -27,8 +27,10 @@ var (
 	DefaultRecoverDepth = 20
 	// LogLevelString 定义日志级别输出字符串。
 	LogLevelString = [5]string{"DEBUG", "INFO", "WARNING", "ERROR", "FATAL"}
-	// RouterAllMethod 定义全部的方法，是Any方法的注册使用的方法。
-	RouterAllMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch}
+	// RouterAllMethod 定义路由器使用的全部方法。
+	RouterAllMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions, MethodConnect, MethodTrace}
+	// RouterAnyMethod 定义Any方法的注册使用的方法。
+	RouterAnyMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch}
 	// ConfigAllParseFunc 定义ConfigMap和ConfigEudore默认使用的解析函数。
 	ConfigAllParseFunc = []ConfigParseFunc{ConfigParseJSON, ConfigParseArgs, ConfigParseEnvs, ConfigParseMods, ConfigParseWorkdir, ConfigParseHelp}
 	// DefaultHandlerExtend 为默认的函数扩展处理者，是RouterStd使用的最顶级的函数扩展处理者。
@@ -149,7 +151,7 @@ var (
 	ErrFormatRouterStdAddController = "The RouterStd.AddController Inject %s error: %v"
 	// ErrFormatRouterStdAddHandlerExtend RouterStd添加扩展错误
 	ErrFormatRouterStdAddHandlerExtend = "The RouterStd.AddHandlerExtend path is '%s' RegisterHandlerExtend error: %v"
-	// ErrFormatRouterStdRegisterHandlersMethodInvalid RouterStd.registerHandlers 的添加的是无效的，全部有效方法为RouterAllMethod。
+	// ErrFormatRouterStdRegisterHandlersMethodInvalid RouterStd.registerHandlers 的添加的是无效的，全部有效方法为RouterAnyMethod。
 	ErrFormatRouterStdRegisterHandlersMethodInvalid = "The RouterStd.registerHandlers arg method '%s' is invalid, complete method: '%s', add fullpath: '%s'"
 	// ErrFormatRouterStdRegisterHandlersRecover RouterStd出现panic。
 	ErrFormatRouterStdRegisterHandlersRecover = "The RouterStd.registerHandlers arg method is '%s' and path is '%s', recover error: %v"
@@ -366,6 +368,7 @@ const (
 	// Param
 
 	ParamAction          = "action"
+	ParamAllow           = "allow"
 	ParamCaller          = "caller"
 	ParamControllerGroup = "controllergroup"
 	ParamRAM             = "ram"

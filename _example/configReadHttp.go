@@ -1,8 +1,5 @@
 package main
 
-/*
-实现参考eudore.ConfigParseRead和eudore.ConfigParseConfig内容
-*/
 
 import (
 	"encoding/json"
@@ -14,6 +11,7 @@ import (
 
 func main() {
 	app := eudore.NewApp()
+	// 修改第一个解析函数为readHttp解析http请求
 	app.ParseOption(func([]eudore.ConfigParseFunc) []eudore.ConfigParseFunc {
 		return []eudore.ConfigParseFunc{readHttp, eudore.ConfigParseArgs, eudore.ConfigParseEnvs, eudore.ConfigParseMods, eudore.ConfigParseWorkdir, eudore.ConfigParseHelp}
 	})
@@ -39,6 +37,7 @@ func main() {
 	app.Run()
 }
 
+// 自定义一个解析http请求的配置解析函数
 func readHttp(c eudore.Config) error {
 	for _, path := range eudore.GetStrings(c.Get("config")) {
 		if !strings.HasPrefix(path, "http://") && !strings.HasPrefix(path, "https://") {

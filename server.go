@@ -97,8 +97,8 @@ type ServerListenConfig struct {
 func NewServerStd(arg interface{}) Server {
 	srv := &serverStd{
 		Server: &http.Server{
-			ReadTimeout:  12 * time.Second,
-			WriteTimeout: 4 * time.Second,
+			ReadTimeout:  60 * time.Second,
+			WriteTimeout: 60 * time.Second,
 			IdleTimeout:  60 * time.Second,
 			TLSNextProto: nil,
 		},

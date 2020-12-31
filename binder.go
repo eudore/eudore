@@ -109,3 +109,14 @@ func NewBinderURL(fn Binder) Binder {
 		return fn(ctx, r, i)
 	}
 }
+
+// NewBinderValidater 实现Binder会执行Validate。
+func NewBinderValidater(fn Binder) Binder {
+	return func(ctx Context, r io.Reader, i interface{}) error {
+		err := fn(ctx, r, i)
+		if err == nil {
+			err = ctx.Validate(i)
+		}
+		return err
+	}
+}

@@ -4,6 +4,10 @@ package main
 先app.Config设置notify配置，然后启动notify。
 如果是notify的程序可以通过环境变量eudore.EnvEudoreIsNotify检测。
 当程序启动时会如果eudore.EnvEudoreIsNotify不存在，则使用notify开始监听阻塞app后续初始化，否在就忽略notify然后进行正常app启动。
+
+实现原理基于fsnotify检测目录内go文件变化，然后执行编译命令，如果编译成功就kill原进程并执行启动命令。
+
+其他类似工具：air
 */
 
 import (

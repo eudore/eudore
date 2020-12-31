@@ -1,7 +1,20 @@
 package main
 
 /*
-app.AddMiddleware 第一参数为字符串"global"，则中间件为全局中间件会在路由匹配之前执行，否在作为路由器中间件添加。
+AddMiddleware 方法如果第一个参数为字符串"global",则作为全局请求中间件添加给App(使用DefaultHandlerExtend创建请求处理函数),否则等同于调用app.Rputer.AddMiddleware方法。
+func (app *App) AddMiddleware(hs ...interface{}) error {
+	if len(hs) > 1 {
+		name, ok := hs[0].(string)
+		if ok && name == "global" {
+			handler := DefaultHandlerExtend.NewHandlerFuncs("", hs[1:])
+			app.Info("Register app global middleware:", handler)
+			app.HandlerFuncs = HandlerFuncsCombine(app.HandlerFuncs[0:len(app.HandlerFuncs)-1], handler)
+			app.HandlerFuncs = HandlerFuncsCombine(app.HandlerFuncs, HandlerFuncs{app.serveContext})
+			return nil
+		}
+	}
+	return app.Router.AddMiddleware(hs...)
+}
 */
 
 import (

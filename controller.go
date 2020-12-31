@@ -92,6 +92,30 @@ type ControllerView struct {
 	Data map[string]interface{}
 }
 
+type controllerError struct {
+	Error error
+	Name  string
+	ControllerInstance
+}
+
+// NewControllerError 函数返回一个控制器错误，在控制器Inject时返回对应的错误。
+func NewControllerError(ctl Controller, err error) Controller {
+	return &controllerError{
+		Error: err,
+		Name:  getConrtrollerName(ctl),
+	}
+}
+
+// Inject 方法在注入路由规则时返回控制器错误。
+func (ctl *controllerError) Inject(Controller, Router) error {
+	return ctl.Error
+}
+
+// String 方法返回controllerError的控制器名称。
+func (ctl *controllerError) String() string {
+	return ctl.Name
+}
+
 // ControllerInjectStateful 函数执行的每次控制器会使用sync.Pool分配和回收。
 func ControllerInjectStateful(controller Controller, router Router) error {
 	return ControllerInjectWithPool(NewControllerPoolStateful(controller), controller, router)

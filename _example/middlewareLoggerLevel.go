@@ -21,7 +21,7 @@ func main() {
 		}
 	})
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
-	
+
 	app.AnyFunc("/api/v1/user", func(ctx eudore.Context) {
 		ctx.Debug("Get User")
 	})

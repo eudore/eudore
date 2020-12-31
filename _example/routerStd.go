@@ -27,11 +27,13 @@ RouterStd是eudore的默认路由器，使用基数树算法独立实现，性�
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
+	"github.com/eudore/eudore/component/pprof"
 )
 
 func main() {
 	// 默认路由器就是 NewRouterStd(nil)
 	app := eudore.NewApp()
+	app.AnyFunc("/eudore/debug/pprof/look/* godoc=/eudore/debug/pprof/godoc", pprof.NewLook(app.Router))
 
 	app.AddMiddleware(func(ctx eudore.Context) {
 		ctx.WriteString("route: " + ctx.GetParam("route") + "\n")
@@ -76,16 +78,16 @@ func main() {
 
 	// 测试
 	client := httptest.NewClient(app)
-	client.NewRequest("GET", "/get").Do().CheckStatus(200).CheckBodyContainString("get", "/*path")
+	client.NewRequest("GET", "/get").Do().CheckStatus(200).CheckBodyContainString("get")
 	client.NewRequest("GET", "/get/ha").Do().CheckStatus(200).CheckBodyContainString("/get/:name")
 	client.NewRequest("GET", "/get/eudore").Do().CheckStatus(200).CheckBodyContainString("/get/eudore")
-	client.NewRequest("PUT", "/get/eudore").Do().CheckStatus(200).CheckBodyContainString("any", "/*path")
+	client.NewRequest("PUT", "/get/eudore").Do().CheckStatus(405)
 
 	client.NewRequest("GET", "/get/2").Do().CheckStatus(200).CheckBodyContainString("isnum")
 	client.NewRequest("GET", "/get/22").Do().CheckStatus(200).CheckBodyContainString("isnum")
 	client.NewRequest("GET", "/get/222").Do().CheckStatus(200).CheckBodyContainString("num great 100", "222")
 	client.NewRequest("GET", "/get/0xx").Do().CheckStatus(200).CheckBodyContainString("first char is '0'", "0xx")
-	client.NewRequest("XXX", "/get/0xx").Do().CheckStatus(200).Out()
+	client.NewRequest("XXX", "/get/0xx").Do().CheckStatus(405).Out()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

@@ -2,19 +2,19 @@
 
 本部分为演示例子目录功能导航,保存eudore、component、middleware三个库实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
 
-exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库测试，单元测试执行gotest.sh脚本(OUT=coverage.html GOROOT=/usr/local/go1.11 bash gotest.sh),未完成单元测试覆盖的库不保证稳定性。
+exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库测试，单元测试执行gotest.sh脚本(OUT=coverage.html GOROOT=/usr/local/go1.13 bash gotest.sh),未完成单元测试覆盖的库不保证稳定性。
 
 go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/component/ram, github.com/eudore/eudore/component/httptest
 
 
 - Application
 	- [New](appNew.go)
+	- [自定义app](appExtend.go)
+	- [静态文件](appStatic.go)
+	- [全局请求中间件](appMiddleware.go)
 	- [后台启动](appDaemon.go)
 	- [启动命令解析](appCommand.go)
 	- [监听代码自动编译重启](appNotify.go)
-	- [静态文件](appStatic.go)
-	- [全局请求中间件](appMiddleware.go)
-	- [自定义app](appExtend.go)
 	- [反向代理](appProxy.go)
 	- [隧道代理](appTunnel.go)
 - Config
@@ -24,22 +24,22 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [map配置](configMap.go)
 	- [map差异化配置](configMapMods.go)
 	- [eudore差异化配置](configEudoreMods.go)
-	- [配置解析选择](configOption.go)
+	- [配置解析选项](configOption.go)
 	- [读取文件配置](configReadFile.go)
 	- [读取http远程配置](configReadHttp.go)
 - Logger
-	- [LoggerInit](loggerInit.go)
+	- [初始化日志LoggerInit](loggerInit.go)
 	- [LoggerStd](loggerStd.go)
 	- [日志切割](loggerStdRotate.go)
 	- [日志清理](loggerStdClean.go)
 	- [写入Elastic](loggerElastic.go)
 	- logrus Logger适配
 - Server
+	- [设置超时]
 	- [服务监听](serverListen.go)
 	- [使用https](serverHttps.go)
 	- [双向https](serverMutualTLS.go)
 	- [eudore server启动服务](serverEudore.go)
-	- [ServerGrace平滑重启](serverGrace.gp)
 	- [fastcgi启动服务](serverFcgi.go)
 - Router
 	- [组路由](routerGroup.go)
@@ -70,6 +70,7 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [Render](contextRender.go)
 	- [Send Json](contextRenderJson.go)
 	- [Send Template](contextRenderTemplate.go)
+	- [添加额外数据]
 - Context处理扩展
 	- [默认处理](handlerDefault.go)
 	- [处理ContextData扩展](handlerContextData.go)
@@ -90,6 +91,7 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [控制器组合方法](controllerComposeMethod.go	)
 	- [控制器自定义参数](controllerParams.go)
 	- [控制器只读属性](controllerReadFields.go)
+	- [Gorm控制器](controllerGorm.go)
 	- Controller Handler扩展
 - Middleware
 	- [中间件管理后台](middlewareAdmin.go)
@@ -143,7 +145,7 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- SRI值自动设置
 	- 自动http2 push
 - net/http
-	- [中间件 黑名单](nethttpBalck.go)
+	- [中间件 黑名单](nethttpBlack.go)
 	- [中间件 路径重写](nethttpRewrite.go)
 	- [中间件 BasicAuth](nethttpBasicAuth.go)
 	- [中间件 限流](nethttpRate.go)

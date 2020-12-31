@@ -1,11 +1,15 @@
 # Change Log
 
-2020年11月15日
+- RouterCoreStd	将先匹配路径后匹配方法，正确处理405。
+- ControllerError 新增用于New控制器时返回错误自动去处理。
+- ServerGrace	正式移除热重启Server功能，华而不实。
+
+[2020年11月15日](https://github.com/eudore/eudore/tree/2cc49fe8c2301f6d73f3ed1c99ce3b68e533c8b5)
  - Logger	移除Logout接口、重构Logger实现方式、抽象LoggerStd
  - Router	移除RouterCoreRadix，重命名RouterCoreFull为RouterCoreStd
  - ContextBase	SetLogger方法不会自动WithFiles(nil)设置Logger属性
 
-2020年10月31日
+[2020年10月31日](https://github.com/eudore/eudore/tree/f919218094d32cf319d4ad9a1f33a260b8450014)
  - ContextBase、ConfigMap、ConfigEudore、LoggerInit、LoggerStd、ServerStd、ServerFcgi、RouterCoreRadix、RouterCoreFull、RouterCoreDebug、RouterCoreHost、RouterCoreLock、ResponseWriterHTTP不再可导出，不再显示在godoc索引中
  - RouterStd checkMethod新增允许trace和connnet，优化printerror时堆栈信息，ControllerFuncExtend扩展会提示控制器方法类型
  - RouterMethod	接口删除，方法合并到Router接口中,删除OptionsFunc方法,RouterAllMethod中不再包含Optionns方法
@@ -20,14 +24,14 @@
  - httptest	增加AddBasicAuth方法设置basicauth信息
  - component/exmaple-appTunnel	新增隧道代理演示
 
-2020年9月16日
+[2020年9月16日](https://github.com/eudore/eudore/tree/10bd82aaa71fc68dfed2d57b5f9ffc45ecdfb8b4)
 - App.Run   使用CancelError属性保存cannel结束时的error并返回
 - Logger    修改返回深拷贝使用方法为WithFields(nil)
 - ServerListenConfig    新增属性Certificate保存启动https的证书信息
 - middleware/black  优化结构数据存储及算法 耗时减少1/8 1421ns到1248ns
 - component/ram 允许直接判断权限是否允许
 
-2020年7月31日
+[2020年7月31日](https://github.com/eudore/eudore/tree/8cca525455dc48d2b4aaf6f4ceb3faf1251b239c)
 - Context 允许设置Logger方法设置基础Fields
 - RouterStd   AddHandler添加'TEST'方法输出debug信息
 - RouterCoreRadix 修改路径切割方法，加入块模式
@@ -41,7 +45,7 @@
 - component/ram/pbac/condition 优化条件结构
 - component/httptest  单位测试覆盖及优化
 
-2020年6月30日
+[2020年6月30日](https://github.com/eudore/eudore/tree/df89a634ce080e46d9ff822c5da68679570dc2d0)
 - App     新增AddMiddleware方法允许添加路由前全局请求中间件
 - Context Reset方法修改参数，使用http.ResponseWriter初始化
 - Context Next方法新增特性在Next最后一次执行完毕后自动Put到sync.Pool
@@ -69,7 +73,7 @@
 - component/httptest    获取Cookie值
 - component/httptest    设置tls模拟请求
 
-2020年5月31日
+[2020年5月31日](https://github.com/eudore/eudore/tree/9ee797e6c7e0a23bb04e18795fdccb11d120f907)
 - 单元测试覆盖100%
 - App.Validater	新增Validater属性保存校验器，不再使用全局单例
 - ConfigEudore	如果配置实现configRLocker接口实现锁，会使用配置对象的锁
@@ -82,7 +86,7 @@
 - ConvertTo	优化对象接口和指针对象转换处理
 - component/pprof 优化look显示属性
 
-2020年4月30日
+[2020年4月30日](https://github.com/eudore/eudore/tree/d283ed31f0579d4015bd141afd47936c9ad4ef28)
 - 主包代码行缩减至6195无依赖，单元测试覆盖率提升到98.4%剩余热重启和runtime部分。
 - 修改type定义使用，不再使用type(...)语法，方法grep查找定义
 - App 重构app、删除core和eudore修改扩展方案

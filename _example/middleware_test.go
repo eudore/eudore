@@ -227,12 +227,12 @@ func BenchmarkMiddlewareRewrite(b *testing.B) {
 	rewritedata := map[string]string{
 		"/js/*":                    "/public/js/$0",
 		"/api/v1/users/*/orders/*": "/api/v3/user/$0/order/$1",
-		"/d/*":           "/d/$0-$0",
-		"/api/v1/*":      "/api/v3/$0",
-		"/api/v2/*":      "/api/v3/$0",
-		"/help/history*": "/api/v3/history",
-		"/help/history":  "/api/v3/history",
-		"/help/*":        "$0",
+		"/d/*":                     "/d/$0-$0",
+		"/api/v1/*":                "/api/v3/$0",
+		"/api/v2/*":                "/api/v3/$0",
+		"/help/history*":           "/api/v3/history",
+		"/help/history":            "/api/v3/history",
+		"/help/*":                  "$0",
 	}
 
 	app := eudore.NewApp(eudore.NewLoggerInit())
@@ -266,12 +266,12 @@ func BenchmarkMiddlewareRewriteWithRouter(b *testing.B) {
 	routerdata := map[string]interface{}{
 		"/js/*0":                     newRewriteFunc("/public/js/$0"),
 		"/api/v1/users/:0/orders/*1": newRewriteFunc("/api/v3/user/$0/order/$1"),
-		"/d/*0":           newRewriteFunc("/d/$0-$0"),
-		"/api/v1/*0":      newRewriteFunc("/api/v3/$0"),
-		"/api/v2/*0":      newRewriteFunc("/api/v3/$0"),
-		"/help/history*0": newRewriteFunc("/api/v3/history"),
-		"/help/history":   newRewriteFunc("/api/v3/history"),
-		"/help/*0":        newRewriteFunc("$0"),
+		"/d/*0":                      newRewriteFunc("/d/$0-$0"),
+		"/api/v1/*0":                 newRewriteFunc("/api/v3/$0"),
+		"/api/v2/*0":                 newRewriteFunc("/api/v3/$0"),
+		"/help/history*0":            newRewriteFunc("/api/v3/history"),
+		"/help/history":              newRewriteFunc("/api/v3/history"),
+		"/help/*0":                   newRewriteFunc("$0"),
 	}
 	app := eudore.NewApp(eudore.NewLoggerInit())
 	app.AddMiddleware("global", middleware.NewRouterFunc(routerdata))

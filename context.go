@@ -315,7 +315,11 @@ func (ctx *contextBase) bind(i interface{}, r Binder) error {
 
 // Validate 方法调用app.Validater校验结构体对象。
 func (ctx *contextBase) Validate(i interface{}) error {
-	return ctx.app.Validater.Validate(i)
+	err := ctx.app.Validater.Validate(i)
+	if err != nil {
+		ctx.log.WithField("depth", 1).WithField(ParamCaller, "Context.Validate").Error(err)
+	}
+	return err
 }
 
 // Params 获得请求的全部参数。
@@ -517,7 +521,7 @@ func (ctx *contextBase) WriteJSON(i interface{}) error {
 }
 
 // WriteFile 使用HandlerFile处理一个静态文件。
-func (ctx *contextBase) WriteFile(path string) (err error) {
+func (ctx *contextBase) WriteFile(path string) error {
 	http.ServeFile(ctx.ResponseWriter, ctx.RequestReader, path)
 	return nil
 }

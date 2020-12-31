@@ -1,7 +1,7 @@
 package main
 
 /*
-eudore.App默认Logger为LoggerInit对象，会保存全部日志信息，在调用NextHandler方法时，将全部日志输出给新日志。
+eudore.App可以设置Logger为LoggerInit对象，会保存全部日志信息，在调用NextHandler方法时，将全部日志输出给新日志器。
 
 LoggerInit意义是将配置解析之前，未设置Logger的日子全部保存起来，来初始化Logger后处理之前的日志，在调用SetLevel方法后，在NextHandler方法会传递日志级别。
 

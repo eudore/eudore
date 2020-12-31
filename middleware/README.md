@@ -133,7 +133,7 @@ app.AddMiddleware("global", middleware.NewCorsFunc([]string{"www.*.com", "exampl
 }))
 ```
 
-Cors中间件注册不是全局中间件时，需要最后注册一次Options /*或404方法，否则Options请求匹配了默认404没有经过Cors中间件处理。
+Cors中间件注册不是全局中间件时，需要最后注册一次Options /\*或404方法，否则Options请求匹配了默认404没有经过Cors中间件处理。
 
 ## Csrf
 
@@ -321,3 +321,4 @@ example:
 - Jwt 无明显效果，不如Context扩展实现相关功能。
 - Secure 实现太简单不具有技术含量，自行添加Header。
 - Session 无明显效果，不如Context扩展实现相关功能。
+- Timing 核心入侵大，不如Trace。

@@ -4,6 +4,7 @@ package eudore
 
 import (
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
@@ -110,7 +111,7 @@ type RouterStd struct {
 // HandlerRouter405 函数定义默认405处理
 func HandlerRouter405(ctx Context) {
 	const page405 string = "405 method not allowed\n"
-	ctx.Response().Header().Add("Allow", "HEAD, GET, POST, PUT, DELETE, PATCH")
+	ctx.SetHeader(HeaderAllow, ctx.GetParam(ParamAllow))
 	ctx.WriteHeader(405)
 	ctx.WriteString(page405)
 }
@@ -188,7 +189,7 @@ func (m *RouterStd) Params() *Params {
 func (m *RouterStd) paramsCombine(path string) *Params {
 	newparams := m.params.Clone()
 	params := NewParamsRoute(path)
-	newparams.Vals[0] = newparams.Vals[0] + params.Vals[0]
+	newparams.Vals[0] = filepath.Join(newparams.Vals[0], params.Vals[0])
 	for i := range params.Keys[1:] {
 		newparams.Add(params.Keys[i+1], params.Vals[i+1])
 	}
@@ -350,7 +351,7 @@ func (m *RouterStd) newHandlerFuncs(path string, hs []interface{}) (HandlerFuncs
 
 func checkMethod(method string) bool {
 	switch method {
-	case "ANY", "404", "405", "NotFound", "MethodNotAllowed", MethodOptions, MethodConnect, MethodTrace:
+	case "ANY", "404", "405", "NotFound", "MethodNotAllowed":
 		return true
 	}
 	for _, i := range RouterAllMethod {
@@ -468,12 +469,12 @@ func (m *RouterStd) AddHandlerExtend(hs ...interface{}) error {
 //
 // The routing rules registered by the Any method will be overwritten by the specified method registration, and vice versa.
 // Any default registration method includes six types of Get Post Put Delete Head Patch,
-// which are defined in the global variable RouterAllMethod.
+// which are defined in the global variable RouterAnyMethod.
 //
 // AnyFunc 方法实现注册一个Any方法的http请求处理函数。
 //
 // Any方法注册的路由规则会被指定方法注册覆盖，反之不行。
-// Any默认注册方法包含Get Post Put Delete Head Patch六种，定义在全局变量RouterAllMethod。
+// Any默认注册方法包含Get Post Put Delete Head Patch六种，定义在全局变量RouterAnyMethod。
 func (m *RouterStd) AnyFunc(path string, h ...interface{}) {
 	m.registerHandlers(MethodAny, path, h...)
 }

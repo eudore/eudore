@@ -808,15 +808,7 @@ func setWithValueData(sValue reflect.Value, tValue reflect.Value) error {
 	case sType.Kind() == reflect.String:
 		return setWithString(tValue, sValue.String())
 	case tType.Kind() == reflect.String:
-		if sValue.Kind() == reflect.Slice {
-			skind := sType.Elem().Kind()
-			switch skind {
-			case reflect.Uint8, reflect.Int32:
-				tValue.Set(sValue.Convert(tType))
-				return nil
-			}
-		}
-		tValue.SetString(fmt.Sprintf("%#v", sValue.Interface()))
+		tValue.SetString(getWithValueString(sType, sValue))
 		return nil
 	case sType.ConvertibleTo(tType):
 		tValue.Set(sValue.Convert(tType))
@@ -828,6 +820,20 @@ func setWithValueData(sValue reflect.Value, tValue reflect.Value) error {
 		}
 	}
 	return fmt.Errorf(ErrFormatConverterSetWithValue, sValue.Type().String(), tValue.Type().String())
+}
+
+func getWithValueString(t reflect.Type, v reflect.Value) string {
+	if t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+		switch t.Elem().Kind() {
+		case reflect.String:
+			if v.Len() > 0 {
+				return v.Index(0).String()
+			}
+		case reflect.Uint8, reflect.Int32:
+			return v.Convert(typeString).String()
+		}
+	}
+	return fmt.Sprintf("%#v", v.Interface())
 }
 
 // 将一个字符串赋值给对象

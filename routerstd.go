@@ -9,12 +9,11 @@ import (
 )
 
 const (
-	stdNodeKindConst         uint8 = 1 << iota // 常量
-	stdNodeKindParamValid                      // 参数校验
-	stdNodeKindParam                           // 参数
-	stdNodeKindWildcardValid                   // 通配符校验
-	stdNodeKindWildcard                        // 通配符
-	stdNodeKindAnyMethod
+	stdNodeKindConst         uint16 = 1 << iota // 常量
+	stdNodeKindParamValid                       // 参数校验
+	stdNodeKindParam                            // 参数
+	stdNodeKindWildcardValid                    // 通配符校验
+	stdNodeKindWildcard                         // 通配符
 )
 
 // routerCoreStd is implemented based on the radix tree to implement all router related features.
@@ -25,50 +24,41 @@ const (
 //
 // 具有路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
 type routerCoreStd struct {
-	node404 stdNode
-	node405 stdNode
-	get     stdNode
-	post    stdNode
-	put     stdNode
-	delete  stdNode
-	head    stdNode
-	patch   stdNode
-	options stdNode
-	connect stdNode
-	trace   stdNode
+	params404  *Params
+	params405  *Params
+	handler404 HandlerFuncs
+	handler405 HandlerFuncs
+	root       *stdNode
 }
+
 type stdNode struct {
-	kind uint8
-	pnum uint8
-	path string
-	name string
-	// 保存各类子节点
-	Cchildren  []*stdNode
-	PVchildren []*stdNode
-	Pchildren  []*stdNode
-	WVchildren []*stdNode
-	Wchildren  *stdNode
+	isany uint16
+	kind  uint16
+	pnum  uint32
+	check func(string) bool
+	path  string
+	name  string
+	allow string
+	route *string
+
 	// 默认标签的名称和值
-	params      *Params
-	handlers    HandlerFuncs
-	anyin       bool
-	anyhandlers HandlerFuncs
-	check       func(string) bool
+	Wchildren  *stdNode
+	Cchildren  []*stdNode
+	Pchildren  []*stdNode
+	PVchildren []*stdNode
+	WVchildren []*stdNode
+	params     [10]*Params
+	handlers   [10]HandlerFuncs
 }
 
 // NewRouterCoreStd 函数创建一个Std路由器核心，使用radix匹配。
 func NewRouterCoreStd() RouterCore {
 	return &routerCoreStd{
-		node404: stdNode{
-			params:   &Params{Keys: []string{ParamRoute}, Vals: []string{"404"}},
-			handlers: HandlerFuncs{HandlerRouter404},
-		},
-		node405: stdNode{
-			Wchildren: &stdNode{
-				params:   &Params{Keys: []string{ParamRoute}, Vals: []string{"405"}},
-				handlers: HandlerFuncs{HandlerRouter405},
-			},
-		},
+		params404:  &Params{Keys: []string{ParamRoute}, Vals: []string{"404"}},
+		params405:  &Params{},
+		handler404: HandlerFuncs{HandlerRouter404},
+		handler405: HandlerFuncs{HandlerRouter405},
+		root:       &stdNode{},
 	}
 }
 
@@ -82,15 +72,16 @@ func NewRouterCoreStd() RouterCore {
 func (r *routerCoreStd) HandleFunc(method string, path string, handler HandlerFuncs) {
 	switch method {
 	case "NotFound", "404":
-		r.node404.handlers = handler
+		r.params404 = NewParamsRoute(path)
+		r.params404.Set(ParamRoute, "404")
+		r.handler404 = handler
 	case "MethodNotAllowed", "405":
-		r.node405.Wchildren.handlers = handler
-	case MethodAny:
-		for _, method := range RouterAllMethod {
-			r.insertRoute(method, path, true, handler)
-		}
-	default:
-		r.insertRoute(method, path, false, handler)
+		r.params405 = NewParamsRoute(path)
+		r.params405.Keys = r.params405.Keys[1:]
+		r.params405.Vals = r.params405.Vals[1:]
+		r.handler405 = handler
+	case MethodAny, MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions, MethodConnect, MethodTrace:
+		r.insertRoute(method, path, handler)
 	}
 }
 
@@ -100,45 +91,25 @@ func (r *routerCoreStd) HandleFunc(method string, path string, handler HandlerFu
 //
 // 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
 func (r *routerCoreStd) Match(method, path string, params *Params) HandlerFuncs {
-	if n := r.getTree(method).lookNode(path, params); n != nil {
-		return n
+	node := r.root.lookNode(path, params)
+	if node == nil {
+		// 处理404
+		params.Combine(r.params404)
+		return r.handler404
 	}
-
-	// 处理404
-	params.Combine(r.node404.params)
-	return r.node404.handlers
-}
-
-// Get the tree of the corresponding method.
-//
-// Support eudore.RouterAllMethod these methods, weak support will return 405 processing tree.
-//
-// 获取对应方法的树。
-//
-// 支持eudore.RouterAllMethod这些方法,弱不支持会返回405处理树。
-func (r *routerCoreStd) getTree(method string) *stdNode {
-	switch method {
-	case MethodGet:
-		return &r.get
-	case MethodPost:
-		return &r.post
-	case MethodDelete:
-		return &r.delete
-	case MethodPut:
-		return &r.put
-	case MethodHead:
-		return &r.head
-	case MethodPatch:
-		return &r.patch
-	case MethodOptions:
-		return &r.options
-	case MethodConnect:
-		return &r.connect
-	case MethodTrace:
-		return &r.trace
-	default:
-		return &r.node405
+	for i, m := range RouterAllMethod {
+		if m == method {
+			if node.handlers[i] != nil {
+				params.Combine(node.params[i])
+				return node.handlers[i]
+			}
+			break
+		}
 	}
+	params.Add(ParamRoute, *node.route)
+	params.Add(ParamAllow, node.allow)
+	params.Combine(r.params405)
+	return r.handler405
 }
 
 // Add a new route Node.
@@ -148,15 +119,12 @@ func (r *routerCoreStd) getTree(method string) *stdNode {
 // 添加一个新的路由Node。
 //
 // 如果方法不支持则不会添加，请求改路径会响应405
-func (r *routerCoreStd) insertRoute(method, key string, isany bool, val HandlerFuncs) {
-	var currentNode = r.getTree(method)
-	if currentNode == &r.node405 {
-		return
-	}
+func (r *routerCoreStd) insertRoute(method, path string, val HandlerFuncs) {
+	var currentNode = r.root
 
-	params := NewParamsRoute(key)
-	if params.Get(ParamRegister) == "off" {
-		currentNode.deleteRoute(params.Get(ParamRoute), isany, val)
+	params := NewParamsRoute(path)
+	if params.Get(ParamRegister) == "off" || val == nil {
+		currentNode.deleteRoute(method, params.Get(ParamRoute))
 		return
 	}
 
@@ -164,17 +132,8 @@ func (r *routerCoreStd) insertRoute(method, key string, isany bool, val HandlerF
 	for _, path := range getSplitPath(params.Get(ParamRoute)) {
 		currentNode = currentNode.insertNode(path, newStdNode(path))
 	}
-	currentNode.params = params
-	if isany {
-		if currentNode.anyin || currentNode.handlers == nil {
-			currentNode.handlers = val
-			currentNode.anyin = true
-		}
-		currentNode.anyhandlers = val
-	} else {
-		currentNode.handlers = val
-		currentNode.anyin = false
-	}
+	currentNode.setHandler(method, params, val)
+	currentNode.setAllow()
 }
 
 // 创建一个Radix树Node，会根据当前路由设置不同的节点类型和名称。
@@ -227,13 +186,52 @@ func loadCheckFunc(path string) (string, func(string) bool) {
 	if name == "" || fname == "" {
 		return "", nil
 	}
-	// 如果是正则表达式开头，添加默认正则校验函数名称。
+	// 如果是正则表达式开头，添加默认正则校验函数名称ã
 	if fname[0] == '^' && fname[len(fname)-1] == '$' {
 		fname = "regexp:" + fname
 	}
 
 	// 调用validate部分创建check函数
 	return name, GetValidateStringFunc(fname)
+}
+
+func (r *stdNode) setHandler(method string, params *Params, handler HandlerFuncs) {
+	if method == MethodAny {
+		for i := uint(0); i < 9; i++ {
+			if r.isany>>i&0x1 == 0x1 || r.handlers[i] == nil {
+				r.params[i] = params
+				r.handlers[i] = handler
+				r.isany |= 1 << i
+			}
+		}
+		r.params[9] = params
+		r.handlers[9] = handler
+		return
+	}
+
+	for i := uint(0); i < 9; i++ {
+		if RouterAllMethod[i] == method {
+			r.params[i] = params
+			r.handlers[i] = handler
+			r.isany &^= 1 << i
+			return
+		}
+	}
+}
+
+func (r *stdNode) setAllow() {
+	var allow string
+	for i := uint(0); i < 9; i++ {
+		if r.handlers[i] != nil {
+			route := r.params[i].Get(ParamRoute)
+			r.route = &route
+			allow = allow + ", " + RouterAllMethod[i]
+		}
+	}
+	if allow != "" {
+		allow = allow[2:]
+	}
+	r.allow = allow
 }
 
 // insertNode add a child node to the node.
@@ -271,7 +269,12 @@ func (r *stdNode) insertNode(path string, nextNode *stdNode) *stdNode {
 		}
 		r.WVchildren = append(r.WVchildren, nextNode)
 	case stdNodeKindWildcard:
-		r.Wchildren = nextNode
+		if r.Wchildren == nil {
+			r.Wchildren = nextNode
+		} else {
+			r.Wchildren.name = nextNode.name
+		}
+		return r.Wchildren
 		// default:
 		// 	panic("Undefined radix node type from router std.")
 	}
@@ -305,12 +308,11 @@ func (r *stdNode) insertNodeConst(path string, nextNode *stdNode) *stdNode {
 	return nextNode
 }
 
-func (r *stdNode) lookNode(searchKey string, params *Params) HandlerFuncs {
+func (r *stdNode) lookNode(searchKey string, params *Params) *stdNode {
 	// constant match, return data
 	// 常量匹配，返回数据
-	if len(searchKey) == 0 && r.handlers != nil {
-		params.Combine(r.params)
-		return r.handlers
+	if len(searchKey) == 0 && r.allow != "" {
+		return r
 	}
 
 	if len(searchKey) > 0 {
@@ -367,18 +369,16 @@ func (r *stdNode) lookNode(searchKey string, params *Params) HandlerFuncs {
 	// 若当前Node有通配符处理方法直接匹配，返回结果。
 	for _, child := range r.WVchildren {
 		if child.check(searchKey) {
-			params.Combine(child.params)
 			params.Add(child.name, searchKey)
-			return child.handlers
+			return child
 		}
 	}
 
 	// If the current Node has a wildcard processing method that directly matches, the result is returned.
 	// 若当前Node有通配符处理方法直接匹配，返回结果。
 	if r.Wchildren != nil {
-		params.Combine(r.Wchildren.params)
 		params.Add(r.Wchildren.name, searchKey)
-		return r.Wchildren.handlers
+		return r.Wchildren
 	}
 
 	// can't match, return nil
@@ -386,31 +386,46 @@ func (r *stdNode) lookNode(searchKey string, params *Params) HandlerFuncs {
 	return nil
 }
 
-func (r *stdNode) deleteRoute(path string, isany bool, val HandlerFuncs) {
+func (r *stdNode) deleteRoute(method, path string) {
 	nodes := r.findNode(path)
 	if nodes == nil {
 		return
 	}
-	last := nodes[len(nodes)-1]
-	// clean handler
-	if isany {
-		if last.anyin {
-			last.handlers = nil
-		}
-		last.anyin = false
-		last.anyhandlers = nil
-	} else {
-		last.handlers = last.anyhandlers
-	}
-	if last.handlers == nil {
-		last.params = nil
-	}
+	// clean hndler
+	nodes[len(nodes)-1].delHandler(method)
+	nodes[len(nodes)-1].setAllow()
 	// clean node
 	for i := len(nodes) - 2; i > -1; i-- {
 		if nodes[i+1].IsZero() {
 			nodes[i].deleteNode(nodes[i+1])
 			nodes[i].IsMarge()
 		} else if !nodes[i].IsMarge() {
+			return
+		}
+	}
+}
+
+func (r *stdNode) delHandler(method string) {
+	if method == MethodAny {
+		for i := uint(0); i < 9; i++ {
+			if r.isany>>i&0x1 == 0x1 {
+				r.handlers[i] = nil
+				r.isany &^= 1 << i
+			}
+		}
+		r.handlers[9] = nil
+		return
+	}
+
+	for i := uint(0); i < 9; i++ {
+		if RouterAllMethod[i] == method {
+			if r.isany>>i&0x1 == 0x0 {
+				r.handlers[i] = nil
+				if r.handlers[9] != nil {
+					r.handlers[i] = r.handlers[9]
+					r.isany |= 1 << i
+				}
+			}
 			return
 		}
 	}
@@ -491,12 +506,22 @@ func (r *stdNode) findNodeConst(path string) []*stdNode {
 	return nil
 }
 
+func (r *stdNode) IsEmpty() bool {
+	for i := range RouterAllMethod {
+		if r.handlers[i] != nil {
+			return false
+		}
+	}
+	// r.params = nil
+	return true
+}
+
 func (r *stdNode) IsZero() bool {
-	return r.handlers == nil && len(r.Cchildren) == 0 && len(r.Pchildren) == 0 && len(r.PVchildren) == 0 && len(r.WVchildren) == 0 && r.Wchildren == nil
+	return r.IsEmpty() && len(r.Cchildren) == 0 && len(r.Pchildren) == 0 && len(r.PVchildren) == 0 && len(r.WVchildren) == 0 && r.Wchildren == nil
 }
 
 func (r *stdNode) IsMarge() bool {
-	if r.kind == stdNodeKindConst && r.handlers == nil && len(r.Cchildren) == 1 && len(r.Pchildren) == 0 && len(r.PVchildren) == 0 && len(r.WVchildren) == 0 && r.Wchildren == nil {
+	if r.kind == stdNodeKindConst && r.IsEmpty() && len(r.Cchildren) == 1 && len(r.Pchildren) == 0 && len(r.PVchildren) == 0 && len(r.WVchildren) == 0 && r.Wchildren == nil {
 		r.Cchildren[0].path = r.path + r.Cchildren[0].path
 		*r = *r.Cchildren[0]
 		return true

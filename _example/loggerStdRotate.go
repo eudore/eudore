@@ -1,5 +1,9 @@
 package main
 
+/*
+通过设置LoggerStdConfig的MaxSize属性输出日志滚动，在日志名称中必须包含index关键字用于指定索引
+*/
+
 import (
 	"os"
 	"time"
