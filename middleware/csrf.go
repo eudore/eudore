@@ -15,16 +15,25 @@ import (
 // NewCsrfFunc 函数创建一个Csrf处理函数，key指定请求带有crsf参数的关键字，cookie是csrf设置cookie的基本详细。
 //
 // key value:
+//
 // - "csrf"
+//
 // - "query: csrf"
+//
 // - "header: X-CSRF-Token"
+//
 // - "form: csrf"
+//
 // - func(ctx eudore.Context) string {return ctx.Query("csrf")}
+//
 // - nil
 //
 // cookie value:
+//
 // - "csrf"
+//
 // - http.Cookie{Name: "csrf"}
+//
 // - nil
 func NewCsrfFunc(key, cookie interface{}) eudore.HandlerFunc {
 	keyfunc := getCsrfTokenFunc(key)

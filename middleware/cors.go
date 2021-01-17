@@ -28,16 +28,11 @@ func NewCorsFunc(origins []string, headers map[string]string) eudore.HandlerFunc
 	}
 	return func(ctx eudore.Context) {
 		origin := ctx.GetHeader("Origin")
-		if origin == "" {
+		// 检查是否未同源请求,cors和upgrade时存在origin header。
+		if origin == "" || ctx.GetHeader(eudore.HeaderUpgrade) != "" {
 			return
 		}
 		origin = strings.TrimPrefix(strings.TrimPrefix(origin, "http://"), "https://")
-
-		// 检查是否未同源请求。
-		host := ctx.Host()
-		if origin == host {
-			return
-		}
 
 		if !validateOrigin(origins, origin) {
 			ctx.WriteHeader(403)

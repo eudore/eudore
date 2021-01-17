@@ -3,7 +3,6 @@ package main
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
-	"github.com/eudore/eudore/component/pprof"
 	"github.com/eudore/eudore/middleware"
 )
 
@@ -12,9 +11,8 @@ func main() {
 
 	admin := app.Group("/eudore/debug")
 	admin.AddMiddleware("global", middleware.NewBasicAuthFunc(map[string]string{"user": "pw"}))
-	pprof.Init(admin.Group(" godoc=https://golang.org"))
-	admin.AnyFunc("/pprof/look/* godoc=/eudore/debug/pprof/godoc", pprof.NewLook(app))
-	admin.AnyFunc("/pprof/expvar godoc=/eudore/debug/pprof/godoc", pprof.Expvar)
+	admin.Group(" godoc=https://golang.org").AddController(middleware.NewPprofController())
+	admin.AnyFunc("/look/*", middleware.NewLookFunc(app))
 
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware(middleware.NewDumpFunc(admin))

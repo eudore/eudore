@@ -1,10 +1,10 @@
 # example
 
-本部分为演示例子目录功能导航,保存eudore、component、middleware三个库实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
+本部分为演示例子目录功能导航,保存eudore、middleware、component三个库实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
 
 exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库测试，单元测试执行gotest.sh脚本(OUT=coverage.html GOROOT=/usr/local/go1.13 bash gotest.sh),未完成单元测试覆盖的库不保证稳定性。
 
-go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/component/ram, github.com/eudore/eudore/component/httptest
+go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/component/ram, github.com/eudore/eudore/component/httptest
 
 
 - Application
@@ -98,9 +98,12 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [自定义中间件处理函数](middlewareHandle.go)
 	- [熔断器及管理后台](middlewareBreaker.go)
 	- [BasicAuth](middlewareBasicAuth.go)
+	- [数据缓存](middlewareCache.go)
+	- [数据缓存自定义存储](middlewareCacheStore.go)
 	- [CORS跨域资源共享](middlewareCors.go)
 	- [gzip压缩](middlewareGzip.go)
-	- [限流](middlewareRate.go)
+	- [限流](middlewareRateRequest.go)
+	- [限速](middlewareRateSpeed.go)
 	- [异常捕捉](middlewareRecover.go)
 	- [请求超时](middlewareTimeout.go)
 	- [访问日志](middlewareLogger.go)
@@ -109,11 +112,12 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [Referer检查](middlewareReferer.go)
 	- [RequestID](middlewareRequestID.go)
 	- [CSRF](middlewareCsrf.go)
-	- [SingleFlight](middlewareSingleFlight.go)
 	- [Router匹配](middlewareRouter.go)
 	- [Router方法实现Rewrite](middlewareRouterRewrite.go)
 	- [ContextWarp](middlewareContextWarp.go)
 	- [请求设置独立的日志级别](middlewareLoggerLevel.go)
+	- [pprof](middlewarePprof.go)
+	- [运行时对象数据显示](middlewareLook.go)
 - Ram
 	- [Acl权限控制](ramAcl.go)
 	- [Rbac权限控制](ramRbac.go)
@@ -139,8 +143,6 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [基于路径读写对象](toolGetSet.go)
 	- [结构体和变量校验](toolValidate.go)
 - 组件
-	- [pprof](componentPprof.go)
-	- [运行时对象数据显示](componentLook.go)
 	- 生成对象帮助信息
 	- SRI值自动设置
 	- 自动http2 push
@@ -148,4 +150,4 @@ go version go1.11 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [中间件 黑名单](nethttpBlack.go)
 	- [中间件 路径重写](nethttpRewrite.go)
 	- [中间件 BasicAuth](nethttpBasicAuth.go)
-	- [中间件 限流](nethttpRate.go)
+	- [中间件 限流](nethttpRateRequest.go)

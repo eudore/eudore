@@ -6,6 +6,7 @@ Middleware包实现部分基础eudore请求中间件。
 	- [BasicAuth](#BasicAuth)
 	- [Black](#Black)
 	- [Breaker](#Breaker)
+	- [Cache](#Cache)
 	- [ContextWarp](#ContextWarp)
 	- [Cors](#Cors)
 	- [Csrf](#Csrf)
@@ -15,19 +16,22 @@ Middleware包实现部分基础eudore请求中间件。
 	- [Rate](#Rate)
 	- [Recover](#Recover)
 	- [Referer](#Referer)
+	- [RequestID](#RequestID)
 	- [Rewrite](#Rewrite)
 	- [Router](#Router)
 	- [RouterRewrite](#RouterRewrite)
-	- [SingleFlight](#SingleFlight)
 	- [Timeout](#Timeout)
 - example:
 	- [中间件管理后台](middlewareAdmin.go)
 	- [自定义中间件处理函数](../_example/middlewareHandle.go)
 	- [熔断器及管理后台](../_example/middlewareBreaker.go)
 	- [BasicAuth](../_example/middlewareBasicAuth.go)
+	- [数据缓存](../_example/middlewareCache.go)
+	- [数据缓存自定义存储](../_example/middlewareCacheStore.go)
 	- [CORS跨域资源共享](../_example/middlewareCors.go)
 	- [gzip压缩](../_example/middlewareGzip.go)
-	- [限流](../_example/middlewareRate.go)
+	- [限流](../_example/middlewareRateRequest.go)
+	- [限速](../_example/middlewareRateSpeed.go)
 	- [异常捕捉](../_example/middlewareRecover.go)
 	- [请求超时](../_example/middlewareTimeout.go)
 	- [访问日志](../_example/middlewareLogger.go)
@@ -36,7 +40,6 @@ Middleware包实现部分基础eudore请求中间件。
 	- [Referer检查](../_example/middlewareReferer.go)
 	- [RequestID](../_example/middlewareRequestID.go)
 	- [CSRF](../_example/middlewareCsrf.go)
-	- [SingleFlight](../_example/middlewareSingleFlight.go)
 	- [Router匹配](../_example/middlewareRouter.go)
 	- [Router方法实现Rewrite](../_example/middlewareRouterRewrite.go)
 	- [ContextWarp](../_example/middlewareContextWarp.go)
@@ -45,7 +48,7 @@ Middleware包实现部分基础eudore请求中间件。
 	- [中间件 黑名单](../_example/nethttpBalck.go)
 	- [中间件 路径重写](../_example/nethttpRewrite.go)
 	- [中间件 BasicAuth](../_example/nethttpBasicAuth.go)
-	- [中间件 限流](../_example/nethttpRate.go)
+	- [中间件 限流](../_example/nethttpRateRequest.go)
 
 ## BasicAuth
 
@@ -99,6 +102,18 @@ example:
 	app.AddMiddleware(breaker.NewBreakerFunc(app.Group("/eudore/debug")))
 
 在关闭状态下连续错误一定次数后熔断器进入半开状态；在半开状态下请求将进入限流状态，半开连续错误一定次数后进入打开状态，半开连续成功一定次数后回到关闭状态；在进入关闭状态后等待一定时间后恢复到半开状态。
+
+## Cache
+
+创建一个缓存中间件，对Get请求具有缓存和SingleFlight双重效果。
+
+参数：
+- context.Context	控制默认cacheMap清理过期数据的生命周期
+- time.Duration	请求数据缓存时间，默认秒
+- cacheStore	缓存存储对象
+
+example:
+`app.AddMiddleware(middleware.NewCacheFunc(time.Second*10, app.Context))`
 
 ## ContextWarp
 
@@ -189,7 +204,7 @@ example:
 
 ## Rate
 
-实现请求令牌桶限流
+实现请求令牌桶限流/限速
 
 参数:
 - int               每周期(默认秒)增加speed个令牌
@@ -200,7 +215,12 @@ example:
 	func(eudore.Context) string   =>    限流获取key的函数，默认Context.ReadIP
 
 example:
-`app.AddMiddleware(middleware.NewRateFunc(1, 3, app.Context))`
+```
+    // 限流 每秒一个请求，最多保存3个请求
+    app.AddMiddleware(middleware.NewRateRequestFunc(1, 3, app.Context))
+    // 限速 每秒32Kb流量，最多保存128Kb流量
+    app.AddMiddleware(middleware.NewRateSpeedFunc(32*1024, 128*1024, app.Context))
+```
 
 ## Recover
 
@@ -300,13 +320,6 @@ app.AddMiddleware("global", middleware.NewRouterRewriteFunc(map[string]string{
 	"/help/*":        "$0",
 }))
 ```
-
-## SingleFlight
-
-同时多次请求同一资源时，缓存一份处理结果返回给全部请求
-
-example:
-`app.AddMiddleware(middleware.NewSingleFlightFunc())`
 
 ## Timeout
 

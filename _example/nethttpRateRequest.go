@@ -11,7 +11,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {})
 	srv := &http.Server{
-		Handler: middleware.NewNetHTTPRateFunc(mux, 1, 3, func(req *http.Request) string {
+		Handler: middleware.NewNetHTTPRateRequestFunc(mux, 1, 3, func(req *http.Request) string {
 			// 自定义限流key
 			return req.UserAgent()
 		}),

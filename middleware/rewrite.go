@@ -28,8 +28,11 @@ type matchResult struct {
 // 目标路径中$0到$9表示匹配路径中'*'出现位置匹配到的字符串，最多匹配10个'*'，否在解析错误。
 //
 // "/js/*"                     =>  "/public/js*"
+//
 // "/api/v1/*"                 =>  "/api/v3/$0"
+//
 // "/api/v1/users/*/orders/*"  =>  "/api/v3/user/$0/order/$1"
+//
 // "/d/*"                      =>  "/d/$0-$0"
 //
 // 若运行出现`panic: runtime error: index out of range`，请检测'$?'的值是否超出了'*'数量。

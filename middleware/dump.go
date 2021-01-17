@@ -45,7 +45,7 @@ func NewDumpFunc(router eudore.Router) eudore.HandlerFunc {
 				RequestBody:    ctx.Body(),
 				Status:         ctx.Response().Status(),
 				ResponseHeader: ctx.Response().Header(),
-				ResponseBody:   dumpresp.Bytes(),
+				ResponseBody:   dumpresp.GetBodyData(),
 				Params:         ctx.Params(),
 				Handlers:       getContextHandlerName(ctx),
 			}
@@ -199,8 +199,8 @@ func (w *dumpResponset) Write(data []byte) (int, error) {
 	return w.ResponseWriter.Write(data)
 }
 
-// Bytes 方法获取写入的body内容，如果是gzip编码则解压。
-func (w *dumpResponset) Bytes() []byte {
+// GetBodyData 方法获取写入的body内容，如果是gzip编码则解压。
+func (w *dumpResponset) GetBodyData() []byte {
 	if w.ResponseWriter.Header().Get(eudore.HeaderContentEncoding) == "gzip" {
 		gread := new(gzip.Reader)
 		gread.Reset(&w.Buffer)

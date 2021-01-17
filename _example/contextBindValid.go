@@ -44,7 +44,7 @@ func main() {
 	client.NewRequest("PUT", "/file/data/1").WithHeaderValue("Content-Type", "application/json").WithBodyString(`{"username":"abc","name":"","age":21,"password":"12345"}`).Do().CheckStatus(200).Out()
 	client.NewRequest("PUT", "/file/data/2").WithHeaderValue("Content-Type", "application/json").WithBodyString(`{"username":"abc","name":"","age":21,"password":"12345"}`).Do().CheckStatus(200).Out()
 
-// 设置Binder强制校验
+	// 设置Binder强制校验
 	app.Binder = eudore.NewBinderValidater(app.Binder)
 	client.NewRequest("PUT", "/file/data/1").WithHeaderValue("Content-Type", "application/json").WithBodyString(`{"username":"abc","name":"","age":21,"password":"12345"}`).Do().CheckStatus(200).Out()
 

@@ -4,7 +4,6 @@ package eudore
 
 import (
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
@@ -26,7 +25,7 @@ RouterMethod implements the following functions:
     Add controller
     Display routing registration debug information
 
-RouterCore has five router cores to implement the following functions:
+RouterCore has four router cores to implement the following functions:
     High performance (70%-90% of httprouter performance, using less memory)
     Low code complexity (RouterCoreStd supports 5 levels of priority, a code complexity of 19 is not satisfied)
     Request for additional default parameters (including current routing matching rules)
@@ -53,7 +52,7 @@ RouterMethod实现下列功能：
     添加控制器
     显示路由注册debug信息
 
-RouterCore拥有五种路由器核心实现下列功能：
+RouterCore拥有四种路由器核心实现下列功能：
     高性能(httprouter性能的70%-90%，使用更少的内存)
     低代码复杂度(RouterCoreStd支持5级优先级 一处代码复杂度19不满足)
     请求获取额外的默认参数(包含当前路由匹配规则)
@@ -189,7 +188,7 @@ func (m *RouterStd) Params() *Params {
 func (m *RouterStd) paramsCombine(path string) *Params {
 	newparams := m.params.Clone()
 	params := NewParamsRoute(path)
-	newparams.Vals[0] = filepath.Join(newparams.Vals[0], params.Vals[0])
+	newparams.Vals[0] = newparams.Vals[0] + params.Vals[0]
 	for i := range params.Keys[1:] {
 		newparams.Add(params.Keys[i+1], params.Vals[i+1])
 	}

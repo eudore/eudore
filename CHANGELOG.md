@@ -1,5 +1,12 @@
 # Change Log
 
+[2021年1月17日]
+- middleware/rate	重构为RateRequest和RateSpeed用于限流和限速。
+- component/pprof	重构为middleware.NewLookFunc和middleare.NewPprofController()。
+- middleware/cache	新增数据缓存中间件，同时具有singleflight特性。
+- middleware/singleflight 数据缓存删除
+
+[2020年12月31日](https://github.com/eudore/eudore/tree/b4c8ae5d45c01177330fb754341d612db7c36f2d)
 - RouterCoreStd	将先匹配路径后匹配方法，正确处理405。
 - ControllerError 新增用于New控制器时返回错误自动去处理。
 - ServerGrace	正式移除热重启Server功能，华而不实。
@@ -15,7 +22,7 @@
  - RouterMethod	接口删除，方法合并到Router接口中,删除OptionsFunc方法,RouterAllMethod中不再包含Optionns方法
  - RouterRadix、RouterFull 新增Trace和Connect方法存储节点
  - HandlerFunc String方法输出名称二次修复，优化名称存储方法
- - COnfig	配置键移除默认前缀keys
+ - Config	配置键移除默认前缀keys
  - Controller	修改路由组合规则，仅组合xxxController这样以控制器为后缀的对象允许组合路由
  - ControllerSingleton	取消各种参数控制
  - ControllerAutoRoute	新增自动路由控制器，用于自动注册restful路由规则

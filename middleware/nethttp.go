@@ -68,8 +68,8 @@ func NewNetHTTPRewriteFunc(next http.Handler, data map[string]string) http.Handl
 	}
 }
 
-// NewNetHTTPRateFunc 函数创建一个net/http限流中间件处理函数，文档见NewRateFunc函数。
-func NewNetHTTPRateFunc(next http.Handler, speed, max int64, options ...interface{}) http.HandlerFunc {
+// NewNetHTTPRateRequestFunc 函数创建一个net/http限流中间件处理函数，文档见NewRateFunc函数。
+func NewNetHTTPRateRequestFunc(next http.Handler, speed, max int64, options ...interface{}) http.HandlerFunc {
 	getKeyFunc := getRealClientIP
 	for _, i := range options {
 		if fn, ok := i.(func(*http.Request) string); ok {
@@ -80,12 +80,12 @@ func NewNetHTTPRateFunc(next http.Handler, speed, max int64, options ...interfac
 	r := newRate(speed, max, options...)
 	return func(w http.ResponseWriter, req *http.Request) {
 		key := getKeyFunc(req)
-		if r.GetVisitor(key).WaitWithDeadline(req.Context()) {
+		if r.GetVisitor(key).WaitWithDeadline(req.Context(), 1) {
 			next.ServeHTTP(w, req)
 			return
 		}
 		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte("deny request of rate: " + key))
+		w.Write([]byte("deny request of rate request: " + key))
 	}
 }
 

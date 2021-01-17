@@ -12,13 +12,12 @@ import (
 
 func main() {
 	app := eudore.NewApp()
-	app.AddMiddleware(middleware.NewSingleFlightFunc(), middleware.NewGzipFunc(5))
+	app.AddController(middleware.NewPprofController())
+
+	app.AddMiddleware(middleware.NewCacheFunc(time.Second/10, app.Context))
 	app.AnyFunc("/sf", func(ctx eudore.Context) {
 		ctx.Redirect(301, "/")
 		ctx.Debug(ctx.Response().Status(), ctx.Response().Size())
-		ctx.Response().Hijack()
-		ctx.Push("/js", nil)
-		ctx.Response().Flush()
 	})
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		time.Sleep(time.Second / 3)
@@ -26,15 +25,22 @@ func main() {
 	})
 
 	client := httptest.NewClient(app)
+	client.NewRequest("GET", "/sf").Do()
 	wg := sync.WaitGroup{}
-	wg.Add(10)
-	for i := 0; i < 10; i++ {
-		go func(i int) {
-			client.NewRequest("GET", "/?c="+fmt.Sprint(i)).Do().CheckBodyString("hello eudore")
+	wg.Add(5)
+	for n := 0; n < 5; n++ {
+		go func() {
+			for i := 0; i < 3; i++ {
+				client.NewRequest("GET", "/?c="+fmt.Sprint(i)).Do().CheckBodyString("hello eudore")
+				client.NewRequest("GET", "/?c="+fmt.Sprint(i)).Do().CheckBodyString("hello eudore")
+				time.Sleep(time.Millisecond * 200)
+				client.NewRequest("GET", "/?c="+fmt.Sprint(i)).Do().CheckBodyString("hello eudore")
+			}
 			wg.Done()
-		}(i)
+		}()
 	}
 	wg.Wait()
+
 	client.NewRequest("GET", "/sf").Do()
 	client.NewRequest("POST", "/sf").Do()
 	client.NewRequest("GET", "/s").Do().CheckBodyString("hello eudore")

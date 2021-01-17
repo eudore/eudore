@@ -9,7 +9,7 @@ package main
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
-	"github.com/eudore/eudore/component/pprof"
+	"github.com/eudore/eudore/middleware"
 )
 
 func main() {
@@ -46,7 +46,7 @@ func main() {
 
 	app.Options(eudore.NewRouterStd(eudore.NewRouterCoreLock(eudore.NewRouterCoreStd())))
 	register = app.Group(" register=off")
-	app.AnyFunc("/eudore/debug/pprof/look/* godoc=/eudore/debug/pprof/godoc", pprof.NewLook(app))
+	app.AnyFunc("/eudore/debug/look/*", middleware.NewLookFunc(app))
 	app.AnyFunc("/verison", echoStringHandler("any verison"))
 	app.AnyFunc("/verison1", echoStringHandler("any verison"))
 	app.AnyFunc("/verison2", echoStringHandler("any verison"))

@@ -1,5 +1,5 @@
 /*
-Package middleware 包实现eudore基础请求中间件。
+Package middleware 包实现eudore基础请求中间件和处理函数。
 
 BasicAuth
 
@@ -49,6 +49,17 @@ example:
 	app.AddMiddleware(breaker.NewBreakerFunc(app.Group("/eudore/debug")))
 
 在关闭状态下连续错误一定次数后熔断器进入半开状态；在半开状态下请求将进入限流状态，半开连续错误一定次数后进入打开状态，半开连续成功一定次数后回到关闭状态；在进入关闭状态后等待一定时间后恢复到半开状态。
+
+Cache
+
+创建一个缓存中间件，对Get请求具有缓存和SingleFlight双重效果。
+
+参数：
+	context.Context	控制默认cacheMap清理过期数据的生命周期
+	time.Duration	请求数据缓存时间，默认秒
+	cacheStore	缓存存储对象
+example:
+	app.AddMiddleware(middleware.NewCacheFunc(time.Second*10, app.Context))
 
 ContextWarp
 
@@ -139,7 +150,10 @@ Rate
 		time.Duration                 =>    基础时间周期单位，默认秒
 		func(eudore.Context) string   =>    限流获取key的函数，默认Context.ReadIP
 example:
-	app.AddMiddleware(middleware.NewRateFunc(1, 3, app.Context))
+	// 限流 每秒一个请求，最多保存3个请求
+	app.AddMiddleware(middleware.NewRateRequestFunc(1, 3, app.Context))
+	// 限速 每秒32Kb流量，最多保存128Kb流量
+	app.AddMiddleware(middleware.NewRateSpeedFunc(32*1024, 128*1024, app.Context))
 
 Recover
 
@@ -226,13 +240,6 @@ example:
 		"/help/history":  "/api/v3/history",
 		"/help/*":        "$0",
 	}))
-
-SingleFlight
-
-同时多次请求同一资源时，缓存一份处理结果返回给全部请求
-
-example:
-	app.AddMiddleware(middleware.NewSingleFlightFunc())
 
 Timeout
 

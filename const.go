@@ -311,6 +311,7 @@ const (
 	HeaderTk                              = "Tk"
 	HeaderTrailer                         = "Trailer"
 	HeaderTransferEncoding                = "Transfer-Encoding"
+	HeaderUpgrade                         = "Upgrade"
 	HeaderUpgradeInsecureRequests         = "Upgrade-Insecure-Requests"
 	HeaderUserAgent                       = "User-Agent"
 	HeaderVary                            = "Vary"

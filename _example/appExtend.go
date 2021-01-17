@@ -32,7 +32,7 @@ func main() {
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteString("Hello, 世界")
 	})
-	app.GetFunc("/user",NewUserHandlr(app))
+	app.GetFunc("/user", NewUserHandlr(app))
 	app.Info("hello")
 
 	client := httptest.NewClient(app)
@@ -45,17 +45,17 @@ func main() {
 
 // NewApp 方法创建一个自定义app
 func NewApp() *App {
- 	conf := &Config{Name: "eudore"}
+	conf := &Config{Name: "eudore"}
 	return &App{
-		App: eudore.NewApp(eudore.NewConfigEudore(conf)),
+		App:    eudore.NewApp(eudore.NewConfigEudore(conf)),
 		Config: conf,
 	}
 }
 
 // NewUserHandlr 方法闭包传递app对象，然后使用数据库进行操作。
 func NewUserHandlr(app *App) eudore.HandlerFunc {
-return func(ctx eudore.Context) {
-	// app.QueryRow()
-   // ...
-}
+	return func(ctx eudore.Context) {
+		// app.QueryRow()
+		// ...
+	}
 }

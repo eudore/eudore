@@ -27,13 +27,13 @@ RouterStd是eudore的默认路由器，使用基数树算法独立实现，性�
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
-	"github.com/eudore/eudore/component/pprof"
+	"github.com/eudore/eudore/middleware"
 )
 
 func main() {
 	// 默认路由器就是 NewRouterStd(nil)
 	app := eudore.NewApp()
-	app.AnyFunc("/eudore/debug/pprof/look/* godoc=/eudore/debug/pprof/godoc", pprof.NewLook(app.Router))
+	app.AnyFunc("/eudore/debug/look/*", middleware.NewLookFunc(app.Router))
 
 	app.AddMiddleware(func(ctx eudore.Context) {
 		ctx.WriteString("route: " + ctx.GetParam("route") + "\n")
