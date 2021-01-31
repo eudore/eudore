@@ -17,6 +17,8 @@ var (
 	AppContextKey = &contextKey{"app"}
 	// DefaultBodyMaxMemory 默认Body解析占用内存。
 	DefaultBodyMaxMemory int64 = 32 << 20 // 32 MB
+	// DefaultGetSetTags 定义Get/Set函数使用的默认tag。
+	DefaultGetSetTags = []string{"alias"}
 	// DefaultConvertTags 定义默认转换使用的结构体tags。
 	DefaultConvertTags = []string{"alias"}
 	// DefaultConvertFormTags 定义bind form使用tags。
@@ -71,6 +73,7 @@ var (
 	_ RouterCore = (*routerCoreLock)(nil)
 
 	_ ResponseWriter  = (*responseWriterHTTP)(nil)
+	_ Controller      = (*ControllerAutoRoute)(nil)
 	_ Controller      = (*ControllerBase)(nil)
 	_ Controller      = (*ControllerData)(nil)
 	_ Controller      = (*ControllerSingleton)(nil)
@@ -97,11 +100,9 @@ var (
 	loggerlevels = [][]byte{[]byte("DEBUG"), []byte("INFO"), []byte("WARIRNG"), []byte("ERROR"), []byte("FATAL")}
 	loggerpart1  = []byte(`{"time":"`)
 	loggerpart2  = []byte(`","level":"`)
-	loggerpart3  = []byte(`","fields":{`)
-	loggerpart4  = []byte("\"")
-	loggerpart5  = []byte(`,"message":"`)
-	loggerpart6  = []byte("\"}\n")
-	loggerpart7  = []byte("}\n")
+	loggerpart3  = []byte(`,"message":"`)
+	loggerpart4  = []byte("\"}\n")
+	loggerpart5  = []byte("}\n")
 )
 
 // 定义默认错误

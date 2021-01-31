@@ -3,11 +3,10 @@ package main
 /*
 
 type ConfigParseFunc func(Config) error
-type ConfigParseOption func([]ConfigParseFunc) []ConfigParseFunc
 
 type Config interface {
 	....
-	ParseOption(ConfigParseOption)
+	ParseOption([]ConfigParseFunc) []ConfigParseFunc
 	Parse() error
 }
 
@@ -23,9 +22,7 @@ import (
 func main() {
 	app := eudore.NewApp()
 	// 设置配置解析函数为一个自定义函数返回错误。
-	app.ParseOption(func([]eudore.ConfigParseFunc) []eudore.ConfigParseFunc {
-		return []eudore.ConfigParseFunc{parseError}
-	})
+	app.ParseOption([]eudore.ConfigParseFunc{parseError})
 	app.Options(app.Parse())
 	app.Run()
 }

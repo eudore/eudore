@@ -111,13 +111,13 @@ func (app *App) Options(options ...interface{}) {
 			app.Validater = val
 		case error:
 			app.Error("eudore app cannel context on handler error: " + val.Error())
-			app.CancelFunc()
 			app.cancelMutex.Lock()
 			defer app.cancelMutex.Unlock()
 			// 记录第一个错误
 			if app.CancelError == nil {
 				app.CancelError = val
 			}
+			app.CancelFunc()
 		default:
 			app.Logger.Warningf("eudore app invalid option: %v", i)
 		}
@@ -164,7 +164,7 @@ func (app *App) serveContext(ctx Context) {
 // 在app.HandlerFuncs最后一次处理时，调用了app.serveContext方法，使用app.Router匹配出这个请求的路由中间件和路由处理函数进行二次请求处理。
 func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := app.ContextPool.Get().(Context)
-	ctx.Reset(r.Context(), w, r)
+	ctx.Reset(w, r)
 	ctx.SetHandler(-1, app.HandlerFuncs)
 	ctx.Next()
 	ctx.End()

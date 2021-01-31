@@ -22,7 +22,7 @@ func main() {
 	app.PutFunc("/file/data/:path valid=1", func(ctx eudore.Context) {
 		var user userRequest
 		ctx.Bind(&user)
-		ctx.RenderWith(&user, eudore.RenderIndentJSON)
+		ctx.RenderWith(&user, eudore.RenderJSON)
 	})
 
 	app.PutFunc("/file/data/1", func(ctx eudore.Context) error {
@@ -35,7 +35,7 @@ func main() {
 		if err != nil {
 			return err
 		}
-		ctx.RenderWith(&user, eudore.RenderIndentJSON)
+		ctx.RenderWith(&user, eudore.RenderJSON)
 		return nil
 	})
 

@@ -53,16 +53,16 @@ func TestLoggerInit2(t *testing.T) {
 	log.WithField("key", "field").Fatal("4")
 	log.WithField("key", "field").Fatalf("4")
 
-	log.WithFields(eudore.Fields{"key": "Fields"}).Debug("0")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Debugf("0")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Info("1")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Infof("1")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Warning("2")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Warningf("2")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Error("3")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Errorf("3")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Fatal("4")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Fatalf("4")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Debug("0")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Debugf("0")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Info("1")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Infof("1")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Warning("2")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Warningf("2")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Error("3")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Errorf("3")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Fatal("4")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Fatalf("4")
 
 	// 判断是LoggerInit
 	if initlog, ok := log.(loggerInitHandler2); ok {
@@ -96,16 +96,17 @@ func TestLoggerInit2(t *testing.T) {
 	log.WithField("key", "field").Fatal("4")
 	log.WithField("key", "field").Fatalf("4")
 
-	log.WithFields(eudore.Fields{"key": "Fields"}).Debug("0")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Debugf("0")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Info("1")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Infof("1")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Warning("2")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Warningf("2")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Error("3")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Errorf("3")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Fatal("4")
-	log.WithFields(eudore.Fields{"key": "Fields"}).Fatalf("4")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Debug("0")
+	log.WithFields([]string{"key", "k2"}, []interface{}{"Fields"}).Debug("0")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Debugf("0")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Info("1")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Infof("1")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Warning("2")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Warningf("2")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Error("3")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Errorf("3")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Fatal("4")
+	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Fatalf("4")
 
 	log.Sync()
 }
@@ -115,6 +116,7 @@ type (
 	marsha2 struct{}
 	marsha3 struct{}
 	marsha4 struct{}
+	marsha5 struct{ Num []int }
 )
 
 func (marsha1) MarshalJSON() ([]byte, error) {
@@ -157,6 +159,7 @@ func TestLoggerStd2(t *testing.T) {
 	log.WithField("nil", new(marsha2)).Debug("marsha2")
 	log.WithField("nil", new(marsha3)).Debug("marsha3")
 	log.WithField("nil", new(marsha4)).Debug("marsha4")
+	log.WithField("nil", new(marsha5)).Debug("marsha5")
 
 	log.Sync()
 }
@@ -290,11 +293,7 @@ func BenchmarkLoggerStd(b *testing.B) {
 	})
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		log.WithFields(eudore.Fields{
-			"animal": "walrus",
-			"number": 1,
-			"size":   10,
-		}).Info("A walrus appears")
+		log.WithFields([]string{"animal", "number", "size"}, []interface{}{"walrus", 1, 10}).Info("A walrus appears")
 		log.WithField("a", 1).WithField("b", true).Info(data)
 	}
 	log.Sync()

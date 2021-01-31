@@ -206,12 +206,12 @@ func (m *RouterStd) printError(depth int, err error) {
 		}
 	}
 	name, file, line := logFormatNameFileLine(depth + 3)
-	m.Print(Fields{"params": m.params, "func": name, "file": file, "line": line}, err)
+	m.Print([]string{"params", "func", "file", "line"}, []interface{}{m.params, name, file, line}, err)
 }
 
 // printPanic 方法输出一个err，附加当前stack。
 func (m *RouterStd) printPanic(err error) {
-	m.Print(Fields{"params": m.params, "stack": GetPanicStack(4)}, err)
+	m.Print([]string{"params", "stack"}, []interface{}{m.params, GetPanicStack(4)}, err)
 }
 
 // getRoutePath 函数截取到路径中的route，支持'{}'进行块匹配。
@@ -303,7 +303,7 @@ func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 		m.Print(fmt.Sprintf("Test handlers params is %s, split path to: ['%s'], match middlewares is: %v, register handlers is: %v.", params.String(), strings.Join(getSplitPath(path), "', '"), m.Middlewares.Lookup(path), handlers))
 		return
 	}
-	m.Print("Register handler:", method, fullpath, handlers)
+	m.Print([]string{"method", "params"}, []interface{}{method, params}, "Register handler:", method, path, handlers)
 	handlers = HandlerFuncsCombine(m.Middlewares.Lookup(path), handlers)
 
 	// 处理多方法

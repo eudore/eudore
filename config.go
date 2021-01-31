@@ -14,14 +14,11 @@ import (
 // Config 默认解析函数为eudore.ConfigAllParseFunc
 type ConfigParseFunc func(Config) error
 
-// ConfigParseOption 定义配置解析选项，用于修改配置解析函数。
-type ConfigParseOption func([]ConfigParseFunc) []ConfigParseFunc
-
 // Config 定义配置管理，使用配置读写和解析功能。
 type Config interface {
 	Get(string) interface{}
 	Set(string, interface{}) error
-	ParseOption(ConfigParseOption)
+	ParseOption([]ConfigParseFunc) []ConfigParseFunc
 	Parse() error
 }
 
@@ -99,8 +96,9 @@ func (c *configMap) Set(key string, val interface{}) error {
 }
 
 // ParseOption 执行一个配置解析函数选项。
-func (c *configMap) ParseOption(fn ConfigParseOption) {
-	c.funcs = fn(c.funcs)
+func (c *configMap) ParseOption(fn []ConfigParseFunc) []ConfigParseFunc {
+	c.funcs, fn = fn, c.funcs
+	return fn
 }
 
 // Parse 方法执行全部配置解析函数，如果其中解析函数返回err，则停止解析并返回err。
@@ -183,8 +181,9 @@ func (c *configEudore) Set(key string, val interface{}) (err error) {
 }
 
 // ParseOption 执行一个配置解析函数选项。
-func (c *configEudore) ParseOption(fn ConfigParseOption) {
-	c.funcs = fn(c.funcs)
+func (c *configEudore) ParseOption(fn []ConfigParseFunc) []ConfigParseFunc {
+	c.funcs, fn = fn, c.funcs
+	return fn
 }
 
 // Parse 方法执行全部配置解析函数，如果其中解析函数返回err，则停止解析并返回err。

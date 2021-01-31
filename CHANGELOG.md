@@ -1,6 +1,12 @@
 # Change Log
 
-[2021年1月17日]
+- LoggerStd	输出不使用fields嵌套属性，Fields使用切片存储。
+- ContextBase	优化Form Querys Context存储使用net/http属性。
+- RenderJSON	对基本类型将自动封装一层结构，非json Accept使用indent格式化。
+- Config.ParseOption	修改参数类型，使用[]ConfigParseFunc传递。
+- Controller	优化控制器获取路由规则函数。
+
+[2021年1月17日](https://github.com/eudore/eudore/tree/d4c9edf68ee3a71bfe7947b5adb4659a3ae3b3d0)
 - middleware/rate	重构为RateRequest和RateSpeed用于限流和限速。
 - component/pprof	重构为middleware.NewLookFunc和middleare.NewPprofController()。
 - middleware/cache	新增数据缓存中间件，同时具有singleflight特性。

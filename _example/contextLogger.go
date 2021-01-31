@@ -41,6 +41,7 @@ func main() {
 		ctx.Warning("warning")
 		ctx.Warningf("warningf")
 		ctx.Error(nil)
+		ctx.Error("test error")
 		ctx.Errorf("test error")
 		ctx.Fatal(nil)
 	})
@@ -50,11 +51,8 @@ func main() {
 	})
 	app.AnyFunc("/field", func(ctx eudore.Context) {
 		ctx.Logger().WithField("key", "test-firle").Debug("debug")
-		ctx.WithFields(eudore.Fields{
-			"key":  "ctx.WithFields",
-			"name": "eudore",
-		}).Debug("hello fields")
-		ctx.WithFields(nil).Debug("hello empty fields")
+		ctx.WithFields([]string{"key", "name"}, []interface{}{"ctx.WithFields", "eudore"}).Debug("hello fields")
+		ctx.WithFields(nil, nil).Debug("hello empty fields")
 		ctx.WithField("key", "test-firle").Debug("debug")
 		ctx.WithField("key", "test-firle").Debugf("debugf")
 		ctx.WithField("key", "test-firle").Info("hello")
@@ -65,10 +63,7 @@ func main() {
 		ctx.WithField("key", "test-firle").Errorf("test error")
 		ctx.WithField("key", "test-firle").Fatal(nil)
 		ctx.WithField("key", "test-firle").WithField("hello", "haha").Fatalf("fatal logger method: %s path: %s", ctx.Method(), ctx.Path())
-		ctx.WithField("method", "WithField").WithFields(eudore.Fields{
-			"key":  "ss",
-			"name": "eudore",
-		}).Debug("hello fields")
+		ctx.WithField("method", "WithField").WithFields([]string{"key", "name"}, []interface{}{"ss", "eudore"}).Debug("hello fields")
 	})
 
 	client := httptest.NewClient(app)

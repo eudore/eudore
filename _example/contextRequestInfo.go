@@ -26,10 +26,12 @@ import (
 	"fmt"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
+	"github.com/eudore/eudore/middleware"
 )
 
 func main() {
 	app := eudore.NewApp()
+	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteString("host: " + ctx.Host())
 		ctx.WriteString("\nmethod: " + ctx.Method())
@@ -45,7 +47,7 @@ func main() {
 	})
 
 	client := httptest.NewClient(app)
-	client.NewRequest("GET", "/").Do().Out()
+	client.NewRequest("GET", "/").WithHeaderValue(eudore.HeaderXForwardedFor, "192.168.1.4 192.168.1.1").Do().Out()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

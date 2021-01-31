@@ -11,11 +11,16 @@ import (
 //
 // 状态码如果为40x、50x输出日志级别为Error。
 func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
+	keys := []string{"method", "path", "realip", "proto", "host", "status", "request-time", "size"}
 	return func(ctx eudore.Context) {
 		now := time.Now()
 		ctx.Next()
 		status := ctx.Response().Status()
-		out := app.WithField("method", ctx.Method()).WithField("path", ctx.Path()).WithField("remote", ctx.RealIP()).WithField("proto", ctx.Request().Proto).WithField("host", ctx.Host()).WithField("status", status).WithField("time", time.Now().Sub(now).String()).WithField("size", ctx.Response().Size())
+		// 连续WithField保证field顺序
+		out := app.WithFields(keys, []interface{}{
+			ctx.Method(), ctx.Path(), ctx.RealIP(), ctx.Request().Proto,
+			ctx.Host(), status, time.Now().Sub(now).String(), ctx.Response().Size(),
+		})
 
 		for _, param := range params {
 			val := ctx.GetParam(param)
@@ -24,6 +29,9 @@ func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
 			}
 		}
 
+		if xforward := ctx.GetHeader(eudore.HeaderXForwardedFor); len(xforward) > 0 {
+			out = out.WithField("x-forward-for", xforward)
+		}
 		if requestID := ctx.GetHeader(eudore.HeaderXRequestID); len(requestID) > 0 {
 			out = out.WithField("x-request-id", requestID)
 		}

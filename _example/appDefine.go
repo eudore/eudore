@@ -59,8 +59,8 @@ type Logger interface {
 	Warningf(string, ...interface{})
 	Errorf(string, ...interface{})
 	Fatalf(string, ...interface{})
-	WithField(key string, value interface{}) Logger
-	WithFields(fields Fields) Logger
+	WithField(string, interface{}) Logger
+	WithFields([]string, []interface{}) Logger
 	Sync() error
 	SetLevel(LoggerLevel)
 }
@@ -159,10 +159,10 @@ type Context interface {
 	// context
 	Reset(context.Context, http.ResponseWriter, *http.Request)
 	GetContext() context.Context
+	WithContext(context.Context)
 	Request() *http.Request
 	Response() ResponseWriter
 	Logger() Logger
-	WithContext(context.Context)
 	SetRequest(*http.Request)
 	SetResponse(ResponseWriter)
 	SetLogger(Logger)
@@ -198,7 +198,7 @@ type Context interface {
 	SetHeader(string, string)
 	Cookies() []Cookie
 	GetCookie(string) string
-	SetCookie(cookie *SetCookie)
+	SetCookie(*SetCookie)
 	SetCookieValue(string, string, int)
 	FormValue(string) string
 	FormValues() map[string][]string
@@ -227,8 +227,8 @@ type Context interface {
 	Warningf(string, ...interface{})
 	Errorf(string, ...interface{})
 	Fatalf(string, ...interface{})
-	WithField(key string, value interface{}) Logger
-	WithFields(fields Fields) Logger
+	WithField(string, interface{}) Logger
+	WithFields([]string, []interface{}) Logger
 }
 
 // ResponseWriter 接口用于写入http请求响应体status、header、body。

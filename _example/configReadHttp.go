@@ -11,9 +11,7 @@ import (
 func main() {
 	app := eudore.NewApp()
 	// 修改第一个解析函数为readHttp解析http请求
-	app.ParseOption(func([]eudore.ConfigParseFunc) []eudore.ConfigParseFunc {
-		return []eudore.ConfigParseFunc{readHttp, eudore.ConfigParseArgs, eudore.ConfigParseEnvs, eudore.ConfigParseMods, eudore.ConfigParseWorkdir, eudore.ConfigParseHelp}
-	})
+	app.ParseOption([]eudore.ConfigParseFunc{readHttp, eudore.ConfigParseArgs, eudore.ConfigParseEnvs, eudore.ConfigParseMods, eudore.ConfigParseWorkdir, eudore.ConfigParseHelp})
 	app.Set("config", []string{"http://127.0.0.1:8089/xxx", "http://127.0.0.1:8088/xxx"})
 	app.Set("help", true)
 

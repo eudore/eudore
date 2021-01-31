@@ -14,7 +14,7 @@ import (
 var goroot string = runtime.GOROOT()
 
 type pprofController struct {
-	eudore.ControllerInstance
+	eudore.ControllerAutoRoute
 }
 
 // NewPprofController 函数定义一个pprof控制器注入pprof处理函数。

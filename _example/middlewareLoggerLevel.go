@@ -15,7 +15,7 @@ func main() {
 	app.AddMiddleware(func(ctx eudore.Context) {
 		// 如果路由规则是"/api/v1/user",设置日志级别为Debug
 		if ctx.GetParam("route") == "/api/v1/user" {
-			log := ctx.Logger().WithFields(nil)
+			log := ctx.Logger().WithFields(nil, nil)
 			log.SetLevel(eudore.LogDebug)
 			ctx.SetLogger(log)
 		}

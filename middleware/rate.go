@@ -125,8 +125,8 @@ func (r *rate) cleanupVisitors(ctx context.Context) {
 	}
 }
 
-var errRateReadWaitLong = errors.New("If the speed limit waiting time is too long, it will time out.")
-var errRateWriteWaitLong = errors.New("If the speed limit waits for write time is too long, it will wait for timeout.")
+var errRateReadWaitLong = errors.New("If the github.com/eudore/eudore/middleware speed limit waiting time is too long, it will time out.")
+var errRateWriteWaitLong = errors.New("If the github.com/eudore/eudore/middleware speed limit waits for write time is too long, it will wait for timeout.")
 
 type rateRequqest struct {
 	io.ReadCloser

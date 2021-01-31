@@ -30,11 +30,9 @@ func TestConfigEudore2(t *testing.T) {
 	conf.Set("", struct{ Name, Message string }{"eudore", "msg"})
 	t.Logf("%#v", conf.Get(""))
 
-	conf.ParseOption(func([]eudore.ConfigParseFunc) []eudore.ConfigParseFunc {
-		return []eudore.ConfigParseFunc{func(eudore.Config) error {
-			return errors.New("throws a parse test error")
-		}}
-	})
+	conf.ParseOption([]eudore.ConfigParseFunc{func(eudore.Config) error {
+		return errors.New("throws a parse test error")
+	}})
 	conf.Parse()
 }
 

@@ -33,12 +33,12 @@ Breaker
 实现路由规则熔断
 
 参数:
-- eudore.Router
+	eudore.Router
 属性:
-- MaxConsecutiveSuccesses uint32                   最大连续成功次数
-- MaxConsecutiveFailures  uint32                   最大连续失败次数
-- OpenWait                time.Duration            打开状态恢复到半开状态下等待时间
-- NewHalfOpen             func(string) func() bool 创建一个路由规则半开状态下的限流函数
+	MaxConsecutiveSuccesses uint32                   最大连续成功次数
+	MaxConsecutiveFailures  uint32                   最大连续失败次数
+	OpenWait                time.Duration            打开状态恢复到半开状态下等待时间
+	NewHalfOpen             func(string) func() bool 创建一个路由规则半开状态下的限流函数
 
 example:
 

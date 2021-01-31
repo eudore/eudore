@@ -25,7 +25,7 @@ func NewRequestIDFunc(fn func() string) eudore.HandlerFunc {
 			requestId = fn()
 			ctx.Request().Header.Add(eudore.HeaderXRequestID, requestId)
 		}
-		ctx.SetLogger(ctx.Logger().WithField(eudore.HeaderXRequestID, requestId).WithFields(nil))
+		ctx.SetLogger(ctx.Logger().WithField(eudore.HeaderXRequestID, requestId).WithFields(nil, nil))
 		ctx.SetHeader(eudore.HeaderXRequestID, requestId)
 	}
 }

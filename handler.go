@@ -31,7 +31,6 @@ type handlerExtendBase struct {
 	ExtendNewFunc       []reflect.Value
 	ExtendInterfaceType []reflect.Type
 	ExtendInterfaceFunc []reflect.Value
-	// ExtendNewFunc       map[reflect.Type]reflect.Value
 }
 
 // handlerExtendWarp 定义链式函数扩展。
@@ -53,9 +52,10 @@ type handlerHTTP interface {
 
 var (
 	// contextFuncName key类型一定为HandlerFunc类型，保存函数可能正确的名称。
-	contextFuncName  = make(map[uintptr]string)   // 最终名称
-	contextSaveName  = make(map[uintptr]string)   // 函数名称
-	contextAliasName = make(map[uintptr][]string) // 对象名称
+	contextFuncName    = make(map[uintptr]string)   // 最终名称
+	contextSaveName    = make(map[uintptr]string)   // 函数名称
+	contextAliasName   = make(map[uintptr][]string) // 对象名称
+	fineLineFieldsKeys = []string{"file", "line"}
 )
 
 // init 函数初始化内置扩展的请求上下文处理函数。
@@ -567,15 +567,20 @@ func NewExtendFunc(fn func()) HandlerFunc {
 	}
 }
 
+func getFileLineFieldsVals(iValue reflect.Value) []interface{} {
+	file, line := runtime.FuncForPC(iValue.Pointer()).FileLine(1)
+	return []interface{}{file, line}
+}
+
 // NewExtendFuncRender 函数处理func() interface{}。
 func NewExtendFuncRender(fn func() interface{}) HandlerFunc {
-	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
+	fineLineFieldsVals := getFileLineFieldsVals(reflect.ValueOf(fn))
 	return func(ctx Context) {
 		data := fn()
 		if ctx.Response().Size() == 0 {
 			err := ctx.Render(data)
 			if err != nil {
-				ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
+				ctx.WithFields(fineLineFieldsKeys, fineLineFieldsVals).Fatal(err)
 			}
 		}
 	}
@@ -583,49 +588,49 @@ func NewExtendFuncRender(fn func() interface{}) HandlerFunc {
 
 // NewExtendFuncError 函数处理func() error返回的error处理。
 func NewExtendFuncError(fn func() error) HandlerFunc {
-	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
+	fineLineFieldsVals := getFileLineFieldsVals(reflect.ValueOf(fn))
 	return func(ctx Context) {
 		err := fn()
 		if err != nil {
-			ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
+			ctx.WithFields(fineLineFieldsKeys, fineLineFieldsVals).Fatal(err)
 		}
 	}
 }
 
 // NewExtendFuncRenderError 函数处理func() (interface{}, error)返回数据渲染和error处理。
 func NewExtendFuncRenderError(fn func() (interface{}, error)) HandlerFunc {
-	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
+	fineLineFieldsVals := getFileLineFieldsVals(reflect.ValueOf(fn))
 	return func(ctx Context) {
 		data, err := fn()
 		if err == nil && ctx.Response().Size() == 0 {
 			err = ctx.Render(data)
 		}
 		if err != nil {
-			ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
+			ctx.WithFields(fineLineFieldsKeys, fineLineFieldsVals).Fatal(err)
 		}
 	}
 }
 
 // NewExtendFuncContextError 函数处理func(Context) error返回的error处理。
 func NewExtendFuncContextError(fn func(Context) error) HandlerFunc {
-	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
+	fineLineFieldsVals := getFileLineFieldsVals(reflect.ValueOf(fn))
 	return func(ctx Context) {
 		err := fn(ctx)
 		if err != nil {
-			ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
+			ctx.WithFields(fineLineFieldsKeys, fineLineFieldsVals).Fatal(err)
 		}
 	}
 }
 
 // NewExtendFuncContextRender 函数处理func(Context) interface{}返回数据渲染。
 func NewExtendFuncContextRender(fn func(Context) interface{}) HandlerFunc {
-	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
+	fineLineFieldsVals := getFileLineFieldsVals(reflect.ValueOf(fn))
 	return func(ctx Context) {
 		data := fn(ctx)
 		if ctx.Response().Size() == 0 {
 			err := ctx.Render(data)
 			if err != nil {
-				ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
+				ctx.WithFields(fineLineFieldsKeys, fineLineFieldsVals).Fatal(err)
 			}
 		}
 	}
@@ -633,14 +638,14 @@ func NewExtendFuncContextRender(fn func(Context) interface{}) HandlerFunc {
 
 // NewExtendFuncContextRenderError 函数处理func(Context) (interface{}, error)返回数据渲染和error处理。
 func NewExtendFuncContextRenderError(fn func(Context) (interface{}, error)) HandlerFunc {
-	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
+	fineLineFieldsVals := getFileLineFieldsVals(reflect.ValueOf(fn))
 	return func(ctx Context) {
 		data, err := fn(ctx)
 		if err == nil && ctx.Response().Size() == 0 {
 			err = ctx.Render(data)
 		}
 		if err != nil {
-			ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
+			ctx.WithFields(fineLineFieldsKeys, fineLineFieldsVals).Fatal(err)
 		}
 	}
 }
@@ -653,7 +658,7 @@ func NewExtendFuncContextRenderError(fn func(Context) (interface{}, error)) Hand
 //
 // 是NewRPCHandlerFunc的一种子集，拥有类型限制，但是使用map[string]interface{}保存请求没用使用反射。
 func NewExtendFuncRPCMap(fn func(Context, map[string]interface{}) (interface{}, error)) HandlerFunc {
-	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
+	fineLineFieldsVals := getFileLineFieldsVals(reflect.ValueOf(fn))
 	return func(ctx Context) {
 		req := make(map[string]interface{})
 		err := ctx.Bind(&req)
@@ -666,7 +671,7 @@ func NewExtendFuncRPCMap(fn func(Context, map[string]interface{}) (interface{}, 
 			err = ctx.Render(resp)
 		}
 		if err != nil {
-			ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
+			ctx.WithFields(fineLineFieldsKeys, fineLineFieldsVals).Fatal(err)
 		}
 	}
 }
@@ -695,20 +700,20 @@ func NewExtendHandlerRPC(fn interface{}) HandlerFunc {
 		return nil
 	}
 	var typeIn = iType.In(1)
+	var kindIn = typeIn.Kind()
 	// 检查请求类型
 	switch typeIn.Kind() {
 	case reflect.Map, reflect.Struct, reflect.Ptr:
 	default:
 		return nil
 	}
-	file, line := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(0)
+	fineLineFieldsVals := getFileLineFieldsVals(iValue)
 	return func(ctx Context) {
 		// 创建请求参数并初始化
 		var req reflect.Value
-		switch typeIn.Kind() {
-		case reflect.Ptr:
+		if kindIn == reflect.Ptr {
 			req = reflect.New(typeIn.Elem())
-		case reflect.Struct, reflect.Map:
+		} else {
 			req = reflect.New(typeIn)
 		}
 
@@ -717,7 +722,7 @@ func NewExtendHandlerRPC(fn interface{}) HandlerFunc {
 			ctx.Fatal(err)
 			return
 		}
-		if typeIn.Kind() != reflect.Ptr {
+		if kindIn != reflect.Ptr {
 			req = req.Elem()
 		}
 
@@ -727,7 +732,7 @@ func NewExtendHandlerRPC(fn interface{}) HandlerFunc {
 		// 检查函数执行err。
 		err, ok := vals[1].Interface().(error)
 		if ok {
-			ctx.WithFields(Fields{"file": file, "line": line}).Fatal(err)
+			ctx.WithFields(fineLineFieldsKeys, fineLineFieldsVals).Fatal(err)
 			return
 		}
 

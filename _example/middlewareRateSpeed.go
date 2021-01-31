@@ -38,9 +38,9 @@ func RateSpeedTimeout() {
 
 	// /done限速512B
 	app.PostFunc("/done", func(ctx eudore.Context) {
-			c, cannel := context.WithCancel(ctx.GetContext())
-			ctx.WithContext(c)
-			cannel()
+		c, cannel := context.WithCancel(ctx.GetContext())
+		ctx.WithContext(c)
+		cannel()
 	}, middleware.NewRateSpeedFunc(512, 1024, app.Context), func(ctx eudore.Context) {
 		ctx.Debug(string(ctx.Body()))
 	})

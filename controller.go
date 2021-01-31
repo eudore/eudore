@@ -59,26 +59,26 @@ type controllerPoolSingleton struct {
 	Controller
 }
 
-// ControllerInstance 是一个空控制器用于组合实现空方法。
-type ControllerInstance struct{}
+// virtualController 是一个空控制器用于组合实现空方法。
+type virtualController struct{}
 
 // ControllerBase 实现基本控制器。
 type ControllerBase struct {
 	Context
-	ControllerInstance
+	virtualController
 }
 
 // ControllerData 实现基于ContextData的控制器,基于ControllerBase扩展了额外的控制器方法。
 type ControllerData struct {
 	ContextData
-	ControllerInstance
+	virtualController
 }
 
 // ControllerSingleton 实现单例控制器。
-type ControllerSingleton struct{ ControllerInstance }
+type ControllerSingleton struct{ virtualController }
 
 // ControllerAutoRoute 实现根据方法注册对应的路由器方法。
-type ControllerAutoRoute struct{ ControllerInstance }
+type ControllerAutoRoute struct{ virtualController }
 
 // ControllerView 基于ControllerBase额外增加了控制器自动渲染数据。
 //
@@ -95,7 +95,7 @@ type ControllerView struct {
 type controllerError struct {
 	Error error
 	Name  string
-	ControllerInstance
+	virtualController
 }
 
 // NewControllerError 函数返回一个控制器错误，在控制器Inject时返回对应的错误。
@@ -170,7 +170,7 @@ func ControllerInjectWithPool(pool ControllerPool, controller Controller, router
 	// 路由器注册控制器方法
 	for method, path := range getRoutesWithName(controller) {
 		m, ok := pType.MethodByName(method)
-		if !ok || path == "" {
+		if !ok || (!checkAllowMethod(method) && path == "") {
 			continue
 		}
 
@@ -207,7 +207,7 @@ func ControllerInjectAutoRoute(controller Controller, router Router) error {
 	// 路由器注册控制器方法
 	for method, path := range getRoutesWithName(controller) {
 		m, ok := pType.MethodByName(method)
-		if !ok || path == "" {
+		if !ok || (!checkAllowMethod(method) && path == "") {
 			continue
 		}
 
@@ -242,12 +242,15 @@ func defaultRouteParam(pkg, name, method string) string {
 // getRoutesWithName 函数获得一个控制器类型注入的全部名称和路由路径的映射。
 func getRoutesWithName(controller Controller) map[string]string {
 	iType := reflect.TypeOf(controller)
-	names := getContrllerAllowMethos(iType)
+	names := getContrllerAllMethos(iType)
 	routes := make(map[string]string, len(names))
 	for _, name := range names {
 		if name != "" {
 			routes[name] = getRouteByName(name)
 		}
+	}
+	for _, name := range getContrllerIgnoreMethos(iType) {
+		delete(routes,name)
 	}
 
 	// 如果控制器实现ControllerRoute接口，加载额外路由。
@@ -265,16 +268,8 @@ func getRoutesWithName(controller Controller) map[string]string {
 	return routes
 }
 
-// getContrllerAllowMethos 函数获得一个类型除去忽略方法意外的全部方法名称。
-//
-// 如果对象名称是Controller或controller为前缀，则忽略该对象。
-func getContrllerAllowMethos(iType reflect.Type) []string {
-	name := getValueName(iType)
-	if controllerHasPrefix(name) {
-		return nil
-	}
-	allname := getContrllerAllMethos(iType)
-
+func getContrllerIgnoreMethos(iType reflect.Type) []string {
+	var allname []string
 	if iType.Kind() == reflect.Ptr {
 		iType = iType.Elem()
 	}
@@ -282,32 +277,18 @@ func getContrllerAllowMethos(iType reflect.Type) []string {
 		for i := 0; i < iType.NumField(); i++ {
 			// Controller为前缀的嵌入控制器。
 			// 判断嵌入属性
-			if iType.Field(i).Anonymous {
-				ignore := getContrllerAllMethos(iType.Field(i).Type)
-				// fmt.Println("ignore",iType.Field(i).Type,ignore)
-				for i := 0; i < len(allname); i++ {
-					for j := 0; j < len(ignore); j++ {
-						if allname[i] == ignore[j] {
-							allname[i] = ""
-							break
-						}
-					}
+			if iType.Field(i).Anonymous  {
+				var ignore []string
+				if controllerHasSuffix(getReflectTypeName(iType.Field(i).Type)) {
+					ignore = getContrllerIgnoreMethos(iType.Field(i).Type)
+				}else {
+					ignore = getContrllerAllMethos(iType.Field(i).Type)
 				}
-				allow := getContrllerAllowMethos(iType.Field(i).Type)
-				if controllerHasSuffix(getValueName(iType.Field(i).Type)) {
-					allname = append(allname, allow...)
-				}
-
+				allname= append(allname, ignore...)
 			}
 		}
 	}
-
 	return allname
-}
-
-// controllerHasPrefix 函数判断控制器名称前缀是否为"Controller"或"controller"。
-func controllerHasPrefix(name string) bool {
-	return strings.HasPrefix(name, "Controller") || strings.HasPrefix(name, "controller")
 }
 
 // controllerHasSuffix 函数判断控制器名称后缀是否为"Controller"或"controller"。
@@ -327,7 +308,7 @@ func getContrllerAllMethos(iType reflect.Type) []string {
 	return names
 }
 
-func getValueName(iType reflect.Type) string {
+func getReflectTypeName(iType reflect.Type) string {
 	if iType.Kind() == reflect.Ptr {
 		iType = iType.Elem()
 	}
@@ -377,7 +358,7 @@ func getFirstUp(name string) string {
 }
 
 func checkAllowMethod(method string) bool {
-	for _, i := range []string{"Any", "Get", "Post", "Put", "Delete", "Patch", "Options"} {
+	for _, i := range []string{"Any", "Get", "Post", "Put", "Delete", "Head", "Patch", "Options", "Connect", "Trace"} {
 		if i == method {
 			return true
 		}
@@ -399,27 +380,22 @@ func splitName(name string) (strs []string) {
 }
 
 // Init 实现控制器初始方法。
-func (ctl *ControllerInstance) Init(ctx Context) error {
+func (ctl *virtualController) Init(ctx Context) error {
 	return nil
 }
 
 // Release 实现控制器释放方法。
-func (ctl *ControllerInstance) Release(Context) error {
-	return nil
-}
-
-// Inject 方法实现控制器注入到路由器的方法，ControllerInstance控制器调用ControllerInjectStateful方法注入。
-func (ctl *ControllerInstance) Inject(controller Controller, router Router) error {
+func (ctl *virtualController) Release(Context) error {
 	return nil
 }
 
 // ControllerRoute 方法返回默认路由信息。
-func (ctl *ControllerInstance) ControllerRoute() map[string]string {
+func (ctl *virtualController) ControllerRoute() map[string]string {
 	return nil
 }
 
 // GetRouteParam 方法添加路由参数信息。
-func (ctl *ControllerInstance) GetRouteParam(pkg, name, method string) string {
+func (ctl *virtualController) GetRouteParam(pkg, name, method string) string {
 	return defaultRouteParam(pkg, name, method)
 }
 

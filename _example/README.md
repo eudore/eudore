@@ -15,6 +15,7 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [后台启动](appDaemon.go)
 	- [启动命令解析](appCommand.go)
 	- [监听代码自动编译重启](appNotify.go)
+	- [重新加载配置](appReload.go)
 	- [反向代理](appProxy.go)
 	- [隧道代理](appTunnel.go)
 - Config
@@ -33,7 +34,7 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [日志切割](loggerStdRotate.go)
 	- [日志清理](loggerStdClean.go)
 	- [写入Elastic](loggerElastic.go)
-	- logrus Logger适配
+	- [logrus Logger适配](loggerLogrus.go)
 - Server
 	- [设置超时]
 	- [服务监听](serverListen.go)
@@ -63,14 +64,14 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [Query url参数](contextQuerys.go)
 	- [Header](contextHeader.go)
 	- [Cookie](contextCookie.go)
-	- [Params](contexParams.go)
-	- [Form](contexForm.go)
+	- [Params](contextParams.go)
+	- [Form](contextForm.go)
 	- [Redirect](contextRedirect.go)
 	- [Push](contextPush.go)
 	- [Render](contextRender.go)
 	- [Send Json](contextRenderJson.go)
 	- [Send Template](contextRenderTemplate.go)
-	- [添加额外数据]
+	- [设置额外数据](contextValue.go)
 - Context处理扩展
 	- [默认处理](handlerDefault.go)
 	- [处理ContextData扩展](handlerContextData.go)

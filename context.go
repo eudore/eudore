@@ -9,22 +9,21 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
 )
 
-// Context 定义请求上下文接口。
+// Context 定义请求上下文接口，分为请求上下文数据、请求、参数、响应、日志输出五部分。
 type Context interface {
 	// context
-	Reset(context.Context, http.ResponseWriter, *http.Request)
+	Reset(http.ResponseWriter, *http.Request)
 	GetContext() context.Context
+	WithContext(context.Context)
 	Request() *http.Request
 	Response() ResponseWriter
 	Logger() Logger
-	WithContext(context.Context)
 	SetRequest(*http.Request)
 	SetResponse(ResponseWriter)
 	SetLogger(Logger)
@@ -60,7 +59,7 @@ type Context interface {
 	SetHeader(string, string)
 	Cookies() []Cookie
 	GetCookie(string) string
-	SetCookie(cookie *SetCookie)
+	SetCookie(*SetCookie)
 	SetCookieValue(string, string, int)
 	FormValue(string) string
 	FormValues() map[string][]string
@@ -89,27 +88,28 @@ type Context interface {
 	Warningf(string, ...interface{})
 	Errorf(string, ...interface{})
 	Fatalf(string, ...interface{})
-	WithField(key string, value interface{}) Logger
-	WithFields(fields Fields) Logger
+	WithField(string, interface{}) Logger
+	WithFields([]string, []interface{}) Logger
 }
 
 // contextBase 实现Context接口。
 type contextBase struct {
-	context        context.Context
+	// global
+	app *App
+	log Logger
+	// context
 	RequestReader  *http.Request
 	ResponseWriter ResponseWriter
 	httpResponse   responseWriterHTTP
-	httpParams     Params
 	index          int
 	handler        HandlerFuncs
-	err            string
-	querys         url.Values
-	cookies        []Cookie
-	isReadBody     bool
-	postBody       []byte
-	// component
-	app *App
-	log Logger
+	httpParams     Params
+	// data
+	err          string
+	isReadCookie bool
+	cookies      []Cookie
+	isReadBody   bool
+	postBody     []byte
 }
 
 // entryContextBase 实现ContextBase使用的Logger对象。
@@ -127,26 +127,32 @@ func NewContextBase(app *App) Context {
 }
 
 // Reset Context
-func (ctx *contextBase) Reset(pctx context.Context, w http.ResponseWriter, r *http.Request) {
-	ctx.context = pctx
+func (ctx *contextBase) Reset(w http.ResponseWriter, r *http.Request) {
 	ctx.RequestReader = r
 	ctx.httpResponse.Reset(w)
 	ctx.ResponseWriter = &ctx.httpResponse
 	ctx.log = ctx.app.Logger
-	ctx.err = ""
 	// data
-	ctx.querys = nil
+	ctx.err = ""
 	ctx.httpParams.Keys = ctx.httpParams.Keys[0:0]
 	ctx.httpParams.Vals = ctx.httpParams.Vals[0:0]
 	// cookies body
+	ctx.isReadCookie = false
 	ctx.cookies = ctx.cookies[0:0]
 	ctx.isReadBody = false
-	ctx.postBody = ctx.postBody[0:0]
+	ctx.postBody = nil
 }
 
-// GetContext 获取当前请求的上下文,Context的context.Context对象由更高层传递下来，禁止SetContext方法修改。
+// GetContext 获取当前请求的上下文,返回RequestReader的context.Context对象。
+//
+// 该函数名称如果为Context，会在Context对象组合时出现冲突。
 func (ctx *contextBase) GetContext() context.Context {
-	return ctx.context
+	return ctx.RequestReader.Context()
+}
+
+// WithContext 设置当前请求上下文的ctx,通过设置RequestReader的context.Context。
+func (ctx *contextBase) WithContext(cctx context.Context) {
+	ctx.RequestReader = ctx.RequestReader.WithContext(cctx)
 }
 
 // Request 获取请求对象。
@@ -181,13 +187,6 @@ func (ctx *contextBase) SetLogger(log Logger) {
 	ctx.log = log
 }
 
-// WithContext 设置当前请求上下文的ctx，必须是请求上下文的衍生上下文。
-//
-// ctx.WithContext(context.WithValue("key", ctx.Context()))
-func (ctx *contextBase) WithContext(cctx context.Context) {
-	ctx.context = cctx
-}
-
 // SetHandler 方法设置请求上下文的全部请求处理者。
 func (ctx *contextBase) SetHandler(index int, hs HandlerFuncs) {
 	ctx.index, ctx.handler = index, hs
@@ -217,7 +216,7 @@ func (ctx *contextBase) Err() error {
 	if ctx.err != "" {
 		return errors.New(ctx.err)
 	}
-	return ctx.context.Err()
+	return ctx.RequestReader.Context().Err()
 }
 
 // Read 方法实现io.Reader读取http请求。
@@ -272,12 +271,12 @@ func (ctx *contextBase) Istls() bool {
 // Body 返回请求的body，并保存到缓存中，可重复调用Body方法,每次调用会重置ctx.Request().Body对象成一个body reader。
 func (ctx *contextBase) Body() []byte {
 	if !ctx.isReadBody {
+		ctx.isReadBody = true
 		bts, err := ioutil.ReadAll(ctx.RequestReader.Body)
 		if err != nil {
 			ctx.log.WithField("depth", 1).WithField(ParamCaller, "Context.Body").Error(err)
-			return []byte{}
+			return nil
 		}
-		ctx.isReadBody = true
 		ctx.postBody = bts
 	}
 	ctx.RequestReader.Body = ioutil.NopCloser(bytes.NewReader(ctx.postBody))
@@ -344,21 +343,21 @@ func (ctx *contextBase) AddParam(key, val string) {
 
 // Querys 方法返回http请求的全部uri参数。
 func (ctx *contextBase) Querys() url.Values {
-	if ctx.querys == nil && ctx.RequestReader.URL != nil {
-		newValues, err := url.ParseQuery(ctx.RequestReader.URL.RawQuery)
-		if err != nil {
-			ctx.Error(err)
-			ctx.querys = make(url.Values)
-		} else {
-			ctx.querys = newValues
-		}
+	err := ctx.RequestReader.ParseForm()
+	if err != nil {
+		ctx.log.WithField("depth", 1).WithField(ParamCaller, "Context.Querys").Error(err)
 	}
-	return ctx.querys
+	return ctx.RequestReader.Form
 }
 
 // GetQuery 方法获得一个uri参数的值。
 func (ctx *contextBase) GetQuery(key string) string {
-	return ctx.Querys().Get(key)
+	err := ctx.RequestReader.ParseForm()
+	if err != nil {
+		ctx.log.WithField("depth", 1).WithField(ParamCaller, "Context.GetQuery").Error(err)
+		return ""
+	}
+	return ctx.RequestReader.Form.Get(key)
 }
 
 // GetHeader 方法获取一个请求header，相当于ctx.Request().Header().Get(name)。
@@ -373,13 +372,13 @@ func (ctx *contextBase) SetHeader(name string, val string) {
 
 // Cookies 方法获取全部请求的cookie,获取的cookie值是首次调用Cookies/GetCookie方法后解析的数据。。
 func (ctx *contextBase) Cookies() []Cookie {
-	ctx.readCookies(ctx.RequestReader.Header.Get(HeaderCookie))
+	ctx.readCookies()
 	return ctx.cookies
 }
 
 // GetCookie 获方法得一个请求cookie的值,获取的cookie值是首次调用Cookies/GetCookie方法后解析的数据。。
 func (ctx *contextBase) GetCookie(name string) string {
-	ctx.readCookies(ctx.RequestReader.Header.Get(HeaderCookie))
+	ctx.readCookies()
 	for _, ctx := range ctx.cookies {
 		if ctx.Name == name {
 			return ctx.Value
@@ -446,26 +445,12 @@ func (ctx *contextBase) FormFiles() map[string][]*multipart.FileHeader {
 
 // parseForm 解析form数据。
 func (ctx *contextBase) parseForm() error {
-	if ctx.RequestReader.MultipartForm != nil {
-		return nil
-	}
-	_, params, err := mime.ParseMediaType(ctx.GetHeader(HeaderContentType))
-	if params == nil || params["boundary"] == "" {
-		err = errors.New("content-type Header parse boundary is empty")
-	}
-	if err != nil {
-		ctx.log.WithField("depth", 2).WithField(ParamCaller, "Context.Form...").WithField("check", "request content-type header: "+ctx.ContentType()).Error(err)
+	err := ctx.RequestReader.ParseMultipartForm(DefaultBodyMaxMemory)
+	if err != nil && err.Error() != "http: multipart handled by MultipartReader" {
+		ctx.log.WithField("depth", 2).WithField(ParamCaller, "Context.Form...").Error(err)
 		return err
 	}
-
-	f, err := multipart.NewReader(ctx, params["boundary"]).ReadForm(DefaultBodyMaxMemory)
-	if f != nil {
-		ctx.RequestReader.MultipartForm = f
-	}
-	if err != nil {
-		ctx.log.WithField("depth", 2).WithField(ParamCaller, "Context.Form...").Error(err)
-	}
-	return err
+	return nil
 }
 
 // WriteHeader 方法写入响应状态码。
@@ -639,12 +624,9 @@ func (ctx *contextBase) WithField(key string, value interface{}) Logger {
 // WithFields 方法增加多个日志属性，返回一个新的Logger。
 //
 // 如果fields包含file条目属性，则不会添加调用位置信息。
-func (ctx *contextBase) WithFields(fields Fields) Logger {
-	if fields != nil {
-		fields[HeaderXRequestID] = ctx.GetHeader(HeaderXRequestID)
-	}
+func (ctx *contextBase) WithFields(keys []string, fields []interface{}) Logger {
 	return &entryContextBase{
-		Logger:  ctx.log.WithFields(fields),
+		Logger:  ctx.log.WithFields(keys, fields),
 		Context: ctx,
 	}
 }
@@ -672,13 +654,18 @@ func (e *entryContextBase) WithField(key string, value interface{}) Logger {
 }
 
 // WithFields 方法增加多个日志属性。
-func (e *entryContextBase) WithFields(fields Fields) Logger {
-	e.Logger = e.Logger.WithFields(fields)
+func (e *entryContextBase) WithFields(keys []string, fields []interface{}) Logger {
+	e.Logger = e.Logger.WithFields(keys, fields)
 	return e
 }
 
 // readCookies 方法初始化cookie键值对，form net/http。
-func (ctx *contextBase) readCookies(line string) {
+func (ctx *contextBase) readCookies() {
+	if ctx.isReadCookie {
+		return
+	}
+	ctx.isReadCookie = true
+	line := ctx.RequestReader.Header.Get(HeaderCookie)
 	if len(line) == 0 || len(ctx.cookies) != 0 {
 		return
 	}
@@ -704,6 +691,10 @@ func (ctx *contextBase) readCookies(line string) {
 }
 
 // ContextData 扩展Context对象，加入获取数据类型转换。
+//
+// 额外扩展 Get{Param,Heder,Query,Cookie}{Bool,Int,Int64,Float32,Float64,String}共4*6=24个数据类型转换方法。
+//
+// 第一个参数为获取数据的key，第二参数是可变参数列表，返回第一个非零值。
 type ContextData struct {
 	Context
 }

@@ -43,7 +43,7 @@ func main() {
 	app.PutFunc("/file/data/:path", func(ctx eudore.Context) {
 		var info putFileInfo
 		ctx.Bind(&info)
-		ctx.RenderWith(&info, eudore.RenderIndentJSON)
+		ctx.RenderWith(&info, eudore.RenderJSON)
 	})
 	app.PutFunc("/person/:path", func(ctx eudore.Context) {
 		var person xmlResult

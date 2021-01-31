@@ -56,7 +56,6 @@ func (ctl *mysGroupController) Error(*mybGroupcontroller) {}
 func TestControllerGroup2(*testing.T) {
 	app := eudore.NewApp()
 	app.Params().Set("controllergroup", "/g1")
-	app.AddController(new(eudore.ControllerInstance))
 	app.AddController(new(mybGroupcontroller))
 	app.AddController(new(mybGroupcontroller))
 	app.AddController(new(mybGroupController))

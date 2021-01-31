@@ -83,7 +83,7 @@ type converter struct {
 //
 // 如果传入的目标类型是数组、map、结构体，会使用json反序列化设置对象。
 func Set(i interface{}, key string, val interface{}) error {
-	return SetWithTags(i, key, val, DefaultConvertTags)
+	return SetWithTags(i, key, val, DefaultGetSetTags)
 }
 
 // SetWithTags 函数和Set函数相同，可以额外设置tags。
@@ -271,7 +271,7 @@ func (s *getSeter) setSlice(iValue reflect.Value) error {
 //
 // 如果匹配失败直接返回空值。
 func Get(i interface{}, key string) (val interface{}) {
-	val, _ = GetWithTags(i, key, DefaultConvertTags)
+	val, _ = GetWithTags(i, key, DefaultGetSetTags)
 	return
 }
 

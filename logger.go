@@ -30,14 +30,11 @@ type Logger interface {
 	Warningf(string, ...interface{})
 	Errorf(string, ...interface{})
 	Fatalf(string, ...interface{})
-	WithField(key string, value interface{}) Logger
-	WithFields(fields Fields) Logger
+	WithField(string, interface{}) Logger
+	WithFields([]string, []interface{}) Logger
 	Sync() error
 	SetLevel(LoggerLevel)
 }
-
-// Fields 定义多个日志属性
-type Fields map[string]interface{}
 
 // LoggerLevel 定义日志级别
 type LoggerLevel int32
@@ -163,7 +160,7 @@ type loggerInit struct {
 // NextHandler 方法实现loggerInitHandler接口。
 func (log *loggerInit) NextHandler(logger Logger) {
 	log.Lock()
-	logger = logger.WithField("depth", "disable").WithFields(nil)
+	logger = logger.WithField("depth", "disable").WithFields(nil, nil)
 	for _, data := range log.Data {
 		entry := logger.WithField("time", data.Time)
 		for i := range data.Keys {
@@ -208,8 +205,13 @@ func (data *loggerStdDataJSON) PutLogger(entry *LoggerStd) {
 			entry.Keys = append(entry.Keys, "name", "file", "line")
 			entry.Vals = append(entry.Vals, name, file, line)
 		}
+		if len(entry.Keys) > len(entry.Vals) {
+			entry.Keys = entry.Keys[0:len(entry.Vals)]
+			entry.WithField("loggererr", "LoggerStd.loggerStdDataJSON: The number of field keys and values are not equal")
+		}
+		loggerEntryStdFormat(entry)
 		data.Mutex.Lock()
-		loggerFormatWriteTo(entry, data.LoggerWriter)
+		data.LoggerWriter.Write(entry.Buffer)
 		data.Mutex.Unlock()
 		entry.Message = ""
 		entry.Keys = entry.Keys[0:0]
@@ -407,8 +409,8 @@ func (entry *LoggerStd) Fatalf(format string, args ...interface{}) {
 }
 
 // WithFields 方法设置多个条目属性。
-func (entry *LoggerStd) WithFields(fields Fields) Logger {
-	if fields == nil {
+func (entry *LoggerStd) WithFields(key []string, value []interface{}) Logger {
+	if key == nil && value == nil {
 		entry = entry.getEntry()
 		entry.Logger = true
 		return entry
@@ -416,9 +418,8 @@ func (entry *LoggerStd) WithFields(fields Fields) Logger {
 	if entry.Logger {
 		entry = entry.getEntry()
 	}
-	for k, v := range fields {
-		entry.WithField(k, v)
-	}
+	entry.Keys = append(entry.Keys, key...)
+	entry.Vals = append(entry.Vals, value...)
 	return entry
 }
 
@@ -456,36 +457,29 @@ func (entry *LoggerStd) WithField(key string, value interface{}) Logger {
 	return entry
 }
 
-func loggerFormatWriteTo(entry *LoggerStd, w io.Writer) {
+func loggerEntryStdFormat(entry *LoggerStd) {
 	timestr := time.Now().Format(entry.Timeformat)
 	entry.Buffer = append(entry.Buffer, loggerpart1...)
 	entry.Buffer = append(entry.Buffer, *(*[]byte)(unsafe.Pointer(&timestr))...)
 	entry.Buffer = append(entry.Buffer, loggerpart2...)
 	entry.Buffer = append(entry.Buffer, loggerlevels[entry.Level]...)
+	entry.Buffer = append(entry.Buffer, '"')
 
-	if len(entry.Keys) > 0 {
-		entry.Buffer = append(entry.Buffer, loggerpart3...)
-		for i := range entry.Keys {
-			entry.Buffer = append(entry.Buffer, '"')
-			entry.Buffer = append(entry.Buffer, entry.Keys[i]...)
-			entry.Buffer = append(entry.Buffer, '"', ':')
-			loggerFormatWriteValue(entry, entry.Vals[i])
-			entry.Buffer = append(entry.Buffer, ',')
-		}
-		entry.Buffer[len(entry.Buffer)-1] = '}'
-	} else {
-		entry.Buffer = append(entry.Buffer, loggerpart4...)
+	for i := range entry.Keys {
+		entry.Buffer = append(entry.Buffer, ',')
+		entry.Buffer = append(entry.Buffer, '"')
+		entry.Buffer = append(entry.Buffer, entry.Keys[i]...)
+		entry.Buffer = append(entry.Buffer, '"', ':')
+		loggerFormatWriteValue(entry, entry.Vals[i])
 	}
 
 	if len(entry.Message) > 0 {
-		entry.Buffer = append(entry.Buffer, loggerpart5...)
+		entry.Buffer = append(entry.Buffer, loggerpart3...)
 		loggerFormatWriteString(entry, entry.Message)
-		entry.Buffer = append(entry.Buffer, loggerpart6...)
+		entry.Buffer = append(entry.Buffer, loggerpart4...)
 	} else {
-		entry.Buffer = append(entry.Buffer, loggerpart7...)
+		entry.Buffer = append(entry.Buffer, loggerpart5...)
 	}
-
-	w.Write(entry.Buffer)
 }
 
 // String 方法实现ftm.Stringer接口，格式化输出日志级别。
@@ -521,14 +515,17 @@ func (l *LoggerLevel) UnmarshalText(text []byte) error {
 //
 // 如果参数是一个error则输出error级别日志，否在输出info级别日志。
 func NewPrintFunc(log Logger) func(...interface{}) {
-	log = log.WithField("depth", 2).WithFields(nil)
+	log = log.WithField("depth", 2).WithFields(nil, nil)
 	return func(args ...interface{}) {
-		fields, ok := args[0].(Fields)
-		if ok {
-			printLogger(log.WithFields(fields), args[1:])
-		} else {
-			printLogger(log, args)
+		if len(args) > 2 {
+			keys, ok1 := args[0].([]string)
+			vals, ok2 := args[1].([]interface{})
+			if ok1 && ok2 {
+				printLogger(log.WithFields(keys, vals), args[2:])
+				return
+			}
 		}
+		printLogger(log, args)
 	}
 }
 
@@ -612,13 +609,13 @@ func loggerFormatWriteReflect(entry *LoggerStd, iValue reflect.Value) {
 	switch val := iValue.Interface().(type) {
 	case json.Marshaler:
 		body, err := val.MarshalJSON()
-		entry.Buffer = append(entry.Buffer, '"')
 		if err == nil {
-			loggerFormatWriteBytes(entry, body)
+			entry.Buffer = append(entry.Buffer, body...)
 		} else {
+			entry.Buffer = append(entry.Buffer, '"')
 			loggerFormatWriteString(entry, err.Error())
+			entry.Buffer = append(entry.Buffer, '"')
 		}
-		entry.Buffer = append(entry.Buffer, '"')
 		return
 	case encoding.TextMarshaler:
 		body, err := val.MarshalText()
