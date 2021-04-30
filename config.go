@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -14,7 +15,39 @@ import (
 // Config 默认解析函数为eudore.ConfigAllParseFunc
 type ConfigParseFunc func(Config) error
 
-// Config 定义配置管理，使用配置读写和解析功能。
+/*
+Config defines configuration management and uses configuration read-write and analysis functions.
+
+Get/Set read and write data implementation:
+	Use custom map or struct as data storage
+	Support Lock concurrency safety
+	Access attributes based on string path hierarchy
+
+The default analysis function implementation:
+	Custom configuration analysis function
+	Parse multiple json files
+	Parse the length and short parameters of the command line
+	Parse Env environment variables
+	Configuration differentiation
+	Generate help information based on the structure
+	Switch working directory
+
+Config 定义配置管理，使用配置读写和解析功能。
+
+Get/Set读写数据实现下列功能:
+	使用自定义map或struct作为数据存储
+	支持Lock并发安全
+	基于字符串路径层次访问属性
+
+默认解析函数实现下列功能:
+	自定义配置解析函数
+	解析多json文件
+	解析命令行长短参数
+	解析Env环境变量
+	配置差异化
+	根据结构体生成帮助信息
+	切换工作目录
+*/
 type Config interface {
 	Get(string) interface{}
 	Set(string, interface{}) error
@@ -30,7 +63,7 @@ type configMap struct {
 	Locker sync.RWMutex           `alias:"-"`
 }
 
-// configEudore 使用结构体或map保存配置，通过反射来读写属性。
+// configEudore 使用结构体或map保存配置，通过属性或反射来读写属性。
 type configEudore struct {
 	Keys          interface{}          `alias:"keys"`
 	Print         func(...interface{}) `alias:"print"`
@@ -236,14 +269,35 @@ func ConfigParseJSON(c Config) error {
 	return nil
 }
 
-// ConfigParseArgs 函数使用参数设置配置，参数使用--为前缀。
+// ConfigParseArgs 函数使用参数设置配置，参数使用'--'为前缀。
+//
+// 如果结构体存在flag tag将作为该路径的缩写，tag长度小于5使用'-'为前缀。
 func ConfigParseArgs(c Config) (err error) {
+	flag := &eachTags{tag: "flag", Repeat: make(map[uintptr]string)}
+	flag.Each("", reflect.ValueOf(c.Get("")))
+	short := make(map[string][]string)
+	for i, tag := range flag.Tags {
+		short[flag.Vals[i]] = append(short[flag.Vals[i]], tag[1:])
+	}
+
 	for _, str := range os.Args[1:] {
-		if !strings.HasPrefix(str, "--") {
-			continue
+		key, val := split2byte(str, '=')
+		if len(key) > 1 && key[0] == '-' && key[1] != '-' {
+			for _, lkey := range short[key[1:]] {
+				val := val
+				if val == "" && reflect.ValueOf(c.Get(lkey)).Kind() == reflect.Bool {
+					val = "true"
+				}
+				configPrint(c, fmt.Sprintf("config set short arg %s: --%s=%s", key[1:], lkey, val))
+				c.Set(lkey, val)
+			}
+		} else if strings.HasPrefix(key, "--") {
+			if val == "" && reflect.ValueOf(c.Get(key[2:])).Kind() == reflect.Bool {
+				val = "true"
+			}
+			configPrint(c, "config set arg: ", str)
+			c.Set(key[2:], val)
 		}
-		configPrint(c, "config set arg: ", str)
-		c.Set(split2byte(str[2:], '='))
 	}
 	return
 }
@@ -267,9 +321,12 @@ func ConfigParseEnvs(c Config) error {
 func ConfigParseMods(c Config) error {
 	mod := GetStrings(c.Get("enable"))
 	mod = append([]string{getOS()}, mod...)
-	configPrint(c, "config load mods: ", mod)
 	for _, i := range mod {
-		ConvertTo(c.Get("mods."+i), c.Get(""))
+		m := c.Get("mods." + i)
+		if m != nil {
+			configPrint(c, "config load mod "+i)
+			ConvertTo(m, c.Get(""))
+		}
 	}
 	return nil
 }
@@ -294,12 +351,122 @@ func ConfigParseWorkdir(c Config) error {
 	return nil
 }
 
-// ConfigParseHelp 函数测试配置内容，如果存在help'项会使用JSON标准化输出配置到标准输出。
+// ConfigParseHelp 函数测试配置内容，如果存在help项会层叠获取到结构体的的description tag值作为帮助信息输出。
+//
+// 注意配置结构体的属性需要是非空，否则不会进入遍历。
 func ConfigParseHelp(c Config) error {
-	ok := c.Get("help") != nil
-	if ok {
-		indent, err := json.MarshalIndent(&c, "", "\t")
-		fmt.Println(string(indent), err)
+	if !GetBool(c.Get("help")) {
+		return nil
+	}
+
+	conf := reflect.ValueOf(c.Get(""))
+	flag := &eachTags{tag: "flag", Repeat: make(map[uintptr]string)}
+	flag.Each("", conf)
+	flagmap := make(map[string]string)
+	for i, tag := range flag.Tags {
+		flagmap[tag[1:]] = flag.Vals[i]
+	}
+
+	desc := &eachTags{tag: "description", Repeat: make(map[uintptr]string)}
+	desc.Each("", conf)
+	var length int
+	for i, tag := range desc.Tags {
+		desc.Tags[i] = tag[1:]
+		if len(tag) > length {
+			length = len(tag)
+		}
+	}
+
+	for i, tag := range desc.Tags {
+		f, ok := flagmap[tag]
+		if ok && !strings.Contains(tag, "{") && len(f) < 5 {
+			fmt.Printf("  -%s,", f)
+		}
+		fmt.Printf("\t --%s=%s\t%s\n", tag, strings.Repeat(" ", length-len(tag)), desc.Vals[i])
 	}
 	return nil
+}
+
+type eachTags struct {
+	tag     string
+	Tags    []string
+	Vals    []string
+	Repeat  map[uintptr]string
+	LastTag string
+}
+
+func (each *eachTags) Each(prefix string, iValue reflect.Value) {
+	switch iValue.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
+		if !iValue.IsNil() {
+			_, ok := each.Repeat[iValue.Pointer()]
+			if ok {
+				return
+			}
+			each.Repeat[iValue.Pointer()] = prefix
+		}
+	}
+
+	switch iValue.Kind() {
+	case reflect.Ptr, reflect.Interface:
+		if !iValue.IsNil() {
+			each.Each(prefix, iValue.Elem())
+		}
+	case reflect.Map:
+		if each.LastTag != "" {
+			each.Tags = append(each.Tags, fmt.Sprintf("%s.{%s}", prefix, iValue.Type().Key().Name()))
+			each.Vals = append(each.Vals, each.LastTag)
+		}
+	case reflect.Slice, reflect.Array:
+		length := "n"
+		if iValue.Kind() == reflect.Array {
+			length = fmt.Sprint(iValue.Type().Len() - 1)
+		}
+		last := each.LastTag
+		if last != "" {
+			each.Tags = append(each.Tags, fmt.Sprintf("%s.{0-%s}", prefix, length))
+			each.Vals = append(each.Vals, last)
+		}
+		each.LastTag = last
+		each.Each(fmt.Sprintf("%s.{0-%s}", prefix, length), reflect.New(iValue.Type().Elem()))
+	case reflect.Struct:
+		each.EachStruct(prefix, iValue)
+	}
+}
+
+func (each *eachTags) EachStruct(prefix string, iValue reflect.Value) {
+	iType := iValue.Type()
+	for i := 0; i < iType.NumField(); i++ {
+		if iValue.Field(i).CanSet() {
+			val := iType.Field(i).Tag.Get(each.tag)
+			name := iType.Field(i).Tag.Get("alias")
+			if name == "" {
+				name = iType.Field(i).Name
+			}
+			if val != "" && each.getValueKind(iType.Field(i).Type) != "" {
+				each.Tags = append(each.Tags, prefix+"."+name)
+				each.Vals = append(each.Vals, val)
+			}
+			each.LastTag = val
+			each.Each(prefix+"."+name, iValue.Field(i))
+		}
+	}
+}
+
+func (each *eachTags) getValueKind(iType reflect.Type) string {
+	switch iType.Kind() {
+	case reflect.Bool:
+		return "bool"
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return "int"
+	case reflect.Float32, reflect.Float64:
+		return "float"
+	case reflect.String:
+		return "string"
+	default:
+		if iType.Kind() == reflect.Slice && iType.Elem().Kind() == reflect.Uint8 {
+			return "string"
+		}
+		return ""
+	}
 }

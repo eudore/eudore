@@ -1,8 +1,8 @@
 # example
 
-本部分为演示例子目录功能导航,保存eudore、middleware、component三个库实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore)。
+本部分为演示例子目录功能导航,保存eudore、middleware、component三个库实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore),仅保证eudore和middleware两个库的稳定性，component系列库可能重构或移除。
 
-exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库测试，单元测试执行gotest.sh脚本(OUT=coverage.html GOROOT=/usr/local/go1.13 bash gotest.sh),未完成单元测试覆盖的库不保证稳定性。
+exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库测试，单元测试执行gotest.sh脚本(OUT=coverage.html GOROOT=/usr/local/go1.13 bash gotest.sh)。
 
 go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/component/ram, github.com/eudore/eudore/component/httptest
 
@@ -25,6 +25,8 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [map配置](configMap.go)
 	- [map差异化配置](configMapMods.go)
 	- [eudore差异化配置](configEudoreMods.go)
+	- [eudore使用结构体描述生成帮助信息](configEudoreMods.go)
+	- [eudore配置器使用锁](configEudoreLocker.go)
 	- [配置解析选项](configOption.go)
 	- [读取文件配置](configReadFile.go)
 	- [读取http远程配置](configReadHttp.go)

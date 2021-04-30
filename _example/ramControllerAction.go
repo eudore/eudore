@@ -1,7 +1,7 @@
 package main
 
 /*
-通过重写控制器的GetRouteParam方法使用pkg、name、method创建action参数再附加到路由参数中。
+通过重写控制器的ControllerParam方法使用pkg、name、method创建action参数再附加到路由参数中。
 */
 
 import (
@@ -29,8 +29,8 @@ func main() {
 	app.Run()
 }
 
-// GetRouteParam 方法添加路由参数信息。
-func (ctl *ramActionController) GetRouteParam(pkg, name, method string) string {
+// ControllerParam 方法添加路由参数信息。
+func (ctl *ramActionController) ControllerParam(pkg, name, method string) string {
 	pos := strings.LastIndexByte(pkg, '/') + 1
 	if pos != 0 {
 		pkg = pkg[pos:]

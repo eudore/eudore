@@ -37,7 +37,7 @@ type ServerStdConfig struct {
 
 	// ReadHeaderTimeout is the amount of time allowed to read request headers.
 	// The connection's read deadline is reset after reading the headers and the Handler can decide what is considered too slow for the body.
-	ReadHeaderTimeout TimeDuration `alias:"readheadertimeout" json:"readheadertimeout"` // Go 1.8
+	ReadHeaderTimeout TimeDuration `alias:"readheadertimeout" json:"readheadertimeout"  description:"Http server read header timeout."` // Go 1.8
 
 	// WriteTimeout is the maximum duration before timing out writes of the response.
 	// It is reset whenever a new request's header is read.
@@ -46,11 +46,11 @@ type ServerStdConfig struct {
 
 	// IdleTimeout is the maximum amount of time to wait for the next request when keep-alives are enabled.
 	// If IdleTimeout is zero, the value of ReadTimeout is used. If both are zero, ReadHeaderTimeout is used.
-	IdleTimeout TimeDuration `alias:"idletimeout" json:"idletimeout"` // Go 1.8
+	IdleTimeout TimeDuration `alias:"idletimeout" json:"idletimeout"  description:"Http server idle timeout."` // Go 1.8
 
 	// MaxHeaderBytes controls the maximum number of bytes the server will read parsing the request header's keys and values, including the request line.
 	// It does not limit the size of the request body. If zero, DefaultMaxHeaderBytes is used.
-	MaxHeaderBytes int `alias:"maxheaderbytes" json:"maxheaderbytes"`
+	MaxHeaderBytes int `alias:"maxheaderbytes" json:"maxheaderbytes"  description:"Http server max header size."`
 
 	// BaseContext optionally specifies a function that returns the base context for incoming requests on this server.
 	// The provided Listener is the specific Listener that's about to start accepting requests.

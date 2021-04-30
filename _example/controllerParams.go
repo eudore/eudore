@@ -1,7 +1,7 @@
 package main
 
 /*
-通过重写控制器的GetRouteParam方法,开源使用pkg、name、method生成额外的路由默认参数，默认附加额外参数。
+通过重写控制器的ControllerParam方法,开源使用pkg、name、method生成额外的路由默认参数，默认附加额外参数。
 */
 
 import (
@@ -24,9 +24,13 @@ func main() {
 	app.Run()
 }
 
-// GetRouteParam 方法添加路由参数信息。
-func (ctl *myParamsController) GetRouteParam(pkg, name, method string) string {
-	return fmt.Sprintf("source=GetRouteParam cpkg=%s cname=%s cmethod=%s", pkg, name, method)
+// ControllerParam 方法添加路由参数信息。
+func (ctl *myParamsController) ControllerParam(pkg, name, method string) string {
+	return fmt.Sprintf("source=ControllerParam cpkg=%s cname=%s cmethod=%s", pkg, name, method)
+}
+
+func (ctl *myParamsController) ControllerGroup(string) string {
+	return "myctl"
 }
 
 func (ctl *myParamsController) Any() {

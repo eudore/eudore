@@ -2,15 +2,19 @@ package main
 
 /*
 WriteJSON方法直接返回json对象格式，不会按照render一样返回数据。
+如果设置默认Render为eudore.Renderer(eudore.RenderJSON)，那么所有Render都返回json。
 */
 
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
+	"github.com/eudore/eudore/middleware"
 )
 
 func main() {
-	app := eudore.NewApp()
+	// 设置默认Render为JSON，所有Render数据均使用json返回
+	app := eudore.NewApp(eudore.Renderer(eudore.RenderJSON))
+	app.AddMiddleware(middleware.NewRequestIDFunc(nil))
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.WriteJSON(map[string]interface{}{
 			"name":    "eudore",

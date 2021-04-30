@@ -3,24 +3,40 @@ package eudore
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 )
 
-// Controller 定义控制器必要的接口。
-//
-// 控制器默认具有Base、Data、Singleton、View四种实现。
-//
-// Base是最基本的控制器实现；
-// Data在Base基础上使用ContextData作为请求上下文，默认具有更多的方法；
-// Singleton是单例控制器，每次请求公用一个控制器；
-// View在Base基础上会使用Data和推断的模板渲染view。
-//
-// 控制器组合一个名称为xxxController，会组合获得xxx控制器的路由方法。
+/*
+Controller 定义控制器接口。
+
+控制器默认具有Base、Data、Singleton、AutoRoute、View五种实现:
+	Base是最基本的控制器实现；
+	Data在Base基础上使用ContextData作为请求上下文，默认具有更多的方法；
+	Singleton是单例控制器，每次请求公用一个控制器；
+	AutoRoute将控制器方法转换成处理函数使用，使用函数扩展；
+	View在Base基础上会使用Data和推断的模板渲染view。
+
+默认控制器实现下列功能:
+	控制器处理，将控制器对应方法转换成路由注册
+	有状态和无状态控制器，使用控制器处理扩展(ControllerBase controllerPoolSingleton)
+	路由映射控制器，将方法转换成一般的路由处理函数，使用函数扩展(ControllerAutoRoute)。
+	控制器构造错误传递(NewControllerError)
+	控制器前置和后置处理函数,Init和Release方法在控制器方法前后调用
+	自定义控制器函数映射关系(实现func ControllerRoute() map[string]string)
+	自定义控制器路由组和路由参数(实现func ControllerParam(pkg, name, method string) string)
+	控制器路由组合，如果组合一个名称为xxxController控制器，会组合获得xxx控制器的路由方法
+	控制器方法组合，如果组合一个名称非xxxController控制器，可以控制器属性ctl.xxx直接调用方法。
+*/
 type Controller interface {
 	Init(Context) error
 	Release(Context) error
 	Inject(Controller, Router) error
+}
+
+type controllerGroup interface {
+	ControllerGroup(string) string
 }
 
 // controllerRoute 定义获得路由和方法映射的接口。
@@ -28,9 +44,9 @@ type controllerRoute interface {
 	ControllerRoute() map[string]string
 }
 
-// controllerRouteParam 定义获得一个路由参数的接口，转入pkg、controllername、methodname获得需要添加的路由参数。
-type controllerRouteParam interface {
-	GetRouteParam(string, string, string) string
+// controllerParam 定义获得一个路由参数的接口，转入pkg、controllername、methodname获得需要添加的路由参数。
+type controllerParam interface {
+	ControllerParam(string, string, string) string
 }
 
 // ControllerFuncExtend 定义控制器函数扩展使用的信息，需要在处理函数扩展中注册对应的处理函数
@@ -77,12 +93,12 @@ type ControllerData struct {
 // ControllerSingleton 实现单例控制器。
 type ControllerSingleton struct{ virtualController }
 
-// ControllerAutoRoute 实现根据方法注册对应的路由器方法。
+// ControllerAutoRoute 实现路由映射控制器根据方法注册对应的路由器方法。
 type ControllerAutoRoute struct{ virtualController }
 
 // ControllerView 基于ControllerBase额外增加了控制器自动渲染数据。
 //
-// 默认模板路由可以通过重写GetRouteParam方法，重新定义template参数。
+// 默认模板路由可以通过重写ControllerParam方法，重新定义template参数。
 //
 // 如果Data不为空且未写入数据，会调用Render渲染数据。
 //
@@ -118,12 +134,12 @@ func (ctl *controllerError) String() string {
 
 // ControllerInjectStateful 函数执行的每次控制器会使用sync.Pool分配和回收。
 func ControllerInjectStateful(controller Controller, router Router) error {
-	return ControllerInjectWithPool(NewControllerPoolStateful(controller), controller, router)
+	return ControllerInjectWithPool(newControllerPoolStateful(controller), controller, router)
 }
 
 // ControllerInjectSingleton 函数每次控制器会使用同一个对象执行请求，注意控制器数据线程安全。
 func ControllerInjectSingleton(controller Controller, router Router) error {
-	return ControllerInjectWithPool(NewControllerPoolSingleton(controller), controller, router)
+	return ControllerInjectWithPool(newControllerPoolSingleton(controller), controller, router)
 }
 
 // ControllerInjectWithPool 定义基本的控制器实现函数。
@@ -144,7 +160,7 @@ func ControllerInjectSingleton(controller Controller, router Router) error {
 //
 // 如果控制器实现ControllerRoute接口，会替换自动分析路由路径，路由路径为空会忽略该方法。
 //
-// 如果控制器实现interface{GetRouteParam(string, string, string) string}接口，使用改接口方法来生成路由参数。
+// 如果控制器实现interface{ControllerParam(string, string, string) string}接口，使用改接口方法来生成路由参数。
 //
 // 如果控制器嵌入了其他基础控制器(控制器名称为:ControllerXxx)，控制器路由分析会忽略嵌入的控制器的全部方法。
 //
@@ -158,23 +174,24 @@ func ControllerInjectWithPool(pool ControllerPool, controller Controller, router
 	// 添加控制器组。
 	cname := iType.Name()
 	cpkg := iType.PkgPath()
-	router = router.Group(getContrllerRouterGroup(cname, router))
+	router = router.Group(getContrllerRouterGroup(controller, cname, router))
 
 	// 获取路由参数函数
 	pfn := defaultRouteParam
-	v, ok := controller.(controllerRouteParam)
+	v, ok := controller.(controllerParam)
 	if ok {
-		pfn = v.GetRouteParam
+		pfn = v.ControllerParam
 	}
 
 	// 路由器注册控制器方法
-	for method, path := range getRoutesWithName(controller) {
+	methods, paths := getSortMapValue(getRoutesWithName(controller))
+	for i, method := range methods {
 		m, ok := pType.MethodByName(method)
-		if !ok || (!checkAllowMethod(method) && path == "") {
+		if !ok || (!checkAllowMethod(method) && paths[i] == "") {
 			continue
 		}
 
-		router.AddHandler(getRouteMethod(method), path+" "+pfn(cpkg, cname, method), ControllerFuncExtend{
+		router.AddHandler(getRouteMethod(method), paths[i]+" "+pfn(cpkg, cname, method), ControllerFuncExtend{
 			Controller: controller,
 			Name:       fmt.Sprintf("%s.%s.%s", cpkg, cname, method),
 			Index:      m.Index,
@@ -195,48 +212,78 @@ func ControllerInjectAutoRoute(controller Controller, router Router) error {
 	// 添加控制器组。
 	cname := iType.Name()
 	cpkg := iType.PkgPath()
-	router = router.Group(getContrllerRouterGroup(cname, router))
+	router = router.Group(getContrllerRouterGroup(controller, cname, router))
 
 	// 获取路由参数函数
 	pfn := defaultRouteParam
-	v, ok := controller.(controllerRouteParam)
+	v, ok := controller.(controllerParam)
 	if ok {
-		pfn = v.GetRouteParam
+		pfn = v.ControllerParam
 	}
 
 	// 路由器注册控制器方法
-	for method, path := range getRoutesWithName(controller) {
+	methods, paths := getSortMapValue(getRoutesWithName(controller))
+	for i, method := range methods {
 		m, ok := pType.MethodByName(method)
-		if !ok || (!checkAllowMethod(method) && path == "") {
+		if !ok || (!checkAllowMethod(method) && paths[i] == "") {
 			continue
 		}
 
 		h := pValue.Method(m.Index)
 		SetHandlerAliasName(h, fmt.Sprintf("%s.%s.%s", cpkg, cname, method))
-		router.AddHandler(getRouteMethod(method), path+" "+pfn(cpkg, cname, method), h)
+		router.AddHandler(getRouteMethod(method), paths[i]+" "+pfn(cpkg, cname, method), h)
 	}
 	return nil
 }
 
-func getContrllerRouterGroup(name string, router Router) string {
+func getContrllerRouterGroup(controller Controller, name string, router Router) (group string) {
+	ctl, ok := controller.(controllerGroup)
 	switch {
+	case ok:
+		group = ctl.ControllerGroup(name)
 	case router.Params().Get(ParamControllerGroup) != "":
-		group := router.Params().Get(ParamControllerGroup)
+		group = router.Params().Get(ParamControllerGroup)
 		router.Params().Del(ParamControllerGroup)
-		if group[0] == '/' {
-			return group
-		}
-		return "/" + group
 	case controllerHasSuffix(name):
-		return "/" + strings.ToLower(name[:len(name)-10])
-	default:
-		return ""
+		buf := make([]rune, 0, len(name)*2)
+		for _, i := range name[:len(name)-10] {
+			if 64 < i && i < 91 {
+				buf = append(buf, '/', i+0x20)
+			} else {
+				buf = append(buf, i)
+			}
+		}
+		group = string(buf)
 	}
+	if group != "" && group[0] != '/' {
+		return "/" + group
+	}
+	return group
 }
 
-// defaultRouteParam 函数定义默认的控制器参数，可以通过实现controllerRouteParam来覆盖该函数。
+// defaultRouteParam 函数定义默认的控制器参数，可以通过实现controllerParam来覆盖该函数。
 func defaultRouteParam(pkg, name, method string) string {
 	return fmt.Sprintf("controllername=%s.%s controllermethod=%s", pkg, name, method)
+}
+
+func getSortMapValue(data map[string]string) ([]string, []string) {
+	keys := make([]string, 0, len(data))
+	vals := make([]string, len(data))
+	for key := range data {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		vi, vj := getRoutePath(data[keys[i]]), getRoutePath(data[keys[j]])
+		if vi == vj {
+			return keys[i] < keys[j]
+		}
+		return vi < vj
+	})
+
+	for i, key := range keys {
+		vals[i] = data[key]
+	}
+	return keys, vals
 }
 
 // getRoutesWithName 函数获得一个控制器类型注入的全部名称和路由路径的映射。
@@ -245,12 +292,12 @@ func getRoutesWithName(controller Controller) map[string]string {
 	names := getContrllerAllMethos(iType)
 	routes := make(map[string]string, len(names))
 	for _, name := range names {
-		if name != "" {
+		if name != "" && !strings.HasPrefix(name, "Controller") {
 			routes[name] = getRouteByName(name)
 		}
 	}
 	for _, name := range getContrllerIgnoreMethos(iType) {
-		delete(routes,name)
+		delete(routes, name)
 	}
 
 	// 如果控制器实现ControllerRoute接口，加载额外路由。
@@ -275,16 +322,15 @@ func getContrllerIgnoreMethos(iType reflect.Type) []string {
 	}
 	if iType.Kind() == reflect.Struct {
 		for i := 0; i < iType.NumField(); i++ {
-			// Controller为前缀的嵌入控制器。
 			// 判断嵌入属性
-			if iType.Field(i).Anonymous  {
+			if iType.Field(i).Anonymous {
 				var ignore []string
 				if controllerHasSuffix(getReflectTypeName(iType.Field(i).Type)) {
 					ignore = getContrllerIgnoreMethos(iType.Field(i).Type)
-				}else {
+				} else {
 					ignore = getContrllerAllMethos(iType.Field(i).Type)
 				}
-				allname= append(allname, ignore...)
+				allname = append(allname, ignore...)
 			}
 		}
 	}
@@ -389,16 +435,6 @@ func (ctl *virtualController) Release(Context) error {
 	return nil
 }
 
-// ControllerRoute 方法返回默认路由信息。
-func (ctl *virtualController) ControllerRoute() map[string]string {
-	return nil
-}
-
-// GetRouteParam 方法添加路由参数信息。
-func (ctl *virtualController) GetRouteParam(pkg, name, method string) string {
-	return defaultRouteParam(pkg, name, method)
-}
-
 // Init 实现控制器初始方法。
 func (ctl *ControllerBase) Init(ctx Context) error {
 	ctl.Context = ctx
@@ -469,8 +505,8 @@ func (ctl *ControllerView) Inject(controller Controller, router Router) error {
 	return ControllerInjectStateful(controller, router)
 }
 
-// GetRouteParam 方法返回路由的参数，View控制器会附加模板信息。
-func (ctl *ControllerView) GetRouteParam(pkg, name, method string) string {
+// ControllerParam 方法返回路由的参数，View控制器会附加模板信息。
+func (ctl *ControllerView) ControllerParam(pkg, name, method string) string {
 	return fmt.Sprintf("controllername=%s.%s controllermethod=%s template=%s", pkg, name, method, defaultGetViewTemplate(name, method))
 }
 
@@ -479,8 +515,8 @@ func (ctl *ControllerView) SetTemplate(path string) {
 	ctl.SetParam("template", path)
 }
 
-// NewControllerPoolStateful 函数创建一个基于sync.Pool的控制器池。
-func NewControllerPoolStateful(controler Controller) ControllerPool {
+// newControllerPoolStateful 函数创建一个基于sync.Pool的控制器池。
+func newControllerPoolStateful(controler Controller) ControllerPool {
 	newfn := newControllerCloneFunc(controler)
 	return &controllerPoolSync{
 		Pool: sync.Pool{
@@ -527,8 +563,8 @@ func (pool *controllerPoolSync) Put(controller Controller) {
 	pool.Pool.Put(controller)
 }
 
-// NewControllerPoolSingleton 函数创建一个单例对象的控制器池，每次都返回固定的单例控制器对象。
-func NewControllerPoolSingleton(controler Controller) ControllerPool {
+// newControllerPoolSingleton 函数创建一个单例对象的控制器池，每次都返回固定的单例控制器对象。
+func newControllerPoolSingleton(controler Controller) ControllerPool {
 	return &controllerPoolSingleton{controler}
 }
 

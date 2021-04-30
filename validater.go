@@ -57,8 +57,8 @@ func GetValidateStringFunc(name string) func(string) bool {
 	return nil
 }
 
-// NewvalidaterBase 函数创建一个默认的Validater。
-func NewvalidaterBase() Validater {
+// NewValidaterBase 函数创建一个默认的Validater。
+func NewValidaterBase() Validater {
 	return &validaterBase{
 		ValidateTypes:    make(map[reflect.Type]validateBaseFields),
 		ValidateFuncs:    make(map[string]map[reflect.Type]reflect.Value),

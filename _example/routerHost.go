@@ -8,6 +8,7 @@ import (
 func main() {
 	app := eudore.NewApp(eudore.NewRouterStd(eudore.NewRouterCoreHost(nil)))
 	app.AnyFunc("/* host=eudore.com", echoHandleHost)
+	app.AnyFunc("/* host=eudore.com:8088", echoHandleHost)
 	app.AnyFunc("/* host=eudore.cn", echoHandleHost)
 	app.AnyFunc("/* host=eudore.*", echoHandleHost)
 	app.AnyFunc("/* host=example.com", echoHandleHost)
@@ -21,6 +22,8 @@ func main() {
 	client.NewRequest("GET", "/").Do().CheckStatus(200).CheckBodyString("")
 	client.NewRequest("GET", "/").WithHeaderValue("Host", "eudore.cn").Do().CheckStatus(200).CheckBodyString("eudore.cn")
 	client.NewRequest("GET", "/").WithHeaderValue("Host", "eudore.com").Do().CheckStatus(200).CheckBodyString("eudore.com")
+	client.NewRequest("GET", "/").WithHeaderValue("Host", "eudore.com:8088").Do().CheckStatus(200).CheckBodyString("eudore.com")
+	client.NewRequest("GET", "/").WithHeaderValue("Host", "eudore.com:8089").Do().CheckStatus(200).CheckBodyString("eudore.com")
 	client.NewRequest("GET", "/").WithHeaderValue("Host", "eudore.net").Do().CheckStatus(200).CheckBodyString("eudore.*")
 	client.NewRequest("GET", "/").WithHeaderValue("Host", "www.eudore.cn").Do().CheckStatus(200).CheckBodyString("www.*.cn")
 	client.NewRequest("GET", "/").WithHeaderValue("Host", "example.com").Do().CheckStatus(200).CheckBodyString("example.com")

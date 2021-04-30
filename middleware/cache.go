@@ -12,9 +12,10 @@ import (
 
 type cache struct {
 	sync.Mutex
-	dura    time.Duration
-	context context.Context
-	waits   map[string]*sync.WaitGroup
+	dura       time.Duration
+	context    context.Context
+	getKeyFunc func(eudore.Context) string
+	waits      map[string]*sync.WaitGroup
 	cacheStore
 }
 
@@ -31,12 +32,20 @@ type cacheStore interface {
 //
 // time.Duration                 =>    请求数据缓存时间，默认秒
 //
+// func(eudore.Context) string   =>    自定义缓存key，为空则跳过缓存
+//
 // cacheStore			         =>    缓存存储对象
 func NewCacheFunc(args ...interface{}) eudore.HandlerFunc {
 	c := &cache{
 		dura:    time.Second,
 		context: context.Background(),
-		waits:   make(map[string]*sync.WaitGroup),
+		getKeyFunc: func(ctx eudore.Context) string {
+			if ctx.Method() != eudore.MethodGet || ctx.GetHeader(eudore.HeaderUpgrade) != "" {
+				return ""
+			}
+			return ctx.Request().URL.RequestURI()
+		},
+		waits: make(map[string]*sync.WaitGroup),
 	}
 	for _, i := range args {
 		switch val := i.(type) {
@@ -44,6 +53,8 @@ func NewCacheFunc(args ...interface{}) eudore.HandlerFunc {
 			c.dura = val
 		case context.Context:
 			c.context = val
+		case func(eudore.Context) string:
+			c.getKeyFunc = val
 		case cacheStore:
 			c.cacheStore = val
 		}
@@ -55,11 +66,11 @@ func NewCacheFunc(args ...interface{}) eudore.HandlerFunc {
 }
 
 func (cache *cache) Handle(ctx eudore.Context) {
-	if ctx.Method() != eudore.MethodGet || ctx.GetHeader(eudore.HeaderUpgrade) != "" {
+	key := cache.getKeyFunc(ctx)
+	if key == "" {
 		return
 	}
 
-	key := ctx.Request().URL.RequestURI()
 	var wait *sync.WaitGroup
 	var ok bool
 	for {
@@ -67,6 +78,7 @@ func (cache *cache) Handle(ctx eudore.Context) {
 		data := cache.Load(key)
 		if data != nil {
 			data.writeData(ctx.Response())
+			ctx.SetParam("cache", key)
 			ctx.End()
 			return
 		}

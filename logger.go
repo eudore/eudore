@@ -2,6 +2,7 @@ package eudore
 
 import (
 	"bufio"
+	"context"
 	"encoding"
 	"encoding/json"
 	"fmt"
@@ -18,7 +19,15 @@ import (
 	"unsafe"
 )
 
-// Logger 日志输出接口
+/*
+Logger 定义日志输出接口实现下列功能:
+	五级日志格式化输出
+	日志条目带Fields属性
+	json有序格式化输出
+	日志器初始化前日志处理
+	文件行信息输出
+	默认输入文件切割并软连接。
+*/
 type Logger interface {
 	Debug(...interface{})
 	Info(...interface{})
@@ -32,8 +41,8 @@ type Logger interface {
 	Fatalf(string, ...interface{})
 	WithField(string, interface{}) Logger
 	WithFields([]string, []interface{}) Logger
-	Sync() error
 	SetLevel(LoggerLevel)
+	Sync() error
 }
 
 // LoggerLevel 定义日志级别
@@ -62,14 +71,14 @@ type loggerInitHandler interface {
 //
 // FileLine 是否输出调用日志输出的函数和文件位置
 type LoggerStdConfig struct {
-	Writer     LoggerWriter `json:"-" alias:"writer"`
-	Std        bool         `json:"std" alias:"std"`
-	Path       string       `json:"path" alias:"path"`
-	MaxSize    uint64       `json:"maxsize" alias:"maxsize"`
-	Link       string       `json:"link" alias:"link"`
-	Level      LoggerLevel  `json:"level" alias:"level"`
-	TimeFormat string       `json:"timeformat" alias:"timeformat"`
-	FileLine   bool         `json:"fileline" alias:"fileline"`
+	Writer     LoggerWriter `json:"-" alias:"writer" description:"Logger output writer."`
+	Std        bool         `json:"std" alias:"std" description:"Is output to os.Stdout."`
+	Path       string       `json:"path" alias:"path" description:"Output logger file path."`
+	MaxSize    uint64       `json:"maxsize" alias:"maxsize" description:"Output file max size, 'Path' must contain 'index'."`
+	Link       string       `json:"link" alias:"link" description:"Output file link to path."`
+	Level      LoggerLevel  `json:"level" alias:"level" description:"Logger Output level."`
+	TimeFormat string       `json:"timeformat" alias:"timeformat" description:"Logger output timeFormat, default '2006-01-02 15:04:05'"`
+	FileLine   bool         `json:"fileline" alias:"fileline" description:"Is output file and line."`
 }
 
 // LoggerStd 定义日志默认实现条目信息。
@@ -100,33 +109,9 @@ type LoggerStdData interface {
 // 参数为一个eudore.LoggerStdConfig或map保存的创建配置,配置选项含义参考eudore.LoggerStdConfig说明。
 func NewLoggerStd(arg interface{}) Logger {
 	// 解析配置
-	var config LoggerStdConfig
-	config.TimeFormat = "2006-01-02 15:04:05"
-	ConvertTo(arg, &config)
-	logdepath := 3
-	if !config.FileLine {
-		logdepath = 3 - 0x7f
-	}
-	if config.Writer == nil {
-		var err error
-		config.Writer, err = NewLoggerWriterRotate(strings.TrimSpace(config.Path), config.Std, config.MaxSize, newLoggerLinkName(config.Link))
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	data := &loggerStdDataJSON{
-		LoggerWriter: config.Writer,
-	}
-	data.Pool.New = func() interface{} {
-		return &LoggerStd{
-			LoggerStdData: data,
-			Timeformat:    "2006-01-02 15:04:05",
-			Buffer:        make([]byte, 0, 2048),
-			Keys:          make([]string, 0, 4),
-			Vals:          make([]interface{}, 0, 4),
-			Depth:         logdepath,
-		}
+	data, ok := arg.(LoggerStdData)
+	if !ok {
+		data = NewLoggerStdDataJSON(arg)
 	}
 	log := data.GetLogger()
 	log.Logger = true
@@ -186,6 +171,39 @@ func (log *loggerInit) NextHandler(logger Logger) {
 
 func (log *loggerInit) Sync() error {
 	return log.loggerStdDataInit.Sync()
+}
+
+// NewLoggerStdDataJSON 函数创建一个LoggerStd的JSON数据处理器。
+func NewLoggerStdDataJSON(arg interface{}) LoggerStdData {
+	var config LoggerStdConfig
+	config.TimeFormat = "2006-01-02 15:04:05"
+	ConvertTo(arg, &config)
+	logdepath := 3
+	if !config.FileLine {
+		logdepath = 3 - 0x7f
+	}
+	if config.Writer == nil {
+		var err error
+		config.Writer, err = NewLoggerWriterRotate(strings.TrimSpace(config.Path), config.Std, config.MaxSize, newLoggerLinkName(config.Link))
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	data := &loggerStdDataJSON{
+		LoggerWriter: config.Writer,
+	}
+	data.Pool.New = func() interface{} {
+		return &LoggerStd{
+			LoggerStdData: data,
+			Timeformat:    "2006-01-02 15:04:05",
+			Buffer:        make([]byte, 0, 2048),
+			Keys:          make([]string, 0, 4),
+			Vals:          make([]interface{}, 0, 4),
+			Depth:         logdepath,
+		}
+	}
+	return data
 }
 
 type loggerStdDataJSON struct {
@@ -408,7 +426,11 @@ func (entry *LoggerStd) Fatalf(format string, args ...interface{}) {
 	entry.LoggerStdData.PutLogger(entry)
 }
 
-// WithFields 方法设置多个条目属性。
+// WithFields 方法一次设置多个条目属性。
+//
+// 如果key和val同时为nil会返回Logger的深拷贝对象。
+//
+// WithFields不会设置Field属性。
 func (entry *LoggerStd) WithFields(key []string, value []interface{}) Logger {
 	if key == nil && value == nil {
 		entry = entry.getEntry()
@@ -424,11 +446,28 @@ func (entry *LoggerStd) WithFields(key []string, value []interface{}) Logger {
 }
 
 // WithField 方法设置一个日志属性。
+//
+// 如果key为"context"值类型为context.Context,设置该值用于传递自定义信息。
+//
+// 如果key为"depth"值类型为int，设置日志调用堆栈增删层数。
+//
+// 如果key为"depth"值类型为string值"enable"或"disable",启用或关闭日志调用位置输出。
+//
+// 如果key为"time"值类型为time.time，设置日志输出的时间属性。
 func (entry *LoggerStd) WithField(key string, value interface{}) Logger {
 	if entry.Logger {
 		entry = entry.getEntry()
 	}
 	switch key {
+	case "context":
+		val, ok := value.(context.Context)
+		if ok {
+			for i := range entry.Keys {
+				if entry.Keys[i] == "context" {
+					entry.Vals[i] = val
+				}
+			}
+		}
 	case "depth":
 		val, ok := value.(int)
 		if ok {
@@ -601,36 +640,7 @@ func loggerFormatWriteValue(entry *LoggerStd, value interface{}) {
 
 // loggerFormatWriteReflect 方法写入值。
 func loggerFormatWriteReflect(entry *LoggerStd, iValue reflect.Value) {
-	if iValue.Kind() == reflect.Invalid {
-		entry.Buffer = append(entry.Buffer, '"', '"')
-		return
-	}
-	// 检查接口
-	switch val := iValue.Interface().(type) {
-	case json.Marshaler:
-		body, err := val.MarshalJSON()
-		if err == nil {
-			entry.Buffer = append(entry.Buffer, body...)
-		} else {
-			entry.Buffer = append(entry.Buffer, '"')
-			loggerFormatWriteString(entry, err.Error())
-			entry.Buffer = append(entry.Buffer, '"')
-		}
-		return
-	case encoding.TextMarshaler:
-		body, err := val.MarshalText()
-		entry.Buffer = append(entry.Buffer, '"')
-		if err == nil {
-			loggerFormatWriteBytes(entry, body)
-		} else {
-			loggerFormatWriteString(entry, err.Error())
-		}
-		entry.Buffer = append(entry.Buffer, '"')
-		return
-	case fmt.Stringer:
-		entry.Buffer = append(entry.Buffer, '"')
-		loggerFormatWriteString(entry, val.String())
-		entry.Buffer = append(entry.Buffer, '"')
+	if loggerFormatWriteReflectFace(entry, iValue) {
 		return
 	}
 	// 写入类型
@@ -656,16 +666,11 @@ func loggerFormatWriteReflect(entry *LoggerStd, iValue reflect.Value) {
 		entry.Buffer = append(entry.Buffer, '"')
 		loggerFormatWriteString(entry, iValue.String())
 		entry.Buffer = append(entry.Buffer, '"')
-	case reflect.Array, reflect.Slice:
-		entry.Buffer = append(entry.Buffer, '[')
-		if iValue.Len() == 0 {
-			entry.Buffer = append(entry.Buffer, ',')
-		}
-		for i := 0; i < iValue.Len(); i++ {
-			loggerFormatWriteReflect(entry, iValue.Index(i))
-			entry.Buffer = append(entry.Buffer, ',')
-		}
-		entry.Buffer[len(entry.Buffer)-1] = ']'
+	case reflect.Ptr, reflect.Interface:
+		loggerFormatWriteReflect(entry, iValue.Elem())
+	case reflect.Func, reflect.Chan, reflect.UnsafePointer:
+		entry.Buffer = append(entry.Buffer, '0', 'x')
+		entry.Buffer = strconv.AppendUint(entry.Buffer, uint64(iValue.Pointer()), 16)
 	case reflect.Map:
 		entry.Buffer = append(entry.Buffer, '{')
 		for _, key := range iValue.MapKeys() {
@@ -675,24 +680,72 @@ func loggerFormatWriteReflect(entry *LoggerStd, iValue reflect.Value) {
 			entry.Buffer = append(entry.Buffer, ',')
 		}
 		entry.Buffer[len(entry.Buffer)-1] = '}'
+	case reflect.Array, reflect.Slice:
+		loggerFormatWriteReflectSlice(entry, iValue)
 	case reflect.Struct:
-		entry.Buffer = append(entry.Buffer, '{')
-		iType := iValue.Type()
-		for i := 0; i < iValue.NumField(); i++ {
-			if iValue.Field(i).CanInterface() {
-				loggerFormatWriteString(entry, iType.Field(i).Name)
-				entry.Buffer = append(entry.Buffer, ':')
-				loggerFormatWriteReflect(entry, iValue.Field(i))
-				entry.Buffer = append(entry.Buffer, ',')
-			}
-		}
-		entry.Buffer[len(entry.Buffer)-1] = '}'
-	case reflect.Ptr, reflect.Interface:
-		loggerFormatWriteReflect(entry, iValue.Elem())
-	case reflect.Func, reflect.Chan, reflect.UnsafePointer:
-		entry.Buffer = append(entry.Buffer, '0', 'x')
-		entry.Buffer = strconv.AppendUint(entry.Buffer, uint64(iValue.Pointer()), 16)
+		loggerFormatWriteReflectStruct(entry, iValue)
 	}
+}
+
+func loggerFormatWriteReflectFace(entry *LoggerStd, iValue reflect.Value) bool {
+	if iValue.Kind() == reflect.Invalid {
+		entry.Buffer = append(entry.Buffer, []byte("<Invalid Value>")...)
+		return true
+	}
+	// 检查接口
+	switch val := iValue.Interface().(type) {
+	case json.Marshaler:
+		body, err := val.MarshalJSON()
+		if err == nil {
+			entry.Buffer = append(entry.Buffer, body...)
+		} else {
+			entry.Buffer = append(entry.Buffer, '"')
+			loggerFormatWriteString(entry, err.Error())
+			entry.Buffer = append(entry.Buffer, '"')
+		}
+	case encoding.TextMarshaler:
+		body, err := val.MarshalText()
+		entry.Buffer = append(entry.Buffer, '"')
+		if err == nil {
+			loggerFormatWriteBytes(entry, body)
+		} else {
+			loggerFormatWriteString(entry, err.Error())
+		}
+		entry.Buffer = append(entry.Buffer, '"')
+	case fmt.Stringer:
+		entry.Buffer = append(entry.Buffer, '"')
+		loggerFormatWriteString(entry, val.String())
+		entry.Buffer = append(entry.Buffer, '"')
+	default:
+		return false
+	}
+	return true
+}
+
+func loggerFormatWriteReflectStruct(entry *LoggerStd, iValue reflect.Value) {
+	entry.Buffer = append(entry.Buffer, '{')
+	iType := iValue.Type()
+	for i := 0; i < iValue.NumField(); i++ {
+		if iValue.Field(i).CanInterface() {
+			loggerFormatWriteString(entry, iType.Field(i).Name)
+			entry.Buffer = append(entry.Buffer, ':')
+			loggerFormatWriteReflect(entry, iValue.Field(i))
+			entry.Buffer = append(entry.Buffer, ',')
+		}
+	}
+	entry.Buffer[len(entry.Buffer)-1] = '}'
+}
+
+func loggerFormatWriteReflectSlice(entry *LoggerStd, iValue reflect.Value) {
+	entry.Buffer = append(entry.Buffer, '[')
+	if iValue.Len() == 0 {
+		entry.Buffer = append(entry.Buffer, ',')
+	}
+	for i := 0; i < iValue.Len(); i++ {
+		loggerFormatWriteReflect(entry, iValue.Index(i))
+		entry.Buffer = append(entry.Buffer, ',')
+	}
+	entry.Buffer[len(entry.Buffer)-1] = ']'
 }
 
 // loggerFormatWriteString 方法安全写入字符串。
@@ -824,10 +877,11 @@ func NewLoggerWriterRotate(name string, std bool, maxsize uint64, fn ...func(str
 		maxsize = 0
 	}
 	if maxsize <= 0 {
+		// 如果同时文件名称不包含日期，那么就具有index和date日志滚动条件。
 		if name == formatDateName(name) {
 			return NewLoggerWriterFile(name, std)
 		}
-		maxsize = 0xffffffff
+		maxsize = 0xffffffffff
 	}
 	lw := &syncWriterRotate{
 		name:     name,
@@ -850,7 +904,6 @@ func (w *syncWriterRotate) Sync() error {
 
 // Write 方法写入日志数据。
 func (w *syncWriterRotate) Write(p []byte) (n int, err error) {
-	// if len(p) == 9 && w.nbytes+uint64(len(p)) >= w.MaxSize && string(p) == string(loggerpart1) {
 	if w.nbytes+uint64(len(p)) >= w.MaxSize {
 		// 执行size滚动
 		w.rotateFile()

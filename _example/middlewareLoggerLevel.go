@@ -12,21 +12,14 @@ func main() {
 	app.SetLevel(eudore.LogInfo)
 	app.Options(app.Logger)
 
-	app.AddMiddleware(func(ctx eudore.Context) {
-		// 如果路由规则是"/api/v1/user",设置日志级别为Debug
-		if ctx.GetParam("route") == "/api/v1/user" {
-			log := ctx.Logger().WithFields(nil, nil)
-			log.SetLevel(eudore.LogDebug)
-			ctx.SetLogger(log)
-		}
-	})
+	app.AddMiddleware(middleware.NewLoggerLevelFunc(nil))
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 
 	app.AnyFunc("/api/v1/user", func(ctx eudore.Context) {
 		ctx.Debug("Get User")
 	})
 	app.AnyFunc("/api/v1/meta", func(ctx eudore.Context) {
-		ctx.Debug("Get Meta")
+		ctx.Info("Get Meta", ctx.GetQuery("debug"))
 	})
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 	app.AddHandler("404", "", eudore.HandlerRouter404)
@@ -34,7 +27,9 @@ func main() {
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/api/v1/user").Do()
-	client.NewRequest("GET", "/api/v1/meta").Do()
+	client.NewRequest("GET", "/api/v1/meta?debug=0").Do()
+	client.NewRequest("GET", "/api/v1/meta?debug=1").Do()
+	client.NewRequest("GET", "/api/v1/meta?debug=5").Do()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

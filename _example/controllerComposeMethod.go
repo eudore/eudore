@@ -25,7 +25,7 @@ func main() {
 	app.AddController(new(myMethodController))
 
 	client := httptest.NewClient(app)
-	client.NewRequest("GET", "/mymethod/").Do().Out()
+	client.NewRequest("GET", "/my/method/").Do().Out()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

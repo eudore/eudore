@@ -23,8 +23,8 @@ func main() {
 	client.NewRequest("GET", "/mysingleton/path/eudore").Do().CheckStatus(200).CheckBodyContainString("/path/eudore")
 	client.NewRequest("GET", mybasepath).Do().CheckStatus(200).CheckBodyContainString("4")
 
-	client.NewRequest("GET", "/2/mysingleton").Do().CheckStatus(200)
-	client.NewRequest("GET", "/88/name/mysingleton").Do().CheckStatus(200)
+	client.NewRequest("GET", "/2/my/singleton").Do().CheckStatus(200)
+	client.NewRequest("GET", "/88/name/my/singleton").Do().CheckStatus(200)
 	client.NewRequest("GET", "/").Do().CheckStatus(404)
 
 	app.Listen(":8088")

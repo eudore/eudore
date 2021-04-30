@@ -24,8 +24,8 @@ func main() {
 	app.AddController(new(myRouteController))
 
 	client := httptest.NewClient(app)
-	client.NewRequest("GET", "/myroute/hello").Do().Out()
-	client.NewRequest("PUT", "/myroute/").Do().Out()
+	client.NewRequest("GET", "/my/route/hello").Do().Out()
+	client.NewRequest("PUT", "/my/route/").Do().Out()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

@@ -15,7 +15,18 @@ import (
 	"strings"
 )
 
-// Context 定义请求上下文接口，分为请求上下文数据、请求、参数、响应、日志输出五部分。
+/*
+Context 定义请求上下文接口，分为请求上下文数据、请求、参数、响应、日志输出五部分。
+	context.Context、eudore.ResponseWriter、*http.Request、eudore.Logger对象读写
+	中间件机制执行
+	基本请求信息
+	数据Bind和Validate
+	重复读取请求body
+	param、query、header、cookie、form读写
+	状态码、header、重定向、push、body写入
+	数据写入Render
+	5级日志格带fields格式化属性
+*/
 type Context interface {
 	// context
 	Reset(http.ResponseWriter, *http.Request)
@@ -48,7 +59,7 @@ type Context interface {
 	BindWith(interface{}, Binder) error
 	Validate(interface{}) error
 
-	// param query header cookie session
+	// param query header cookie form
 	Params() *Params
 	GetParam(string) string
 	SetParam(string, string)
@@ -248,7 +259,7 @@ func (ctx *contextBase) RealIP() string {
 	return strings.SplitN(string(xforward), ",", 2)[0]
 }
 
-// RequestID 获取X-Request-Id Header
+// RequestID 获取响应中的X-Request-Id Header
 func (ctx *contextBase) RequestID() string {
 	return ctx.GetHeader(HeaderXRequestID)
 }
@@ -493,6 +504,10 @@ func (ctx *contextBase) Write(data []byte) (n int, err error) {
 
 // WriteString 实现向响应写入一个字符串。
 func (ctx *contextBase) WriteString(i string) (err error) {
+	header := ctx.ResponseWriter.Header()
+	if val := header.Get(HeaderContentType); len(val) == 0 {
+		header.Add(HeaderContentType, MimeTextPlainCharsetUtf8)
+	}
 	_, err = ctx.ResponseWriter.Write([]byte(i))
 	if err != nil {
 		ctx.log.WithField("depth", 1).WithField(ParamCaller, "Context.WriteString").Error(err)
@@ -595,20 +610,34 @@ func (ctx *contextBase) Fatalf(format string, args ...interface{}) {
 	ctx.logFatal()
 }
 
+type contextFatalError struct {
+	Status     int    `json:"status "`
+	Error      string `json:"error"`
+	XRequestID string `json:"x-request-id,omitempty"`
+	Host       string `json:"host"`
+	Path       string `json:"path"`
+	Route      string `json:"route"`
+}
+
 // logFatal 方法执行Fatal方法的返回信息。
 func (ctx *contextBase) logFatal() {
 	// 结束Context
-	status := ctx.ResponseWriter.Status()
-	if status == 200 && ctx.ResponseWriter.Size() == 0 {
-		status = 500
-		ctx.WriteHeader(500)
-	}
-	if status > 399 {
-		ctx.Render(map[string]interface{}{
-			"error":        ctx.err,
-			"status":       status,
-			"x-request-id": ctx.RequestID(),
-		})
+	if ctx.ResponseWriter.Size() == 0 {
+		status := ctx.ResponseWriter.Status()
+		if status == 200 {
+			status = 500
+			ctx.WriteHeader(500)
+		}
+		if status > 399 {
+			ctx.Render(contextFatalError{
+				Status:     status,
+				Error:      ctx.err,
+				XRequestID: ctx.RequestID(),
+				Host:       ctx.Host(),
+				Path:       ctx.Path(),
+				Route:      ctx.GetParam(ParamRoute),
+			})
+		}
 	}
 	ctx.End()
 }

@@ -33,7 +33,7 @@ func NewRouterFunc(data map[string]interface{}) eudore.HandlerFunc {
 		index, handler := ctx.GetHandler()
 		hs := handler[index+1:]
 		route := ctx.GetParam(eudore.ParamRoute)
-		ctx.SetHandler(-1, eudore.HandlerFuncsCombine(router.Match(ctx.Method(), ctx.Path(), ctx.Params()), hs))
+		ctx.SetHandler(-1, eudore.NewHandlerFuncsCombine(router.Match(ctx.Method(), ctx.Path(), ctx.Params()), hs))
 		if route != "" {
 			ctx.SetParam(eudore.ParamRoute, route)
 		}
@@ -50,7 +50,6 @@ func NewRouterRewriteFunc(data map[string]string) eudore.HandlerFunc {
 		k = getRouterRewritePath(k)
 		mapping[k] = newRouterRewriteFunc(v)
 	}
-	fmt.Printf("%#v", mapping)
 	return NewRouterFunc(mapping)
 }
 

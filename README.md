@@ -13,7 +13,7 @@ eudore是一个golang轻量级web框架核心，可以轻松扩展成一个技�
 - 易扩展：主要设计目标、核心全部解耦，接口即为逻辑。
 - 简单：对象语义明确，框架代码量少[复杂度低](https://goreportcard.com/report/github.com/eudore/eudore#gocyclo)，无依赖库。
 - 易用：允许Appcation和Context自由添加功能方法。
-- 高性能：各部分实现与同类库相比性能相识。
+- 高性能：各部分实现与同类库相比性能相似。
 - 两项创新：[新Radix路由实现](https://github.com/eudore/eudore/wiki/4.5.1-eudore-router-radix)和[处理函数扩展机制](https://github.com/eudore/eudore/wiki/4.7-eudore-handler)
 
 ## 安装

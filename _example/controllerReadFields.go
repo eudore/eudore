@@ -21,9 +21,9 @@ func main() {
 	})
 
 	client := httptest.NewClient(app)
-	client.NewRequest("GET", "/myfields/").Do().CheckStatus(200).Out()
-	client.NewRequest("GET", "/myfields/num").Do().CheckStatus(200).Out()
-	client.NewRequest("GET", "/myfields/name").Do().CheckStatus(200).Out()
+	client.NewRequest("GET", "/my/fields/").Do().CheckStatus(200).Out()
+	client.NewRequest("GET", "/my/fields/num").Do().CheckStatus(200).Out()
+	client.NewRequest("GET", "/my/fields/name").Do().CheckStatus(200).Out()
 	client.NewRequest("GET", "/file/data/2").Do().CheckStatus(200).Out()
 
 	app.Listen(":8088")

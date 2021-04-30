@@ -51,7 +51,7 @@ func main() {
 	logout.WithField("level", "debug").Debug("debug")
 	logout.WithField("level", "info").Info("info")
 	logout.WithField("level", "warning").Warning("warning")
-	logout.WithField("level", "error").Error("error")
+	logout.WithField("context", app.Context).WithField("context", app.Context).WithField("level", "error").Error("error")
 
 	app.CancelFunc()
 	app.Run()

@@ -146,7 +146,7 @@ func (ext *handlerExtendBase) NewHandlerFuncs(_ string, i interface{}) HandlerFu
 	if !ok {
 		val = reflect.ValueOf(i)
 	}
-	return HandlerFuncsFilter(ext.newHandlerFuncs(val))
+	return NewHandlerFuncsFilter(ext.newHandlerFuncs(val))
 }
 
 func (ext *handlerExtendBase) newHandlerFuncs(iValue reflect.Value) HandlerFuncs {
@@ -406,8 +406,8 @@ func (ext *handlerExtendTree) ListExtendHandlerNames() []string {
 	return ext.listExtendHandlerNamesByPrefix("")
 }
 
-// HandlerFuncsFilter 函数过滤掉多个请求上下文处理函数中的空对象。
-func HandlerFuncsFilter(hs HandlerFuncs) HandlerFuncs {
+// NewHandlerFuncsFilter 函数过滤掉多个请求上下文处理函数中的空对象。
+func NewHandlerFuncsFilter(hs HandlerFuncs) HandlerFuncs {
 	var num int
 	for _, h := range hs {
 		if h != nil {
@@ -428,14 +428,14 @@ func HandlerFuncsFilter(hs HandlerFuncs) HandlerFuncs {
 	return nhs
 }
 
-// HandlerFuncsCombine function merges two HandlerFuncs into one. The default maximum length is now 63, which exceeds panic.
+// NewHandlerFuncsCombine function merges two HandlerFuncs into one. The default maximum length is now 63, which exceeds panic.
 //
 // Used to reconstruct the slice and prevent the appended data from being confused.
 //
 // HandlerFuncsCombine 函数将两个HandlerFuncs合并成一个，默认现在最大长度63，超过过panic。
 //
 // 用于重构切片，防止切片append数据混乱。
-func HandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
+func NewHandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	// if nil
 	if len(hs1) == 0 {
 		return hs2
@@ -771,6 +771,9 @@ func NewStaticHandler(dir string) HandlerFunc {
 		path := ctx.GetParam("path")
 		if path == "" {
 			path = ctx.Path()
+		}
+		if ctx.Request().Header.Get(HeaderCacheControl) == "" {
+			ctx.SetHeader(HeaderCacheControl, "no-cache")
 		}
 		ctx.WriteFile(filepath.Join(dir, filepath.Clean("/"+path)))
 	}

@@ -111,6 +111,7 @@ type RouterStd struct {
 func HandlerRouter405(ctx Context) {
 	const page405 string = "405 method not allowed\n"
 	ctx.SetHeader(HeaderAllow, ctx.GetParam(ParamAllow))
+	ctx.SetHeader("X-Match-Route", ctx.GetParam(ParamRoute))
 	ctx.WriteHeader(405)
 	ctx.WriteString(page405)
 }
@@ -303,8 +304,8 @@ func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 		m.Print(fmt.Sprintf("Test handlers params is %s, split path to: ['%s'], match middlewares is: %v, register handlers is: %v.", params.String(), strings.Join(getSplitPath(path), "', '"), m.Middlewares.Lookup(path), handlers))
 		return
 	}
-	m.Print([]string{"method", "params"}, []interface{}{method, params}, "Register handler:", method, path, handlers)
-	handlers = HandlerFuncsCombine(m.Middlewares.Lookup(path), handlers)
+	m.Print("Register handler:", method, strings.TrimPrefix(params.String(), "route="), handlers)
+	handlers = NewHandlerFuncsCombine(m.Middlewares.Lookup(path), handlers)
 
 	// 处理多方法
 	var errs muliterror
@@ -335,7 +336,7 @@ func (m *RouterStd) newHandlerFuncs(path string, hs []interface{}) (HandlerFuncs
 	for i, h := range hs {
 		handler := m.HandlerExtender.NewHandlerFuncs(path, h)
 		if handler != nil && len(handler) > 0 {
-			handlers = HandlerFuncsCombine(handlers, handler)
+			handlers = NewHandlerFuncsCombine(handlers, handler)
 		} else {
 			fname := reflect.TypeOf(h).String()
 			cf, ok := h.(ControllerFuncExtend)
@@ -563,7 +564,7 @@ type middlewareNode struct {
 func (t *middlewareNode) Insert(path string, indexs []int, vals HandlerFuncs) {
 	if path == "" {
 		t.indexs = indexsCombine(t.indexs, indexs)
-		t.vals = HandlerFuncsCombine(t.vals, vals)
+		t.vals = NewHandlerFuncsCombine(t.vals, vals)
 		return
 	}
 	for i := range t.childs {
@@ -588,7 +589,7 @@ func (t *middlewareNode) Lookup(path string) ([]int, HandlerFuncs) {
 	for _, i := range t.childs {
 		if strings.HasPrefix(path, i.path) {
 			indexs, val := i.Lookup(path[len(i.path):])
-			return indexsCombine(t.indexs, indexs), HandlerFuncsCombine(t.vals, val)
+			return indexsCombine(t.indexs, indexs), NewHandlerFuncsCombine(t.vals, val)
 		}
 	}
 	return t.indexs, t.vals
@@ -623,6 +624,9 @@ type routerCoreLock struct {
 
 // NewRouterCoreLock 函数创建一个带读写锁的路由器核心，其他路由器核心在需要动态修改规则时使用Lock核心包装。
 func NewRouterCoreLock(core RouterCore) RouterCore {
+	if core == nil {
+		core = NewRouterCoreStd()
+	}
 	return &routerCoreLock{RouterCore: core}
 }
 
@@ -662,7 +666,7 @@ func NewRouterCoreDebug(core RouterCore) RouterCore {
 	r := &routerCoreDebug{
 		RouterCore: core,
 	}
-	r.HandleFunc("GET", "/eudore/debug/router/data", HandlerFuncs{r.getData})
+	r.HandleFunc("GET", "/eudore/debug/router/data", HandlerFuncs{r.HandleHTTP})
 	return r
 }
 
@@ -678,30 +682,30 @@ func (r *routerCoreDebug) HandleFunc(method, path string, hs HandlerFuncs) {
 	r.HandlerNames = append(r.HandlerNames, names)
 }
 
-// getData 方法返回debug路由信息数据。
-func (r *routerCoreDebug) getData(ctx Context) {
+// HandleHTTP 方法返回debug路由信息数据。
+func (r *routerCoreDebug) HandleHTTP(ctx Context) {
 	ctx.SetHeader("X-Eudore-Admin", "router-debug")
 	ctx.Render(r)
 }
 
 // routerCoreHost 实现基于host进行路由匹配
 type routerCoreHost struct {
-	routertree   wildcardHostNode
+	routertree   routerHostNode
 	routers      map[string]RouterCore
 	newRouteCore func(string) RouterCore
 }
 
-// NewRouterCoreHost h函数创建一个Host路由核心，需要给定一个根据host值创建路由核心的函数。
+// NewRouterCoreHost 函数创建一个Host路由核心，需要给定一个根据host值创建路由核心的函数。
 //
 // 如果参数为空默认每个路由Host都创建NewRouterCoreStd。
-func NewRouterCoreHost(newfn func(string) RouterCore) RouterCore {
-	if newfn == nil {
-		newfn = func(string) RouterCore {
+func NewRouterCoreHost(fn func(string) RouterCore) RouterCore {
+	if fn == nil {
+		fn = func(string) RouterCore {
 			return NewRouterCoreStd()
 		}
 	}
 	r := &routerCoreHost{
-		newRouteCore: newfn,
+		newRouteCore: fn,
 		routers:      make(map[string]RouterCore),
 	}
 	r.getRouterCore("*")
@@ -712,7 +716,7 @@ func NewRouterCoreHost(newfn func(string) RouterCore) RouterCore {
 //
 // host值为一个host模式，允许存在*，表示当前任意字符到下一个'.'或结尾。
 //
-// 如果host值为'*'将注册添加给当前全部路由器核心，如果host值为空注册给'*'的路由器黑心，允许多个host使用','分割一次注册给多host。
+// 如果host值为'*'将注册添加给当前全部路由器核心，如果host值为空注册给'*'的路由器核心，允许多个host使用','分割一次注册给多host。
 func (r *routerCoreHost) HandleFunc(method, path string, hs HandlerFuncs) {
 	host := getRouteParam(path, "host")
 	switch host {
@@ -747,20 +751,41 @@ func (r *routerCoreHost) Match(method, path string, params *Params) HandlerFuncs
 }
 
 func (r *routerCoreHost) matchHost(ctx Context) {
-	hs := r.routertree.matchNode(ctx.Host()).Match(ctx.Method(), ctx.Path(), ctx.Params())
+	hs := r.routertree.matchNode(split2byte(ctx.Host(), ':')).Match(ctx.Method(), ctx.Path(), ctx.Params())
 	index, handlers := ctx.GetHandler()
-	ctx.SetHandler(index, HandlerFuncsCombine(HandlerFuncsCombine(handlers[:index+1], hs), handlers[index+1:]))
+	ctx.SetHandler(index, NewHandlerFuncsCombine(NewHandlerFuncsCombine(handlers[:index+1], hs), handlers[index+1:]))
 }
 
-type wildcardHostNode struct {
+type routerHostNode struct {
 	path     string
-	wildcard *wildcardHostNode
-	children []*wildcardHostNode
-	data     RouterCore
+	wildcard *routerHostNode
+	children []*routerHostNode
+	any      RouterCore
+	ports    map[string]RouterCore
 }
 
-func (node *wildcardHostNode) insert(path string, val RouterCore) {
-	paths := strings.Split(path, "*")
+func (node *routerHostNode) setRouter(port string, router RouterCore) {
+	if port == "" {
+		node.any = router
+		return
+	}
+	if node.ports == nil {
+		node.ports = make(map[string]RouterCore)
+	}
+	node.ports[port] = router
+}
+
+func (node *routerHostNode) getRouter(port string) RouterCore {
+	router, ok := node.ports[port]
+	if ok {
+		return router
+	}
+	return node.any
+}
+
+func (node *routerHostNode) insert(path string, val RouterCore) {
+	host, port := split2byte(path, ':')
+	paths := strings.Split(host, "*")
 	newpaths := make([]string, 1, len(paths)*2-1)
 	newpaths[0] = paths[0]
 	for _, path := range paths[1:] {
@@ -772,13 +797,13 @@ func (node *wildcardHostNode) insert(path string, val RouterCore) {
 	for _, p := range newpaths {
 		node = node.insertNode(p)
 	}
-	node.data = val
+	node.setRouter(port, val)
 }
 
-func (node *wildcardHostNode) insertNode(path string) *wildcardHostNode {
+func (node *routerHostNode) insertNode(path string) *routerHostNode {
 	if path == "*" {
 		if node.wildcard == nil {
-			node.wildcard = &wildcardHostNode{path: path}
+			node.wildcard = &routerHostNode{path: path}
 		}
 		return node.wildcard
 	}
@@ -791,15 +816,15 @@ func (node *wildcardHostNode) insertNode(path string) *wildcardHostNode {
 		if find {
 			if subStr != node.children[i].path {
 				node.children[i].path = strings.TrimPrefix(node.children[i].path, subStr)
-				node.children[i] = &wildcardHostNode{
+				node.children[i] = &routerHostNode{
 					path:     subStr,
-					children: []*wildcardHostNode{node.children[i]},
+					children: []*routerHostNode{node.children[i]},
 				}
 			}
 			return node.children[i].insertNode(strings.TrimPrefix(path, subStr))
 		}
 	}
-	newnode := &wildcardHostNode{path: path}
+	newnode := &routerHostNode{path: path}
 	node.children = append(node.children, newnode)
 	// 常量node按照首字母排序。
 	for i := len(node.children) - 1; i > 0; i-- {
@@ -811,13 +836,16 @@ func (node *wildcardHostNode) insertNode(path string) *wildcardHostNode {
 	return newnode
 }
 
-func (node *wildcardHostNode) matchNode(path string) RouterCore {
-	if path == "" && node.data != nil {
-		return node.data
+func (node *routerHostNode) matchNode(path, port string) RouterCore {
+	if path == "" {
+		core := node.getRouter(port)
+		if core != nil {
+			return core
+		}
 	}
 	for _, current := range node.children {
 		if strings.HasPrefix(path, current.path) {
-			if result := current.matchNode(path[len(current.path):]); result != nil {
+			if result := current.matchNode(path[len(current.path):], port); result != nil {
 				return result
 			}
 		}
@@ -828,12 +856,13 @@ func (node *wildcardHostNode) matchNode(path string) RouterCore {
 			if pos == -1 {
 				pos = len(path)
 			}
-			if result := node.wildcard.matchNode(path[pos:]); result != nil {
+			if result := node.wildcard.matchNode(path[pos:], port); result != nil {
 				return result
 			}
 		}
-		if node.wildcard.data != nil {
-			return node.wildcard.data
+		router := node.wildcard.getRouter(port)
+		if router != nil {
+			return router
 		}
 	}
 	return nil

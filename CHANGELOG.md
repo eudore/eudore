@@ -1,5 +1,14 @@
 # Change Log
 
+2021年4月30日
+- endpoint		提供无入侵链路日志
+- Controller	修改参数获取接口
+- Controller	修改name映射为多级，方法按照字母排序。
+- ConfigParseHelp	分析结构体生成帮助信息。
+- RouterHost	支持对host端口处理。
+- middleware/cache	新增自定义缓冲key设置。
+
+[2021年1月31日](https://github.com/eudore/eudore/tree/6ba7a5f6603407a09ffbefbb6a830b8926afe247)
 - LoggerStd	输出不使用fields嵌套属性，Fields使用切片存储。
 - ContextBase	优化Form Querys Context存储使用net/http属性。
 - RenderJSON	对基本类型将自动封装一层结构，非json Accept使用indent格式化。

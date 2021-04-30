@@ -14,7 +14,7 @@ import (
 
 func main() {
 	app := eudore.NewApp(
-		eudore.NewRouterStd(eudore.NewRouterCoreLock(eudore.NewRouterCoreStd())),
+		eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)),
 	)
 
 	client := httptest.NewClient(app)
@@ -44,7 +44,7 @@ func main() {
 
 	// ---------------- 测试 ----------------
 
-	app.Options(eudore.NewRouterStd(eudore.NewRouterCoreLock(eudore.NewRouterCoreStd())))
+	app.Options(eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)))
 	register = app.Group(" register=off")
 	app.AnyFunc("/eudore/debug/look/*", middleware.NewLookFunc(app))
 	app.AnyFunc("/verison", echoStringHandler("any verison"))

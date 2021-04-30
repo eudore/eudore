@@ -317,7 +317,7 @@ func (r *stdNode) lookNode(searchKey string, params *Params) *stdNode {
 
 	if len(searchKey) > 0 {
 		// Traverse constant Node match
-		// 遍历常量Node匹配
+		// 遍历常量Node匹配，数据量少使用二分查找无效
 		for _, child := range r.Cchildren {
 			if child.path[0] >= searchKey[0] {
 				if len(searchKey) >= len(child.path) && searchKey[:len(child.path)] == child.path {

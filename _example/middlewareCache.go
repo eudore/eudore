@@ -14,7 +14,13 @@ func main() {
 	app := eudore.NewApp()
 	app.AddController(middleware.NewPprofController())
 
-	app.AddMiddleware(middleware.NewCacheFunc(time.Second/10, app.Context))
+	app.AddMiddleware(middleware.NewCacheFunc(time.Second/10, app.Context, func(ctx eudore.Context) string {
+		// 自定义缓存key函数，默认实现方法
+		if ctx.Method() != eudore.MethodGet || ctx.GetHeader(eudore.HeaderUpgrade) != "" {
+			return ""
+		}
+		return ctx.Request().URL.RequestURI()
+	}))
 	app.AnyFunc("/sf", func(ctx eudore.Context) {
 		ctx.Redirect(301, "/")
 		ctx.Debug(ctx.Response().Status(), ctx.Response().Size())

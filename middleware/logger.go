@@ -12,6 +12,8 @@ import (
 // 状态码如果为40x、50x输出日志级别为Error。
 func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
 	keys := []string{"method", "path", "realip", "proto", "host", "status", "request-time", "size"}
+	headerkeys := [...]string{eudore.HeaderXRequestID, eudore.HeaderXTraceID, eudore.HeaderLocation}
+	headernames := [...]string{"x-request-id", "x-trace-id", "location"}
 	return func(ctx eudore.Context) {
 		now := time.Now()
 		ctx.Next()
@@ -32,16 +34,14 @@ func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
 		if xforward := ctx.GetHeader(eudore.HeaderXForwardedFor); len(xforward) > 0 {
 			out = out.WithField("x-forward-for", xforward)
 		}
-		if requestID := ctx.GetHeader(eudore.HeaderXRequestID); len(requestID) > 0 {
-			out = out.WithField("x-request-id", requestID)
-		}
-		if parentID := ctx.GetHeader(eudore.HeaderXParentID); len(parentID) > 0 {
-			out = out.WithField("x-parent-id", parentID)
+		headers := ctx.Response().Header()
+		for i, key := range headerkeys {
+			val := headers.Get(key)
+			if val != "" {
+				out = out.WithField(headernames[i], val)
+			}
 		}
 
-		if 300 < status && status < 400 && status != 304 {
-			out = out.WithField("location", ctx.Response().Header().Get(eudore.HeaderLocation))
-		}
 		if status < 500 {
 			out.Info()
 		} else {

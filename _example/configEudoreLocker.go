@@ -1,38 +1,55 @@
 package main
 
 /*
-ConfigEudore需要使用指定对象保存配置，默认为map[string]interface{}。
+ConfigEudore的配置存储读写如果组合一个sync.RWMutex对象，实现sync读写锁的四个方法
 
-可以自己指定结构体来保存配置，例如example中Config对象指定的user.name就是展开的一层结构体或map后设置，详细查看eudore.Set函数的文档。
+那么ConfigEudore的Get/Se方法会使用该锁，这样使用属性操作和Get/Set操作使用同一个锁保证并发安全。
 
-config的Get & Set方法使用eudore.Get & eudore.Set方法实现。
+// configEudore 使用结构体或map保存配置，通过反射来读写属性。
+type configEudore struct {
+	Keys          interface{}          `alias:"keys"`
+	Print         func(...interface{}) `alias:"print"`
+	funcs         []ConfigParseFunc    `alias:"-"`
+	configRLocker `alias:"-"`
+}
+
+type configRLocker interface {
+	sync.Locker
+	RLock()
+	RUnlock()
+}
 */
 
 import (
+	"sync"
+
 	"github.com/eudore/eudore"
 )
 
 type (
-	eudoreConfig struct {
+	eudoreLockerConfig struct {
 		Bool   bool        `alias:"bool"`
 		Int    int         `alias:"int"`
 		String string      `alias:"string"`
-		User   user        `alias:"user" flag:"u"`
+		User   user2       `alias:"user"`
 		Struct interface{} `alias:"struct"`
+		sync.RWMutex
 	}
-	user struct {
+	user2 struct {
 		Name string `alias:"name"`
 		Mail string `alias:"mail"`
 	}
 )
 
 func main() {
-	conf := &eudoreConfig{}
+	conf := &eudoreLockerConfig{}
 	app := eudore.NewApp(eudore.NewConfigEudore(conf))
 
 	// 设属性
-	app.Set("int", 20)
-	app.Set("string", "app set string")
+	conf.Lock()
+	conf.Int = 20
+	conf.String = "app set string"
+	conf.Unlock()
 	app.Set("bool", true)
 	app.Set("user.name", "EudoreName")
 	app.Set("struct", struct {

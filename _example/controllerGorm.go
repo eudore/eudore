@@ -69,7 +69,7 @@ func NewControllerGorm(db *gorm.DB, model interface{}) *GormController {
 	}
 }
 
-func (ctl *GormController) GetRouteParam(pkg, name, method string) string {
+func (ctl *GormController) ControllerParam(pkg, name, method string) string {
 	pos := strings.LastIndexByte(pkg, '/') + 1
 	if pos != 0 {
 		pkg = pkg[pos:]

@@ -25,9 +25,9 @@ func main() {
 	// 请求测试
 	client := httptest.NewClient(app)
 	// 请求必须是Accept: text/html 这样才会渲染模板
-	client.NewRequest("GET", "/myuser/").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
-	client.NewRequest("PUT", "/myuser/").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
-	client.NewRequest("GET", "/myuser/name").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
+	client.NewRequest("GET", "/my/user/").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
+	client.NewRequest("PUT", "/my/user/").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
+	client.NewRequest("GET", "/my/user/name").WithHeaderValue("Accept", "text/html").Do().CheckStatus(200)
 
 	app.Listen(":8088")
 	// app.CancelFunc()

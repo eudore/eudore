@@ -25,9 +25,23 @@ import (
 	"time"
 )
 
-// App combines the main functional interfaces to implement a simple basic method.
-//
-// App 组合主要功能接口，实现简单的基本方法。
+/*
+App combines the main functional interfaces and only implements simple basic methods.
+
+The following functions are realized in addition to the functions of the combined components:
+	Global middleware
+	Start port monitoring
+	Block running service
+	Get configuration value and convert type
+
+App 组合主要功能接口，本身仅实现简单的基本方法。
+
+组合各组件功能外实现下列功能：
+	全局中间件
+	启动端口监听
+	阻塞运行服务
+	获取配置值并转换类型
+*/
 type App struct {
 	context.Context    `alias:"context"`
 	context.CancelFunc `alias:"cancelfunc"`
@@ -117,6 +131,7 @@ func (app *App) Options(options ...interface{}) {
 			if app.CancelError == nil {
 				app.CancelError = val
 			}
+			Set(app.Router, "print", printEmpty)
 			app.CancelFunc()
 		default:
 			app.Logger.Warningf("eudore app invalid option: %v", i)
@@ -184,8 +199,8 @@ func (app *App) AddMiddleware(hs ...interface{}) error {
 			handler := DefaultHandlerExtend.NewHandlerFuncs("", hs[1:])
 			app.Info("Register app global middleware:", handler)
 			last := app.HandlerFuncs[len(app.HandlerFuncs)-1]
-			app.HandlerFuncs = HandlerFuncsCombine(app.HandlerFuncs[0:len(app.HandlerFuncs)-1], handler)
-			app.HandlerFuncs = HandlerFuncsCombine(app.HandlerFuncs, HandlerFuncs{last})
+			app.HandlerFuncs = NewHandlerFuncsCombine(app.HandlerFuncs[0:len(app.HandlerFuncs)-1], handler)
+			app.HandlerFuncs = NewHandlerFuncsCombine(app.HandlerFuncs, HandlerFuncs{last})
 			return nil
 		}
 	}

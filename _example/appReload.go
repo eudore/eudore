@@ -31,7 +31,7 @@ func NewAppReload() *AppReload {
 	return &AppReload{
 		App: eudore.NewApp(
 			// 使用读写路由核心，允许并发增删路由规则。
-			eudore.NewRouterStd(eudore.NewRouterCoreLock(eudore.NewRouterCoreStd())),
+			eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)),
 			eudore.NewConfigEudore(conf),
 		),
 		ConfigReload: conf,

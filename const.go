@@ -38,7 +38,7 @@ var (
 	// DefaultHandlerExtend 为默认的函数扩展处理者，是RouterStd使用的最顶级的函数扩展处理者。
 	DefaultHandlerExtend = NewHandlerExtendBase()
 	// DefaultValidater 定义默认的验证器
-	DefaultValidater = NewvalidaterBase()
+	DefaultValidater = NewValidaterBase()
 	// DefaultRouterValidater 为RouterStd提供生成ValidateStringFunc功能,需要实现interface{GetValidateStringFunc(string) ValidateStringFunc}接口。
 	DefaultRouterValidater = DefaultValidater
 )
@@ -327,8 +327,8 @@ const (
 	HeaderXForwardedProto                 = "X-Forwarded-Proto"
 	HeaderXFrameOptions                   = "X-Frame-Options"
 	HeaderXXSSProtection                  = "X-Xss-Protection"
-	HeaderXParentID                       = "X-Parent-Id"
 	HeaderXRequestID                      = "X-Request-Id"
+	HeaderXTraceID                        = "X-Trace-Id"
 
 	// 默认http请求方法
 

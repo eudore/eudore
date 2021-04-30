@@ -167,9 +167,9 @@ func TestHandlerFunc2(t *testing.T) {
 	}()
 
 	hs := eudore.HandlerFuncs{eudore.HandlerEmpty}
-	eudore.HandlerFuncsCombine(hs, nil)
+	eudore.NewHandlerFuncsCombine(hs, nil)
 	for i := 0; i < 10; i++ {
-		hs = eudore.HandlerFuncsCombine(hs, hs)
+		hs = eudore.NewHandlerFuncsCombine(hs, hs)
 	}
 	t.Log(len(hs))
 }
