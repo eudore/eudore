@@ -25,6 +25,8 @@ var (
 	DefaultConvertFormTags = []string{"form", "alias"}
 	// DefaultConvertURLTags 定义bind url使用tags。
 	DefaultConvertURLTags = []string{"url", "alias"}
+	// DefaultConvertRowsTags 定义ConvertRows默认使用tags。
+	DefaultConvertRowsTags = []string{"alias"}
 	// DefaultRecoverDepth 定义GetPanicStack函数默认显示栈最大层数。
 	DefaultRecoverDepth = 20
 	// LogLevelString 定义日志级别输出字符串。

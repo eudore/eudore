@@ -2,53 +2,37 @@
 
 Middleware包实现部分基础eudore请求中间件。
 
-- doc:
-	- [BasicAuth](#BasicAuth)
-	- [Black](#Black)
-	- [Breaker](#Breaker)
-	- [Cache](#Cache)
-	- [ContextWarp](#ContextWarp)
-	- [Cors](#Cors)
-	- [Csrf](#Csrf)
-	- [Dump](#Dump)
-	- [Gzip](#Gzip)
-	- [Logger](#Logger)
-	- [Rate](#Rate)
-	- [Recover](#Recover)
-	- [Referer](#Referer)
-	- [RequestID](#RequestID)
-	- [Rewrite](#Rewrite)
-	- [Router](#Router)
-	- [RouterRewrite](#RouterRewrite)
-	- [Timeout](#Timeout)
-- example:
-	- [中间件管理后台](middlewareAdmin.go)
-	- [自定义中间件处理函数](../_example/middlewareHandle.go)
-	- [熔断器及管理后台](../_example/middlewareBreaker.go)
-	- [BasicAuth](../_example/middlewareBasicAuth.go)
-	- [数据缓存](../_example/middlewareCache.go)
-	- [数据缓存自定义存储](../_example/middlewareCacheStore.go)
-	- [CORS跨域资源共享](../_example/middlewareCors.go)
-	- [gzip压缩](../_example/middlewareGzip.go)
-	- [限流](../_example/middlewareRateRequest.go)
-	- [限速](../_example/middlewareRateSpeed.go)
-	- [异常捕捉](../_example/middlewareRecover.go)
-	- [请求超时](../_example/middlewareTimeout.go)
-	- [访问日志](../_example/middlewareLogger.go)
-	- [黑名单](../_example/middlewareBlack.go)
-	- [路径重写](../_example/middlewareRewrite.go)
-	- [Referer检查](../_example/middlewareReferer.go)
-	- [RequestID](../_example/middlewareRequestID.go)
-	- [CSRF](../_example/middlewareCsrf.go)
-	- [Router匹配](../_example/middlewareRouter.go)
-	- [Router方法实现Rewrite](../_example/middlewareRouterRewrite.go)
-	- [ContextWarp](../_example/middlewareContextWarp.go)
-	- [请求设置独立的日志级别](../_example/middlewareLoggerLevel.go)
-- net/http example:
-	- [中间件 黑名单](../_example/nethttpBalck.go)
-	- [中间件 路径重写](../_example/nethttpRewrite.go)
-	- [中间件 BasicAuth](../_example/nethttpBasicAuth.go)
-	- [中间件 限流](../_example/nethttpRateRequest.go)
+|  Name |  Type | 描述 |  备注 |
+| ------------ | ------------ | ------------ | ------------ |
+|  [Admin](#Admin) | 处理  | 相关组件管理后台 | [example](../_example/middlewareAdmin.go)  |
+|  [BasicAuth](#BasicAuth) |  拦截 | basic认证  | [example](../_example/middlewareBasicAuth.go) [nethttp](../_example/nethttpBasicAuth.go)  |
+|  [BodyLimit](#BodyLimit) | 拦截 | 限制请求body大小 | [example](../_example/middlewareBodyLimit.go)  |
+|  [Black](#Black) |  拦截 |  黑白名单 | [example](../_example/middlewareBlack.go) [nethttp](../_example/nethttpBalck.go) api |
+|  [Breaker](#Breaker) |  拦截 |  熔断器 | [example](../_example/middlewareBreaker.go) api groups |
+|  [Cache](#Cache) |  处理 |  请求缓存 | [example](../_example/middlewareCache.go) [example2](../_example/middlewareCacheStore.go) groups |
+|  [ContextWarp](#ContextWarp) |  辅助 |  封装Context | [example](../_example/middlewareContextWarp.go)  |
+|  [Cors](#Cors) |  处理 |  跨域处理 | [example](../_example/middlewareCors.go)  |
+|  [Csrf](#Csrf) |  拦截 |  CSRF token检查 | [example](../_example/middlewareCsrf.go)  |
+|  [Dump](#Dump) |  拦截 |  捕捉请求信息 | [example](../_example/middlewareDump.go) api  |
+|  [Gzip](#Gzip) |  追加 |  gzip压缩 | [example](../_example/middlewareGzip.go)  |
+|  [Header](#Header) |  追加 |  添加响应header信息 |  [example](../_example/middlewareHeader.go) |
+|  [Logger](#Logger) |  追加 |  输出access日志 | [example](../_example/middlewareLogger.go)  |
+|  [LoggerLevel](#LoggerLevel) |  处理 |  请求设置独立日志级别 | [example](../_example/middlewareLoggerLevel.go)  |
+|  [Look](#Look)  |  处理 |  路径访问对象 | [example](../_example/middlewareLook.go)  |
+|  [Pprof](#Pprof) |  处理 |  处理pprof响应 |  [example](../_example/middlewarePprof.go) |
+|  [Rate](#Rate)  |  拦截 | 限速限流  | [限流](../_example/middlewareRateRequest.go) [限速](../_example/middlewareRateSpeed.go) [nethttp限流](../_example/nethttpRateRequest.go) groups |
+|  [Recover](#Recover) |  追加 | 恢复panic  | [example](../_example/middlewareRecover.go)  |
+|  [Referer](#Referer) |  拦截 | referer校验  | [example](../_example/middlewareReferer.go)  |
+|  [RequestID](#RequestID) |  追加 | 增加请求id  | [example](../_example/middlewareRequestID.go)  |
+|  [Rewrite](#Rewrite) |  辅助 |  请求路径修改 | [example](../_example/middlewareRewrite.go) [nethttp](../_example/nethttpRewrite.go) |
+|  [Router](#Router)  |  辅助 |  路由自定义处理 | [example](../_example/middlewareRouter.go)  |
+|  [RouterRewrite](#RouterRewrite)  |  辅助 | 重写请求路径 | [example](../_example/middlewareRouterRewrite.go) |
+|  [Timeout](#Timeout) |  其他 | 处理请求超时 | [example](../_example/middlewareTimeout.go)  |
+|    | 其他 | 自定义中间件处理函数  | [example](../_example/middlewareHandle.go) |
+|  Policy  |  其他 | Pbac<br>Rbac | [Pbac](../_example/policyPbac.go)</br>[Rbac](../_example/policyRbac.go) |
+|  Promethues  |  其他 | prometheus采集请求信息 |   |
+|  OpenTracing |  其他 | opentracing记录请求信息<br>注入tracer |   |
+
 
 ## BasicAuth
 
@@ -58,8 +42,19 @@ Middleware包实现部分基础eudore请求中间件。
 - map[string]string    允许的用户名和密码的键值对map。
 
 example:
+
 `app.AddMiddleware(middleware.NewBasicAuthFunc(map[string]string{"user": "pw"}))`
 
+## BodyLimit
+
+限制请求body大小
+
+参数:
+- int64       指定限制body的长度
+
+examole:
+
+`app.AddMiddleware(middleware.NewBodyLimitFunc(32 << 20))`
 
 ## Black
 
@@ -72,12 +67,12 @@ example:
 example:
 ```
 app.AddMiddleware(middleware.NewBlackFunc(map[string]bool{
-  "192.168.100.0/24": true,
-  "192.168.75.0/30":  true,
-  "192.168.1.100/30": true,
-  "127.0.0.1/32":     true,
-  "10.168.0.0/16":    true,
-  "0.0.0.0/0":        false,
+	"192.168.100.0/24": true,
+	"192.168.75.0/30":  true,
+	"192.168.1.100/30": true,
+	"127.0.0.1/32":     true,
+	"10.168.0.0/16":    true,
+	"0.0.0.0/0":        false,
 }, app.Group("/eudore/debug")))
 ```
 
@@ -94,12 +89,13 @@ app.AddMiddleware(middleware.NewBlackFunc(map[string]bool{
 - NewHalfOpen             func(string) func() bool 创建一个路由规则半开状态下的限流函数
 
 example:
+```
+app.AddMiddleware(middleware.NewBreakerFunc(app.Group("/eudore/debug")))
 
-	app.AddMiddleware(middleware.NewBreakerFunc(app.Group("/eudore/debug")))
-
-	breaker := middleware.NewBreaker()
-	breaker.OpenWait = 0
-	app.AddMiddleware(breaker.NewBreakerFunc(app.Group("/eudore/debug")))
+breaker := middleware.NewBreaker()
+breaker.OpenWait = 0
+app.AddMiddleware(breaker.NewBreakerFunc(app.Group("/eudore/debug")))
+```
 
 在关闭状态下连续错误一定次数后熔断器进入半开状态；在半开状态下请求将进入限流状态，半开连续错误一定次数后进入打开状态，半开连续成功一定次数后回到关闭状态；在进入关闭状态后等待一定时间后恢复到半开状态。
 
@@ -113,6 +109,7 @@ example:
 - cacheStore	缓存存储对象
 
 example:
+
 `app.AddMiddleware(middleware.NewCacheFunc(time.Second*10, app.Context))`
 
 ## ContextWarp
@@ -125,7 +122,7 @@ example:
 example:
 ```app.AddMiddleware(middleware.NewContextWarpFunc(newContextParams))
 func newContextParams(ctx eudore.Context) eudore.Context {
-  return contextParams{ctx}
+	return contextParams{ctx}
 }
 ```
 
@@ -179,6 +176,7 @@ example:
 - router参数是eudore.Router类型，然后注入拦截路由处理。
 
 example:
+
 `app.AddMiddleware(middleware.NewDumpFunc(app.Group("/eudore/debug")))`
 
 ## Gzip
@@ -189,7 +187,24 @@ example:
 - int    gzip压缩等级，非法值设置为5
 
 example:
+
 `app.AddMiddleware(middleware.NewGzipFunc(5))`
+
+
+## Header
+
+添加响应Header
+
+参数:
+    http.Header     需要添加的Header内存
+
+examaple:
+```
+app.AddMiddleware(middleware.NewHeaderFunc(http.Header{
+	"Cache-Control": []string{"no-cache"},
+}))
+app.AddMiddleware(middleware.NewHeaderWithSecureFunc(nil))
+```
 
 ## Logger
 
@@ -200,6 +215,7 @@ example:
 - ...string     指定额外添加的Params值，如果值非空则会加入到access logger fields中
 
 example:
+
 `app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))`
 
 ## Rate
@@ -216,10 +232,10 @@ example:
 
 example:
 ```
-    // 限流 每秒一个请求，最多保存3个请求
-    app.AddMiddleware(middleware.NewRateRequestFunc(1, 3, app.Context))
-    // 限速 每秒32Kb流量，最多保存128Kb流量
-    app.AddMiddleware(middleware.NewRateSpeedFunc(32*1024, 128*1024, app.Context))
+// 限流 每秒一个请求，最多保存3个请求
+app.AddMiddleware(middleware.NewRateRequestFunc(1, 3, app.Context))
+// 限速 每秒32Kb流量，最多保存128Kb流量
+app.AddMiddleware(middleware.NewRateSpeedFunc(32*1024, 128*1024, app.Context))
 ```
 
 ## Recover
@@ -227,6 +243,7 @@ example:
 恢复panic抛出的错误，并输出日志、返回异常响应
 
 example:
+
 `app.AddMiddleware(middleware.NewRecoverFunc())`
 
 ## Referer
@@ -327,11 +344,20 @@ app.AddMiddleware("global", middleware.NewRouterRewriteFunc(map[string]string{
 
 实现难点：写入中超时状态码异常、panic栈无法捕捉信息异常、http.Header并发读写、sync.Pool回收了Context、Context数据竟态检测
 
+## Policy 
+
+goto [github.com/eudore/eudore/policy](../policy)
+
+## Prometheus
+
+goto [github.com/eudore/endpoint/prometheus](https://github.com/eudore/endpoint/tree/master/prometheus)
+
+## Opentracing
+
+goto [github.com/eudore/endpoint/opentracing](https://github.com/eudore/endpoint/tree/master/tracer)
+
 # 不将实现中间件及原因：
-- BodyLimit 实现太简单不具有技术含量，自行重定义Request.Body。
 - Casbin 实现太简单不具有技术含量，自行添加判断逻辑；不支持pbac实现。
-- Jaeger 简单的全局中间件初始化sp效果太差，需要依赖Context.Logger完整封装。
 - Jwt 无明显效果，不如Context扩展实现相关功能。
-- Secure 实现太简单不具有技术含量，自行添加Header。
 - Session 无明显效果，不如Context扩展实现相关功能。
 - Timing 核心入侵大，不如Trace。

@@ -1,5 +1,10 @@
 package main
 
+/*
+admin ui实现各组件api的web操作。
+访问 http://127.0.0.1:8088/eudore/debug/admin/ui
+*/
+
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
@@ -17,6 +22,7 @@ func main() {
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware(middleware.NewDumpFunc(admin))
 	app.AddMiddleware(middleware.NewBlackFunc(map[string]bool{"0.0.0.0/0": true, "10.0.0.0/8": false}, admin))
+	app.AddMiddleware(middleware.NewHeaderWithSecureFunc(nil))
 	app.AddMiddleware(middleware.NewCorsFunc(nil, map[string]string{
 		"Access-Control-Allow-Credentials": "true",
 		"Access-Control-Allow-Headers":     "Authorization,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,X-Parent-Id",
@@ -30,6 +36,7 @@ func main() {
 	app.AnyFunc("/echo", func(ctx eudore.Context) {
 		ctx.Write(ctx.Body())
 	})
+	// 注册admin ui处理
 	app.AnyFunc("/eudore/debug/admin/ui", middleware.HandlerAdmin)
 	app.AnyFunc("/", func(ctx eudore.Context) {
 		ctx.Redirect(301, "/eudore/debug/admin/ui")

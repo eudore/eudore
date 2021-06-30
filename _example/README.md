@@ -1,11 +1,10 @@
 # example
 
-本部分为演示例子目录功能导航,保存eudore、middleware、component三个库实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore),仅保证eudore和middleware两个库的稳定性，component系列库可能重构或移除。
+本部分为演示例子目录功能导航,保存eudore、middleware、policy、component实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore),仅保证eudore和middleware两个库的稳定性，component系列库可能重构或移除。
 
-exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库测试，单元测试执行gotest.sh脚本(OUT=coverage.html GOROOT=/usr/local/go1.13 bash gotest.sh)。
+exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库传输请求，单元测试执行gotest.sh脚本(OUT=coverage.html GOROOT=/usr/local/go1.13 bash gotest.sh)。
 
-go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/component/ram, github.com/eudore/eudore/component/httptest
-
+go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/policy, github.com/eudore/eudore/component/ram, github.com/eudore/eudore/component/httptest
 
 - Application
 	- [New](appNew.go)
@@ -53,7 +52,7 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [Host路由器](routerHost.go)
 	- [路由器注册调试](routerDebug.go)
 	- [路由器注册移除](routerDelete.go)
-	- [radix树](radixtree.go)
+	- [radix树](routerRadix.go)
 - Context
 	- [Request Info](contextRequestInfo.go)
 	- [Response Write](contextResponsWrite.go)
@@ -73,6 +72,7 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [Render](contextRender.go)
 	- [Send Json](contextRenderJson.go)
 	- [Send Template](contextRenderTemplate.go)
+	- [文件上传](contextUpload.go)
 	- [设置额外数据](contextValue.go)
 - Context处理扩展
 	- [默认处理](handlerDefault.go)
@@ -97,31 +97,40 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [Gorm控制器](controllerGorm.go)
 	- Controller Handler扩展
 - Middleware
-	- [中间件管理后台](middlewareAdmin.go)
-	- [自定义中间件处理函数](middlewareHandle.go)
-	- [熔断器及管理后台](middlewareBreaker.go)
+	- [Admin中间件管理后台](middlewareAdmin.go)
 	- [BasicAuth](middlewareBasicAuth.go)
-	- [数据缓存](middlewareCache.go)
-	- [数据缓存自定义存储](middlewareCacheStore.go)
-	- [CORS跨域资源共享](middlewareCors.go)
-	- [gzip压缩](middlewareGzip.go)
-	- [限流](middlewareRateRequest.go)
-	- [限速](middlewareRateSpeed.go)
-	- [异常捕捉](middlewareRecover.go)
-	- [请求超时](middlewareTimeout.go)
-	- [访问日志](middlewareLogger.go)
-	- [黑名单](middlewareBlack.go)
-	- [路径重写](middlewareRewrite.go)
-	- [Referer检查](middlewareReferer.go)
-	- [RequestID](middlewareRequestID.go)
-	- [CSRF](middlewareCsrf.go)
-	- [Router匹配](middlewareRouter.go)
-	- [Router方法实现Rewrite](middlewareRouterRewrite.go)
+	- [BodyLimit](middlewareBodyLimit.go)
+	- [Black黑名单](middlewareBlack.go)
+	- [Breaker熔断器](middlewareBreaker.go)
+	- [Cache数据缓存](middlewareCache.go)
+	- [Cache数据缓存自定义存储](middlewareCacheStore.go)
 	- [ContextWarp](middlewareContextWarp.go)
-	- [请求设置独立的日志级别](middlewareLoggerLevel.go)
-	- [pprof](middlewarePprof.go)
-	- [运行时对象数据显示](middlewareLook.go)
-- Ram
+	- [CORS跨域资源共享](middlewareCors.go)
+	- [CSRF](middlewareCsrf.go)
+	- [Dump捕捉请求信息](middlewareCsrf.go)
+	- [Gzip压缩](middlewareGzip.go)
+	- [Header新增](middlewareHeader.go)
+	- [Logger访问日志](middlewareLogger.go)
+	- [LoggerLevel设置请求独立的日志级别](middlewareLoggerLevel.go)
+	- [Look查看对象数据](middlewareLook.go)
+	- [Pprof](middlewarePprof.go)
+	- [Rate限流](middlewareRateRequest.go)
+	- [Rate限速](middlewareRateSpeed.go)
+	- [Recover异常捕捉](middlewareRecover.go)
+	- [Referer检查](middlewareReferer.go)
+	- [RequestID添加](middlewareRequestID.go)
+	- [Rewrite路径重写](middlewareRewrite.go)
+	- [Router匹配](middlewareRouter.go)
+	- [RouterRewrite](middlewareRouterRewrite.go)
+	- [Timeout请求超时](middlewareTimeout.go)
+	- [自定义中间件处理函数](middlewareHandle.go)
+- Policy
+	- [Pbac](policyPbac.go)
+	- [Rbac](policyRbac.go)
+	- [数据权限](policyData.go)
+	- [策略限制条件](policyCondition.go)
+	- [策略数据表达式](policyExpression.go)
+- Ram(废弃)
 	- [Acl权限控制](ramAcl.go)
 	- [Rbac权限控制](ramRbac.go)
 	- [Pbac权限控制](ramPbacl.go)
@@ -143,10 +152,9 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 - tool
 	- [转换对象成map](toolConvertMap.go)
 	- [对象转换](toolConvertTo.go)
+	- [解析sql rows绑定](toolConvertRows.go)
 	- [基于路径读写对象](toolGetSet.go)
 	- [结构体和变量校验](toolValidate.go)
-- 组件
-	- 生成对象帮助信息
 	- SRI值自动设置
 	- 自动http2 push
 - net/http

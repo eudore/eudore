@@ -15,9 +15,13 @@ func ConvertMapWithTags(i interface{}, tags []string) map[interface{}]interface{
 func ConvertTo(source interface{}, target interface{}) error
 func ConvertToWithTags(source interface{}, target interface{}, tags []string) error
 
+功能3：sql结果Rows绑定
+func ConvertRows(rows *sql.Rows, i interface{}) error
+func ConvertRowsWithTags(rows *sql.Rows, i interface{}, tags []string) error
 */
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -686,6 +690,165 @@ func (c *converter) convertToStructToStruct(sValue reflect.Value, tValue reflect
 		}
 		c.convertTo(sValue.Field(i), tValue.Field(index))
 	}
+}
+
+// ConvertRows 函数将*sql.Rows数据解析成指定struct、map、slice。
+func ConvertRows(rows *sql.Rows, i interface{}) error {
+	return ConvertRowsWithTags(rows, i, DefaultConvertRowsTags)
+}
+
+// ConvertRowsWithTags 函数指定tags将*sql.Rows数据解析成指定struct、map、slice。
+func ConvertRowsWithTags(rows *sql.Rows, i interface{}, tags []string) error {
+	columns, err := rows.Columns()
+	if err != nil {
+		return fmt.Errorf("ConvertRows get columns error: %s", err.Error())
+	}
+	iValue := reflect.ValueOf(i)
+	if iValue.Kind() == reflect.Invalid {
+		return fmt.Errorf("ConvertRows target is invalid zero value")
+	}
+	scaner := &sqlScaner{
+		tags:    tags,
+		Rows:    rows,
+		columns: columns,
+		isrow:   true,
+	}
+	err = scaner.Scan(iValue)
+	if err != nil {
+		return fmt.Errorf("ConvertRows scan type %s error: %s", reflect.TypeOf(i).String(), err.Error())
+	}
+	return nil
+}
+
+type sqlScaner struct {
+	tags         []string
+	Rows         *sql.Rows
+	columns      []string
+	isrow        bool
+	structFields []int
+	mapValues    []interface{}
+}
+
+func (scan *sqlScaner) Scan(iValue reflect.Value) error {
+	switch iValue.Kind() {
+	case reflect.Slice, reflect.Array:
+		scan.isrow = false
+		return scan.ScanSlice(iValue)
+	case reflect.Struct:
+		if iValue.CanAddr() {
+			return scan.ScanStruct(iValue)
+		}
+		return fmt.Errorf("struct %s must can addr", iValue.Type().String())
+	case reflect.Map:
+		return scan.ScanMap(iValue)
+	case reflect.Ptr:
+		if iValue.IsNil() {
+			if iValue.CanSet() {
+				iValue.Set(reflect.New(iValue.Type().Elem()))
+			} else {
+				return fmt.Errorf("ptr %s is nil and not set", iValue.Type().String())
+			}
+		}
+		return scan.Scan(iValue.Elem())
+	case reflect.Interface:
+		if iValue.IsNil() {
+			return fmt.Errorf("interface %s is nil", iValue.Type().String())
+		}
+		return scan.Scan(iValue.Elem())
+	case reflect.String, reflect.Int, reflect.Uint, reflect.Float32, reflect.Float64, reflect.Bool, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		if len(scan.columns) == 1 && iValue.CanAddr() {
+			if scan.isrow && scan.Rows.Next() {
+				defer scan.Rows.Close()
+			}
+			return scan.Rows.Scan(iValue.Addr().Interface())
+		}
+		return fmt.Errorf("base type scan columns must is one,this is %d", len(scan.columns))
+	}
+	return fmt.Errorf("scan invalid type %s", iValue.Type().String())
+}
+
+func (scan *sqlScaner) ScanSlice(iValue reflect.Value) error {
+	num := iValue.Len()
+	if iValue.Kind() == reflect.Slice {
+		num = iValue.Cap()
+	}
+	if num == 0 {
+		num = 65536
+	}
+	for i := 0; scan.Rows.Next() && i < num; i++ {
+		if i >= iValue.Len() {
+			iValue.Set(reflect.Append(iValue, reflect.New(iValue.Type().Elem()).Elem()))
+		}
+		err := scan.Scan(iValue.Index(i))
+		if err != nil {
+			return err
+		}
+	}
+	scan.Rows.Close()
+	return scan.Rows.Err()
+}
+
+func (scan *sqlScaner) ScanStruct(iValue reflect.Value) error {
+	if scan.isrow && scan.Rows.Next() {
+		defer scan.Rows.Close()
+	}
+	if scan.structFields == nil {
+		scan.structFields = scan.getStructFiles(iValue.Type(), scan.columns)
+	}
+	datas := make([]interface{}, len(scan.structFields))
+	for i, field := range scan.structFields {
+		datas[i] = iValue.Field(field).Addr().Interface()
+	}
+	return scan.Rows.Scan(datas...)
+}
+
+func (scan *sqlScaner) getStructFiles(iType reflect.Type, columns []string) []int {
+	fields := make([]int, 0, len(columns))
+	for _, column := range columns {
+		for i := 0; i < iType.NumField(); i++ {
+			field := iType.Field(i)
+			if strings.ToLower(field.Name) == column {
+				fields = append(fields, i)
+				break
+			}
+			for _, tag := range scan.tags {
+				if field.Tag.Get(tag) == column {
+					fields = append(fields, i)
+					break
+				}
+			}
+		}
+	}
+	return fields
+}
+
+func (scan *sqlScaner) ScanMap(iValue reflect.Value) error {
+	if iValue.Type().Key() != typeString {
+		return fmt.Errorf("map key type must is string, current key type is %s", iValue.Type().String())
+	}
+	if iValue.IsNil() {
+		if !iValue.CanSet() {
+			return fmt.Errorf("map %s is nil and not set", iValue.Type().String())
+		}
+		iValue.Set(reflect.MakeMap(iValue.Type()))
+	}
+	if scan.isrow && scan.Rows.Next() {
+		defer scan.Rows.Close()
+	}
+	if scan.mapValues == nil {
+		types, _ := scan.Rows.ColumnTypes()
+		scan.mapValues = make([]interface{}, len(scan.columns))
+		for i := 0; i < len(scan.columns); i++ {
+			scan.mapValues[i] = reflect.New(types[i].ScanType()).Interface()
+		}
+	}
+	err := scan.Rows.Scan(scan.mapValues...)
+	if err == nil {
+		for i := 0; i < len(scan.columns); i++ {
+			iValue.SetMapIndex(reflect.ValueOf(scan.columns[i]), reflect.ValueOf(scan.mapValues[i]).Elem())
+		}
+	}
+	return err
 }
 
 // checkValueIsZero 函数检测一个值是否为空, 修改go.1.13 refletv.Value.IsZero方法。

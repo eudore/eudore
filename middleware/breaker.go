@@ -53,6 +53,8 @@ func NewBreakerFunc(router eudore.Router) eudore.HandlerFunc {
 }
 
 // NewBreaker 函数创建一个熔断器
+//
+// 注意：breaker在集群模式下只能操作一个server。
 func NewBreaker() *Breaker {
 	return &Breaker{
 		Mapping:                 make(map[int]string),

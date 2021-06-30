@@ -3,7 +3,7 @@ package main
 /*
 基于控制器路由组合特性，使用反射创建gorm Model，UserController组合GormController后获得curd相关5个路由规则。
 
-此GormController实现不完善。
+此GormController实现不完善,体现控制器类型，完整使用 github.com/eudore/endpoint/gorm.GormController。
 */
 
 import (
@@ -18,11 +18,14 @@ import (
 	"github.com/eudore/eudore"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func main() {
 	app := eudore.NewApp()
-	db, err := gorm.Open(sqlite.Open("gorm.db"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("gorm.db"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
 	app.Options(err)
 	if err == nil {
 		app.AddController(NewUserController(db))

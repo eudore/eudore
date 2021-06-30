@@ -19,7 +19,7 @@ func main() {
 		ctx.Debug("Get User")
 	})
 	app.AnyFunc("/api/v1/meta", func(ctx eudore.Context) {
-		ctx.Info("Get Meta", ctx.GetQuery("debug"))
+		ctx.Info("Get Meta", ctx.GetQuery("eudore_debug"))
 	})
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 	app.AddHandler("404", "", eudore.HandlerRouter404)
@@ -27,9 +27,9 @@ func main() {
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/api/v1/user").Do()
-	client.NewRequest("GET", "/api/v1/meta?debug=0").Do()
-	client.NewRequest("GET", "/api/v1/meta?debug=1").Do()
-	client.NewRequest("GET", "/api/v1/meta?debug=5").Do()
+	client.NewRequest("GET", "/api/v1/meta?eudore_debug=0").Do()
+	client.NewRequest("GET", "/api/v1/meta?eudore_debug=1").Do()
+	client.NewRequest("GET", "/api/v1/meta?eudore_debug=5").Do()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

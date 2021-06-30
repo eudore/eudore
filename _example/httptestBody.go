@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"strings"
 
 	"github.com/eudore/eudore"
@@ -22,6 +24,9 @@ func main() {
 	client.NewRequest("GET", "/").WithBody("string body").Do()
 	client.NewRequest("GET", "/").WithBody([]byte("byte body")).Do()
 	client.NewRequest("GET", "/").WithBody(strings.NewReader("reader body")).Do()
+	client.NewRequest("GET", "/").WithBody(bytes.NewBufferString("reader body")).Do()
+	client.NewRequest("GET", "/").WithBody(bytes.NewReader([]byte("reader body"))).Do()
+	client.NewRequest("GET", "/").WithBody(htttestReader{}).Do()
 
 	client.NewRequest("GET", "/").WithBodyString("string body").Do()
 	client.NewRequest("GET", "/").WithBodyBytes([]byte("byte body")).Do()
@@ -40,4 +45,10 @@ func main() {
 
 type httptestRequestJSON struct {
 	Name string `json:"name"`
+}
+
+type htttestReader struct{}
+
+func (htttestReader) Read([]byte) (int, error) {
+	return 0, io.EOF
 }

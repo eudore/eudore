@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 )
@@ -127,6 +128,16 @@ type contextBase struct {
 type entryContextBase struct {
 	Logger
 	Context *contextBase
+}
+
+// NewContextMock 方法创建一个测试Context，使用空*App不会输出相关日志。
+func NewContextMock(app *App, method, path string) Context {
+	if app == nil {
+		app = NewApp()
+	}
+	ctx := NewContextBase(app)
+	ctx.Reset(httptest.NewRecorder(), httptest.NewRequest(method, path, nil))
+	return ctx
 }
 
 // NewContextBase 函数创建ContextBase对象，实现Context接口。
@@ -721,7 +732,7 @@ func (ctx *contextBase) readCookies() {
 
 // ContextData 扩展Context对象，加入获取数据类型转换。
 //
-// 额外扩展 Get{Param,Heder,Query,Cookie}{Bool,Int,Int64,Float32,Float64,String}共4*6=24个数据类型转换方法。
+// 额外扩展 Get{Param,Header,Query,Cookie}{Bool,Int,Int64,Float32,Float64,String}共4*6=24个数据类型转换方法。
 //
 // 第一个参数为获取数据的key，第二参数是可变参数列表，返回第一个非零值。
 type ContextData struct {

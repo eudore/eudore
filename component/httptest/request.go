@@ -120,28 +120,38 @@ func (r *RequestReaderTest) WithHeaderValue(key, val string) *RequestReaderTest 
 
 // WithBody 方法设置请求的body,允许使用string、、[]byte、io.ReadCloser、io.Reader类型。
 func (r *RequestReaderTest) WithBody(reader interface{}) *RequestReaderTest {
-	body, err := getIOReader(reader)
+	body, length, err := getIOReader(reader)
 	if err != nil {
 		r.Error(err)
 	} else if body != nil {
 		r.Request.Body = ioutil.NopCloser(body)
+		r.Request.ContentLength = length
 	}
 	return r
 }
 
-func getIOReader(body interface{}) (io.Reader, error) {
+func getIOReader(body interface{}) (io.Reader, int64, error) {
 	if body == nil {
-		return nil, fmt.Errorf("getIOReader body is nil")
+		return nil, -1, fmt.Errorf("getIOReader body is nil")
 	}
 	switch t := body.(type) {
 	case string:
-		return strings.NewReader(t), nil
+		return strings.NewReader(t), int64(len(t)), nil
 	case []byte:
-		return bytes.NewReader(t), nil
+		return bytes.NewReader(t), int64(len(t)), nil
+	case *bytes.Buffer:
+		buf := t.Bytes()
+		return bytes.NewReader(buf), int64(len(buf)), nil
+	case *bytes.Reader:
+		snapshot := *t
+		return &snapshot, int64(t.Len()), nil
+	case *strings.Reader:
+		snapshot := *t
+		return &snapshot, int64(t.Len()), nil
 	case io.Reader:
-		return t, nil
+		return t, -1, nil
 	default:
-		return nil, fmt.Errorf("unknown type used for body: %+v", body)
+		return nil, -1, fmt.Errorf("unknown type used for body: %+v", body)
 	}
 }
 
@@ -204,7 +214,7 @@ func (r *RequestReaderTest) WithBodyFormFile(key, name string, val interface{}) 
 		r.formFile = make(map[string][]fileContent)
 	}
 
-	body, err := getIOReader(val)
+	body, _, err := getIOReader(val)
 	if err != nil {
 		r.Error(err)
 		return r

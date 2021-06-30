@@ -16,7 +16,6 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
-	"unsafe"
 )
 
 /*
@@ -196,6 +195,7 @@ func NewLoggerStdDataJSON(arg interface{}) LoggerStdData {
 	data.Pool.New = func() interface{} {
 		return &LoggerStd{
 			LoggerStdData: data,
+			Level:         config.Level,
 			Timeformat:    "2006-01-02 15:04:05",
 			Buffer:        make([]byte, 0, 2048),
 			Keys:          make([]string, 0, 4),
@@ -250,6 +250,7 @@ func (data *loggerStdDataInit) GetLogger() *LoggerStd {
 	}
 }
 func (data *loggerStdDataInit) PutLogger(entry *LoggerStd) {
+	entry.Time = time.Now()
 	data.Lock()
 	data.Data = append(data.Data, entry)
 	data.Unlock()
@@ -261,7 +262,6 @@ func (data *loggerStdDataInit) Sync() error {
 
 func (entry *LoggerStd) getEntry() *LoggerStd {
 	newentry := entry.LoggerStdData.GetLogger()
-	newentry.Time = time.Now()
 	newentry.Level = entry.Level
 	newentry.Depth = entry.Depth
 	if len(entry.Keys) != 0 {
@@ -497,9 +497,12 @@ func (entry *LoggerStd) WithField(key string, value interface{}) Logger {
 }
 
 func loggerEntryStdFormat(entry *LoggerStd) {
-	timestr := time.Now().Format(entry.Timeformat)
+	t := entry.Time
+	if t.IsZero() {
+		t = time.Now()
+	}
 	entry.Buffer = append(entry.Buffer, loggerpart1...)
-	entry.Buffer = append(entry.Buffer, *(*[]byte)(unsafe.Pointer(&timestr))...)
+	entry.Buffer = t.AppendFormat(entry.Buffer, entry.Timeformat)
 	entry.Buffer = append(entry.Buffer, loggerpart2...)
 	entry.Buffer = append(entry.Buffer, loggerlevels[entry.Level]...)
 	entry.Buffer = append(entry.Buffer, '"')

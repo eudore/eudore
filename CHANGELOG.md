@@ -1,6 +1,22 @@
 # Change Log
 
-2021年4月30日
+Next
+- middleware/admin ui整合
+- policy		api完善
+- component		优化尝试移除
+
+2021年6月30日
+- endpoint/gorm gorm单model控制器。
+- endpoint/gorm	gorm日志接入。
+- endpoint/tracer	代码无入侵全链路日志双写。
+- endpoint/promethue 采集http请求数据。
+- policy	重构权限，支持pbac、rbac、数据权限。
+- ConvertRows 处理sql结果绑定。
+- middleware/bodylimit	新增bodylimit限制中间件。
+- middleware/header		新增header写入中间件。
+- middleware/requestid	自定义id函数加入参数。
+
+[2021年4月30日](https://github.com/eudore/eudore/tree/b795b83986f06ab03d47b30d5a2f966cb3413a7b)
 - endpoint		提供无入侵链路日志
 - Controller	修改参数获取接口
 - Controller	修改name映射为多级，方法按照字母排序。

@@ -10,12 +10,9 @@ import (
 func main() {
 	app := eudore.NewApp()
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
-	app.AddMiddleware(func(ctx eudore.Context) {
-		// Opentracing设置X-Trace-Id 可选
-		ctx.SetHeader(eudore.HeaderXTraceID, "0000")
-	})
 	app.AddMiddleware(middleware.NewRequestIDFunc(nil))
-	/*	app.AddMiddleware(middleware.NewRequestIDFunc(func() string {
+	/* 传入一个自定义requestid生产函数
+	app.AddMiddleware(middleware.NewRequestIDFunc(func(eudore.Context) string {
 		return uuid.New().String()
 	}))	*/
 	app.AnyFunc("/*", func(ctx eudore.Context) {

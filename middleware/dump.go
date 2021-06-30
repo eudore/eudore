@@ -20,6 +20,8 @@ import (
 // NewDumpFunc 函数创建一个截取请求信息的中间件，将匹配请求使用webscoket输出给客户端。
 //
 // router参数是eudore.Router类型，然后注入拦截路由处理。
+//
+// 注意：dump在集群模式下只能连接到一个server。
 func NewDumpFunc(router eudore.Router) eudore.HandlerFunc {
 	var d dump
 	router.AnyFunc("/dump/ui", HandlerAdmin)

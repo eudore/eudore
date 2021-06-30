@@ -1,5 +1,5 @@
 /*
-Package middleware 包实现eudore基础请求中间件和处理函数。
+Package middleware 实现eudore基础请求中间件和处理函数。
 
 BasicAuth
 
@@ -10,6 +10,14 @@ BasicAuth
 example:
 	app.AddMiddleware(middleware.NewBasicAuthFunc(map[string]string{"user": "pw"}))
 
+BodyLimit
+
+限制请求body大小
+
+参数:
+	int64		指定限制body的长度
+examole:
+	app.AddMiddleware(middleware.NewBodyLimitFunc(32 << 20))
 
 Black
 
@@ -127,6 +135,18 @@ Gzip
 	int    gzip压缩等级，非法值设置为5
 example:
 	app.AddMiddleware(middleware.NewGzipFunc(5))
+
+Header
+
+添加响应Header
+
+参数:
+	http.Header 	需要添加的Header内存
+examaple:
+	app.AddMiddleware(middleware.NewHeaderFunc(http.Header{
+		"Cache-Control": []string{"no-cache"},
+	}))
+	app.AddMiddleware(middleware.NewHeaderWithSecureFunc(nil))
 
 Logger
 
@@ -249,24 +269,3 @@ Timeout
 
 */
 package middleware // import "github.com/eudore/eudore/middleware"
-
-import (
-	"github.com/eudore/eudore"
-	"runtime"
-)
-
-var adminStaticFile string
-
-// 获取文件定义位置，静态ui文件在同目录。
-func init() {
-	_, file, _, ok := runtime.Caller(0)
-	if ok {
-		adminStaticFile = file[:len(file)-6] + "admin.html"
-	}
-}
-
-// HandlerAdmin 函数返回Admin UI界面。
-func HandlerAdmin(ctx eudore.Context) {
-	ctx.SetHeader("X-Eudore-Admin", "ui")
-	ctx.WriteFile(adminStaticFile)
-}
