@@ -12,11 +12,15 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(eudore.NewRouterStd(eudore.NewRouterCoreDebug(nil)))
+	app := eudore.NewApp(
+		eudore.NewRouterStd(eudore.NewRouterCoreDebug(nil)),
+		eudore.Renderer(eudore.RenderJSON),
+	)
 
 	admin := app.Group("/eudore/debug")
-	admin.AddMiddleware("global", middleware.NewBasicAuthFunc(map[string]string{"user": "pw"}))
-	admin.Group(" godoc=https://golang.org").AddController(middleware.NewPprofController())
+	admin.AddMiddleware(middleware.NewCorsFunc(nil, nil))
+	//	admin.AddMiddleware(middleware.NewBasicAuthFunc(map[string]string{"user": "pw"}))
+	admin.AddController(middleware.NewPprofController())
 	admin.AnyFunc("/look/*", middleware.NewLookFunc(app))
 
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))

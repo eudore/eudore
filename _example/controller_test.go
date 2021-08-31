@@ -14,39 +14,26 @@ type baseMethod struct{}
 func (baseMethod) Any() {}
 
 type mybGroupcontroller struct {
-	eudore.ControllerBase
+	eudore.ControllerAutoRoute
 	baseMethod
 }
 
 type mybGroupController struct {
-	eudore.ControllerBase
+	eudore.ControllerAutoRoute
 	baseMethod
 }
 
 type mysGroup struct {
-	eudore.ControllerSingleton
+	eudore.ControllerAutoRoute
 	baseMethod
 }
 type mysGroupcontroller struct {
-	eudore.ControllerSingleton
+	eudore.ControllerAutoRoute
 	baseMethod
 }
 type mysGroupController struct {
-	eudore.ControllerSingleton
+	eudore.ControllerAutoRoute
 	baseMethod
-}
-
-func (ctl *mysGroupController) Init(ctx eudore.Context) error {
-	if ctx.GetParam("*") == "init" {
-		return errors.New("test error init")
-	}
-	return ctl.ControllerSingleton.Init(ctx)
-}
-func (ctl *mysGroupController) Release(ctx eudore.Context) error {
-	if ctx.GetParam("*") == "release" {
-		return errors.New("test error release")
-	}
-	return ctl.ControllerSingleton.Release(ctx)
 }
 
 func (ctl *mysGroupController) InfoBy() {}
@@ -67,21 +54,8 @@ func TestControllerGroup2(*testing.T) {
 }
 
 type myexecConrtoller struct {
-	eudore.ControllerSingleton
+	eudore.ControllerAutoRoute
 	baseMethod
-}
-
-func (ctl *myexecConrtoller) Init(ctx eudore.Context) error {
-	if ctx.GetParam("*") == "init" {
-		return errors.New("test error init")
-	}
-	return ctl.ControllerSingleton.Init(ctx)
-}
-func (ctl *myexecConrtoller) Release(ctx eudore.Context) error {
-	if ctx.GetParam("*") == "release" {
-		return errors.New("test error release")
-	}
-	return ctl.ControllerSingleton.Release(ctx)
 }
 
 func (ctl *myexecConrtoller) Error() error {
@@ -134,7 +108,7 @@ func (ctl *myexecConrtoller) MapStringRenderError2(map[string]interface{}) (inte
 }
 func TestControllerExtendExec2(*testing.T) {
 	app := eudore.NewApp()
-	app.AddController(new(eudore.ControllerBase))
+	app.AddController(new(eudore.ControllerAutoRoute))
 	app.AddController(new(myexecConrtoller))
 	app.Group(" controllergroup=name").AddController(new(mysGroupController))
 

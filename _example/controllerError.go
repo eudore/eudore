@@ -20,7 +20,7 @@ func main() {
 }
 
 type myErrController struct {
-	eudore.ControllerBase
+	eudore.ControllerAutoRoute
 }
 
 func NewMyErrController(i int) eudore.Controller {
@@ -31,12 +31,12 @@ func NewMyErrController(i int) eudore.Controller {
 	return ctl
 }
 
-func (ctl *myErrController) Any() {
-	ctl.Info("myErrController Any")
+func (ctl *myErrController) Any(ctx eudore.Context) {
+	ctx.Info("myErrController Any")
 }
-func (*myErrController) Get(eudore.ControllerBase) interface{} {
+func (*myErrController) Get(eudore.ControllerAutoRoute) interface{} {
 	return "get myErrController"
 }
-func (ctl *myErrController) GetInfoById() interface{} {
-	return ctl.GetParam("id")
+func (ctl *myErrController) GetInfoById(ctx eudore.Context) interface{} {
+	return ctx.GetParam("id")
 }

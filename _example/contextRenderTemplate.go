@@ -9,7 +9,6 @@ eudore默认不支持render html，需要设置render支持。
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
-	"html/template"
 	"os"
 )
 
@@ -35,18 +34,16 @@ func main() {
 		ctx.SetParam("template", viewpath)
 		return viewdata
 	})
-	app.AnyFunc("/template/*", func(ctx eudore.Context) error {
-		t, err := template.ParseFiles(viewpath)
-		if err != nil {
-			return err
-		}
-		return t.Execute(ctx, viewdata)
+	app.AnyFunc("/template/*", func(ctx eudore.Context) interface{} {
+		ctx.SetParam("template", ctx.GetParam("*"))
+		return viewdata
 	})
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/1").WithHeaderValue("Accept", "application/json").Do().Out()
 	client.NewRequest("GET", "/1").WithHeaderValue("Accept", eudore.MimeTextHTML).Do().Out()
 	client.NewRequest("GET", "/1").WithHeaderValue("Accept", eudore.MimeTextPlain).Do().Out()
+	client.NewRequest("GET", "/template/1").WithHeaderValue("Accept", eudore.MimeTextHTML).Do().Out()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

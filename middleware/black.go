@@ -188,9 +188,9 @@ func (node *BlackNode) List(data []BlackInfo, prefix, bit uint64) []BlackInfo {
 			Count: node.Count,
 		})
 	}
-	for _, child := range node.Childrens {
+	for i, child := range node.Childrens {
 		if child != nil {
-			data = child.List(data, prefix<<1, bit-1)
+			data = child.List(data, prefix<<1|uint64(i), bit-1)
 		}
 	}
 	return data

@@ -11,7 +11,7 @@ import (
 
 type (
 	myParamsController struct {
-		eudore.ControllerBase
+		eudore.ControllerAutoRoute
 	}
 )
 
@@ -33,12 +33,12 @@ func (ctl *myParamsController) ControllerGroup(string) string {
 	return "myctl"
 }
 
-func (ctl *myParamsController) Any() {
-	ctl.Info("myParamsController Any")
+func (ctl *myParamsController) Any(ctx eudore.Context) {
+	ctx.Info("myParamsController Any")
 }
 func (*myParamsController) Get() interface{} {
 	return "get myParamsController"
 }
-func (ctl *myParamsController) GetInfoById() interface{} {
-	return ctl.GetParam("id")
+func (ctl *myParamsController) GetInfoById(ctx eudore.Context) interface{} {
+	return ctx.GetParam("id")
 }

@@ -77,6 +77,9 @@ func (ctl *GormController) ControllerParam(pkg, name, method string) string {
 	if pos != 0 {
 		pkg = pkg[pos:]
 	}
+	if name == "GormController" {
+		name = ctl.ModelType.Name()
+	}
 	if strings.HasSuffix(name, "Controller") {
 		name = name[:len(name)-len("Controller")]
 	}

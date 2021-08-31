@@ -19,12 +19,12 @@ func NewCorsFunc(origins []string, headers map[string]string) eudore.HandlerFunc
 	if len(origins) == 0 {
 		origins = []string{"*"}
 	}
+	corsHeaders := make(map[string]string, len(headers))
 	for k, v := range headers {
-		delete(headers, k)
-		headers[textproto.CanonicalMIMEHeaderKey(k)] = v
+		corsHeaders[textproto.CanonicalMIMEHeaderKey(k)] = v
 	}
-	if headers["Access-Control-Allow-Methods"] == "" {
-		headers["Access-Control-Allow-Methods"] = "*"
+	if corsHeaders["Access-Control-Allow-Methods"] == "" {
+		corsHeaders["Access-Control-Allow-Methods"] = "*"
 	}
 	return func(ctx eudore.Context) {
 		origin := ctx.GetHeader("Origin")
@@ -43,7 +43,7 @@ func NewCorsFunc(origins []string, headers map[string]string) eudore.HandlerFunc
 		h := ctx.Response().Header()
 		h.Add("Access-Control-Allow-Origin", ctx.GetHeader("Origin"))
 		if ctx.Method() == eudore.MethodOptions {
-			for k, v := range headers {
+			for k, v := range corsHeaders {
 				h[k] = append(h[k], v)
 			}
 			ctx.WriteHeader(204)

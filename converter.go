@@ -37,6 +37,8 @@ type seter interface {
 }
 
 type getSeter struct {
+	all   bool
+	index int
 	keys  []string
 	tags  []string
 	Value interface{}
@@ -274,39 +276,57 @@ func (s *getSeter) setSlice(iValue reflect.Value) error {
 // 结构体属性可以使用结构体标签'alias'来匹配属性。
 //
 // 如果匹配失败直接返回空值。
-func Get(i interface{}, key string) (val interface{}) {
-	val, _ = GetWithTags(i, key, DefaultGetSetTags)
-	return
+func Get(i interface{}, key string) interface{} {
+	val, err := getValue(i, key, false, DefaultGetSetTags)
+	if err != nil {
+		return nil
+	}
+	return val.Interface()
 }
 
 // GetWithTags 函数和Get函数相同，可以额外设置tags，同时会返回error。
 func GetWithTags(i interface{}, key string, tags []string) (interface{}, error) {
+	val, err := getValue(i, key, false, tags)
+	if err != nil {
+		return nil, err
+	}
+	return val.Interface(), nil
+}
+
+// GetWithValue 函数和Get函数相同，可以允许查找私有属性并返回reflect.Value。
+func GetWithValue(i interface{}, key string, all bool) (reflect.Value, error) {
+	return getValue(i, key, all, nil)
+}
+
+func getValue(i interface{}, key string, all bool, tags []string) (reflect.Value, error) {
+	val := reflect.ValueOf(i)
 	if i == nil {
-		return nil, ErrConverterInputDataNil
+		return val, ErrConverterInputDataNil
 	}
 	if key == "" {
-		return i, nil
+		return val, nil
 	}
 	s := &getSeter{
+		all:  all,
 		keys: strings.Split(key, "."),
 		tags: tags,
 	}
-	val := s.getValue(reflect.ValueOf(i))
-	if s.Value == nil {
-		return val, nil
+	val, err := s.getValue(val)
+	if err != nil {
+		return val, err
 	}
-	return val, fmt.Errorf(ErrFormatConverterGetWithTags, key, s.Value)
+	return val, nil
 }
 
 // 从目标类型获取字符串路径的属性
-func (s *getSeter) getValue(iValue reflect.Value) interface{} {
-	if len(s.keys) == 0 {
-		return iValue.Interface()
+func (s *getSeter) getValue(iValue reflect.Value) (reflect.Value, error) {
+	if len(s.keys) == s.index {
+		return iValue, nil
 	}
 	switch iValue.Kind() {
 	case reflect.Ptr, reflect.Interface:
 		if iValue.IsNil() {
-			return nil
+			return iValue, s.newGetError("is nil ptr or interface")
 		}
 		return s.getValue(iValue.Elem())
 	case reflect.Struct:
@@ -316,58 +336,64 @@ func (s *getSeter) getValue(iValue reflect.Value) interface{} {
 	case reflect.Array, reflect.Slice:
 		return s.getSlice(iValue)
 	}
-	s.Value = fmt.Sprintf(ErrFormatConverterNotGetValue, iValue.Type().String(), s.keys)
-	return nil
+	return iValue, s.newGetError("not find sub path")
 }
 
 // 处理结构体对象的读取
-func (s *getSeter) getStruct(iValue reflect.Value) interface{} {
+func (s *getSeter) getStruct(iValue reflect.Value) (reflect.Value, error) {
 	// 查找key对应的属性索引，不存在返回-1。
-	var index = getStructIndexOfTags(iValue.Type(), s.keys[0], s.tags)
+	var index = getStructIndexOfTags(iValue.Type(), s.keys[s.index], s.tags)
 	if index == -1 {
-		return nil
+		return iValue, s.newGetError("not field")
 	}
 	// 获取key对应结构的属性。
 	structField := iValue.Field(index)
-	if !structField.CanSet() {
-		return nil
+	if structField.CanSet() || s.all {
+		s.index++
+		return s.getValue(structField)
 	}
-	s.keys = s.keys[1:]
-	return s.getValue(structField)
+	return iValue, s.newGetError("field is not CanSet")
 }
 
 // 处理map读取属性
-func (s *getSeter) getMap(iValue reflect.Value) interface{} {
+func (s *getSeter) getMap(iValue reflect.Value) (reflect.Value, error) {
 	// 检测map是否为空
 	if iValue.IsNil() {
-		return nil
+		return iValue, s.newGetError("is nil map")
 	}
 	// 创建map需要的key
 	mapKey := reflect.New(iValue.Type().Key()).Elem()
-	setWithString(mapKey, s.keys[0])
+	err := setWithString(mapKey, s.keys[s.index])
+	if err != nil {
+		return iValue, s.newGetError("map key is invalid")
+	}
 
 	// 获得map的value, 如果值无效则返回空。
 	mapvalue := iValue.MapIndex(mapKey)
 	if mapvalue.Kind() == reflect.Invalid {
-		return nil
+		return iValue, s.newGetError("map value is invalid")
 	}
-	s.keys = s.keys[1:]
+	s.index++
 	return s.getValue(mapvalue)
 }
 
 // 处理数组切片读取属性
-func (s *getSeter) getSlice(iValue reflect.Value) interface{} {
+func (s *getSeter) getSlice(iValue reflect.Value) (reflect.Value, error) {
 	// 检测切片是否为空
 	if iValue.Kind() == reflect.Slice && iValue.IsNil() {
-		return nil
+		return iValue, s.newGetError("is nil slice")
 	}
 	// 检测索引是否存在
-	index, err := strconv.Atoi(s.keys[0])
+	index, err := strconv.Atoi(s.keys[s.index])
 	if err != nil || index < 0 || iValue.Len() <= index {
-		return nil
+		return iValue, s.newGetError("slice index is invalid")
 	}
-	s.keys = s.keys[1:]
+	s.index++
 	return s.getValue(iValue.Index(index))
+}
+
+func (s *getSeter) newGetError(str string) error {
+	return fmt.Errorf(ErrFormatConverterGet, strings.Join(s.keys[:s.index+1], "."), str)
 }
 
 // ConvertMapString 函数将一个map或struct转换成map[string]interface{}。
@@ -681,7 +707,7 @@ func (c *converter) convertToStructToStruct(sValue reflect.Value, tValue reflect
 	sType := sValue.Type()
 	tType := tValue.Type()
 	for i := 0; i < sType.NumField(); i++ {
-		if checkValueIsZero(sValue.Field(i)) || !sValue.CanSet() {
+		if !sValue.CanSet() || checkValueIsZero(sValue.Field(i)) {
 			continue
 		}
 		index := getStructIndexOfTags(tType, sType.Field(i).Name, c.tags)
@@ -869,7 +895,9 @@ func checkValueIsZero(iValue reflect.Value) bool {
 		return iValue.Len() == 0
 	case reflect.UnsafePointer:
 		// 兼容go1.9
+		//		if iValue.CanSet(){
 		return iValue.Interface() == nil
+		//}
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
 		return iValue.IsNil()
 	case reflect.Array:

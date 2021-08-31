@@ -120,6 +120,9 @@ func RenderText(ctx Context, data interface{}) error {
 	if val := header.Get(HeaderContentType); len(val) == 0 {
 		header.Add(HeaderContentType, MimeTextPlainCharsetUtf8)
 	}
+	if s, ok := data.(string); ok {
+		return ctx.WriteString(s)
+	}
 	_, err := fmt.Fprintf(ctx, "%#v", data)
 	return err
 }

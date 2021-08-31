@@ -35,6 +35,7 @@ func main() {
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route", "action", "Policy", "Resource", "Userid"))
 	app.AddMiddleware(policys.HandleHTTP)
 	app.AddController(policys.NewPolicysController("sqltie", db))
+	policys.NewPolicysController("postgres", db)
 	for _, i := range []int{1, 2, 3, 4, 5, 6} {
 		app.AnyFunc(fmt.Sprintf("/%d action=%d", i, i), eudore.HandlerEmpty)
 	}

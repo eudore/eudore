@@ -49,9 +49,9 @@ type App struct {
 	Logger             `alias:"logger"`
 	Server             `alias:"server"`
 	Router             `alias:"router"`
+	Validater          `alias:"validater"`
 	Binder             `alias:"binder"`
 	Renderer           `alias:"renderer"`
-	Validater          `alias:"validater"`
 	GetWarp            `alias:"getwarp"`
 	HandlerFuncs       `alias:"handlerfuncs"`
 	ContextPool        sync.Pool `alias:"contextpool"`

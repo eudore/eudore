@@ -109,18 +109,18 @@ type RouterStd struct {
 
 // HandlerRouter405 函数定义默认405处理
 func HandlerRouter405(ctx Context) {
-	const page405 string = "405 method not allowed\n"
+	const page405 string = "405 method not allowed"
 	ctx.SetHeader(HeaderAllow, ctx.GetParam(ParamAllow))
 	ctx.SetHeader("X-Match-Route", ctx.GetParam(ParamRoute))
 	ctx.WriteHeader(405)
-	ctx.WriteString(page405)
+	ctx.Render(page405)
 }
 
 // HandlerRouter404 函数定义默认404处理
 func HandlerRouter404(ctx Context) {
-	const page404 string = "404 page not found\n"
+	const page404 string = "404 page not found"
 	ctx.WriteHeader(404)
-	ctx.WriteString(page404)
+	ctx.Render(page404)
 }
 
 // NewRouterStd 方法使用一个RouterCore创建Router对象。
@@ -198,14 +198,6 @@ func (m *RouterStd) paramsCombine(path string) *Params {
 
 // printError 方法输出一个err，附加错误的函数名称和文件位置。
 func (m *RouterStd) printError(depth int, err error) {
-	// 兼容添加控制器错误输出
-	for i := 6; i < 9; i++ {
-		name, _, _ := logFormatNameFileLine(depth + 0 + i)
-		if name == "github.com/eudore/eudore.(*RouterStd).AddController" {
-			depth = depth + i - 2
-			break
-		}
-	}
 	name, file, line := logFormatNameFileLine(depth + 3)
 	m.Print([]string{"params", "func", "file", "line"}, []interface{}{m.params, name, file, line}, err)
 }
@@ -338,12 +330,7 @@ func (m *RouterStd) newHandlerFuncs(path string, hs []interface{}) (HandlerFuncs
 		if handler != nil && len(handler) > 0 {
 			handlers = NewHandlerFuncsCombine(handlers, handler)
 		} else {
-			fname := reflect.TypeOf(h).String()
-			cf, ok := h.(ControllerFuncExtend)
-			if ok {
-				fname = "Controller " + reflect.ValueOf(cf.Controller).Method(cf.Index).Type().String()
-			}
-			errs.HandleError(fmt.Errorf(ErrFormatRouterStdNewHandlerFuncsUnregisterType, path, i, fname))
+			errs.HandleError(fmt.Errorf(ErrFormatRouterStdNewHandlerFuncsUnregisterType, path, i, reflect.TypeOf(h).String()))
 		}
 	}
 	return handlers, errs.GetError()
@@ -458,7 +445,7 @@ func (m *RouterStd) AddHandlerExtend(hs ...interface{}) error {
 		} else {
 			iValue := reflect.ValueOf(h)
 			if iValue.Kind() == reflect.Func {
-				m.Print("Register extend:", iValue.Type().In(0).String(), runtime.FuncForPC(iValue.Pointer()).Name())
+				m.Print("Register extend:", runtime.FuncForPC(iValue.Pointer()).Name(), iValue.Type().In(0).String())
 			}
 		}
 	}

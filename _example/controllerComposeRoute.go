@@ -11,7 +11,7 @@ import (
 
 type (
 	tableController struct {
-		eudore.ControllerBase
+		eudore.ControllerAutoRoute
 	}
 	// myRouteController 从tableController嵌入两个方法注册成路由。
 	myRouteController struct {
@@ -36,6 +36,6 @@ func (ctl *tableController) Hello() interface{} {
 	return "hello eudore"
 }
 
-func (ctl *tableController) Any() {
-	ctl.Debug("tableController Any", ctl.Hello())
+func (ctl *tableController) Any(ctx eudore.Context) {
+	ctx.Debug("tableController Any", ctl.Hello())
 }

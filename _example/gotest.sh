@@ -28,7 +28,7 @@ cp -rf *_test.go $dir/
 cd $dir
 rm -f appDefine_test.go appNotify_test.go appDaemon_test.go
 
-COVERPKG='github.com/eudore/eudore,github.com/eudore/eudore/middleware,github.com/eudore/eudore/policy,github.com/eudore/eudore/component/ram,github.com/eudore/eudore/component/httptest'
+COVERPKG='github.com/eudore/eudore,github.com/eudore/eudore/middleware,github.com/eudore/eudore/policy,github.com/eudore/eudore/component/httptest'
 export ENV_NAME=eudore
 export GODOC=https://golang.org
 export CGO_ENABLED=1

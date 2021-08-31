@@ -76,12 +76,7 @@ var (
 
 	_ ResponseWriter  = (*responseWriterHTTP)(nil)
 	_ Controller      = (*ControllerAutoRoute)(nil)
-	_ Controller      = (*ControllerBase)(nil)
-	_ Controller      = (*ControllerData)(nil)
-	_ Controller      = (*ControllerSingleton)(nil)
-	_ Controller      = (*ControllerView)(nil)
-	_ ControllerPool  = (*controllerPoolSync)(nil)
-	_ ControllerPool  = (*controllerPoolSingleton)(nil)
+	_ Controller      = (*controllerError)(nil)
 	_ HandlerExtender = (*handlerExtendBase)(nil)
 	_ HandlerExtender = (*handlerExtendWarp)(nil)
 	_ HandlerExtender = (*handlerExtendTree)(nil)
@@ -130,6 +125,8 @@ var (
 	ErrFormatBindDefaultNotSupportContentType = "BindDefault not support content type header: %s"
 	// ErrFormatControllerBind 执行控制器方法bind时返回错误
 	ErrFormatControllerBind = "Controller bind error: %v"
+	// ErrFormatConverterGet 在Get方法路径查找返回错误。
+	ErrFormatConverterGet = "Get path '%s' error: %s"
 	// ErrFormatConverterGetWithTags 在Get方法时，无法或到值，返回错误描述。
 	ErrFormatConverterGetWithTags = "Get or GetWithTags func cannot get the value of the attribute '%s', error description: %v"
 	// ErrFormatConverterNotGetValue 在Get方法时，getValue无法继续查找新的属性值。

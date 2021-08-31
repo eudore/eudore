@@ -4,33 +4,26 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"github.com/eudore/eudore"
 	"io"
 	"net/http"
-	"runtime"
 	"strings"
 	"time"
+
+	"github.com/eudore/eudore"
 )
-
-var adminStaticFile string
-
-// 获取文件定义位置，静态ui文件在同目录。
-func init() {
-	_, file, _, ok := runtime.Caller(0)
-	if ok {
-		adminStaticFile = file[:len(file)-6] + "admin.html"
-	}
-}
 
 // HandlerAdmin 函数返回Admin UI界面。
 func HandlerAdmin(ctx eudore.Context) {
 	ctx.SetHeader("X-Eudore-Admin", "ui")
-	ctx.WriteFile(adminStaticFile)
+	ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
+	http.ServeContent(ctx.Response(), ctx.Request(), "admin.html", now, strings.NewReader(AdminStatic))
 }
 
 // NewBasicAuthFunc 创建一个Basic auth认证中间件。
 //
 // names为保存用户密码的map。
+//
+// 注意: BasicAuth需要放置在CORS之后。
 func NewBasicAuthFunc(names map[string]string) eudore.HandlerFunc {
 	checks := make(map[string]string, len(names))
 	for name, pass := range names {
@@ -225,12 +218,12 @@ func NewRequestIDFunc(fn func(eudore.Context) string) eudore.HandlerFunc {
 		}
 	}
 	return func(ctx eudore.Context) {
-		requestId := ctx.GetHeader(eudore.HeaderXRequestID)
-		if requestId == "" {
-			requestId = fn(ctx)
-			ctx.Request().Header.Add(eudore.HeaderXRequestID, requestId)
+		requestID := ctx.GetHeader(eudore.HeaderXRequestID)
+		if requestID == "" {
+			requestID = fn(ctx)
+			ctx.Request().Header.Add(eudore.HeaderXRequestID, requestID)
 		}
-		ctx.SetHeader(eudore.HeaderXRequestID, requestId)
-		ctx.SetLogger(ctx.Logger().WithField("x-request-id", requestId).WithFields(nil, nil))
+		ctx.SetHeader(eudore.HeaderXRequestID, requestID)
+		ctx.SetLogger(ctx.Logger().WithField("x-request-id", requestID).WithFields(nil, nil))
 	}
 }

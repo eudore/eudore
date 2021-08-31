@@ -1,17 +1,24 @@
 # Change Log
 
 Next
-- middleware/admin ui整合
 - policy		api完善
+- policy		数据权限描述细化规则
 - component		优化尝试移除
 
-2021年6月30日
+2021年8月31日
+- Controller	简化内容保留ControllerAutoRoute。
+- middleware/admin	ui重构。
+- middleware/look	重构优化数据格式，完善功能。
+- middleware/pprof	重构优化数据格式。
+- component/ram 移除包，pbac功能转移到policy。
+
+[2021年6月30日](https://github.com/eudore/eudore/tree/266448deb4ed7b48ab7003032d6c8d79f41b962e)
 - endpoint/gorm gorm单model控制器。
 - endpoint/gorm	gorm日志接入。
 - endpoint/tracer	代码无入侵全链路日志双写。
-- endpoint/promethue 采集http请求数据。
+- endpoint/prometheus	采集http请求数据。
 - policy	重构权限，支持pbac、rbac、数据权限。
-- ConvertRows 处理sql结果绑定。
+- ConvertRows	处理sql结果绑定。
 - middleware/bodylimit	新增bodylimit限制中间件。
 - middleware/header		新增header写入中间件。
 - middleware/requestid	自定义id函数加入参数。

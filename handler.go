@@ -77,20 +77,6 @@ func init() {
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerRPC)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncString)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerStringer)
-
-	// 控制器方法扩展
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFunc)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncRender)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncError)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncRenderError)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncContext)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncContextRender)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncContextError)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncContextRenderError)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncMapString)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncMapStringRender)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncMapStringError)
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendControllerFuncMapStringRenderError)
 }
 
 // NewHandlerExtendBase method returns a basic function extension processing object.
@@ -701,22 +687,21 @@ func NewExtendHandlerRPC(fn interface{}) HandlerFunc {
 	}
 	var typeIn = iType.In(1)
 	var kindIn = typeIn.Kind()
+	var typenew = iType.In(1)
 	// 检查请求类型
 	switch typeIn.Kind() {
-	case reflect.Map, reflect.Struct, reflect.Ptr:
+	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Struct:
 	default:
 		return nil
 	}
+	if typenew.Kind() == reflect.Ptr {
+		typenew = typenew.Elem()
+	}
+
 	fineLineFieldsVals := getFileLineFieldsVals(iValue)
 	return func(ctx Context) {
 		// 创建请求参数并初始化
-		var req reflect.Value
-		if kindIn == reflect.Ptr {
-			req = reflect.New(typeIn.Elem())
-		} else {
-			req = reflect.New(typeIn)
-		}
-
+		req := reflect.New(typenew)
 		err := ctx.Bind(req.Interface())
 		if err != nil {
 			ctx.Fatal(err)

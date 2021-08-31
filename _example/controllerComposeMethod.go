@@ -12,7 +12,7 @@ import (
 type (
 	// Controllerwebsite 是基础方法的控制器
 	Controllerwebsite struct {
-		eudore.ControllerData
+		eudore.ControllerAutoRoute
 	}
 	myMethodController struct {
 		// Controllerwebsite 因名称前缀为Controller所以不会注册Hello方法为路由。
@@ -38,6 +38,6 @@ func (ctl *Controllerwebsite) Hello() string {
 }
 
 // Any 方法处理控制器全部请求。
-func (ctl *myMethodController) Any() {
-	ctl.Debug("myMethodController Any", ctl.Hello())
+func (ctl *myMethodController) Any(ctx eudore.Context) {
+	ctx.Debug("myMethodController Any", ctl.Hello())
 }

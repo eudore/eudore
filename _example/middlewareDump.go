@@ -50,6 +50,12 @@ func main() {
 		client.NewRequest("GET", "/eudore/debug/dump/connect?path=/echo").WithWebsocket(ReadDumpMessage).Do()
 	}()
 	go func() {
+		client.NewRequest("GET", "/eudore/debug/dump/connect").WithWebsocket(closeDumpMessage).Do()
+		client.NewRequest("GET", "/eudore/debug/dump/connect").WithWebsocket(closeDumpMessage).Do()
+		client.NewRequest("GET", "/eudore/debug/dump/connect").WithWebsocket(closeDumpMessage).Do()
+		client.NewRequest("GET", "/eudore/debug/dump/connect").WithWebsocket(closeDumpMessage).Do()
+	}()
+	go func() {
 		client.NewRequest("GET", "/eudore/debug/dump/connect?path=/echo&query-name=eudore*").WithWebsocket(ReadDumpMessage).Do()
 	}()
 	go func() {
@@ -57,6 +63,32 @@ func main() {
 	}()
 	go func() {
 		client.NewRequest("GET", "/eudore/debug/dump/connect?header-origin=https://*").WithWebsocket(ReadDumpMessage).Do()
+	}()
+	go func() {
+		ticker := time.Tick(time.Millisecond * 100)
+		for {
+			select {
+			case <-ticker:
+				return
+			default:
+				time.Sleep(time.Millisecond * 1)
+				go client.NewRequest("GET", "/eudore/debug/dump/connect").WithWebsocket(closeDumpMessage).Do()
+				go client.NewRequest("GET", "/").Do()
+			}
+		}
+	}()
+	go func() {
+		ticker := time.Tick(time.Millisecond * 100)
+		for {
+			select {
+			case <-ticker:
+				return
+			default:
+				time.Sleep(time.Millisecond * 1)
+				go client.NewRequest("GET", "/eudore/debug/dump/connect").WithWebsocket(ReadDumpMessage).Do()
+				go client.NewRequest("GET", "/").Do()
+			}
+		}
 	}()
 	go func() {
 		time.Sleep(time.Millisecond * 20)
@@ -75,6 +107,7 @@ func main() {
 }
 
 func closeDumpMessage(conn net.Conn) {
+	time.Sleep(time.Millisecond * 4)
 	conn.Close()
 }
 func ReadDumpMessage(conn net.Conn) {

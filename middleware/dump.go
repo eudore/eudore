@@ -124,6 +124,13 @@ type dumpConn struct {
 	vals []string
 }
 
+func (cond *dumpConn) Write(data []byte) (int, error) {
+	if cond.Conn == nil {
+		return 0, fmt.Errorf("dump conn is empty")
+	}
+	return cond.Conn.Write(data)
+}
+
 func (cond *dumpConn) Match(ctx eudore.Context) bool {
 	cond.Lock()
 	defer cond.Unlock()
@@ -172,10 +179,12 @@ func (msg *dumpMessage) WriteMessage(conns []*dumpConn) {
 	}
 	for _, conn := range conns {
 		conn.Lock()
-		conn.Write(head)
-		_, err := conn.Write(body)
-		if err != nil {
-			conn.Conn = nil
+		if conn != nil {
+			conn.Write(head)
+			_, err := conn.Write(body)
+			if err != nil {
+				conn.Conn = nil
+			}
 		}
 		conn.Unlock()
 	}
@@ -192,7 +201,7 @@ func getContextHandlerName(ctx eudore.Context) []string {
 
 type dumpResponset struct {
 	eudore.ResponseWriter
-	bytes.Buffer
+	Buffer bytes.Buffer
 }
 
 // Write 方法实现ResponseWriter中的Write方法。

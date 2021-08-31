@@ -1,19 +1,19 @@
 # example
 
-本部分为演示例子目录功能导航,保存eudore、middleware、policy、component实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore),仅保证eudore和middleware两个库的稳定性，component系列库可能重构或移除。
+本部分为演示例子目录功能导航,保存eudore、middleware、policy、component实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore),仅保证eudore和middleware两个库的稳定性，component系列库可能重构或移除,Alpha的演示库不稳定。
 
 exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库传输请求，单元测试执行gotest.sh脚本(OUT=coverage.html GOROOT=/usr/local/go1.13 bash gotest.sh)。
 
-go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/policy, github.com/eudore/eudore/component/ram, github.com/eudore/eudore/component/httptest
+go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/policy, github.com/eudore/eudore/component/httptest
 
 - Application
 	- [New](appNew.go)
 	- [自定义app](appExtend.go)
 	- [静态文件](appStatic.go)
 	- [全局请求中间件](appMiddleware.go)
-	- [后台启动](appDaemon.go)
-	- [启动命令解析](appCommand.go)
-	- [监听代码自动编译重启](appNotify.go)
+	- [后台启动](appDaemon.go)(Alpha)
+	- [启动命令解析](appCommand.go)(Alpha)
+	- [监听代码自动编译重启](appNotify.go)(Alpha)
 	- [重新加载配置](appReload.go)
 	- [反向代理](appProxy.go)
 	- [隧道代理](appTunnel.go)
@@ -37,7 +37,7 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [写入Elastic](loggerElastic.go)
 	- [logrus Logger适配](loggerLogrus.go)
 - Server
-	- [设置超时]
+	- [设置超时](serverStd.go)
 	- [服务监听](serverListen.go)
 	- [使用https](serverHttps.go)
 	- [双向https](serverMutualTLS.go)
@@ -86,16 +86,12 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [map Rpc式请求](handlerRpcMap.go)
 	- [使用jwt](handlerJwt.go)
 - Controller
-	- [基础控制器](controllerBase.go)
 	- [路由控制器](controllerAutoRoute.go)
-	- [单例控制器](controllerSingleton.go)
-	- [视图控制器](controllerView.go)
 	- [控制器组合路由](controllerComposeRoute.go)
-	- [控制器组合方法](controllerComposeMethod.go	)
+	- [控制器组合方法](controllerComposeMethod.go)
 	- [控制器自定义参数](controllerParams.go)
-	- [控制器只读属性](controllerReadFields.go)
+	- [控制器错误处理](controllerError.go)
 	- [Gorm控制器](controllerGorm.go)
-	- Controller Handler扩展
 - Middleware
 	- [Admin中间件管理后台](middlewareAdmin.go)
 	- [BasicAuth](middlewareBasicAuth.go)
@@ -109,7 +105,7 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [CSRF](middlewareCsrf.go)
 	- [Dump捕捉请求信息](middlewareCsrf.go)
 	- [Gzip压缩](middlewareGzip.go)
-	- [Header新增](middlewareHeader.go)
+	- [Header写入响应](middlewareHeader.go)
 	- [Logger访问日志](middlewareLogger.go)
 	- [LoggerLevel设置请求独立的日志级别](middlewareLoggerLevel.go)
 	- [Look查看对象数据](middlewareLook.go)
@@ -124,21 +120,14 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [RouterRewrite](middlewareRouterRewrite.go)
 	- [Timeout请求超时](middlewareTimeout.go)
 	- [自定义中间件处理函数](middlewareHandle.go)
-- Policy
+- Policy(Alpha)
 	- [Pbac](policyPbac.go)
 	- [Rbac](policyRbac.go)
 	- [数据权限](policyData.go)
 	- [策略限制条件](policyCondition.go)
 	- [策略数据表达式](policyExpression.go)
-- Ram(废弃)
-	- [Acl权限控制](ramAcl.go)
-	- [Rbac权限控制](ramRbac.go)
-	- [Pbac权限控制](ramPbacl.go)
-	- [自定义pbac条件](ramPbaclCondition.go)
-	- [混合权限控制](ramAll.go)
-	- [自定义ram处理请求](ramHandle.go)
-	- [控制器生成action参数](ramControllerAction.go)
-- Httptest
+	- [控制器生成action参数](policyControllerAction.go)
+ - Httptest(Alpha)
 	- [发送请求](httptestRequest.go)
 	- [构造多种body](httptestBody.go)
 	- [使用cookie](httptestCookies.go)
@@ -155,8 +144,6 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [解析sql rows绑定](toolConvertRows.go)
 	- [基于路径读写对象](toolGetSet.go)
 	- [结构体和变量校验](toolValidate.go)
-	- SRI值自动设置
-	- 自动http2 push
 - net/http
 	- [中间件 黑名单](nethttpBlack.go)
 	- [中间件 路径重写](nethttpRewrite.go)

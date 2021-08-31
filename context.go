@@ -622,7 +622,7 @@ func (ctx *contextBase) Fatalf(format string, args ...interface{}) {
 }
 
 type contextFatalError struct {
-	Status     int    `json:"status "`
+	Status     int    `json:"status"`
 	Error      string `json:"error"`
 	XRequestID string `json:"x-request-id,omitempty"`
 	Host       string `json:"host"`

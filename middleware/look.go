@@ -1,10 +1,8 @@
 package middleware
 
 import (
-	"bytes"
+	"encoding/json"
 	"fmt"
-	htmltemplate "html/template"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"text/template"
@@ -12,364 +10,380 @@ import (
 	"github.com/eudore/eudore"
 )
 
+func init() {
+	lookTemplate = strings.Replace(lookTemplate, "\n", "", -1)
+	lookTemplate = strings.Replace(lookTemplate, "\t", "", -1)
+}
+
 // NewLookFunc 函数创建一个访问对象数据处理函数。
 func NewLookFunc(data interface{}) eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
-		data := eudore.Get(data, strings.Replace(ctx.GetParam("*"), "/", ".", -1))
-		p := ctx.Path()
-		if p[len(p)-1] == '/' {
-			p = p[:len(p)-1]
+		ctx.SetHeader("X-Eudore-Admin", "look")
+		look := LookValue{
+			LookConfig: &LookConfig{
+				Depth:   eudore.GetStringInt(ctx.GetQuery("d"), 10),
+				ShowAll: eudore.GetStringBool(ctx.GetQuery("all")),
+				Refs:    make(map[uintptr]struct{}),
+			},
 		}
-		fmt.Println(data)
-		fm := &formatter{
-			buffer:   bytes.NewBuffer(nil),
-			visited:  make(map[uintptr]string),
-			depth:    0,
-			maxDepth: eudore.GetStringInt(ctx.GetQuery("d"), 10),
-			godoc:    eudore.GetString(ctx.GetParam("godoc"), "https://golang.org") + p + "/",
-			args:     ctx.Querys().Encode(),
-			showall:  ctx.GetQuery("all") != "",
-			format:   eudore.GetString(ctx.GetQuery("format"), "html"),
-			tmp:      getTmp(),
-		}
-
-		tmp := fm.tmp.Lookup(fm.format)
-		if tmp == nil {
-			ctx.WriteHeader(404)
-			ctx.WriteString("not found look format: " + fm.format)
+		val, err := eudore.GetWithValue(data, strings.Replace(ctx.GetParam("*"), "/", ".", -1), look.ShowAll)
+		if err != nil {
+			ctx.Fatal(err)
 			return
 		}
+		look.Scan(val)
 
-		fm.handleValue(reflect.ValueOf(data), " ")
-		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
-		ctx.SetHeader("X-Eudore-Admin", "look")
-		ctx.WriteString(`<style>
-			 span{white-space:pre-wrap;word-wrap : break-word ;overflow: hidden ;}
-			</style><script>console.log("d=10 depth递归显时层数\nall=false 是否显时非导出属性")</script><pre>`)
-		ctx.Write(fm.buffer.Bytes())
-		ctx.WriteString("</pre>")
+		switch ctx.GetQuery("format") {
+		case "json":
+			ctx.SetHeader(eudore.HeaderContentType, eudore.MimeApplicationJSONUtf8)
+			encoder := json.NewEncoder(ctx)
+			if !strings.Contains(ctx.GetHeader(eudore.HeaderAccept), eudore.MimeApplicationJSON) {
+				encoder.SetIndent("", "\t")
+			}
+			encoder.Encode(look)
+		case "text":
+			tmpl, _ := getLookTemplate(strings.TrimSuffix(ctx.Path(), "/"), ctx.Querys().Encode(), ctx.GetQuery("godoc"))
+			ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextPlainCharsetUtf8)
+			tmpl.ExecuteTemplate(ctx, "text", &look)
+		default:
+			tmpl, _ := getLookTemplate(strings.TrimSuffix(ctx.Path(), "/"), ctx.Querys().Encode(), ctx.GetQuery("godoc"))
+			ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
+			tmpl.ExecuteTemplate(ctx, "view", viewData{ctx.GetParam("*"), eudore.GetStringInt(ctx.GetQuery("width"), 60), &look})
+		}
 	}
 }
 
-// LookValue 定义渲染数据的每一项属性。
-type LookValue struct {
-	Kind    string `json:"kind"`
-	Type    string `json:",omitempty"`
-	Pkg     string `json:",omitempty"`
-	PkgPath string `json:",omitempty"`
-	Public  bool   `json:",omitempty"`
-	Keypath string `json:",omitempty"`
-	Value   interface{}
+type viewData struct {
+	Path  string
+	Width int
+	Data  *LookValue
 }
 
-type formatter struct {
-	buffer   *bytes.Buffer
-	visited  map[uintptr]string
-	depth    int
-	maxDepth int
-	godoc    string
-	args     string
-	showall  bool
-	format   string
-	tmp      *template.Template
+func getLookTemplate(path, querys, godoc string) (*template.Template, error) {
+	depth := 0
+	paths := []string{path}
+	if querys != "" {
+		querys = "?" + querys
+	}
+	return template.New("name").Funcs(template.FuncMap{
+		"addtab":  func() string { depth++; return "" },
+		"subtab":  func() string { depth--; return "" },
+		"gettab":  func() string { return strings.Repeat("\t", depth) },
+		"addpath": func(path string) string { paths = append(paths, path); return "" },
+		"subpath": func() string { paths = paths[:len(paths)-1]; return "" },
+		"getpath": func() string { return fmt.Sprintf("%s%s", strings.Join(paths, "/"), querys) },
+		"isnil":   func(i interface{}) bool { return reflect.ValueOf(i).IsNil() },
+	}).Parse(strings.Replace(lookTemplate, "GODOC", eudore.GetString(godoc, "https://golang.org"), -1))
 }
 
-func getTmp() *template.Template {
-	str := strings.Replace(tmpdefault, "\n", "", -1)
-	str = strings.Replace(str, "\t", "", -1)
-	str = strings.Replace(str, "GODOC", "https://godoc.org", -1)
-	tmpl, err := template.New("name").Parse(str)
-	fmt.Println(err)
-	return tmpl
-}
+var lookTemplate = `
+{{define "view"}}
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Eudore Look Value {{.Path}}</title>
+	<meta name="author" content="eudore">
+	<meta name="referrer" content="always">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="description" content="Eudore look data all filed value">
+	<style>
+		body>div{font-family: monospace;white-space: pre;}
+		pre {margin: 0 {{.Width}}px;}
+		span{white-space:pre-wrap;word-wrap : break-word ;overflow: hidden ;}
+	</style>
+</head>
+<body>
+	<div>{{template "html" .Data}}</div>
+	<script>
+		console.log('d=10 depth递归显时最大层数\nall=false 是否显时非导出属性\nformat=html/json/text 设置数据显示格式\ngodoc=https://golang.org 设置html格式链接的godoc服务地址\nwidth=100 设置html格式缩进宽度');
+		for(var i of document.getElementsByTagName('span')){
+			i.addEventListener('click',(e)=>{
+				if(e.target.innerText=='-'){
+					e.target.innerText='+'; e.target.nextSibling.style.cssText='display: none';
+				}else{
+					e.target.innerText='-'; e.target.nextSibling.style.cssText='display: block';
+				}
+			})
+		}
+	</script>
+</body>
+</html>
+{{end}}
 
-var tmpdefault string = `
-{{define "txt"}}
-	{{if ne .PkgPath ""}}
-		{{.PkgPath}}.
+{{define "html"}}
+	{{if and (ne .Package "") (ne .Name "")}}
+		<a href="GODOC/pkg/{{.Package}}#{{.Name}}" target="_Blank">{{.Package}}.{{.Name}}</a>
+	{{else}}
+		{{if ne .Package ""}}
+			{{.Package}}.
+		{{end}}
+		{{if ne .Name ""}}
+			{{.Name}}
+		{{end}}
 	{{end}}
-	{{if ne .Type ""}}
-		{{.Type}}
-	{{end}}
-	{{ if eq .Kind "bool" "int" "string" "float" "uint" "complex"}}
-		{{if .Keypath }}
-			{{if .Value}}
-				{{.Value}}
-			{{else}}
-				jump to {{.Keypath}}
-			{{end}}
+	{{if eq .Kind "bool" "int" "string" "float" "uint" "complex"}}
+		{{if eq .String "" }}
+			({{printf "%#v" .Value}})
 		{{else}}
-			{{ if eq .Kind "string"}}
-				"{{.Value}}"
-			{{else}}
-				{{.Value}}
+			("{{.String}}")
+		{{end}}
+	{{else if eq .Kind "struct" "map"}}
+		{{printf "{"}}
+		{{if ne (len .Keys ) 0}}
+			<span>-</span>
+			<pre>
+			{{range $index, $elem := .Keys}}
+				{{addpath (print $elem)}}
+				<a href="{{getpath}}">{{$elem}}</a>: {{template "html" index  $.Vals $index }},
+				{{printf "\n"}}
+				{{subpath}}
 			{{end}}
+			</pre>
+		{{end}}
+		{{printf "}"}}
+	{{else if eq .Kind "slice" "array"}}
+		{{printf "["}}
+		{{if ne (len .Vals ) 0}}
+			<span>-</span>
+			<pre>
+			{{range $index, $elem := .Vals}}
+				{{addpath (print $index)}}
+				<a href="{{getpath}}">{{$index}}</a>: {{template "html" $elem }},
+				{{printf "\n"}}
+				{{subpath}}
+			{{end}}
+			</pre>
+		{{end}}
+		{{printf "]"}}
+	{{else if eq .Kind "interface"}}
+		{{if isnil .Elem}}
+			(nil)
+		{{else}}
+			 {{template "html" .Elem}}
 		{{end}}
 	{{else if eq .Kind "func" "chan"}}
-		(0x{{ printf "%x" .Value}})
-	{{else }}
-		{{if .Value }}
-			{{.Value}}
+		{{ if eq .Pointer 0 }}
+			(nil)
+		{{else}}
+			(0x{{ printf "%x" .Pointer}})
+		{{end}}
+	{{else}}
+		{{ if eq .Pointer 0 }}
+			(nil)
+		{{else if isnil .Elem}}
+			(CYCLIC REFERENCE 0x{{ printf "%x" .Pointer}})
+		{{else}}
+			{{if eq .Kind "ptr"}}
+				&{{template "html" .Elem}}
+			{{end}}
 		{{end}}
 	{{end}}
 {{end}}
 
-{{define "html"}}
-	{{if ne .Type ""}}
-		{{if .Public}}
-			<a href="GODOC/pkg/{{.PkgPath}}#{{.Type}}">{{.Pkg}}.{{.Type}}</a>
-		{{else}}
-			{{if .Pkg}}
-				{{.Pkg}}.
-			{{end}}
-			{{.Type}}
-		{{end}}
+{{define "text"}}
+	{{if ne .Package ""}}
+		{{.Package}}.
 	{{end}}
-	{{ if eq .Kind "bool" "int" "string" "float" "uint" "complex"}}
-		{{if .Keypath }}
-			{{if .Value}}
-				<a href="{{.Keypath}}?" id="{{.Keypath}}">{{.Value}}</a>
-			{{else}}
-				jump to <a href="#{{.Keypath}}"">{{.Keypath}}</a>
-			{{end}}
+	{{if ne .Name ""}}
+		{{.Name}}
+	{{end}}
+	{{if eq .Kind "bool" "int" "string" "float" "uint" "complex"}}
+		{{ if eq .String "" }}
+			({{printf "%#v" .Value}})
 		{{else}}
-			{{ if eq .Kind "string"}}
-				"{{.Value}}"
-			{{else}}
-				{{.Value}}
+			("{{.String}}")
+		{{end}}
+	{{else if eq .Kind "struct" "map"}}
+		{{printf "{"}}
+		{{addtab}}
+		{{if ne (len .Keys ) 0}}
+			{{range $index, $elem := .Keys}}
+				{{printf "\n"}}
+				{{gettab}}{{$elem}}: {{template "text" index  $.Vals $index }},
 			{{end}}
+			{{printf "\n"}}
+			{{subtab}}{{gettab}}{{printf "}"}}
+		{{else}}
+			{{subtab}}{{printf "}"}}
+		{{end}}
+	{{else if eq .Kind "slice" "array"}}
+		{{printf "["}}
+		{{addtab}}
+		{{if ne (len .Vals ) 0}}
+			{{range $index, $elem := .Vals}}
+				{{printf "\n"}}
+				{{gettab}}{{$index}}: {{template "text" $elem }},
+			{{end}}
+			{{printf "\n"}}
+			{{subtab}}{{gettab}}{{printf "}"}}
+		{{else}}
+			{{subtab}}{{printf "]"}}
+		{{end}}
+	{{else if eq .Kind "interface"}}
+		{{if isnil .Elem}}
+			(nil)
+		{{else}}
+			 {{template "text" .Elem}}
 		{{end}}
 	{{else if eq .Kind "func" "chan"}}
-		{{ if .Value }}
-			(0x{{ printf "%x" .Value}})
-		{{else}}
+		{{ if eq .Pointer 0 }}
 			(nil)
+		{{else}}
+			(0x{{ printf "%x" .Pointer}})
 		{{end}}
-	{{else }}
-		{{if .Value }}
-			{{.Value}}
+	{{else}}
+		{{ if eq .Pointer 0 }}
+			(nil)
+		{{else if isnil .Elem}}
+			(CYCLIC REFERENCE 0x{{ printf "%x" .Pointer}})
+		{{else}}
+			{{if eq .Kind "ptr"}}
+				&{{template "text" .Elem}}
+			{{end}}
 		{{end}}
 	{{end}}
 {{end}}
 `
 
-func (fm *formatter) WriteKey(look LookValue) {
-	fm.WriteValue(look)
+// LookConfig 定义属性遍历的配置
+type LookConfig struct {
+	Depth   int                  `json:"-"`
+	ShowAll bool                 `json:"-"`
+	Refs    map[uintptr]struct{} `json:"-"`
 }
 
-func (fm *formatter) WriteValue(look LookValue) {
-	if look.PkgPath != "" {
-		look.Pkg = filepath.Base(look.PkgPath)
+// LookValue 定义数据的每一项属性。
+type LookValue struct {
+	*LookConfig `json:"-"`
+	Kind        string      `json:"kind"`
+	Package     string      `json:"package,omitempty"`
+	Name        string      `json:"name,omitempty"`
+	Value       interface{} `json:"value,omitempty"`
+	String      string      `json:"string,omitempty"`
+	Pointer     uintptr     `json:"pointer,omitempty"`
+	Elem        *LookValue  `json:"elem,omitempty"`
+	Keys        []string    `json:"keys,omitempty"`
+	Vals        []LookValue `json:"vals,omitempty"`
+}
+
+// Scan 方法扫描属性并保存。
+func (look *LookValue) Scan(iValue reflect.Value) {
+	look.Kind = iValue.Kind().String()
+	look.Name = iValue.Type().Name()
+	look.Package = iValue.Type().PkgPath()
+	if look.Name == "" && iValue.Kind() != reflect.Ptr {
+		look.Name = iValue.Type().String()
 	}
-	if look.Type != "" && 'A' <= look.Type[0] && look.Type[0] <= 'Z' {
-		look.Public = true
-	}
-
-	fm.tmp.ExecuteTemplate(fm.buffer, fm.format, look)
-}
-
-func (fm *formatter) WriteString(args ...interface{}) {
-	fmt.Fprint(fm.buffer, args...)
-}
-func (fm *formatter) WriteLine() {
-	fmt.Fprint(fm.buffer, strings.Repeat("\t", fm.depth))
-}
-
-var typeStringer = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
-
-func (fm *formatter) handleValue(iValue reflect.Value, path string) {
-	if fm.depth > fm.maxDepth || fm.handleElemString(iValue, path) {
+	// check ref Chan, Func, Interface, Map, Ptr, Slice, UnsafePointer
+	if look.isRef(iValue) {
 		return
 	}
 
 	switch iValue.Kind() {
 	case reflect.Bool:
-		fm.WriteValue(LookValue{Kind: "bool", Value: iValue.Bool()})
+		look.Value = iValue.Bool()
+		look.String = getBasicString(iValue)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		fm.WriteValue(LookValue{Kind: "int", Value: iValue.Int()})
+		look.Kind = "int"
+		look.Value = iValue.Int()
+		look.String = getBasicString(iValue)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		fm.WriteValue(LookValue{Kind: "uint", Value: iValue.Uint()})
+		look.Kind = "uint"
+		look.Value = iValue.Uint()
+		look.String = getBasicString(iValue)
 	case reflect.Float32, reflect.Float64:
-		fm.WriteValue(LookValue{Kind: "float", Value: iValue.Float()})
+		look.Kind = "float"
+		look.Value = iValue.Float()
+		look.String = getBasicString(iValue)
 	case reflect.Complex64, reflect.Complex128:
-		fm.WriteValue(LookValue{Kind: "complex", Value: iValue.Complex()})
+		look.Kind = "complex"
+		look.Value = iValue.Complex()
+		look.String = getBasicString(iValue)
 	case reflect.String:
-		fm.WriteValue(LookValue{Kind: "string", Value: iValue.String()})
-	case reflect.Func:
-		fm.WriteValue(LookValue{Kind: "func", Type: getTypeName(iValue.Type()), PkgPath: iValue.Type().PkgPath(), Value: iValue.Pointer()})
-	case reflect.Ptr:
-		fm.WriteString("&")
-		fm.handleValue(iValue.Elem(), path)
-	case reflect.Interface:
-		fm.WriteValue(LookValue{
-			Kind:    "interface",
-			Type:    getTypeName(iValue.Type()),
-			PkgPath: iValue.Type().PkgPath(),
-		})
-		fm.WriteString(" ")
-		fm.handleValue(iValue.Elem(), path)
+		look.Value = iValue.String()
 	case reflect.Slice, reflect.Array:
-		fm.handleSliceValue(iValue, path)
+		look.scanSlice(iValue)
 	case reflect.Struct:
-		fm.handleStructValue(iValue, path)
+		look.scanStruct(iValue)
 	case reflect.Map:
-		fm.handleMapValue(iValue, path)
+		look.scanMap(iValue)
+	case reflect.Ptr, reflect.Interface:
+		look.Elem = new(LookValue)
+		look.Elem.LookConfig = look.LookConfig
+		look.Elem.Scan(iValue.Elem())
+	case reflect.Func, reflect.Chan, reflect.UnsafePointer:
 	}
 }
 
-func (fm *formatter) handleElemString(iValue reflect.Value, path string) bool {
+func (look *LookValue) isRef(iValue reflect.Value) bool {
 	switch iValue.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Map, reflect.Interface, reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
 		if iValue.IsNil() {
-			fm.WriteString(iValue.Type(), "(nil)")
 			return true
-		} else if iValue.Kind() != reflect.Interface {
-			line, ok := fm.visited[iValue.Pointer()]
+		}
+		if iValue.Kind() != reflect.Interface {
+			look.Pointer = iValue.Pointer()
+			_, ok := look.Refs[look.Pointer]
 			if ok {
-				fm.WriteValue(LookValue{
-					Kind:    "string",
-					Keypath: line,
-				})
+				look.Name = iValue.Type().String()
 				return true
 			}
-			fm.visited[iValue.Pointer()] = path
-		}
-	}
-
-	if iValue.CanSet() && iValue.Type().Implements(typeStringer) {
-		val := iValue.MethodByName("String").Call([]reflect.Value{})[0]
-		str := val.String()
-		if str != "" {
-			fm.WriteString(htmltemplate.HTMLEscapeString(str))
-			return true
+			look.Refs[look.Pointer] = struct{}{}
 		}
 	}
 	return false
 }
 
-func (fm *formatter) handleSliceValue(iValue reflect.Value, path string) {
-	iType := iValue.Type().Elem()
-	fmt.Fprint(fm.buffer, "[]")
-	fm.WriteValue(LookValue{
-		Kind:    iValue.Type().Kind().String(),
-		Type:    getTypeName(iType),
-		PkgPath: iType.PkgPath(),
-		Keypath: path,
-	})
-	fmt.Fprint(fm.buffer, "{")
-
-	isbase := getBaseType(iType)
-	if iValue.Len() > 0 {
-		fm.depth++
-		//			fmt.Fprint(fm.buffer, "\n")
+func (look *LookValue) scanSlice(iValue reflect.Value) {
+	look.Depth--
+	if look.Depth > 0 {
+		look.Vals = make([]LookValue, iValue.Len())
 		for i := 0; i < iValue.Len(); i++ {
-			if !isbase || (i%16 == 0 && iValue.Len() > 16) {
-				fmt.Fprint(fm.buffer, "\n")
-				fm.WriteLine()
-				fm.handleValue(iValue.Index(i), path+"/"+fmt.Sprint(i))
-				fmt.Fprint(fm.buffer, ", ")
-			} else {
-				fm.handleValue(iValue.Index(i), path+"/"+fmt.Sprint(i))
-				fmt.Fprint(fm.buffer, ", ")
+			look.Vals[i].LookConfig = look.LookConfig
+			look.Vals[i].Scan(iValue.Index(i))
+		}
+	}
+	look.Depth++
+}
+
+func (look *LookValue) scanStruct(iValue reflect.Value) {
+	look.Depth--
+	if look.Depth > 0 {
+		iType := iValue.Type()
+		for i := 0; i < iValue.NumField(); i++ {
+			if iValue.Field(i).CanSet() || look.ShowAll {
+				l := LookValue{LookConfig: look.LookConfig}
+				l.Scan(iValue.Field(i))
+				look.Keys = append(look.Keys, iType.Field(i).Name)
+				look.Vals = append(look.Vals, l)
 			}
 		}
-		fm.depth--
-		if !isbase || iValue.Len() > 16 {
-			fmt.Fprint(fm.buffer, "\n")
-			fm.WriteLine()
+	}
+	look.Depth++
+}
+
+func (look *LookValue) scanMap(iValue reflect.Value) {
+	look.Depth--
+	if look.Depth > 0 {
+		look.Keys = make([]string, iValue.Len())
+		look.Vals = make([]LookValue, iValue.Len())
+		for i, key := range iValue.MapKeys() {
+			look.Keys[i] = getKeyString(key)
+			look.Vals[i].LookConfig = look.LookConfig
+			look.Vals[i].Scan(iValue.MapIndex(key))
 		}
 	}
-	fmt.Fprint(fm.buffer, "}")
+	look.Depth++
 }
 
-func (fm *formatter) handleStructValue(iValue reflect.Value, path string) {
-	iType := iValue.Type()
-	fm.WriteValue(LookValue{
-		Kind:    "struct",
-		Type:    getTypeName(iValue.Type()),
-		PkgPath: iValue.Type().PkgPath(),
-		Keypath: path,
-	})
-	fmt.Fprintln(fm.buffer, "{")
+var typeStringer = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
 
-	fm.depth++
-	var isdata bool
-	for i := 0; i < iType.NumField(); i++ {
-		if iValue.Field(i).CanSet() || fm.showall {
-			fm.WriteLine()
-			fm.WriteKey(LookValue{
-				Kind:    "string",
-				PkgPath: iType.Field(i).PkgPath,
-				Value:   iType.Field(i).Name,
-				Keypath: path + "/" + iType.Field(i).Name,
-			})
-			isdata = true
-			fmt.Fprint(fm.buffer, ": ")
-			fm.handleValue(iValue.Field(i), path+"/"+iType.Field(i).Name)
-			fmt.Fprintln(fm.buffer, ",")
-		}
+func getBasicString(iValue reflect.Value) string {
+	if iValue.CanSet() && iValue.Type().Implements(typeStringer) {
+		return iValue.MethodByName("String").Call(nil)[0].String()
 	}
-	fm.depth--
-	if isdata {
-		fm.WriteLine()
-		fmt.Fprint(fm.buffer, "}")
-	} else {
-		fm.buffer.Bytes()[fm.buffer.Len()-1] = '}'
-	}
-}
-
-func (fm *formatter) handleMapValue(iValue reflect.Value, path string) {
-	fm.WriteValue(LookValue{
-		Kind:    "map",
-		Type:    getTypeName(iValue.Type()),
-		PkgPath: iValue.Type().PkgPath(),
-		Keypath: path,
-	})
-	fmt.Fprintln(fm.buffer, "{")
-
-	fm.depth++
-	var isdata bool
-	for _, key := range iValue.MapKeys() {
-		fm.WriteLine()
-		newpath := path + "/" + getKeyString(key)
-		if getBaseType(reflect.Indirect(key).Type()) {
-			fm.WriteKey(LookValue{
-				Kind:    "string",
-				Value:   getKeyString(key),
-				Keypath: newpath,
-			})
-		} else {
-			fm.handleValue(key, newpath)
-		}
-		isdata = true
-		fmt.Fprint(fm.buffer, ": ")
-		fm.handleValue(iValue.MapIndex(key), newpath)
-		fmt.Fprintln(fm.buffer, ",")
-	}
-	fm.depth--
-	if isdata {
-		fm.WriteLine()
-		fmt.Fprint(fm.buffer, "}")
-	} else {
-		fm.buffer.Bytes()[fm.buffer.Len()-1] = '}'
-	}
-}
-
-func getTypeName(iType reflect.Type) string {
-	name := iType.Name()
-	if name != "" {
-		return name
-	}
-	return iType.String()
-}
-
-func getBaseType(iType reflect.Type) bool {
-	switch iType.Kind() {
-	case reflect.String, reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-		return true
-	default:
-		return false
-	}
+	return ""
 }
 
 func getKeyString(iValue reflect.Value) string {
@@ -392,6 +406,6 @@ func getKeyString(iValue reflect.Value) string {
 		}
 		return getKeyString(iValue.Elem())
 	default:
-		return ""
+		return "noprint(" + iValue.Type().String() + ")"
 	}
 }
