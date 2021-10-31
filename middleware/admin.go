@@ -5,7 +5,9 @@ import "time"
 var now = time.Now()
 
 // AdminStatic 定义admin.html内容
-var AdminStatic = `
+var AdminStatic = adminStatic
+
+var adminStatic = `
 <!DOCTYPE html>
 <html>
 <head>

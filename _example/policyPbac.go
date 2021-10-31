@@ -80,7 +80,7 @@ func main() {
 		client.NewRequest("GET", "/policys/1/members").Do().Out()
 	}()
 
-	client.AddHeaderValue(eudore.HeaderAuthorization, policys.NewBearer(1, "", "", time.Now().Add(87600*time.Hour).Unix()))
+	client.AddHeaderValue(eudore.HeaderAuthorization, policys.NewBearer(1, "", time.Now().Add(87600*time.Hour).Unix()))
 	client.NewRequest("GET", "/1?id=1").Do().CheckStatus(200)
 	client.NewRequest("GET", "/2?id=1").Do().CheckStatus(200)
 	client.NewRequest("PUT", "/hello?id=1").Do().CheckStatus(403)

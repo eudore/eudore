@@ -15,6 +15,8 @@ type contextKey struct {
 var (
 	// AppContextKey 定义从context.Value中获取app实例对象的key，如果app支持的话。
 	AppContextKey = &contextKey{"app"}
+	// UserContextKey 定义policy从context.Value中获取user信息的key。
+	UserContextKey = &contextKey{"user"}
 	// DefaultBodyMaxMemory 默认Body解析占用内存。
 	DefaultBodyMaxMemory int64 = 32 << 20 // 32 MB
 	// DefaultGetSetTags 定义Get/Set函数使用的默认tag。
@@ -31,12 +33,13 @@ var (
 	DefaultRecoverDepth = 20
 	// LogLevelString 定义日志级别输出字符串。
 	LogLevelString = [5]string{"DEBUG", "INFO", "WARNING", "ERROR", "FATAL"}
-	// RouterAllMethod 定义路由器使用的全部方法。
+	// RouterAllMethod 定义路由器允许注册的全部方法，注册其他方法别忽略,前六种方法始终存在。
 	RouterAllMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions, MethodConnect, MethodTrace}
 	// RouterAnyMethod 定义Any方法的注册使用的方法。
-	RouterAnyMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch}
+	RouterAnyMethod        = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch}
+	defaultRouterAnyMethod = append([]string{}, RouterAnyMethod...)
 	// ConfigAllParseFunc 定义ConfigMap和ConfigEudore默认使用的解析函数。
-	ConfigAllParseFunc = []ConfigParseFunc{ConfigParseJSON, ConfigParseArgs, ConfigParseEnvs, ConfigParseMods, ConfigParseWorkdir, ConfigParseHelp}
+	ConfigAllParseFunc = []ConfigParseFunc{NewConfigParseJSON("config"), NewConfigParseArgs(nil), NewConfigParseEnvs("ENV_"), NewConfigParseWorkdir("workdir"), NewConfigParseHelp("help")}
 	// DefaultHandlerExtend 为默认的函数扩展处理者，是RouterStd使用的最顶级的函数扩展处理者。
 	DefaultHandlerExtend = NewHandlerExtendBase()
 	// DefaultValidater 定义默认的验证器
@@ -326,8 +329,14 @@ const (
 	HeaderXForwardedProto                 = "X-Forwarded-Proto"
 	HeaderXFrameOptions                   = "X-Frame-Options"
 	HeaderXXSSProtection                  = "X-Xss-Protection"
+	HeaderXRealIP                         = "X-Real-Ip"
 	HeaderXRequestID                      = "X-Request-Id"
 	HeaderXTraceID                        = "X-Trace-Id"
+
+	// eudore Header
+
+	HeaderXEudoreAdmin = "X-Eudore-Admin"
+	HeaderXMatchRoute  = "X-Match-Route"
 
 	// 默认http请求方法
 
@@ -372,11 +381,10 @@ const (
 	ParamAllow           = "allow"
 	ParamCaller          = "caller"
 	ParamControllerGroup = "controllergroup"
-	ParamRAM             = "ram"
 	ParamRegister        = "register"
 	ParamTemplate        = "template"
 	ParamRoute           = "route"
-	ParamDeny            = "deny"
-	ParamUID             = "UID"
-	ParamUNAME           = "UNAME"
+	ParamUserid          = "Userid"
+	ParamPolicy          = "Policy"
+	ParamResource        = "Resource"
 )

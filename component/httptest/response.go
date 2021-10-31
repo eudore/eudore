@@ -20,6 +20,7 @@ type (
 		Client  *Client
 		Request *RequestReaderTest
 
+		sync.RWMutex
 		sync.WaitGroup
 		// Code is the HTTP response code set by WriteHeader.
 		//
@@ -63,6 +64,12 @@ func NewResponseWriterTest(client *Client, req *RequestReaderTest) *ResponseWrit
 
 // Header returns the response headers.
 func (rw *ResponseWriterTest) Header() http.Header {
+	rw.Lock()
+	defer rw.Unlock()
+	return rw.getHeader()
+}
+
+func (rw *ResponseWriterTest) getHeader() http.Header {
 	m := rw.HeaderMap
 	if m == nil {
 		m = make(http.Header)
@@ -83,7 +90,8 @@ func (rw *ResponseWriterTest) writeHeader(b []byte) {
 		return
 	}
 
-	m := rw.Header()
+	rw.wroteHeader = true
+	m := rw.getHeader()
 	hasType := m.Get("Content-Type") != ""
 	hasTE := m.Get("Transfer-Encoding") != ""
 	if !hasType && !hasTE {
@@ -95,6 +103,8 @@ func (rw *ResponseWriterTest) writeHeader(b []byte) {
 
 // Write always succeeds and writes to rw.Body, if not nil.
 func (rw *ResponseWriterTest) Write(buf []byte) (int, error) {
+	rw.Lock()
+	defer rw.Unlock()
 	rw.writeHeader(buf)
 	if rw.Body != nil {
 		rw.Body.Write(buf)
@@ -105,11 +115,12 @@ func (rw *ResponseWriterTest) Write(buf []byte) (int, error) {
 // WriteHeader sets rw.Code. After it is called, changing rw.Header
 // will not affect rw.HeaderMap.
 func (rw *ResponseWriterTest) WriteHeader(code int) {
+	rw.Lock()
+	defer rw.Unlock()
 	if rw.wroteHeader {
 		return
 	}
 	rw.Code = code
-	rw.wroteHeader = true
 	if rw.HeaderMap == nil {
 		rw.HeaderMap = make(http.Header)
 	}
@@ -128,9 +139,7 @@ func cloneHeaderMap(h http.Header) http.Header {
 
 // Flush sets rw.Flushed to true.
 func (rw *ResponseWriterTest) Flush() {
-	if !rw.wroteHeader {
-		rw.WriteHeader(200)
-	}
+	rw.WriteHeader(200)
 	rw.Flushed = true
 }
 
@@ -158,6 +167,8 @@ func (rw *ResponseWriterTest) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 
 // HandleRespone 方法处理一个http.Response对象数据。
 func (rw *ResponseWriterTest) HandleRespone(resp *http.Response) *ResponseWriterTest {
+	rw.Lock()
+	defer rw.Unlock()
 	rw.Code = resp.StatusCode
 	rw.HeaderMap = resp.Header
 	body, err := ioutil.ReadAll(resp.Body)

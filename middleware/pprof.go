@@ -41,8 +41,8 @@ func (pprofController) Inject(_ eudore.Controller, r eudore.Router) error {
 
 // HandlerExpvar 方法实现expvar处理。
 func HandlerExpvar(ctx eudore.Context) {
-	ctx.SetHeader("Content-Type", "application/json; charset=utf-8")
-	ctx.SetHeader("X-Eudore-Admin", "expvar")
+	ctx.SetHeader(eudore.HeaderContentType, "application/json; charset=utf-8")
+	ctx.SetHeader(eudore.HeaderXEudoreAdmin, "expvar")
 	ctx.WriteHeader(200)
 	ctx.Write([]byte("{\n"))
 	first := true
@@ -97,7 +97,7 @@ func HandlerPporfIndex(ctx eudore.Context) {
 		return profiles[i].Name < profiles[j].Name
 	})
 
-	switch ctx.GetQuery("format") {
+	switch getRequestForma(ctx) {
 	case "json":
 		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeApplicationJSONUtf8)
 		encoder := json.NewEncoder(ctx)
@@ -147,8 +147,8 @@ func HandlerPprofGoroutine(ctx eudore.Context) {
 	p := pprof.Lookup("goroutine")
 	debug := eudore.GetStringInt(ctx.GetQuery("debug"))
 	if debug == 0 {
-		ctx.SetHeader("Content-Type", "application/octet-stream")
-		ctx.SetHeader("Content-Disposition", "attachment; filename=\"goroutine\"")
+		ctx.SetHeader(eudore.HeaderContentType, "application/octet-stream")
+		ctx.SetHeader(eudore.HeaderContentDisposition, "attachment; filename=\"goroutine\"")
 		p.WriteTo(ctx, 0)
 		return
 	}

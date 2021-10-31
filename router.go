@@ -29,6 +29,7 @@ RouterCore has four router cores to implement the following functions:
     High performance (70%-90% of httprouter performance, using less memory)
     Low code complexity (RouterCoreStd supports 5 levels of priority, a code complexity of 19 is not satisfied)
     Request for additional default parameters (including current routing matching rules)
+    Extend custom routing methods
     Variable and wildcard matching
     Matching priority Constant > Variable verification > Variable > Wildcard verification > Wildcard (RouterCoreStd five-level priority)
     Method priority Specify method > Any method (The specified method will override the Any method, and vice versa)
@@ -56,6 +57,7 @@ RouterCore拥有四种路由器核心实现下列功能：
     高性能(httprouter性能的70%-90%，使用更少的内存)
     低代码复杂度(RouterCoreStd支持5级优先级 一处代码复杂度19不满足)
     请求获取额外的默认参数(包含当前路由匹配规则)
+    扩展自定义路由方法
     变量和通配符匹配
     匹配优先级 常量 > 变量校验 > 变量 > 通配符校验 > 通配符(RouterCoreStd五级优先级)
     方法优先级 指定方法 > Any方法(指定方法会覆盖Any方法，反之不行)
@@ -95,6 +97,11 @@ type RouterCore interface {
 	Match(string, string, *Params) HandlerFuncs
 }
 
+// RouterStd default router registration implementation.
+//
+// Need to specify a routing core, the default handler function extension is DefaultHandlerExtend.
+// As a public attribute, it is only used by godoc to display the documentation of the relevant method.
+//
 // RouterStd 默认路由器注册实现。
 //
 // 需要指定一个路由核心，处理函数扩展者默认为DefaultHandlerExtend。
@@ -107,22 +114,30 @@ type RouterStd struct {
 	params          *Params              `alias:"params"`
 }
 
-// HandlerRouter405 函数定义默认405处理
+// HandlerRouter405 function defines the default 405 processing and returns Allow and X-Match-Route Header.
+//
+// HandlerRouter405 函数定义默认405处理,返回Allow和X-Match-Route Header。
 func HandlerRouter405(ctx Context) {
 	const page405 string = "405 method not allowed"
 	ctx.SetHeader(HeaderAllow, ctx.GetParam(ParamAllow))
-	ctx.SetHeader("X-Match-Route", ctx.GetParam(ParamRoute))
+	ctx.SetHeader(HeaderXMatchRoute, ctx.GetParam(ParamRoute))
 	ctx.WriteHeader(405)
 	ctx.Render(page405)
 }
 
-// HandlerRouter404 函数定义默认404处理
+// HandlerRouter404 function defines the default 404 processing.
+//
+// HandlerRouter404 函数定义默认404处理。
 func HandlerRouter404(ctx Context) {
 	const page404 string = "404 page not found"
 	ctx.WriteHeader(404)
 	ctx.Render(page404)
 }
 
+// NewRouterStd method uses a RouterCore to create a Router object.
+//
+// RouterStd implements RouterMethod interface registration related details, and routing matching is implemented by RouterCore.
+//
 // NewRouterStd 方法使用一个RouterCore创建Router对象。
 //
 // RouterStd实现RouterMethod接口注册相关细节，路由匹配由RouterCore实现。
@@ -297,7 +312,9 @@ func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 		return
 	}
 	m.Print("Register handler:", method, strings.TrimPrefix(params.String(), "route="), handlers)
-	handlers = NewHandlerFuncsCombine(m.Middlewares.Lookup(path), handlers)
+	if handlers != nil {
+		handlers = NewHandlerFuncsCombine(m.Middlewares.Lookup(path), handlers)
+	}
 
 	// 处理多方法
 	var errs muliterror
@@ -603,12 +620,17 @@ func indexsCombine(hs1, hs2 []int) []int {
 	return hs
 }
 
+// routerCoreLock allows reading and writing of RouterCore to be locked, which is used to dynamically add and delete routing rules at runtime.
+//
 // routerCoreLock 允许对RouterCore读写进行加锁，用于运行时动态增删路由规则。
 type routerCoreLock struct {
 	sync.RWMutex
 	RouterCore
 }
 
+// NewRouterCoreLock function creates a router core with a read-write lock,
+// and other router cores use the Lock core package when they need to dynamically modify the rules.
+//
 // NewRouterCoreLock 函数创建一个带读写锁的路由器核心，其他路由器核心在需要动态修改规则时使用Lock核心包装。
 func NewRouterCoreLock(core RouterCore) RouterCore {
 	if core == nil {
@@ -617,10 +639,11 @@ func NewRouterCoreLock(core RouterCore) RouterCore {
 	return &routerCoreLock{RouterCore: core}
 }
 
-// HandleFunc 方法对路由器核心加写锁进行注册路由规则。
+// The HandleFunc method adds a write lock to the router core to register routing rules, and defer prevents panic from being unable to unlock.
+//
+// HandleFunc 方法对路由器核心加写锁进行注册路由规则, defer 防止panic导致无法解锁。
 func (r *routerCoreLock) HandleFunc(method, path string, hs HandlerFuncs) {
 	r.Lock()
-	// defer 防止panic导致无法解锁
 	defer r.Unlock()
 	r.RouterCore.HandleFunc(method, path, hs)
 }
@@ -641,8 +664,10 @@ type routerCoreDebug struct {
 	HandlerNames [][]string `json:"handlernames" xml:"handlernames"`
 }
 
-var _ RouterCore = (*routerCoreDebug)(nil)
-
+// NewRouterCoreDebug function specifies the routing core to create a debug core, using eudore.RouterCoreStd as the core by default.
+//
+// Visit GET /eudore/debug/router/data to get router registration information.
+//
 // NewRouterCoreDebug 函数指定路由核心创建一个debug核心,默认使用eudore.RouterCoreStd为核心。
 //
 // 访问 GET /eudore/debug/router/data 可以获取路由器注册信息。
@@ -657,21 +682,37 @@ func NewRouterCoreDebug(core RouterCore) RouterCore {
 	return r
 }
 
+// HandleFunc implements the eudore.RouterCore interface and records all routing information.
+//
 // HandleFunc 实现eudore.RouterCore接口，记录全部路由信息。
 func (r *routerCoreDebug) HandleFunc(method, path string, hs HandlerFuncs) {
 	r.RouterCore.HandleFunc(method, path, hs)
+	// 删除记录的路由信息
+	if getRouteParam(path, ParamRegister) == "off" || hs == nil {
+		path = getRoutePath(path)
+		for i := range r.Methods {
+			if r.Paths[i] == path && r.Methods[i] == method {
+				r.Methods = r.Methods[:i+copy(r.Methods[i:], r.Methods[i+1:])]
+				r.Paths = r.Paths[:i+copy(r.Paths[i:], r.Paths[i+1:])]
+				r.HandlerNames = r.HandlerNames[:i+copy(r.HandlerNames[i:], r.HandlerNames[i+1:])]
+				break
+			}
+		}
+		return
+	}
+
 	names := make([]string, len(hs))
 	for i := range hs {
 		names[i] = fmt.Sprint(hs[i])
 	}
 	r.Methods = append(r.Methods, method)
-	r.Paths = append(r.Paths, path)
+	r.Paths = append(r.Paths, getRoutePath(path))
 	r.HandlerNames = append(r.HandlerNames, names)
 }
 
 // HandleHTTP 方法返回debug路由信息数据。
 func (r *routerCoreDebug) HandleHTTP(ctx Context) {
-	ctx.SetHeader("X-Eudore-Admin", "router-debug")
+	ctx.SetHeader(HeaderXEudoreAdmin, "router-debug")
 	ctx.Render(r)
 }
 
@@ -682,6 +723,10 @@ type routerCoreHost struct {
 	newRouteCore func(string) RouterCore
 }
 
+// NewRouterCoreHost function creates a Host routing core, and a function that creates a routing core based on the host value needs to be given.
+//
+// If the parameter is empty, each route Host will create NewRouterCoreStd by default.
+//
 // NewRouterCoreHost 函数创建一个Host路由核心，需要给定一个根据host值创建路由核心的函数。
 //
 // 如果参数为空默认每个路由Host都创建NewRouterCoreStd。
@@ -699,6 +744,13 @@ func NewRouterCoreHost(fn func(string) RouterCore) RouterCore {
 	return r
 }
 
+// The HandleFunc method looks for the host parameter from the path to select the router registration match
+//
+// The host value is a host mode, and * is allowed, which means any character from the current to the next'.' or the end.
+//
+// If the host value is'*', the registration will be added to all current router cores.
+// If the host value is empty and registered to the router core of'*', multiple hosts are allowed to use',' to divide the registration to multiple hosts at once.
+//
 // HandleFunc 方法从path中寻找host参数选择路由器注册匹配
 //
 // host值为一个host模式，允许存在*，表示当前任意字符到下一个'.'或结尾。

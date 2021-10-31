@@ -1,5 +1,16 @@
 package main
 
+/*
+NewLookFunc 函数创建一个访问对象数据处理函数。
+
+获取请求路由参数"*"为object访问路径，返回object指定属性的数据，允许使用下列参数：
+	d=10 depth递归显时最大层数
+	all=false 是否显时非导出属性
+	format=html/json/text 设置数据显示格式
+	godoc=https://golang.org 设置html格式链接的godoc服务地址
+	width=60 设置html格式缩进宽度
+*/
+
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
@@ -29,6 +40,9 @@ func main() {
 	client.NewRequest("GET", "/eudore/debug/look/?format=json").Do()
 	client.NewRequest("GET", "/eudore/debug/look/?format=t2").Do()
 	client.NewRequest("GET", "/eudore/debug/look/Config/Keys/2").Do()
+	client.NewRequest("GET", "/eudore/debug/look/?d=3").WithHeaderValue(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
+	client.NewRequest("GET", "/eudore/debug/look/?d=3").WithHeaderValue(eudore.HeaderAccept, eudore.MimeTextHTML).Do()
+	client.NewRequest("GET", "/eudore/debug/look/?d=3").WithHeaderValue(eudore.HeaderAccept, eudore.MimeText).Do()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

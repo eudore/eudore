@@ -52,7 +52,6 @@ type Context interface {
 	Path() string
 	RealIP() string
 	RequestID() string
-	Referer() string
 	ContentType() string
 	Istls() bool
 	Body() []byte
@@ -120,8 +119,8 @@ type contextBase struct {
 	err          string
 	isReadCookie bool
 	cookies      []Cookie
-	isReadBody   bool
-	postBody     []byte
+	bodyIsRead   bool
+	bodyContent  []byte
 }
 
 // entryContextBase 实现ContextBase使用的Logger对象。
@@ -161,8 +160,8 @@ func (ctx *contextBase) Reset(w http.ResponseWriter, r *http.Request) {
 	// cookies body
 	ctx.isReadCookie = false
 	ctx.cookies = ctx.cookies[0:0]
-	ctx.isReadBody = false
-	ctx.postBody = nil
+	ctx.bodyIsRead = false
+	ctx.bodyContent = nil
 }
 
 // GetContext 获取当前请求的上下文,返回RequestReader的context.Context对象。
@@ -231,6 +230,7 @@ func (ctx *contextBase) Next() {
 // End 结束请求上下文的处理。
 func (ctx *contextBase) End() {
 	ctx.index = 0xff
+	ctx.httpResponse.writeStatus()
 }
 
 // Err 方法返回
@@ -263,21 +263,18 @@ func (ctx *contextBase) Path() string {
 
 // RealIP 获取用户真实ip，ctx.Request().RemoteAddr()获取远程连接地址。
 func (ctx *contextBase) RealIP() string {
-	xforward := ctx.RequestReader.Header.Get(HeaderXForwardedFor)
-	if "" == xforward {
-		return strings.SplitN(ctx.RequestReader.RemoteAddr, ":", 2)[0]
+	if realip := ctx.RequestReader.Header.Get(HeaderXRealIP); realip != "" {
+		return realip
 	}
-	return strings.SplitN(string(xforward), ",", 2)[0]
+	if xforward := ctx.RequestReader.Header.Get(HeaderXForwardedFor); xforward != "" {
+		return strings.SplitN(string(xforward), ",", 2)[0]
+	}
+	return strings.SplitN(ctx.RequestReader.RemoteAddr, ":", 2)[0]
 }
 
 // RequestID 获取响应中的X-Request-Id Header
 func (ctx *contextBase) RequestID() string {
 	return ctx.GetHeader(HeaderXRequestID)
-}
-
-// Referer 获取Referer Header
-func (ctx *contextBase) Referer() string {
-	return ctx.GetHeader(HeaderReferer)
 }
 
 // ContentType 获取请求内容类型，返回Content-Type Header
@@ -291,24 +288,27 @@ func (ctx *contextBase) Istls() bool {
 }
 
 // Body 返回请求的body，并保存到缓存中，可重复调用Body方法,每次调用会重置ctx.Request().Body对象成一个body reader。
+//
+// ctx.bodyContent 不会随contextBase一起内存复用，正常应该避免调用Body方法；
+// 如果使用应该设置middleware.NewBodyLimitFunc。
 func (ctx *contextBase) Body() []byte {
-	if !ctx.isReadBody {
-		ctx.isReadBody = true
+	if !ctx.bodyIsRead {
+		ctx.bodyIsRead = true
 		bts, err := ioutil.ReadAll(ctx.RequestReader.Body)
 		if err != nil {
 			ctx.log.WithField("depth", 1).WithField(ParamCaller, "Context.Body").Error(err)
 			return nil
 		}
-		ctx.postBody = bts
+		ctx.bodyContent = bts
 	}
-	ctx.RequestReader.Body = ioutil.NopCloser(bytes.NewReader(ctx.postBody))
-	return ctx.postBody
+	ctx.RequestReader.Body = ioutil.NopCloser(bytes.NewReader(ctx.bodyContent))
+	return ctx.bodyContent
 }
 
 // getReader 如果调用过Body方法，返回Body封装的io.Reader可重复获得。
 func (ctx *contextBase) getReader() io.Reader {
-	if ctx.isReadBody {
-		return bytes.NewReader(ctx.postBody)
+	if ctx.bodyIsRead {
+		return bytes.NewReader(ctx.bodyContent)
 	}
 	return ctx
 }
@@ -625,6 +625,7 @@ type contextFatalError struct {
 	Status     int    `json:"status"`
 	Error      string `json:"error"`
 	XRequestID string `json:"x-request-id,omitempty"`
+	XTraceID   string `json:"x-trace-id,omitempty"`
 	Host       string `json:"host"`
 	Path       string `json:"path"`
 	Route      string `json:"route"`
@@ -644,6 +645,7 @@ func (ctx *contextBase) logFatal() {
 				Status:     status,
 				Error:      ctx.err,
 				XRequestID: ctx.RequestID(),
+				XTraceID:   ctx.RequestReader.Header.Get(HeaderXTraceID),
 				Host:       ctx.Host(),
 				Path:       ctx.Path(),
 				Route:      ctx.GetParam(ParamRoute),

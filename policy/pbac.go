@@ -64,7 +64,7 @@ func NewPolicys() *Policys {
 	policys := &Policys{
 		Signaturer: NewSignaturerJwt([]byte("eudore")),
 		ActionFunc: func(ctx eudore.Context) string {
-			return ctx.GetParam("action")
+			return ctx.GetParam(eudore.ParamAction)
 		},
 		ResourceFunc: func(ctx eudore.Context) string {
 			return strings.TrimPrefix(ctx.Path(), "/api/")
@@ -84,7 +84,7 @@ func (ctl *Policys) HandleHTTP(ctx eudore.Context) {
 		return
 	}
 	resource := ctl.ResourceFunc(ctx)
-	ctx.SetParam("Resource", resource)
+	ctx.SetParam(eudore.ParamResource, resource)
 
 	// 获取用户信息。
 	userid, err := ctl.GetUserFunc(ctx)
@@ -92,7 +92,7 @@ func (ctl *Policys) HandleHTTP(ctx eudore.Context) {
 		ctl.ForbendFunc(ctx, action, resource, err.Error())
 		return
 	}
-	ctx.SetParam("Userid", fmt.Sprint(userid))
+	ctx.SetParam(eudore.ParamUserid, fmt.Sprint(userid))
 
 	fmt.Println("pbac", userid, ctl.getMemberByUser(userid))
 	var now = time.Now()
@@ -115,7 +115,7 @@ matchPolicys:
 			if ok {
 				// 非数据权限执行行为
 				if s.Data == nil {
-					ctx.SetParam("Policy", m.policy.PolicyName)
+					ctx.SetParam(eudore.ParamPolicy, m.policy.PolicyName)
 					if !s.Effect {
 						ctl.ForbendFunc(ctx, action, resource, "")
 					}
@@ -133,11 +133,11 @@ matchPolicys:
 	}
 	// 数据权限
 	if datas != nil {
-		ctx.SetParam("Policy", strings.Join(names, ","))
+		ctx.SetParam(eudore.ParamPolicy, strings.Join(names, ","))
 		ctx.WithContext(context.WithValue(ctx.GetContext(), PolicyExpressions, datas))
 		return
 	}
-	ctl.ForbendFunc(ctx, action, resource, fmt.Sprintf("User %s not match policys.", ctx.GetParam("Userid")))
+	ctl.ForbendFunc(ctx, action, resource, fmt.Sprintf("User %s not match policys.", ctx.GetParam(eudore.ParamUserid)))
 }
 
 func (ctl *Policys) getMemberByUser(userid int) []*Member {
@@ -179,14 +179,19 @@ type forbiddenMessage struct {
 }
 
 func (ctl *Policys) handleForbidden(ctx eudore.Context, action, resource, err string) {
-	ctx.WriteHeader(403)
-	ctx.Render(forbiddenMessage{
+	msg := forbiddenMessage{
 		Status:   403,
 		Message:  "forbidden",
 		Action:   action,
 		Resource: resource,
 		Error:    err,
-	})
+	}
+	if ctx.GetParam(eudore.ParamUserid) == "0" {
+		msg.Status = 401
+		msg.Message = "unauthorized"
+	}
+	ctx.WriteHeader(msg.Status)
+	ctx.Render(msg)
 	ctx.End()
 }
 
@@ -196,18 +201,15 @@ const stringBearer = "Bearer "
 type SignatureUser struct {
 	// 唯一必要的属性，指定请求的userid
 	UserID int `json:"userid" alias:"userid"`
-	// 日志显示使用
-	UserName string `json:"username" alias:"username"`
 	// 如果非空，则为base64([]Statement)
 	Policy     string `json:"policy" alias:"policy,omitempty"`
 	Expiration int64  `json:"expiration" alias:"expiration"`
 }
 
 // NewBearer 默认的Bearer签名方法。
-func (ctl *Policys) NewBearer(userid int, name, policy string, expires int64) string {
+func (ctl *Policys) NewBearer(userid int, policy string, expires int64) string {
 	return stringBearer + ctl.Signaturer.Signed(&SignatureUser{
 		UserID:     userid,
-		UserName:   name,
 		Policy:     base64.StdEncoding.EncodeToString([]byte(policy)),
 		Expiration: expires,
 	})
@@ -244,8 +246,8 @@ func (ctl *Policys) parseSignatureUser(ctx eudore.Context) (int, error) {
 		if err != nil {
 			return 0, fmt.Errorf("parse bearer policy error: %s", err.Error())
 		}
-		action := ctx.GetParam("action")
-		resource := ctx.GetParam("resource")
+		action := ctx.GetParam(eudore.ParamAction)
+		resource := ctx.GetParam(eudore.ParamResource)
 		for _, s := range statements {
 			if s.MatchAction(action) && s.MatchResource(resource) && s.MatchCondition(ctx) {
 				if s.Effect {

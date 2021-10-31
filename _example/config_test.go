@@ -1,7 +1,9 @@
 package eudore_test
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -34,6 +36,15 @@ func TestConfigEudore2(t *testing.T) {
 		return errors.New("throws a parse test error")
 	}})
 	conf.Parse()
+}
+
+func TestConfigEudoreJSON2(t *testing.T) {
+	conf := eudore.NewConfigEudore(nil)
+	json.Unmarshal([]byte(`{"name": "eudore"}`), conf)
+	conf.Set("server", &eudore.ServerStdConfig{})
+
+	indent, err := json.MarshalIndent(conf, "", "\t")
+	fmt.Println(string(indent), err)
 }
 
 func TestConfigNoread2(t *testing.T) {

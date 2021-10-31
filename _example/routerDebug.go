@@ -14,6 +14,7 @@ func main() {
 	app := eudore.NewApp(
 		eudore.NewRouterStd(eudore.NewRouterCoreDebug(nil)),
 		eudore.NewRouterStd(eudore.NewRouterCoreDebug(eudore.NewRouterCoreStd())),
+		eudore.Renderer(eudore.RenderJSON),
 	)
 
 	api := app.Group("/api/{v 1} version=v1")
@@ -21,12 +22,14 @@ func main() {
 	api.AddHandler("test", "/get/:name action=GetName", eudore.HandlerEmpty)
 	api.AddHandler("test", "/get/{{}} action=GetName", eudore.HandlerEmpty)
 	app.AddHandler("TEST", "/api/v:v/user/*name", eudore.HandlerEmpty)
+	api.AddHandler("GET", "/ui", eudore.HandlerEmpty)
 	api.AddHandler("GET", "/get/:name action=GetName", eudore.HandlerEmpty)
 	api.AddHandler("GET", "/get/{{}} action=GetName", eudore.HandlerEmpty)
 	app.AddHandler("GET", "/api/v:v/user/*name", eudore.HandlerEmpty)
+	api.AddHandler("GET", "/ui")
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
-	client := httptest.NewClient(app).AddHeaderValue(eudore.HeaderAccept, eudore.MimeApplicationJSON)
+	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/eudore/debug/router/data").Do().OutBody()
 
 	app.Listen(":8088")

@@ -37,7 +37,6 @@ func main() {
 		ctx.WriteString("\nmethod: " + ctx.Method())
 		ctx.WriteString("\npath: " + ctx.Path())
 		ctx.WriteString("\nreal ip: " + ctx.RealIP())
-		ctx.WriteString("\nreferer: " + ctx.Referer())
 		ctx.WriteString("\ncontext type: " + ctx.ContentType())
 		ctx.WriteString("\nistls: " + fmt.Sprint(ctx.Istls()))
 		body := ctx.Body()
@@ -48,6 +47,7 @@ func main() {
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/").WithHeaderValue(eudore.HeaderXForwardedFor, "192.168.1.4 192.168.1.1").Do().Out()
+	client.NewRequest("GET", "/").WithHeaderValue(eudore.HeaderXRealIP, "192.168.1.4").Do().Out()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

@@ -159,6 +159,7 @@ func (w *responseWriterHTTP) Reset(writer http.ResponseWriter) {
 
 // Write 方法实现io.Writer接口。
 func (w *responseWriterHTTP) Write(data []byte) (int, error) {
+	w.writeStatus()
 	n, err := w.ResponseWriter.Write(data)
 	w.size = w.size + n
 	return n, err
@@ -167,18 +168,26 @@ func (w *responseWriterHTTP) Write(data []byte) (int, error) {
 // WriteHeader 方法实现写入http请求状态码。
 func (w *responseWriterHTTP) WriteHeader(codeCode int) {
 	w.code = codeCode
-	w.ResponseWriter.WriteHeader(w.code)
+}
+
+func (w *responseWriterHTTP) writeStatus() {
+	if w.code > 0 {
+		w.ResponseWriter.WriteHeader(w.code)
+		w.code *= -1
+	}
 }
 
 // Flush 方法实现刷新缓冲，将缓冲的请求发送给客户端。
 func (w *responseWriterHTTP) Flush() {
-	w.ResponseWriter.(http.Flusher).Flush()
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // Hijack 方法实现劫持http连接。
 func (w *responseWriterHTTP) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	if hj, ok := w.ResponseWriter.(http.Hijacker); ok {
-		return hj.Hijack()
+	if hijacker, ok := w.ResponseWriter.(http.Hijacker); ok {
+		return hijacker.Hijack()
 	}
 	return nil, nil, ErrResponseWriterHTTPNotHijacker
 }
@@ -198,6 +207,9 @@ func (w *responseWriterHTTP) Size() int {
 
 // Status 方法获得设置的http状态码。
 func (w *responseWriterHTTP) Status() int {
+	if w.code < 0 {
+		return w.code * -1
+	}
 	return w.code
 }
 

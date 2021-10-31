@@ -5,7 +5,17 @@ Next
 - policy		数据权限描述细化规则
 - component		优化尝试移除
 
-2021年8月31日
+2021年10月31日
+- RouterStd			添加others方法，清理deleteRoute参数。
+- ControllerAutoRoute	简化调整规则。
+- middleware/look	解析Accept Header为format值，模板内容优化。
+- ConfigParseFunc	ConfigParseFunc重构
+- ResponseWriter	WriteHeader将延时写入
+- contextBase   细节调整
+- policy		增加401
+- httptest      修复响应对象并非读写
+
+[2021年8月31日](https://github.com/eudore/eudore/commit/627e6de1fa64c45873c70f86637efa2decc5763f)
 - Controller	简化内容保留ControllerAutoRoute。
 - middleware/admin	ui重构。
 - middleware/look	重构优化数据格式，完善功能。

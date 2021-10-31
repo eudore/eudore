@@ -43,7 +43,7 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp()
+	app := eudore.NewApp(eudore.Renderer(eudore.RenderJSON))
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteHeader(201)
 		ctx.WriteHeader(202)
@@ -54,9 +54,17 @@ func main() {
 		time.Sleep(1 * time.Second)
 		ctx.WriteString("end")
 	})
+	app.GetFunc("/status", func(ctx eudore.Context) interface{} {
+		ctx.WriteHeader(403)
+		return map[string]interface{}{
+			"staus":   403,
+			"message": "write 403 and content-type",
+		}
+	})
 
 	client := httptest.NewClient(app)
 	client.NewRequest("GET", "/").Do().Out()
+	client.NewRequest("GET", "/status").Do().Out()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

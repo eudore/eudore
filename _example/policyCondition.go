@@ -73,7 +73,7 @@ func main() {
 
 	client := httptest.NewClient(app)
 	client.AddHeaderValue(eudore.HeaderContentType, eudore.MimeApplicationJSONUtf8)
-	client.AddHeaderValue(eudore.HeaderAuthorization, policys.NewBearer(1, "", "", time.Now().Add(87600*time.Hour).Unix()))
+	client.AddHeaderValue(eudore.HeaderAuthorization, policys.NewBearer(1, "", time.Now().Add(87600*time.Hour).Unix()))
 	client.NewRequest("GET", "/policys").Do()
 	client.NewRequest("GET", "/1").Do()
 	client.NewRequest("GET", "/1").WithRemoteAddr("192.168.1.99").Do()

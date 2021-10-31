@@ -116,12 +116,8 @@ type RouterCore interface {
 }
 
 // Controller 定义控制器必要的接口。
-//
-// 控制器默认具有Base、Data、Singleton、View四种实现。
 type Controller interface {
-	Init(Context) error
 	Release(Context) error
-	Inject(Controller, Router) error
 }
 
 // Binder 定义Bind函数处理请求。
@@ -179,7 +175,6 @@ type Context interface {
 	Path() string
 	RealIP() string
 	RequestID() string
-	Referer() string
 	ContentType() string
 	Istls() bool
 	Body() []byte

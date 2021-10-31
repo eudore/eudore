@@ -1,5 +1,18 @@
 package main
 
+/*
+If the NewConfigParseHelp function uses the structure configuration to output the'flag' and'description' tags to produce the default parameter description.
+
+By default, only the parameter description is output. For other descriptions, please wrap the NewConfigParseHelp method.
+
+Note that the properties of the configuration structure need to be non-empty, otherwise it will not enter the traversal.
+
+NewConfigParseHelp 函数如果使用结构体配置输出'flag'和'description' tag生产默认参数描述。
+
+默认仅输出参数描述，其他描述内容请包装NewConfigParseHelp方法。
+
+注意配置结构体的属性需要是非空，否则不会进入遍历。
+*/
 import (
 	"github.com/eudore/eudore"
 	"os"
@@ -7,12 +20,14 @@ import (
 )
 
 func main() {
-	os.Args = append(os.Args, "-db=localhost", "-h", "eudore", "--help")
+	os.Args = append(os.Args, "-db=localhost", "-h", "eudore", "--help", "--component.server.readtimeout=12s")
 	conf := &helpConfig{Iface: &helpDBConfig{}}
 	conf.Link = conf
 	app := eudore.NewApp(eudore.NewConfigEudore(conf))
 	app.Parse()
-	app.Infof("db config is %v", conf.Component)
+
+	app.Infof("config db is %v", conf.Component)
+	app.Infof("config readtimeout is %v", conf.Component.Server.ReadTimeout)
 
 	app.CancelFunc()
 	app.Run()
@@ -36,7 +51,7 @@ type helpConfig struct {
 
 	Auth  *helpAuthConfig `json:"auth" alias:"auth"`
 	Iface interface{}
-	Link  interface{}
+	Link  interface{} `json:"-" alias:"link"`
 	// Node *Node
 }
 

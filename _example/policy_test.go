@@ -56,19 +56,19 @@ func TestPolicyBearer2(*testing.T) {
 	client.NewRequest("GET", "/policys").WithHeaderValue(eudore.HeaderAuthorization, `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.{"userid": 1}.IcX-L8Fbict3ITS6SW4EqtEm0wuBeKEesTrAbCunc6g`).Do().Out()
 	client.NewRequest("GET", "/policys").WithHeaderValue(eudore.HeaderAuthorization, "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyaWQiOiAxeHh9.l6n5pZ1_WXYdlSDORJJBRWxBk8nj0BsH2EPqAX7IGZ0").Do().Out()
 
-	sign1 := policys.NewBearer(10, "eudore", "", time.Now().Add(-100*time.Hour).Unix())
+	sign1 := policys.NewBearer(10, "", time.Now().Add(-100*time.Hour).Unix())
 	client.NewRequest("GET", "/policys").WithHeaderValue(eudore.HeaderAuthorization, sign1).Do().Out()
 
-	sign2 := policys.NewBearer(10, "eudore", "x", time.Now().Add(100*time.Hour).Unix())
+	sign2 := policys.NewBearer(10, "x", time.Now().Add(100*time.Hour).Unix())
 	client.NewRequest("GET", "/policys").WithHeaderValue(eudore.HeaderAuthorization, sign2).Do().Out()
 
-	sign3 := policys.NewBearer(10, "eudore", "[]", time.Now().Add(100*time.Hour).Unix())
+	sign3 := policys.NewBearer(10, "[]", time.Now().Add(100*time.Hour).Unix())
 	client.NewRequest("GET", "/policys").WithHeaderValue(eudore.HeaderAuthorization, sign3).Do().Out()
 
-	sign4 := policys.NewBearer(10, "eudore", `[{"effect":true,"action":["*"], "resource":["*"]}]`, time.Now().Add(100*time.Hour).Unix())
+	sign4 := policys.NewBearer(10, `[{"effect":true,"action":["*"], "resource":["*"]}]`, time.Now().Add(100*time.Hour).Unix())
 	client.NewRequest("GET", "/policys").WithHeaderValue(eudore.HeaderAuthorization, sign4).Do().Out()
 
-	sign5 := policys.NewBearer(10, "eudore", `[{"effect":true,"action":["GET*"], "resource":["*"]},{"effect":false,"action":["*"], "resource":["*"]}]`, time.Now().Add(100*time.Hour).Unix())
+	sign5 := policys.NewBearer(10, `[{"effect":true,"action":["GET*"], "resource":["*"]},{"effect":false,"action":["*"], "resource":["*"]}]`, time.Now().Add(100*time.Hour).Unix())
 	client.NewRequest("GET", "/policys").WithHeaderValue(eudore.HeaderAuthorization, sign5).Do().Out()
 
 	sign6 := "Bearer " + policys.Signaturer.Signed(map[string]interface{}{

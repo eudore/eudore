@@ -1,7 +1,7 @@
 package main
 
 /*
-eudore.Controller是一个接口，可自行实现，eudore.ControllerBase只是其中一种默认实现。
+eudore.NewControllerError会传递创建controller的error，由RouterAddController处理。
 */
 
 import (
@@ -11,32 +11,32 @@ import (
 
 func main() {
 	app := eudore.NewApp()
-	app.AddController(NewMyErrController(-10))
-	app.AddController(NewMyErrController(10))
+	app.AddController(NewErrController(-10))
+	app.AddController(NewErrController(10))
 
 	app.Listen(":8088")
 	// app.CancelFunc()
 	app.Run()
 }
 
-type myErrController struct {
+type errController struct {
 	eudore.ControllerAutoRoute
 }
 
-func NewMyErrController(i int) eudore.Controller {
-	ctl := new(myErrController)
+func NewErrController(i int) eudore.Controller {
+	ctl := new(errController)
 	if i < 0 {
+		// controller创建错误处理。
 		return eudore.NewControllerError(ctl, errors.New("int must grate 0"))
 	}
 	return ctl
 }
 
-func (ctl *myErrController) Any(ctx eudore.Context) {
-	ctx.Info("myErrController Any")
+func (ctl *errController) Any(ctx eudore.Context) {
+	ctx.Info("errController Any")
 }
-func (*myErrController) Get(eudore.ControllerAutoRoute) interface{} {
-	return "get myErrController"
-}
-func (ctl *myErrController) GetInfoById(ctx eudore.Context) interface{} {
-	return ctx.GetParam("id")
+
+// Get 方法注册不存在的扩展函数，触发注册error。
+func (*errController) Get(eudore.ControllerAutoRoute) interface{} {
+	return "get errController"
 }

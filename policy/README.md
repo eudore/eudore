@@ -42,6 +42,7 @@ pbac条件直接使用And关系,允许使用多种多样的方法限制请求，
 				{"kind": "and",	"data": []},
 				{"kind": "or",	"data": []},
 				{"kind": "value", "name": "user_id", "value": ["value:param:Userid"]},
+				{"kind": "value", "name": "user_id", "not": true, "value": ["value:param:Userid"]},
 				{"kind": "range", "name": "group_id", "min": "1", "max": "4"},
 				{"kind": "sql", "name": "group_id", "sql": "group_id in %s", "value": ["1", "3"]}
 			]

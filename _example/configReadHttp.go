@@ -11,8 +11,8 @@ import (
 func main() {
 	app := eudore.NewApp()
 	// 修改第一个解析函数为readHttp解析http请求
-	app.ParseOption([]eudore.ConfigParseFunc{readHttp, eudore.ConfigParseArgs, eudore.ConfigParseEnvs, eudore.ConfigParseMods, eudore.ConfigParseWorkdir, eudore.ConfigParseHelp})
-	app.Set("config", []string{"http://127.0.0.1:8089/xxx", "http://127.0.0.1:8088/xxx"})
+	app.ParseOption(append([]eudore.ConfigParseFunc{readHttp}, eudore.ConfigAllParseFunc...))
+	app.Set("config-remote", []string{"http://127.0.0.1:8089/xxx", "http://127.0.0.1:8088/xxx"})
 	app.Set("help", true)
 
 	go func(app2 *eudore.App) {
@@ -25,7 +25,7 @@ func main() {
 		})
 		app.Listen(":8088")
 
-		app2.Options(app.Parse())
+		app2.Options(app2.Parse())
 		app2.CancelFunc()
 		app.CancelFunc()
 		app.Run()
@@ -36,7 +36,7 @@ func main() {
 
 // 自定义一个解析http请求的配置解析函数
 func readHttp(c eudore.Config) error {
-	for _, path := range eudore.GetStrings(c.Get("config")) {
+	for _, path := range eudore.GetStrings(c.Get("config-remote")) {
 		if !strings.HasPrefix(path, "http://") && !strings.HasPrefix(path, "https://") {
 			continue
 		}

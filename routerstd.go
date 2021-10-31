@@ -24,11 +24,11 @@ const (
 //
 // 具有路径参数、通配符参数、默认参数、参数校验、通配符校验，未实现多参数正则捕捉。
 type routerCoreStd struct {
+	root       *stdNode
 	params404  *Params
 	params405  *Params
 	handler404 HandlerFuncs
 	handler405 HandlerFuncs
-	root       *stdNode
 }
 
 type stdNode struct {
@@ -38,27 +38,35 @@ type stdNode struct {
 	check func(string) bool
 	path  string
 	name  string
-	allow string
-	route *string
+	route string
 
 	// 默认标签的名称和值
+	params     [7]*Params
+	handlers   [7]HandlerFuncs
+	others     map[string]stdOtherHandler
 	Wchildren  *stdNode
 	Cchildren  []*stdNode
 	Pchildren  []*stdNode
 	PVchildren []*stdNode
 	WVchildren []*stdNode
-	params     [10]*Params
-	handlers   [10]HandlerFuncs
 }
 
-// NewRouterCoreStd 函数创建一个Std路由器核心，使用radix匹配。
+type stdOtherHandler struct {
+	any     bool
+	params  *Params
+	handler HandlerFuncs
+}
+
+// NewRouterCoreStd function creates a Std router core and uses radix to match. For the function description, please refer to the Router document.
+//
+// NewRouterCoreStd 函数创建一个Std路由器核心，使用radix匹配,功能说明见Router文档。
 func NewRouterCoreStd() RouterCore {
 	return &routerCoreStd{
+		root:       &stdNode{},
 		params404:  &Params{Keys: []string{ParamRoute}, Vals: []string{"404"}},
 		params405:  &Params{},
 		handler404: HandlerFuncs{HandlerRouter404},
 		handler405: HandlerFuncs{HandlerRouter405},
-		root:       &stdNode{},
 	}
 }
 
@@ -80,16 +88,20 @@ func (r *routerCoreStd) HandleFunc(method string, path string, handler HandlerFu
 		r.params405.Keys = r.params405.Keys[1:]
 		r.params405.Vals = r.params405.Vals[1:]
 		r.handler405 = handler
-	case MethodAny, MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions, MethodConnect, MethodTrace:
+	case MethodAny, MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch:
 		r.insertRoute(method, path, handler)
+	default:
+		for _, i := range RouterAllMethod {
+			if method == i {
+				r.insertRoute(method, path, handler)
+			}
+		}
 	}
 }
 
 // Match a request, if the method does not allow direct return to node405, no match returns node404.
 //
-// Note: 404 does not support extra parameters, not implemented.
-//
-// 匹配一个请求，如果方法不不允许直接返回node405，未匹配返回node404。
+// 匹配一个请求，如果方法不允许直接返回node405，未匹配返回node404。
 func (r *routerCoreStd) Match(method, path string, params *Params) HandlerFuncs {
 	node := r.root.lookNode(path, params)
 	if node == nil {
@@ -97,7 +109,8 @@ func (r *routerCoreStd) Match(method, path string, params *Params) HandlerFuncs 
 		params.Combine(r.params404)
 		return r.handler404
 	}
-	for i, m := range RouterAllMethod {
+	// default method
+	for i, m := range defaultRouterAnyMethod {
 		if m == method {
 			if node.handlers[i] != nil {
 				params.Combine(node.params[i])
@@ -106,19 +119,23 @@ func (r *routerCoreStd) Match(method, path string, params *Params) HandlerFuncs 
 			break
 		}
 	}
-	params.Add(ParamRoute, *node.route)
-	params.Add(ParamAllow, node.allow)
+	// other method
+	handlers, ok := node.others[method]
+	if ok {
+		params.Combine(handlers.params)
+		return handlers.handler
+	}
+	// 处理405
+	pos := strings.IndexByte(node.route, ';')
+	params.Add(ParamRoute, node.route[pos+1:])
+	params.Add(ParamAllow, node.route[:pos])
 	params.Combine(r.params405)
 	return r.handler405
 }
 
 // Add a new route Node.
 //
-// If the method does not support it will not be added, request to change the path will respond 405
-//
 // 添加一个新的路由Node。
-//
-// 如果方法不支持则不会添加，请求改路径会响应405
 func (r *routerCoreStd) insertRoute(method, path string, val HandlerFuncs) {
 	var currentNode = r.root
 
@@ -133,7 +150,7 @@ func (r *routerCoreStd) insertRoute(method, path string, val HandlerFuncs) {
 		currentNode = currentNode.insertNode(path, newStdNode(path))
 	}
 	currentNode.setHandler(method, params, val)
-	currentNode.setAllow()
+	currentNode.setRoute()
 }
 
 // 创建一个Radix树Node，会根据当前路由设置不同的节点类型和名称。
@@ -197,41 +214,74 @@ func loadCheckFunc(path string) (string, func(string) bool) {
 
 func (r *stdNode) setHandler(method string, params *Params, handler HandlerFuncs) {
 	if method == MethodAny {
-		for i := uint(0); i < 9; i++ {
-			if r.isany>>i&0x1 == 0x1 || r.handlers[i] == nil {
-				r.params[i] = params
-				r.handlers[i] = handler
-				r.isany |= 1 << i
-			}
-		}
-		r.params[9] = params
-		r.handlers[9] = handler
+		r.setHandlerAny(params, handler)
 		return
 	}
 
-	for i := uint(0); i < 9; i++ {
-		if RouterAllMethod[i] == method {
+	for i := uint(0); i < 6; i++ {
+		if defaultRouterAnyMethod[i] == method {
 			r.params[i] = params
 			r.handlers[i] = handler
 			r.isany &^= 1 << i
 			return
 		}
 	}
+	if r.others == nil {
+		r.others = make(map[string]stdOtherHandler)
+	}
+	r.others[method] = stdOtherHandler{params: params, handler: handler}
 }
 
-func (r *stdNode) setAllow() {
-	var allow string
-	for i := uint(0); i < 9; i++ {
-		if r.handlers[i] != nil {
-			route := r.params[i].Get(ParamRoute)
-			r.route = &route
-			allow = allow + ", " + RouterAllMethod[i]
+func (r *stdNode) setHandlerAny(params *Params, handler HandlerFuncs) {
+	// 设置标准Any
+	for i := uint(0); i < 6; i++ {
+		if r.isany>>i&0x1 == 0x1 || r.handlers[i] == nil {
+			r.params[i] = params
+			r.handlers[i] = handler
+			r.isany |= 1 << i
 		}
+	}
+	// 设置others any
+	for _, method := range RouterAnyMethod {
+		i := getStringInIndex(method, defaultRouterAnyMethod)
+		if i == -1 {
+			if r.others == nil {
+				r.others = make(map[string]stdOtherHandler)
+			}
+			r.others[method] = stdOtherHandler{any: true, params: params, handler: handler}
+		}
+	}
+	r.isany |= 0x40
+	r.params[6] = params
+	r.handlers[6] = handler
+}
+
+func getStringInIndex(str string, strs []string) int {
+	for i := range strs {
+		if str == strs[i] {
+			return i
+		}
+	}
+	return -1
+}
+
+func (r *stdNode) setRoute() {
+	var allow string
+	var route string
+	for i := uint(0); i < 6; i++ {
+		if r.handlers[i] != nil {
+			allow = allow + ", " + RouterAllMethod[i]
+			route = r.params[i].Get(ParamRoute)
+		}
+	}
+	for name, other := range r.others {
+		allow = allow + ", " + name
+		route = other.params.Get(ParamRoute)
 	}
 	if allow != "" {
 		allow = allow[2:]
 	}
-	r.allow = allow
+	r.route = allow + ";" + route
 }
 
 // insertNode add a child node to the node.
@@ -272,6 +322,7 @@ func (r *stdNode) insertNode(path string, nextNode *stdNode) *stdNode {
 		if r.Wchildren == nil {
 			r.Wchildren = nextNode
 		} else {
+			r.Wchildren.path = nextNode.path
 			r.Wchildren.name = nextNode.name
 		}
 		return r.Wchildren
@@ -311,7 +362,7 @@ func (r *stdNode) insertNodeConst(path string, nextNode *stdNode) *stdNode {
 func (r *stdNode) lookNode(searchKey string, params *Params) *stdNode {
 	// constant match, return data
 	// 常量匹配，返回数据
-	if len(searchKey) == 0 && r.allow != "" {
+	if len(searchKey) == 0 && r.route != "" {
 		return r
 	}
 
@@ -393,7 +444,7 @@ func (r *stdNode) deleteRoute(method, path string) {
 	}
 	// clean hndler
 	nodes[len(nodes)-1].delHandler(method)
-	nodes[len(nodes)-1].setAllow()
+	nodes[len(nodes)-1].setRoute()
 	// clean node
 	for i := len(nodes) - 2; i > -1; i-- {
 		if nodes[i+1].IsZero() {
@@ -407,27 +458,41 @@ func (r *stdNode) deleteRoute(method, path string) {
 
 func (r *stdNode) delHandler(method string) {
 	if method == MethodAny {
-		for i := uint(0); i < 9; i++ {
+		for i := uint(0); i < 6; i++ {
 			if r.isany>>i&0x1 == 0x1 {
+				r.params[i] = nil
 				r.handlers[i] = nil
 				r.isany &^= 1 << i
 			}
 		}
-		r.handlers[9] = nil
+		for k, v := range r.others {
+			if v.any {
+				delete(r.others, k)
+			}
+		}
+		r.params[6] = nil
+		r.handlers[6] = nil
 		return
 	}
 
-	for i := uint(0); i < 9; i++ {
+	for i := uint(0); i < 6; i++ {
 		if RouterAllMethod[i] == method {
 			if r.isany>>i&0x1 == 0x0 {
+				r.params[i] = nil
 				r.handlers[i] = nil
-				if r.handlers[9] != nil {
-					r.handlers[i] = r.handlers[9]
+				if r.handlers[6] != nil {
+					r.params[i] = r.params[6]
+					r.handlers[i] = r.handlers[6]
 					r.isany |= 1 << i
 				}
 			}
 			return
 		}
+	}
+	if r.handlers[6] != nil {
+		r.others[method] = stdOtherHandler{any: true, params: r.params[6], handler: r.handlers[6]}
+	} else {
+		delete(r.others, method)
 	}
 }
 
@@ -507,13 +572,13 @@ func (r *stdNode) findNodeConst(path string) []*stdNode {
 }
 
 func (r *stdNode) IsEmpty() bool {
-	for i := range RouterAllMethod {
+	for i := range r.handlers {
 		if r.handlers[i] != nil {
 			return false
 		}
 	}
 	// r.params = nil
-	return true
+	return len(r.others) == 0
 }
 
 func (r *stdNode) IsZero() bool {

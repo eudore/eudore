@@ -16,7 +16,7 @@ type (
 		Num        int
 		Now        time.Time
 		Fields     []tField
-		ConfigAuth tConfigAuth
+		ConfigAuth *tConfigAuth
 		Map        map[int]string
 	}
 	tField struct {
@@ -40,7 +40,7 @@ func main() {
 			{2, "b"},
 			{3, "c"},
 		},
-		ConfigAuth: tConfigAuth{
+		ConfigAuth: &tConfigAuth{
 			Path:   "/tmp",
 			Key:    "876926",
 			Secret: "uwvdjqbwi",
@@ -56,8 +56,10 @@ func main() {
 	err := eudore.ConvertTo(src, &data)
 	fmt.Printf("%#v %v\n\n", data, err)
 
-	// map转换空结构体
-	tar2 := new(configTo)
+	// map转换结构体
+	tar2 := &configTo{
+		ConfigAuth: &tConfigAuth{},
+	}
 	err = eudore.ConvertTo(&data, tar2)
 	fmt.Printf("%#v %v\n", tar2, err)
 }

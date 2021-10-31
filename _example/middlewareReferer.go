@@ -1,5 +1,16 @@
 package main
 
+/*
+检查请求Referer Header值是否有效
+
+	""                         =>    其他值未匹配时使用的默认值。
+	"origin"                   =>    请求Referer和Host同源情况下，检查host为referer前缀，origin检查在其他值检查之前。
+	"*"                        =>    任意域名端口
+	"www.eudore.cn/*"          =>    www.eudore.cn域名全部请求，不指明http或https时为同时包含http和https
+	"www.eudore.cn/api/*"      =>    www.eudore.cn域名全部/api/前缀的请求
+	"https://www.eudore.cn/*"  =>    www.eudore.cn仅匹配https。
+*/
+
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
@@ -17,7 +28,9 @@ func main() {
 		"www.example.com/*/*":      false,
 		"www.example.com/*/2":      true,
 		"http://127.0.0.1/*":       true,
+		"http://126.0.0.1:*/*":     true,
 		"http://127.0.0.1:*/*":     true,
+		"http://128.0.0.1:*/*":     true,
 		"http://localhost/api/*":   true,
 		"http://localhost:*/api/*": true,
 	}))

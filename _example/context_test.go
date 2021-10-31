@@ -74,6 +74,7 @@ func TestReadWriteError2(t *testing.T) {
 		ctx.Write([]byte("wirte byte"))
 		ctx.WriteString("wirte string")
 		ctx.Push("/index", nil)
+		ctx.Response().Flush()
 	})
 
 	client := httptest.NewClient(app)
