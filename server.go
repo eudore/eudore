@@ -7,16 +7,15 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
-	"fmt"
+	"errors"
 	"io/ioutil"
 	"log"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/fcgi"
-	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,6 +28,9 @@ type Server interface {
 
 // ServerStdConfig 定义serverStd使用的配置
 type ServerStdConfig struct {
+	// set default ServerHandler
+	Handler http.Handler
+
 	// ReadTimeout is the maximum duration for reading the entire request, including the body.
 	//
 	// Because ReadTimeout does not let Handlers make per-request decisions on each request body's acceptable deadline or upload rate,
@@ -52,6 +54,12 @@ type ServerStdConfig struct {
 	// It does not limit the size of the request body. If zero, DefaultMaxHeaderBytes is used.
 	MaxHeaderBytes int `alias:"maxheaderbytes" json:"maxheaderbytes"  description:"Http server max header size."`
 
+	// ErrorLog specifies an optional logger for errors accepting
+	// connections, unexpected behavior from handlers, and
+	// underlying FileSystem errors.
+	// If nil, logging is done via the log package's standard logger.
+	ErrorLog *log.Logger // Go 1.3
+
 	// BaseContext optionally specifies a function that returns the base context for incoming requests on this server.
 	// The provided Listener is the specific Listener that's about to start accepting requests.
 	// If BaseContext is nil, the default is context.Background(). If non-nil, it must return a non-nil context.
@@ -65,12 +73,18 @@ type ServerStdConfig struct {
 // serverStd 定义使用net/http启动http server。
 type serverStd struct {
 	*http.Server
-	Print func(...interface{}) `alias:"print"`
+	Print         func(...interface{}) `alias:"print"`
+	Mutex         sync.Mutex
+	localListener localListener
+	Ports         []string
+	Counter       int64
 }
 
-// netHTTPLog 实现一个函数处理log.Logger的内容，用于捕捉net/http.Server输出的error内容。
-type netHTTPLog struct {
-	print func(...interface{})
+type serverStdMetadata struct {
+	Health     bool     `json:"health" xml:"health"`
+	Name       string   `json:"name" xml:"name"`
+	Ports      []string `json:"ports" xml:"ports"`
+	ErrorCount int64    `json:"error_count" xml:"error-count"`
 }
 
 // serverFcgi 定义fastcgi server
@@ -97,53 +111,130 @@ type ServerListenConfig struct {
 func NewServerStd(arg interface{}) Server {
 	srv := &serverStd{
 		Server: &http.Server{
-			ReadTimeout:  60 * time.Second,
-			WriteTimeout: 60 * time.Second,
-			IdleTimeout:  60 * time.Second,
-			TLSNextProto: nil,
+			ReadTimeout:       60 * time.Second,
+			ReadHeaderTimeout: 60 * time.Second,
+			WriteTimeout:      60 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			TLSNextProto:      nil,
 		},
 	}
+	// 捕捉net/http.Server输出的error内容。
+	srv.Server.ErrorLog = log.New(srv, "", 0)
 	ConvertTo(arg, srv.Server)
 	return srv
 }
 
+// Mount 方法获取ContextKeyApp.(Logger)用于输出http.Server错误日志。
+// 获取ContextKeyApp.(http.Handler)作为http.Server的处理对象。
+func (srv *serverStd) Mount(ctx context.Context) {
+	srv.Print = NewPrintFunc(ctx.Value(ContextKeyApp).(Logger))
+	srv.SetHandler(ctx.Value(ContextKeyApp).(http.Handler))
+	// if go1.13+ set http.Server.BaseContext
+	if Get(srv, "BaseContext") == nil {
+		Set(srv.Server, "BaseContext", func(net.Listener) context.Context {
+			return ctx
+		})
+	}
+}
+
+// Unmount 方法等待DefaulerServerShutdownWait(默认60s)优雅停机。
+func (srv *serverStd) Unmount(ctx context.Context) {
+	ctx, _ = context.WithTimeout(context.Background(), DefaulerServerShutdownWait)
+	srv.Shutdown(ctx)
+}
+
 // SetHandler 方法设置server的http处理者。
 func (srv *serverStd) SetHandler(h http.Handler) {
+	srv.Mutex.Lock()
+	defer srv.Mutex.Unlock()
 	srv.Server.Handler = h
 }
 
-// Set 方法允许Server设置输出函数和配置
-func (srv *serverStd) Set(key string, value interface{}) error {
-	switch val := value.(type) {
-	case func(...interface{}):
-		srv.Print = val
-		srv.Server.ErrorLog = newNetHTTPLogger(srv.Print)
-	case ServerStdConfig, *ServerStdConfig:
-		ConvertTo(value, srv.Server)
-	default:
-		cf := new(ServerStdConfig)
-		Set(cf, key, value)
-		ConvertTo(cf, srv.Server)
+// Serve 方法阻塞监听请求。
+func (srv *serverStd) Serve(ln net.Listener) error {
+	srv.Mutex.Lock()
+	srv.Ports = append(srv.Ports, ln.Addr().String())
+	srv.Mutex.Unlock()
+	err := srv.Server.Serve(ln)
+	if err == http.ErrServerClosed {
+		err = nil
+	}
+	return err
+}
+
+// ServeConn 方法出来一个连接，第一次请求初始化localListener。
+func (srv *serverStd) ServeConn(conn net.Conn) {
+	srv.Mutex.Lock()
+	if srv.localListener.Ch == nil {
+		srv.localListener.Ch = make(chan net.Conn)
+		srv.Ports = append(srv.Ports, srv.localListener.Addr().String())
+		go srv.Server.Serve(&srv.localListener)
+	}
+	srv.Mutex.Unlock()
+	srv.localListener.Ch <- conn
+}
+
+// Metadata 方法返回serverStd元数据。
+func (srv *serverStd) Metadata() interface{} {
+	srv.Mutex.Lock()
+	defer srv.Mutex.Unlock()
+	return serverStdMetadata{
+		Health:     true,
+		Name:       "eudore.ServerStd",
+		Ports:      srv.Ports,
+		ErrorCount: atomic.LoadInt64(&srv.Counter),
+	}
+}
+
+func (srv *serverStd) Write(p []byte) (n int, err error) {
+	srv.Print(string(p))
+	atomic.AddInt64(&srv.Counter, 1)
+	return 0, nil
+}
+
+type localListener struct {
+	Ch    chan net.Conn
+	close bool
+}
+
+func (ln *localListener) Accept() (net.Conn, error) {
+	for conn := range ln.Ch {
+		if conn != nil {
+			// panic(conn)
+			return conn, nil
+		}
+	}
+	return nil, errors.New("server close")
+}
+
+func (ln *localListener) Close() error {
+	if !ln.close {
+		close(ln.Ch)
+		ln.close = true
 	}
 	return nil
 }
 
-// newNetHTTPLog 实现将一个日志处理函数适配成log.Logger对象。
-func newNetHTTPLogger(fn func(...interface{})) *log.Logger {
-	e := &netHTTPLog{
-		print: fn,
+func (ln *localListener) Addr() net.Addr {
+	return &net.IPAddr{
+		IP: net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 127, 0, 0, 1},
 	}
-	return log.New(e, "", 0)
-}
-
-func (e *netHTTPLog) Write(p []byte) (n int, err error) {
-	e.print(string(p))
-	return 0, nil
 }
 
 // NewServerFcgi 函数创建一个fcgi server。
 func NewServerFcgi() Server {
 	return &serverFcgi{Handler: http.NotFoundHandler()}
+}
+
+// Mount 获取ContextKeyApp.(http.Handler)作为http.Server的处理对象。
+func (srv *serverFcgi) Mount(ctx context.Context) {
+	srv.SetHandler(ctx.Value(ContextKeyApp).(http.Handler))
+}
+
+// Unmount 方法等待DefaulerServerShutdownWait(默认60s)优雅停机。
+func (srv *serverFcgi) Unmount(ctx context.Context) {
+	ctx, _ = context.WithTimeout(context.Background(), DefaulerServerShutdownWait)
+	srv.Shutdown(ctx)
 }
 
 // SetHandler 方法设置fcgi处理对象。
@@ -163,12 +254,11 @@ func (srv *serverFcgi) Serve(ln net.Listener) error {
 func (srv *serverFcgi) Shutdown(ctx context.Context) error {
 	srv.Lock()
 	defer srv.Unlock()
-	var errs muliterror
+	var errs errormulit
 	for _, ln := range srv.listeners {
-		err := ln.Close()
-		errs.HandleError(err)
+		errs.HandleError(ln.Close())
 	}
-	return errs.GetError()
+	return errs.Unwrap()
 }
 
 // Listen 方法使ServerListenConfig实现serverListener接口，用于使用对象创建监听。
@@ -261,38 +351,4 @@ func loadCertificate(cret, key string) (tls.Certificate, *x509.Certificate, erro
 		Certificate: [][]byte{caByte},
 		PrivateKey:  priv,
 	}, ca, err
-}
-
-// TimeDuration 定义time.Duration类型处理json
-type TimeDuration time.Duration
-
-// String 方法格式化输出时间。
-func (d TimeDuration) String() string {
-	return time.Duration(d).String()
-}
-
-// MarshalJSON 方法实现json序列化输出。
-func (d TimeDuration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Duration(d).String())
-}
-
-// UnmarshalJSON 方法实现解析json格式时间。
-func (d *TimeDuration) UnmarshalJSON(b []byte) error {
-	str := string(b)
-	if str != "" && str[0] == '"' && str[len(str)-1] == '"' {
-		str = str[1 : len(str)-1]
-	}
-	// parse int64
-	val, err := strconv.ParseInt(str, 10, 64)
-	if err == nil {
-		*d = TimeDuration(val)
-		return nil
-	}
-	// parse string
-	t, err := time.ParseDuration(str)
-	if err == nil {
-		*d = TimeDuration(t)
-		return nil
-	}
-	return fmt.Errorf("invalid duration type %T, value: '%s'", b, b)
 }

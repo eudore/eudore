@@ -26,12 +26,13 @@ type (
 func main() {
 	app := eudore.NewApp()
 	// 附加非GET和HEAD方法下使用url参数绑定。
-	app.Binder = eudore.NewBinderURL(app.Binder)
+	app.SetValue(eudore.ContextKeyBind, eudore.NewBindWithURL(eudore.NewBinds(nil)))
+	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
 
 	app.AnyFunc("/file/data/:path", func(ctx eudore.Context) {
 		var info urlPutFileInfo
 		ctx.Bind(&info)
-		ctx.RenderWith(&info, eudore.RenderJSON)
+		ctx.Debugf("%#v", info)
 	})
 	app.GetFunc("/binderr", func(ctx eudore.Context) {
 		// 设置测试数据
@@ -39,6 +40,7 @@ func main() {
 
 		var info urlPutFileInfo
 		ctx.Bind(&info)
+		ctx.Debugf("%#v", info)
 	})
 
 	client := httptest.NewClient(app)

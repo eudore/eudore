@@ -28,7 +28,8 @@ type (
 
 func main() {
 	conf := &eudoreConfig{}
-	app := eudore.NewApp(eudore.NewConfigEudore(conf))
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfigStd(conf))
 
 	// 设属性
 	app.Set("int", 20)

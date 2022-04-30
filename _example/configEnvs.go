@@ -16,7 +16,7 @@ import (
 
 func main() {
 	app := eudore.NewApp()
-	app.Options(app.Parse())
+	app.Parse()
 	app.Debug(app.Get(""))
 	app.CancelFunc()
 	app.Run()

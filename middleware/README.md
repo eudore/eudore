@@ -1,37 +1,38 @@
 # Middleware
 
-Middleware包实现部分基础eudore请求中间件。
+Middleware包实现基础eudore请求中间件。
 
-|  Name |  Type | 描述 |  备注 |
-| ------------ | ------------ | ------------ | ------------ |
-|  [Admin](#Admin) | 处理  | 相关组件管理后台 | [example](../_example/middlewareAdmin.go)  |
-|  [BasicAuth](#BasicAuth) |  拦截 | basic认证  | [example](../_example/middlewareBasicAuth.go) [nethttp](../_example/nethttpBasicAuth.go)  |
-|  [BodyLimit](#BodyLimit) | 拦截 | 限制请求body大小 | [example](../_example/middlewareBodyLimit.go)  |
-|  [Black](#Black) |  拦截 |  黑白名单 | [example](../_example/middlewareBlack.go) [nethttp](../_example/nethttpBalck.go) api |
-|  [Breaker](#Breaker) |  拦截 |  熔断器 | [example](../_example/middlewareBreaker.go) api groups |
-|  [Cache](#Cache) |  处理 |  请求缓存 | [example](../_example/middlewareCache.go) [example2](../_example/middlewareCacheStore.go) groups |
-|  [ContextWarp](#ContextWarp) |  辅助 |  封装Context | [example](../_example/middlewareContextWarp.go)  |
-|  [Cors](#Cors) |  处理 |  跨域处理 | [example](../_example/middlewareCors.go)  |
-|  [Csrf](#Csrf) |  拦截 |  CSRF token检查 | [example](../_example/middlewareCsrf.go)  |
-|  [Dump](#Dump) |  拦截 |  捕捉请求信息 | [example](../_example/middlewareDump.go) api  |
-|  [Gzip](#Gzip) |  追加 |  gzip压缩 | [example](../_example/middlewareGzip.go)  |
-|  [Header](#Header) |  追加 |  添加响应header信息 |  [example](../_example/middlewareHeader.go) |
-|  [Logger](#Logger) |  追加 |  输出access日志 | [example](../_example/middlewareLogger.go)  |
-|  [LoggerLevel](#LoggerLevel) |  处理 |  请求设置独立日志级别 | [example](../_example/middlewareLoggerLevel.go)  |
-|  [Look](#Look)  |  处理 |  路径访问对象 | [example](../_example/middlewareLook.go)  |
-|  [Pprof](#Pprof) |  处理 |  处理pprof响应 |  [example](../_example/middlewarePprof.go) |
-|  [Rate](#Rate)  |  拦截 | 限速限流  | [限流](../_example/middlewareRateRequest.go) [限速](../_example/middlewareRateSpeed.go) [nethttp限流](../_example/nethttpRateRequest.go) groups |
-|  [Recover](#Recover) |  追加 | 恢复panic  | [example](../_example/middlewareRecover.go)  |
-|  [Referer](#Referer) |  拦截 | referer校验  | [example](../_example/middlewareReferer.go)  |
-|  [RequestID](#RequestID) |  追加 | 增加请求id  | [example](../_example/middlewareRequestID.go)  |
-|  [Rewrite](#Rewrite) |  辅助 |  请求路径修改 | [example](../_example/middlewareRewrite.go) [nethttp](../_example/nethttpRewrite.go) |
-|  [Router](#Router)  |  辅助 |  路由自定义处理 | [example](../_example/middlewareRouter.go)  |
-|  [RouterRewrite](#RouterRewrite)  |  辅助 | 重写请求路径 | [example](../_example/middlewareRouterRewrite.go) |
-|  [Timeout](#Timeout) |  其他 | 处理请求超时 | [example](../_example/middlewareTimeout.go)  |
-|    | 其他 | 自定义中间件处理函数  | [example](../_example/middlewareHandle.go) |
-|  Policy  |  其他 | Pbac<br>Rbac | [Pbac](../_example/policyPbac.go)</br>[Rbac](../_example/policyRbac.go) |
-|  Promethues  |  其他 | prometheus采集请求信息 |   |
-|  OpenTracing |  其他 | opentracing记录请求信息<br>注入tracer |   |
+| Index  |  Name |  Type | 描述 |  备注 |
+| ------------ | ------------ | ------------ | ------------ | ------------ |
+| 01 |  [Admin](#Admin) | 调试  | 相关组件管理后台 | [example](../_example/middlewareAdmin.go)  |
+| 02 |  [BasicAuth](#BasicAuth) |  拦截 | basic认证  | [example](../_example/middlewareBasicAuth.go) [nethttp](../_example/nethttpBasicAuth.go)  |
+| 03 |  [BodyLimit](#BodyLimit) | 拦截 | 限制请求body大小 | [example](../_example/middlewareBodyLimit.go)  |
+| 04 |  [Black](#Black) |  拦截 |  黑白名单 | [example](../_example/middlewareBlack.go) [nethttp](../_example/nethttpBalck.go) api |
+| 05 |  [Breaker](#Breaker) |  拦截 |  熔断器 | [example](../_example/middlewareBreaker.go) api groups |
+| 06 |  [Cache](#Cache) |  拦截 |  请求缓存 | [example](../_example/middlewareCache.go) [example2](../_example/middlewareCacheStore.go) groups |
+| 07 |  [ContextWarp](#ContextWarp) |  辅助 |  封装Context | [example](../_example/middlewareContextWarp.go)  |
+| 08 |  [Cors](#Cors) |  拦截 |  跨域处理 | [example](../_example/middlewareCors.go)  |
+| 09 |  [Csrf](#Csrf) |  拦截 |  CSRF token检查 | [example](../_example/middlewareCsrf.go)  |
+| 10 |  [Dump](#Dump) |  调试 |  捕捉请求信息 | [example](../_example/middlewareDump.go) api  |
+| 11 |  [Gzip](#Gzip) |  追加 |  gzip压缩 | [example](../_example/middlewareGzip.go)  |
+| 12 |  [Header](#Header) |  追加 |  添加响应header信息 |  [example](../_example/middlewareHeader.go) |
+| 13 |  [HeaderFilte](#HeaderFilte) |  追加 |   过滤外部请求header |  [example](../_example/middlewareHeaderFilte.go) |
+| 14 |  [Logger](#Logger) |  追加 |  输出access日志 | [example](../_example/middlewareLogger.go)  |
+| 15 |  [LoggerLevel](#LoggerLevel) |  辅助 |  请求设置独立日志级别 | [example](../_example/middlewareLoggerLevel.go)  |
+| 16 |  [Look](#Look)  |  调试 |  路径访问对象 | [example](../_example/middlewareLook.go)  |
+| 17 |  [Pprof](#Pprof) |  调试 |  处理pprof响应 |  [example](../_example/middlewarePprof.go) |
+| 18 |  [Rate](#Rate)  |  拦截 | 限速限流  | [限流](../_example/middlewareRateRequest.go) [限速](../_example/middlewareRateSpeed.go) [nethttp限流](../_example/netttpRateRequest.go) groups |
+| 19 |  [Recover](#Recover) |  追加 | 恢复panic  | [example](../_example/middlewareRecover.go)  |
+| 20 |  [Referer](#Referer) |  拦截 | referer校验  | [example](../_example/middlewareReferer.go)  |
+| 21 |  [RequestID](#RequestID) |  追加 | 增加请求id  | [example](../_example/middlewareRequestID.go)  |
+| 22 |  [Rewrite](#Rewrite) |  辅助 |  请求路径修改 | [example](../_example/middlewareRewrite.go) [nethttp](../_example/nethttpRewrite.go) |
+| 23 |  [Router](#Router)  |  辅助 |  路由自定义处理 | [example](../_example/middlewareRouter.go)  |
+| 24 |  [RouterRewrite](#RouterRewrite)  |  辅助 | 重写请求路径 | [example](../_example/middlewareRouterRewrite.go) |
+| 25 |  [Timeout](#Timeout) |  其他 | 处理请求超时 | [example](../_example/middlewareTimeout.go)  |
+| 26 |    | 其他 | 自定义中间件处理函数  | [example](../_example/middlewareHandle.go) |
+| 27 |  Policy  |  其他 | Pbac | [example](../_example/policyPbac.go) |
+| 28 |  Promethues  |  其他 | prometheus采集请求信息 |   |
+| 29 |  OpenTelemetry |  其他 | otel记录请求信息<br>注入tracer |   |
 
 
 ## BasicAuth
@@ -196,7 +197,7 @@ example:
 添加响应Header
 
 参数:
-    http.Header     需要添加的Header内存
+- http.Header     需要添加的Header内存
 
 examaple:
 ```
@@ -204,6 +205,20 @@ app.AddMiddleware(middleware.NewHeaderFunc(http.Header{
 	"Cache-Control": []string{"no-cache"},
 }))
 app.AddMiddleware(middleware.NewHeaderWithSecureFunc(nil))
+```
+
+## HeaderFilte
+
+对来源于外部请求，过滤指定请求header
+
+参数:
+- []string	指定内部ip，默认[]string{"10.0.0.0/8", "172.16.0.0/12", "192.0.0.0/24", "127.0.0.1"}
+- []string	指定需要过滤的请求header，默认[]string{HeaderXRealIP, HeaderXForwardedFor, HeaderXForwardedHost, HeaderXForwardedProto, HeaderXRequestID, HeaderXTraceID}
+
+examaple:
+```
+	app.AddMiddleware(middleware.NewHeaderFilteFunc(nil, nil))
+	app.AddMiddleware(middleware.NewHeaderFilteFunc([]string{"127.0.0.1"}, nil))
 ```
 
 ## Logger
@@ -357,7 +372,7 @@ goto [github.com/eudore/endpoint/prometheus](https://github.com/eudore/endpoint/
 goto [github.com/eudore/endpoint/opentracing](https://github.com/eudore/endpoint/tree/master/tracer)
 
 # 不将实现中间件及原因：
-- Casbin 实现太简单不具有技术含量，自行添加判断逻辑；不支持pbac实现。
+- Casbin 接入太简单不具有技术含量，自行添加判断逻辑；不支持pbac实现。
 - Jwt 无明显效果，不如Context扩展实现相关功能。
 - Session 无明显效果，不如Context扩展实现相关功能。
 - Timing 核心入侵大，不如Trace。

@@ -6,9 +6,11 @@ import (
 )
 
 func main() {
+	app := eudore.NewApp()
+
 	log := logrus.StandardLogger()
 	log.Formatter = new(logrus.JSONFormatter)
-	app := eudore.NewApp(NewLoggerLogrus(log))
+	app.SetValue(eudore.ContextKeyLogger, NewLoggerLogrus(log))
 
 	app.WithFields([]string{"animal", "number", "size"}, []interface{}{"walrus", 1, 10}).Info("A walrus appears")
 
@@ -27,7 +29,6 @@ func main() {
 	logout.WithField("level", "warning").Warning("warning")
 	logout.WithField("level", "error").Error("error")
 
-	app.CancelFunc()
 	app.Run()
 }
 

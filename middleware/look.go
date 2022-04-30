@@ -10,6 +10,13 @@ import (
 	"github.com/eudore/eudore"
 )
 
+// 定义LookValue使用的Mime值
+const (
+	MimeValueJSON = "value/json"
+	MimeValueHTML = "value/html"
+	MimeValueText = "value/text"
+)
+
 // NewLookFunc 函数创建一个访问对象数据处理函数。
 //
 // 获取请求路由参数"*"为object访问路径，返回object指定属性的数据，允许使用下列参数：
@@ -21,15 +28,8 @@ import (
 func NewLookFunc(data interface{}) eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
 		ctx.SetHeader(eudore.HeaderXEudoreAdmin, "look")
-		look := LookValue{
-			LookConfig: &LookConfig{
-				Depth:   eudore.GetStringInt(ctx.GetQuery("d"), 10),
-				ShowAll: eudore.GetStringBool(ctx.GetQuery("all")),
-				Godoc:   eudore.GetString(ctx.GetQuery("godoc"), "https://golang.org"),
-				Refs:    make(map[uintptr]struct{}),
-			},
-		}
-		val, err := eudore.GetWithValue(data, strings.Replace(ctx.GetParam("*"), "/", ".", -1), look.ShowAll)
+		look := NewLookValue(ctx)
+		val, err := eudore.GetWithValue(data, strings.Replace(ctx.GetParam("*"), "/", ".", -1), nil, look.ShowAll)
 		if err != nil {
 			ctx.Fatal(err)
 			return
@@ -47,13 +47,80 @@ func NewLookFunc(data interface{}) eudore.HandlerFunc {
 		case "text":
 			tmpl := getLookTemplate(strings.TrimSuffix(ctx.Path(), "/"), ctx.Querys().Encode(), "text")
 			ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextPlainCharsetUtf8)
-			tmpl.ExecuteTemplate(ctx, "text", &look)
+			tmpl.ExecuteTemplate(ctx, "text", look)
 		default:
 			tmpl := getLookTemplate(strings.TrimSuffix(ctx.Path(), "/"), ctx.Querys().Encode(), "view")
 			ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
-			tmpl.ExecuteTemplate(ctx, "view", viewData{ctx.GetParam("*"), eudore.GetStringInt(ctx.GetQuery("width"), 60), &look})
+			tmpl.ExecuteTemplate(ctx, "view", viewData{ctx.GetParam("*"), eudore.GetStringInt(ctx.GetQuery("width"), 60), look})
 		}
 	}
+}
+
+// NewBindLook 函数创建支持look value的eudore.NewRenders。
+func NewBindLook(fn eudore.HandlerDataFunc, renders map[string]eudore.HandlerDataFunc) eudore.HandlerDataFunc {
+	data := map[string]eudore.HandlerDataFunc{
+		eudore.MimeApplicationJSON: eudore.RenderJSON,
+		eudore.MimeApplicationXML:  eudore.RenderXML,
+		eudore.MimeTextHTML:        eudore.RenderHTML,
+		eudore.MimeTextXML:         eudore.RenderXML,
+		eudore.MimeTextPlain:       eudore.RenderText,
+		eudore.MimeText:            eudore.RenderText,
+		MimeValueJSON:              RenderValueJSON,
+		MimeValueHTML:              RenderValueHTML,
+		MimeValueText:              RenderValueText,
+	}
+	for k, v := range renders {
+		if v == nil {
+			delete(data, k)
+		} else {
+			data[k] = v
+
+		}
+	}
+	return eudore.NewRenders(fn, data)
+}
+
+// RenderValueJSON 实现渲染Value为JSON格式。
+func RenderValueJSON(ctx eudore.Context, data interface{}) error {
+	look := NewLookValue(ctx)
+	look.Scan(reflect.ValueOf(data))
+
+	header := ctx.Response().Header()
+	if val := header.Get(eudore.HeaderContentType); len(val) == 0 {
+		header.Add(eudore.HeaderContentType, eudore.MimeApplicationJSONUtf8)
+	}
+	encoder := json.NewEncoder(ctx)
+	if !strings.Contains(ctx.GetHeader(eudore.HeaderAccept), eudore.MimeApplicationJSON) {
+		encoder.SetIndent("", "\t")
+	}
+	return encoder.Encode(look)
+}
+
+// RenderValueText 实现渲染Value为Text格式。
+func RenderValueText(ctx eudore.Context, data interface{}) error {
+	look := NewLookValue(ctx)
+	look.Scan(reflect.ValueOf(data))
+
+	header := ctx.Response().Header()
+	if val := header.Get(eudore.HeaderContentType); len(val) == 0 {
+		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextPlainCharsetUtf8)
+	}
+
+	tmpl := getLookTemplate(strings.TrimSuffix(ctx.Path(), "/"), ctx.Querys().Encode(), "text")
+	return tmpl.ExecuteTemplate(ctx, "text", look)
+}
+
+// RenderValueHTML 实现渲染Value为HTML格式。
+func RenderValueHTML(ctx eudore.Context, data interface{}) error {
+	look := NewLookValue(ctx)
+	look.Scan(reflect.ValueOf(data))
+
+	header := ctx.Response().Header()
+	if val := header.Get(eudore.HeaderContentType); len(val) == 0 {
+		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
+	}
+	tmpl := getLookTemplate(strings.TrimSuffix(ctx.Path(), "/"), ctx.Querys().Encode(), "view")
+	return tmpl.ExecuteTemplate(ctx, "view", viewData{ctx.GetParam("*"), eudore.GetStringInt(ctx.GetQuery("width"), 60), look})
 }
 
 func getRequestForma(ctx eudore.Context) string {
@@ -94,6 +161,8 @@ func getLookTemplate(path, querys, format string) *template.Template {
 		"subpath": func() string { paths = paths[:len(paths)-1]; return "" },
 		"getpath": func() string { return fmt.Sprintf("%s%s", strings.Join(paths, "/"), querys) },
 		"isnil":   func(i interface{}) bool { return reflect.ValueOf(i).IsNil() },
+		"isline":  func(i int) bool { return i%16 == 0 },
+		"showint": func(i string) string { return strings.Repeat(" ", 4-len(i)) + i },
 	})
 	for _, i := range lookTemplate.Templates() {
 		temp.AddParseTree(i.Name(), i.Tree)
@@ -109,6 +178,8 @@ var lookTemplate, _ = template.New("look").Funcs(template.FuncMap{
 	"subpath": getRequestForma,
 	"getpath": getRequestForma,
 	"isnil":   getRequestForma,
+	"isline":  getRequestForma,
+	"showint": getRequestForma,
 }).Parse(`
 {{- define "view" -}}
 <!DOCTYPE html><html>
@@ -192,7 +263,14 @@ span{white-space:pre-wrap;word-wrap:break-word;overflow:hidden;}</style>
 		{{- printf "["}}{{addtab -}}
 		{{- if ne (len .Vals ) 0}}
 			{{- range $index, $elem := .Vals -}}
-				{{- printf "\n"}}{{gettab}}{{$index}}: {{template "text" $elem -}},
+				{{- if eq $elem.Name "uint8"}}
+					{{- if isline $index }}
+						{{- printf "\n"}}{{gettab}}
+					{{- end }}
+					{{- showint (printf "%d" $elem.Value) }},
+				{{- else}}
+					{{- printf "\n"}}{{gettab}}{{$index}}: {{template "text" $elem -}},
+				{{- end -}}
 			{{- end -}}
 			{{- printf "\n"}}{{subtab}}{{gettab}}{{printf "}" -}}
 		{{- else -}}
@@ -226,6 +304,18 @@ type LookValue struct {
 	Elem        *LookValue  `json:"elem,omitempty"`
 	Keys        []string    `json:"keys,omitempty"`
 	Vals        []LookValue `json:"vals,omitempty"`
+}
+
+// NewLookValue 方法从请求上下文成就一个默认配置的LookValue。
+func NewLookValue(ctx eudore.Context) *LookValue {
+	return &LookValue{
+		LookConfig: &LookConfig{
+			Depth:   eudore.GetStringInt(ctx.GetQuery("d"), 10),
+			ShowAll: eudore.GetStringBool(ctx.GetQuery("all")),
+			Godoc:   eudore.GetString(ctx.GetQuery("godoc"), "https://golang.org"),
+			Refs:    make(map[uintptr]struct{}),
+		},
+	}
 }
 
 // Scan 方法扫描属性并保存。

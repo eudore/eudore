@@ -8,6 +8,9 @@ import (
 	"github.com/eudore/eudore"
 )
 
+// BlackInvalidAddress 定义解析无效地址时使用的默认地址，127.0.0.2。
+var BlackInvalidAddress uint64 = 2130706434
+
 // Black 定义黑名单中间件后台。
 type black struct {
 	White *BlackNode
@@ -44,8 +47,8 @@ func (b *black) InjectRoutes(router eudore.Router) {
 	router.GetFunc("/black/data", b.data)
 	router.PutFunc("/black/white/:ip", b.putIP)
 	router.PutFunc("/black/black/:ip black=black", b.putIP)
-	router.DeleteFunc("/black/white/:ip", b.deleteIP)
-	router.DeleteFunc("/black/black/:ip black=black", b.deleteIP)
+	router.DeleteFunc("/black/white/:ip", b.DeleteAllIP)
+	router.DeleteFunc("/black/black/:ip black=black", b.DeleteAllIP)
 }
 
 func (b *black) data(ctx eudore.Context) interface{} {
@@ -66,13 +69,13 @@ func (b *black) putIP(ctx eudore.Context) {
 	}
 }
 
-func (b *black) deleteIP(ctx eudore.Context) {
+func (b *black) DeleteAllIP(ctx eudore.Context) {
 	ip := fmt.Sprintf("%s/%s", ctx.GetParam("ip"), eudore.GetString(ctx.GetQuery("mask"), "32"))
-	ctx.Infof("%s delete %s ip: %s", ctx.RealIP(), eudore.GetString(ctx.GetQuery("black"), "white"), ip)
+	ctx.Infof("%s DeleteAll %s ip: %s", ctx.RealIP(), eudore.GetString(ctx.GetQuery("black"), "white"), ip)
 	if ctx.GetParam("black") != "" {
-		b.DeleteBlack(ip)
+		b.DeleteAllBlack(ip)
 	} else {
-		b.DeleteWhite(ip)
+		b.DeleteAllWhite(ip)
 	}
 }
 
@@ -99,14 +102,14 @@ func (b *black) InsertBlack(ip string) {
 	b.Black.Insert(ip)
 }
 
-// DeleteWhite 方法删除一个白名单ip或ip段。
-func (b *black) DeleteWhite(ip string) {
-	b.White.Delete(ip)
+// DeleteAllWhite 方法删除一个白名单ip或ip段。
+func (b *black) DeleteAllWhite(ip string) {
+	b.White.DeleteAll(ip)
 }
 
-// DeleteBlack 方法删除一个黑名单ip或ip段。
-func (b *black) DeleteBlack(ip string) {
-	b.Black.Delete(ip)
+// DeleteAllBlack 方法删除一个黑名单ip或ip段。
+func (b *black) DeleteAllBlack(ip string) {
+	b.Black.DeleteAll(ip)
 }
 
 // BlackNode 定义黑名单存储树节点。
@@ -137,8 +140,8 @@ func (node *BlackNode) Insert(ipstr string) {
 	node.Data = true
 }
 
-// Delete 方法给黑名单节点删除一个ip或ip段。
-func (node *BlackNode) Delete(ipstr string) {
+// DeleteAll 方法给黑名单节点删除一个ip或ip段包全部子网段。
+func (node *BlackNode) DeleteAll(ipstr string) {
 	var lastnode *BlackNode
 	var lastindex uint64
 	rootnode := node
@@ -208,6 +211,9 @@ func ip2intbit(ip string) (uint64, uint) {
 
 func ip2int(ip string) uint64 {
 	bits := strings.Split(ip, ".")
+	if len(bits) != 4 {
+		return BlackInvalidAddress
+	}
 	b0, _ := strconv.Atoi(bits[0])
 	b1, _ := strconv.Atoi(bits[1])
 	b2, _ := strconv.Atoi(bits[2])

@@ -12,10 +12,10 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(
-		eudore.NewRouterStd(eudore.NewRouterCoreDebug(nil)),
-		eudore.Renderer(eudore.RenderJSON),
-	)
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreDebug(nil)))
+	app.SetValue(eudore.ContextKeyRender, eudore.RenderJSON)
+	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
 
 	admin := app.Group("/eudore/debug")
 	admin.AddMiddleware(middleware.NewCorsFunc(nil, nil))

@@ -148,6 +148,17 @@ examaple:
 	}))
 	app.AddMiddleware(middleware.NewHeaderWithSecureFunc(nil))
 
+HeaderFilte
+
+对来源于外部ip请求，过滤指定请求header
+
+参数:
+	[]string	指定内部ip，默认[]string{"10.0.0.0/8", "172.16.0.0/12", "192.0.0.0/24", "127.0.0.1"}
+	[]string	指定需要过滤的请求header，默认[]string{HeaderXRealIP, HeaderXForwardedFor, HeaderXForwardedHost, HeaderXForwardedProto, HeaderXRequestID, HeaderXTraceID}
+examaple:
+	app.AddMiddleware(middleware.NewHeaderFilteFunc(nil, nil))
+	app.AddMiddleware(middleware.NewHeaderFilteFunc([]string{"127.0.0.1"}, nil))
+
 Logger
 
 输出请求access logger并记录相关fields

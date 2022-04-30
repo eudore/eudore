@@ -21,8 +21,8 @@ import (
 
 func main() {
 	app := eudore.NewApp()
-	app.Options(app.Parse())
-	app.Options(command.Init(app))
+	app.SetValue(eudore.ContextKeyError, app.Parse())
+	app.SetValue(eudore.ContextKeyError, command.Init(app))
 	if app.Err() != nil {
 		app.Run()
 		return
@@ -30,7 +30,7 @@ func main() {
 	app.GetFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteString("hello eudore")
 	})
+
 	app.Listen(":8088")
-	// app.CancelFunc()
 	app.Run()
 }

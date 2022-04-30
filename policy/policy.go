@@ -1,254 +1,338 @@
 package policy
 
 import (
-	"context"
-	"database/sql/driver"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"net"
 	"strings"
+	"time"
+	"unsafe"
 
 	"github.com/eudore/eudore"
 )
 
-type contextKey struct {
-	name string
-}
+var (
+	// ErrFormatPolcyUnmarshalError 定义策略json解析错误。
+	ErrFormatPolcyUnmarshalError = "policy unmarshal json error: %v"
+	// ErrFormatDataParseError 定义策略数据解析错误。
+	ErrFormatDataParseError = "policy data parse %s error: %v"
+	// ErrFormatConditionsUnmarshalError 定义策略条件json解析错误。
+	ErrFormatConditionsUnmarshalError = "policy conditions unmarshal json %s error: %v"
+	// ErrFormatConditionsParseError 定义NewConditions解析策略条件错误。
+	ErrFormatConditionsParseError = "policy conditions parse %s error: %v"
+	// ErrFormatConditionParseError 定义策略指定条件解析错误。
+	ErrFormatConditionParseError = "policy conditions %s parse %s error: %v"
 
-// PolicyExpressions 定义policy-expressions Context Key。
-var PolicyExpressions = &contextKey{"policy-expressions"}
+	conditionObjects = make(map[string]func() Condition)
+	dataObjects      = make(map[string]func() interface{})
+)
+
+func init() {
+	conditionObjects = map[string]func() Condition{
+		"and":      func() Condition { return &conditionAnd{} },
+		"or":       func() Condition { return &conditionOr{} },
+		"sourceip": func() Condition { return &conditionSourceIP{} },
+		"date":     func() Condition { return &conditionDate{} },
+		"time":     func() Condition { return &conditionTime{} },
+		"method":   func() Condition { return &conditionMethod{} },
+		"params":   func() Condition { return &conditionParams{} },
+	}
+	dataObjects = map[string]func() interface{}{
+		"menu": func() interface{} { return new(string) },
+	}
+}
 
 // Policy 定义一个策略.
 type Policy struct {
-	PolicyID    int        `json:"policy_id" alias:"policy_id" gorm:"primaryKey" db:"policy_id"`
-	PolicyName  string     `json:"policy_name" alias:"policy_name" gorm:"index" db:"policy_name"`
-	Description string     `json:"description" alias:"description"`
-	Statement   RawMessage `json:"statement" alias:"statement"`
-	statement   []statement
+	PolicyID    int         `json:"policy_id" alias:"policy_id"`
+	PolicyName  string      `json:"policy_name" alias:"policy_name"`
+	Description string      `json:"description" alias:"description"`
+	Statement   []Statement `json:"statement" alias:"statement"`
 }
 
-// RawMessage 定义json字符串集合。
-type RawMessage []byte
-
-// statement 定义一条策略内容。
-type statement struct {
-	Effect       bool        `json:"effect"`
-	Action       []string    `json:"action"`
-	Resource     []string    `json:"resource"`
-	Conditions   Condition   `json:"conditions,omitempty"`
-	Data         Expressions `json:"data,omitempty"`
+// Statement 定义一条策略内容。
+type Statement struct {
+	Effect       bool                         `json:"effect"`
+	Action       []string                     `json:"action"`
+	Resource     []string                     `json:"resource"`
+	Conditions   map[string]json.RawMessage   `json:"conditions,omitempty"`
+	Data         map[string][]json.RawMessage `json:"data,omitempty"`
 	treeAction   *starTree
 	treeResource *starTree
+	conditions   Condition                `json:"-"`
+	data         map[string][]interface{} `json:"-"`
 }
+
+type _statement Statement
 
 // Condition 定义策略使用的条件。
 type Condition interface {
-	Name() string
 	Match(ctx eudore.Context) bool
 }
 
-// Expressions 定义数据表达式集合
-type Expressions []Expression
-
-// Expression 定义数据表达式
-type Expression interface {
-	Expression(string, []string) (string, []interface{})
-}
-
-var newConditionFuncs = make(map[string]func(interface{}) Condition)
-var newExpressionFuncs = make(map[string]func([]byte) (Expression, error))
-var newValueFuncs = make(map[string]func(string) func(eudore.Context) interface{})
-
-func init() {
-	newConditionFuncs["or"] = newConditionOr
-	newConditionFuncs["and"] = newConditionAnd
-	newConditionFuncs["sourceip"] = newConditionsourceIP
-	newConditionFuncs["time"] = newConditionTime
-	newConditionFuncs["method"] = newConditionMethod
-	newConditionFuncs["params"] = newConditionParams
-
-	newExpressionFuncs["and"] = newExpressionAnd
-	newExpressionFuncs["or"] = newExpressionOr
-	newExpressionFuncs["value"] = newExpressionValue
-	newExpressionFuncs["range"] = newExpressionRange
-	newExpressionFuncs["sql"] = newExpressionSql
-
-	newValueFuncs["param"] = newValueParam
-	newValueFuncs["query"] = newValueQuery
-}
-
-// RegisterCondition 方法注册条件构造函数，默认存在or、and、sourceip、time、method、params。
-func RegisterCondition(name string, fn func(interface{}) Condition) {
-	newConditionFuncs[name] = fn
-}
-
-// RegisterExpression 方法注册数据表达式构造函数，默认存在and、or、value、range、sql。
-func RegisterExpression(name string, fn func([]byte) (Expression, error)) {
-	newExpressionFuncs[name] = fn
-}
-
-// RegisterValue 方法注册动态数据构造函数，默认存在param、query。
-func RegisterValue(name string, fn func(string) func(eudore.Context) interface{}) {
-	newValueFuncs[name] = fn
-}
-
-// StatementUnmarshal 方法将policy.Statement反序列化。
-func (policy *Policy) StatementUnmarshal() error {
-	if policy.Statement != nil {
-		return json.Unmarshal([]byte(policy.Statement), &policy.statement)
-	}
-	return nil
-}
-
-// StatementMarshal 方法将policy.Statement序列化。
-func (policy *Policy) StatementMarshal() error {
-	body, err := json.Marshal(policy.statement)
-	if err == nil {
-		policy.Statement = body
-	}
-	return err
-}
-
-// Match 方法匹配请求上下文，默认返回false。
-func (policy *Policy) Match(ctx eudore.Context, action, resource string) (Expressions, bool) {
-	var datas Expressions
-	var names []string
-	for _, s := range policy.statement {
-		ok := s.MatchAction(action) && s.MatchResource(resource) && s.MatchCondition(ctx)
-		if ok {
-			// 非数据权限执行行为
-			if s.Data == nil {
-				ctx.SetParam("policy", policy.PolicyName)
-				return nil, s.Effect
-			}
-			names = append(names, policy.PolicyName)
-			datas = append(datas, s.Data...)
-		}
-	}
-	if datas != nil {
-		ctx.SetParam("policy", strings.Join(names, ","))
-		ctx.WithContext(context.WithValue(ctx.GetContext(), PolicyExpressions, datas))
-	}
-	return datas, datas != nil
+// NewPolicy 方法使用字符串创建一个策略。
+func NewPolicy(body string) (*Policy, error) {
+	policy := &Policy{}
+	return policy, json.Unmarshal([]byte(body), policy)
 }
 
 // MatchAction 方法匹配描述的条件。
-func (stat statement) MatchAction(action string) bool {
-	return stat.treeAction.Match(action) != ""
+func (stmt Statement) MatchAction(action string) bool {
+	return stmt.treeAction.Match(action) != ""
 }
 
 // MatchResource 方法匹配描述的资源。
-func (stat statement) MatchResource(resource string) bool {
-	return stat.treeResource.Match(resource) != ""
+func (stmt Statement) MatchResource(resource string) bool {
+	return stmt.treeResource.Match(resource) != ""
 }
 
 // MatchCondition 方法匹配描述的条件。
-func (stat statement) MatchCondition(ctx eudore.Context) bool {
-	if stat.Conditions == nil {
+func (stmt Statement) MatchCondition(ctx eudore.Context) bool {
+	if stmt.Conditions == nil {
 		return true
 	}
-	return stat.Conditions.Match(ctx)
+	return stmt.conditions.Match(ctx)
+}
+
+// MatchData 方法返回匹配时的权限数据。
+func (stmt Statement) MatchData() map[string][]interface{} {
+	return stmt.data
 }
 
 // UnmarshalJSON 方法实现json反序列化。
-func (stat *statement) UnmarshalJSON(body []byte) error {
-	var data struct {
-		Effect     bool                   `json:"effect"`
-		Action     []string               `json:"action"`
-		Resource   []string               `json:"resource"`
-		Conditions map[string]interface{} `json:"conditions,omitempty"`
-		Data       RawMessage             `json:"data,omitempty"`
+func (stmt *Statement) UnmarshalJSON(body []byte) error {
+	err := json.Unmarshal(body, (*_statement)(unsafe.Pointer(stmt)))
+	if err != nil {
+		return fmt.Errorf(ErrFormatPolcyUnmarshalError, err)
 	}
-	err := json.Unmarshal(body, &data)
+	conds, err := NewConditions(stmt.Conditions)
+	if err != nil {
+		return err
+	}
+	if conds != nil {
+		stmt.conditions = conditionAnd{stmt.Conditions, conds}
+	}
+
+	stmt.data, err = newDatas(stmt.Data)
 	if err != nil {
 		return err
 	}
 
-	stat.Effect = data.Effect
-	stat.Action = data.Action
-	stat.Resource = data.Resource
-	if len(stat.Action) == 0 {
-		stat.Action = []string{"*"}
+	if len(stmt.Action) == 0 {
+		stmt.Action = []string{"*"}
 	}
-	if len(stat.Resource) == 0 {
-		stat.Resource = []string{"*"}
+	if len(stmt.Resource) == 0 {
+		stmt.Resource = []string{"*"}
 	}
-	stat.treeAction = new(starTree)
-	stat.treeResource = new(starTree)
-	for _, i := range stat.Action {
-		stat.treeAction.Insert(i)
-	}
-	for _, i := range stat.Resource {
-		stat.treeResource.Insert(i)
-	}
+	stmt.treeAction = newStarTree(stmt.Action)
+	stmt.treeResource = newStarTree(stmt.Resource)
+	return nil
+}
 
-	conds := NewConditions(data.Conditions)
-	if len(conds) > 0 {
-		stat.Conditions = conditionAnd{conds}
-	}
-	if len(data.Data) > 0 {
-		stat.Data, err = NewExpressions(data.Data)
+type conditionAnd struct {
+	Data       map[string]json.RawMessage
+	Conditions []Condition
+}
+type conditionOr struct {
+	Data       map[string]json.RawMessage
+	Conditions []Condition
+}
+
+// conditionSourceIP 定义ip检查条件。
+type conditionSourceIP struct {
+	SourceIP []*net.IPNet `json:"sourceip,omitempty"`
+}
+type conditionDate struct {
+	Before time.Time `json:"Before"`
+	After  time.Time `json:"after"`
+}
+type _conditionDate struct {
+	Before string `json:"Before"`
+	After  string `json:"after"`
+}
+type conditionTime struct {
+	Before time.Time `json:"Before"`
+	After  time.Time `json:"after"`
+}
+
+// conditionMethod 定义请求方法条件。
+type conditionMethod struct {
+	Methods []string `json:"methods"`
+}
+type conditionParams map[string][]string
+
+// NewConditions 方法解析多个策略条件。
+func NewConditions(data map[string]json.RawMessage) ([]Condition, error) {
+	var conds []Condition
+	for key, val := range data {
+		fn, ok := conditionObjects[key]
+		if !ok {
+			continue
+		}
+		cond := fn()
+
+		err := json.Unmarshal(val, cond)
 		if err != nil {
-			return err
+			return nil, fmt.Errorf(ErrFormatConditionsParseError, key, err)
 		}
+		conds = append(conds, cond)
 	}
-	return nil
+	return conds, nil
 }
 
-// CreateExpressions 方法生成请求上下文对应表的数据表达式。
-//
-// 如果是mysql等$1使用数据库占位符的数据库，index为第一个占位符的位置。
-func CreateExpressions(ctx eudore.Context, tb string, fields []string, index int) (string, []interface{}) {
-	val := ctx.GetContext().Value(PolicyExpressions)
-	if val == nil {
-		return "", nil
-	}
-	exprs := val.(Expressions)
-
-	newexprs, values := exprs.Expression(tb, fields)
-	sql := strings.Join(newexprs, " OR ")
-	for i := range values {
-		fn, ok := values[i].(func(ctx eudore.Context) interface{})
-		if ok {
-			values[i] = fn(ctx)
-		}
-	}
-	if index > 0 {
-		for {
-			if strings.IndexByte(sql, '?') != -1 {
-				sql = strings.Replace(sql, "?", fmt.Sprintf("$%d", index), 1)
-				index++
-			} else {
-				break
+func newDatas(body map[string][]json.RawMessage) (map[string][]interface{}, error) {
+	datas := make(map[string][]interface{})
+	for key, vals := range body {
+		for _, val := range vals {
+			fn, ok := dataObjects[key]
+			if !ok {
+				continue
 			}
+			data := fn()
+
+			err := json.Unmarshal(val, data)
+			if err != nil {
+				return nil, fmt.Errorf(ErrFormatDataParseError, key, err.Error())
+			}
+			datas[key] = append(datas[key], data)
 		}
 	}
-	return sql, values
+	return datas, nil
 }
 
-// MarshalJSON returns m as the JSON encoding of m.
-func (m RawMessage) MarshalJSON() ([]byte, error) {
-	if m == nil {
-		return []byte("null"), nil
+// Match conditionAnd
+func (cond conditionAnd) Match(ctx eudore.Context) bool {
+	for _, i := range cond.Conditions {
+		if !i.Match(ctx) {
+			return false
+		}
 	}
-	return m, nil
+	return true
+}
+func (cond *conditionAnd) UnmarshalJSON(body []byte) error {
+	err := json.Unmarshal(body, &cond.Data)
+	if err != nil {
+		return fmt.Errorf(ErrFormatConditionsUnmarshalError, "and", err)
+	}
+	conds, err := NewConditions(cond.Data)
+	cond.Conditions = conds
+	return err
 }
 
-// UnmarshalJSON sets *m to a copy of data.
-func (m *RawMessage) UnmarshalJSON(data []byte) error {
-	if m == nil {
-		return errors.New("policy.RawMessage: UnmarshalJSON on nil pointer")
+// Match 方法匹配or条件。
+func (cond conditionOr) Match(ctx eudore.Context) bool {
+	for _, i := range cond.Conditions {
+		if i.Match(ctx) {
+			return true
+		}
 	}
-	*m = append((*m)[0:0], data...)
+	return false
+}
+func (cond *conditionOr) UnmarshalJSON(body []byte) error {
+	err := json.Unmarshal(body, &cond.Data)
+	if err != nil {
+		return fmt.Errorf(ErrFormatConditionsUnmarshalError, "or", err)
+	}
+	conds, err := NewConditions(cond.Data)
+	cond.Conditions = conds
+	return err
+}
+
+// Match 方法匹配ip段。
+func (cond conditionSourceIP) Match(ctx eudore.Context) bool {
+	for _, i := range cond.SourceIP {
+		if i.Contains(net.ParseIP(ctx.RealIP())) {
+			return true
+		}
+	}
+	return false
+}
+func (cond *conditionSourceIP) UnmarshalJSON(body []byte) error {
+	var strs []string
+	err := json.Unmarshal(body, &strs)
+	if err != nil {
+		return fmt.Errorf(ErrFormatConditionsUnmarshalError, "sourceip", err)
+	}
+	var ipnets []*net.IPNet
+	for _, i := range strs {
+		if strings.IndexByte(i, '/') == -1 {
+			i += "/32"
+		}
+		_, ipnet, err := net.ParseCIDR(i)
+		if err != nil {
+			return fmt.Errorf(ErrFormatConditionParseError, "sourceip", "cidr", err)
+		}
+		ipnets = append(ipnets, ipnet)
+	}
+	cond.SourceIP = ipnets
 	return nil
 }
 
-// Value 方法生成sql值。
-func (m RawMessage) Value() (driver.Value, error) {
-	return m.MarshalJSON()
+// Match 方法匹配当前时间范围。
+func (cond conditionDate) Match(ctx eudore.Context) bool {
+	current := time.Now()
+	return current.Before(cond.Before) && current.After(cond.After)
+}
+func (cond *conditionDate) UnmarshalJSON(body []byte) error {
+	var date _conditionDate
+	err := json.Unmarshal(body, &date)
+	if err != nil {
+		return fmt.Errorf(ErrFormatConditionsUnmarshalError, "date", err)
+	}
+	cond.Before, err = time.Parse("2006-01-02", date.Before)
+	if err != nil && date.Before != "" {
+		return fmt.Errorf(ErrFormatConditionParseError, "date", "before", err)
+	}
+	cond.After, err = time.Parse("2006-01-02", date.After)
+	if err != nil && date.After != "" {
+		return fmt.Errorf(ErrFormatConditionParseError, "date", "after", err)
+	}
+	return nil
 }
 
-// Scan 方法接收sql解析数据、
-func (m *RawMessage) Scan(src interface{}) error {
-	return m.UnmarshalJSON([]byte(eudore.GetString(src)))
+// Match 方法匹配当前时间范围。
+func (cond conditionTime) Match(ctx eudore.Context) bool {
+	current := time.Now()
+	current = time.Date(0, 0, 0, current.Hour(), current.Minute(), current.Second(), 0, current.Location())
+	return current.Before(cond.Before) && current.After(cond.After)
+}
+func (cond *conditionTime) UnmarshalJSON(body []byte) error {
+	var date _conditionDate
+	err := json.Unmarshal(body, &date)
+	if err != nil {
+		return fmt.Errorf(ErrFormatConditionsUnmarshalError, "time", err)
+	}
+	cond.Before, err = time.Parse("15:04:05", date.Before)
+	if err != nil && date.Before != "" {
+		return fmt.Errorf(ErrFormatConditionParseError, "time", "before", err)
+	}
+	cond.After, err = time.Parse("15:04:05", date.After)
+	if err != nil && date.After != "" {
+		return fmt.Errorf(ErrFormatConditionParseError, "time", "after", err)
+	}
+	return nil
+}
+
+// Match 方法匹配http请求方法。
+func (cond conditionMethod) Match(ctx eudore.Context) bool {
+	method := ctx.Method()
+	for _, i := range cond.Methods {
+		if i == method {
+			return true
+		}
+	}
+	return false
+}
+func (cond *conditionMethod) UnmarshalJSON(body []byte) error {
+	return json.Unmarshal(body, &cond.Methods)
+}
+
+// Match 方法匹配http请求方法。
+func (cond conditionParams) Match(ctx eudore.Context) bool {
+	for key, vals := range cond {
+		if stringSliceNotIn(vals, ctx.GetParam(key)) {
+			return false
+		}
+	}
+	return true
 }

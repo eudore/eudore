@@ -43,7 +43,9 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(eudore.Renderer(eudore.RenderJSON))
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyRender, eudore.RenderJSON)
+	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteHeader(201)
 		ctx.WriteHeader(202)

@@ -46,7 +46,7 @@ func NewCsrfFunc(key, cookie interface{}) eudore.HandlerFunc {
 			newcookie.Value = key
 			ctx.SetCookie(&newcookie)
 		}
-		ctx.AddParam("csrf", key)
+		ctx.SetParam("csrf", key)
 		switch ctx.Method() {
 		case eudore.MethodGet, eudore.MethodHead, eudore.MethodOptions, eudore.MethodTrace:
 			return
@@ -98,17 +98,12 @@ func getCsrfTokenFunc(key interface{}) func(eudore.Context) string {
 				}
 				return ctx.FormValue(val)
 			}
-		default:
-			return func(ctx eudore.Context) string {
-				return ctx.GetQuery(val)
-			}
 		}
 	case func(eudore.Context) string:
 		return val
-	default:
-		return func(ctx eudore.Context) string {
-			return ctx.GetQuery("csrf")
-		}
+	}
+	return func(ctx eudore.Context) string {
+		return ctx.GetQuery("csrf")
 	}
 }
 

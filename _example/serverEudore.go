@@ -11,12 +11,13 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(eserver.NewServerEudore())
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyServer, eserver.NewServerEudore())
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteString("start eudore server, this default page.\n")
 		ctx.WriteString("your path is " + ctx.Path())
 	})
+
 	app.Listen(":8088")
-	// app.CancelFunc()
 	app.Run()
 }

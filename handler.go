@@ -61,7 +61,6 @@ var (
 // init 函数初始化内置扩展的请求上下文处理函数。
 func init() {
 	// 路由方法扩展
-	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendContextData)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerHTTP)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerNetHTTP)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncNetHTTP1)
@@ -73,6 +72,7 @@ func init() {
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncContextError)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncContextRender)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncContextRenderError)
+	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncContextInterfaceError)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncRPCMap)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendHandlerRPC)
 	DefaultHandlerExtend.RegisterHandlerExtend("", NewExtendFuncString)
@@ -94,7 +94,7 @@ func NewHandlerExtendBase() HandlerExtender {
 	return &handlerExtendBase{}
 }
 
-// RegisterHandlerExtend 函数注册一个请求上下文处理转换函数，参数必须是一个函数，该函数的参数必须是一个函数、接口、指针、结构体类型之一，返回值必须是返回一个HandlerFunc对象。
+// RegisterHandlerExtend 函数注册一个请求上下文处理转换函数，参数必须是一个函数，该函数的参数必须是一个函数、接口、指针类型之一，返回值必须是返回一个HandlerFunc对象。
 //
 // 如果添加多个接口类型转换，注册类型不直接是接口而是实现接口，会按照接口注册顺序依次检测是否实现接口。
 //
@@ -105,37 +105,40 @@ func (ext *handlerExtendBase) RegisterHandlerExtend(_ string, fn interface{}) er
 	if iType.Kind() != reflect.Func {
 		return ErrRegisterNewHandlerParamNotFunc
 	}
-	// 检查函数参数必须是一个函数、接口、指针、结构体类型之一类型。
-	if iType.NumIn() != 1 || (iType.In(0).Kind() != reflect.Func &&
-		iType.In(0).Kind() != reflect.Interface &&
-		iType.In(0).Kind() != reflect.Ptr &&
-		iType.In(0).Kind() != reflect.Struct) {
+
+	// 检查函数参数必须为 func(Type) 或 func(string, Type) ,允许使用的type值定义在DefaultHandlerExtendAllowType。
+	if (iType.NumIn() != 1) && (iType.NumIn() != 2 || iType.In(0).Kind() != reflect.String) {
 		return fmt.Errorf(ErrFormatRegisterHandlerExtendInputParamError, iType.String())
 	}
+	_, ok := DefaultHandlerExtendAllowType[iType.In(iType.NumIn()-1).Kind()]
+	if !ok {
+		return fmt.Errorf(ErrFormatRegisterHandlerExtendInputParamError, iType.String())
+	}
+
 	// 检查函数返回值必须是HandlerFunc
 	if iType.NumOut() != 1 || iType.Out(0) != typeHandlerFunc {
 		return fmt.Errorf(ErrFormatRegisterHandlerExtendOutputParamError, iType.String())
 	}
 
-	ext.ExtendNewType = append(ext.ExtendNewType, iType.In(0))
+	ext.ExtendNewType = append(ext.ExtendNewType, iType.In(iType.NumIn()-1))
 	ext.ExtendNewFunc = append(ext.ExtendNewFunc, reflect.ValueOf(fn))
-	if iType.In(0).Kind() == reflect.Interface {
-		ext.ExtendInterfaceType = append(ext.ExtendInterfaceType, iType.In(0))
+	if iType.In(iType.NumIn()-1).Kind() == reflect.Interface {
+		ext.ExtendInterfaceType = append(ext.ExtendInterfaceType, iType.In(iType.NumIn()-1))
 		ext.ExtendInterfaceFunc = append(ext.ExtendInterfaceFunc, reflect.ValueOf(fn))
 	}
 	return nil
 }
 
 // NewHandlerFuncs 函数根据参数返回一个HandlerFuncs。
-func (ext *handlerExtendBase) NewHandlerFuncs(_ string, i interface{}) HandlerFuncs {
+func (ext *handlerExtendBase) NewHandlerFuncs(path string, i interface{}) HandlerFuncs {
 	val, ok := i.(reflect.Value)
 	if !ok {
 		val = reflect.ValueOf(i)
 	}
-	return NewHandlerFuncsFilter(ext.newHandlerFuncs(val))
+	return NewHandlerFuncsFilter(ext.newHandlerFuncs(path, val))
 }
 
-func (ext *handlerExtendBase) newHandlerFuncs(iValue reflect.Value) HandlerFuncs {
+func (ext *handlerExtendBase) newHandlerFuncs(path string, iValue reflect.Value) HandlerFuncs {
 	// 基础类型返回
 	switch fn := iValue.Interface().(type) {
 	case func(Context):
@@ -150,7 +153,7 @@ func (ext *handlerExtendBase) newHandlerFuncs(iValue reflect.Value) HandlerFuncs
 		return fn
 	}
 	// 尝试转换成HandlerFuncs
-	fn := ext.newHandlerFunc(iValue)
+	fn := ext.newHandlerFunc(path, iValue)
 	if fn != nil {
 		return HandlerFuncs{fn}
 	}
@@ -159,7 +162,7 @@ func (ext *handlerExtendBase) newHandlerFuncs(iValue reflect.Value) HandlerFuncs
 	case reflect.Slice, reflect.Array:
 		var fns HandlerFuncs
 		for i := 0; i < iValue.Len(); i++ {
-			hs := ext.newHandlerFuncs(iValue.Index(i))
+			hs := ext.newHandlerFuncs(path, iValue.Index(i))
 			if hs != nil {
 				fns = append(fns, hs...)
 			}
@@ -168,7 +171,7 @@ func (ext *handlerExtendBase) newHandlerFuncs(iValue reflect.Value) HandlerFuncs
 			return fns
 		}
 	case reflect.Interface, reflect.Ptr:
-		return ext.newHandlerFuncs(iValue.Elem())
+		return ext.newHandlerFuncs(path, iValue.Elem())
 	}
 	return nil
 }
@@ -180,11 +183,11 @@ func (ext *handlerExtendBase) newHandlerFuncs(iValue reflect.Value) HandlerFuncs
 // 先检测对象是否拥有直接注册的类型扩展函数，再检查对象是否实现其中注册的接口类型。
 //
 // 允许进行多次注册，只要注册返回值不为空就会返回对应的处理函数。
-func (ext *handlerExtendBase) newHandlerFunc(iValue reflect.Value) HandlerFunc {
+func (ext *handlerExtendBase) newHandlerFunc(path string, iValue reflect.Value) HandlerFunc {
 	iType := iValue.Type()
 	for i := range ext.ExtendNewType {
 		if ext.ExtendNewType[i] == iType {
-			h := ext.createHandlerFunc(ext.ExtendNewFunc[i], iValue)
+			h := ext.createHandlerFunc(path, ext.ExtendNewFunc[i], iValue)
 			if h != nil {
 				return h
 			}
@@ -193,7 +196,7 @@ func (ext *handlerExtendBase) newHandlerFunc(iValue reflect.Value) HandlerFunc {
 	// 判断是否实现接口类型
 	for i, iface := range ext.ExtendInterfaceType {
 		if iType.Implements(iface) {
-			h := ext.createHandlerFunc(ext.ExtendInterfaceFunc[i], iValue)
+			h := ext.createHandlerFunc(path, ext.ExtendInterfaceFunc[i], iValue)
 			if h != nil {
 				return h
 			}
@@ -202,25 +205,13 @@ func (ext *handlerExtendBase) newHandlerFunc(iValue reflect.Value) HandlerFunc {
 	return nil
 }
 
-var formarExtendername = "%s(%s)"
-
-// ListExtendHandlerNames 方法返回全部注册的函数名称。
-func (ext *handlerExtendBase) ListExtendHandlerNames() []string {
-	names := make([]string, 0, len(ext.ExtendNewFunc))
-	for i := range ext.ExtendNewType {
-		if ext.ExtendNewType[i].Kind() != reflect.Interface {
-			names = append(names, fmt.Sprintf(formarExtendername, runtime.FuncForPC(ext.ExtendNewFunc[i].Pointer()).Name(), ext.ExtendNewType[i].String()))
-		}
-	}
-	for i, iface := range ext.ExtendInterfaceType {
-		names = append(names, fmt.Sprintf(formarExtendername, runtime.FuncForPC(ext.ExtendInterfaceFunc[i].Pointer()).Name(), iface.String()))
-	}
-	return names
-}
-
 // createHandlerFunc 函数使用转换函数和对象创建一个HandlerFunc，并保存HandlerFunc的名称和使用的扩展函数名称。
-func (ext *handlerExtendBase) createHandlerFunc(fn, iValue reflect.Value) HandlerFunc {
-	h := fn.Call([]reflect.Value{iValue})[0].Interface().(HandlerFunc)
+func (ext *handlerExtendBase) createHandlerFunc(path string, fn, iValue reflect.Value) (h HandlerFunc) {
+	if fn.Type().NumIn() == 1 {
+		h = fn.Call([]reflect.Value{iValue})[0].Interface().(HandlerFunc)
+	} else {
+		h = fn.Call([]reflect.Value{reflect.ValueOf(path), iValue})[0].Interface().(HandlerFunc)
+	}
 	if h == nil {
 		return nil
 	}
@@ -251,6 +242,22 @@ func (ext *handlerExtendBase) createHandlerFunc(fn, iValue reflect.Value) Handle
 	}
 	contextFuncName[hptr] = fmt.Sprintf("%s(%s)", name, extname)
 	return h
+}
+
+var formarExtendername = "%s(%s)"
+
+// ListExtendHandlerNames 方法返回全部注册的函数名称。
+func (ext *handlerExtendBase) ListExtendHandlerNames() []string {
+	names := make([]string, 0, len(ext.ExtendNewFunc))
+	for i := range ext.ExtendNewType {
+		if ext.ExtendNewType[i].Kind() != reflect.Interface {
+			names = append(names, fmt.Sprintf(formarExtendername, runtime.FuncForPC(ext.ExtendNewFunc[i].Pointer()).Name(), ext.ExtendNewType[i].String()))
+		}
+	}
+	for i, iface := range ext.ExtendInterfaceType {
+		names = append(names, fmt.Sprintf(formarExtendername, runtime.FuncForPC(ext.ExtendInterfaceFunc[i].Pointer()).Name(), iface.String()))
+	}
+	return names
 }
 
 // NewHandlerExtendWarp function creates a chained HandlerExtender object.
@@ -351,10 +358,10 @@ func (ext *handlerExtendTree) RegisterHandlerExtend(path string, i interface{}) 
 // NewHandlerFuncs 函数基于路径创建多个对象处理函数。
 //
 // 递归依次寻找子节点，然后返回时创建多个对象处理函数，如果子节点返回不为空就直接返回。
-func (ext *handlerExtendTree) NewHandlerFuncs(path string, i interface{}) HandlerFuncs {
-	for _, i := range ext.childs {
-		if strings.HasPrefix(path, i.path) {
-			hs := i.NewHandlerFuncs(path[len(i.path):], i)
+func (ext *handlerExtendTree) NewHandlerFuncs(path string, data interface{}) HandlerFuncs {
+	for _, child := range ext.childs {
+		if strings.HasPrefix(path, child.path) {
+			hs := child.NewHandlerFuncs(path[len(child.path):], data)
 			if hs != nil {
 				return hs
 			}
@@ -363,7 +370,7 @@ func (ext *handlerExtendTree) NewHandlerFuncs(path string, i interface{}) Handle
 	}
 
 	if ext.HandlerExtender != nil {
-		return ext.HandlerExtender.NewHandlerFuncs(path, i)
+		return ext.HandlerExtender.NewHandlerFuncs(path, data)
 	}
 	return nil
 }
@@ -636,6 +643,27 @@ func NewExtendFuncContextRenderError(fn func(Context) (interface{}, error)) Hand
 	}
 }
 
+// NewExtendFuncContextInterfaceError 函数处理func(Context) (T, error)返回数据渲染和error处理。
+func NewExtendFuncContextInterfaceError(fn interface{}) HandlerFunc {
+	iValue := reflect.ValueOf(fn)
+	iType := iValue.Type()
+	if iType.Kind() != reflect.Func || iType.NumIn() != 1 || iType.NumOut() != 2 || iType.In(0) != typeContext || iType.Out(1) != typeError {
+		return nil
+	}
+
+	fineLineFieldsVals := getFileLineFieldsVals(reflect.ValueOf(fn))
+	return func(ctx Context) {
+		vals := iValue.Call([]reflect.Value{reflect.ValueOf(ctx)})
+		err, _ := vals[1].Interface().(error)
+		if err == nil && ctx.Response().Size() == 0 {
+			err = ctx.Render(vals[0].Interface())
+		}
+		if err != nil {
+			ctx.WithFields(fineLineFieldsKeys, fineLineFieldsVals).Fatal(err)
+		}
+	}
+}
+
 // NewExtendFuncRPCMap defines a fixed request and response to function processing of type map [string] interface {}.
 //
 // is a subset of NewRPCHandlerFunc and has type restrictions, but using map [string] interface {} to save requests does not use reflection.
@@ -748,12 +776,15 @@ func NewExtendFuncString(fn func() string) HandlerFunc {
 // 参数dir指导打开文件的根目录，默认未"."
 //
 // 路由规则可以指导path参数为请求文件路径，例如/static/*path，将会去打开path参数路径的文件，否在使用ctx.Path().
-func NewStaticHandler(dir string) HandlerFunc {
+func NewStaticHandler(name, dir string) HandlerFunc {
+	if name == "" {
+		name = "*"
+	}
 	if dir == "" {
 		dir = "."
 	}
 	return func(ctx Context) {
-		path := ctx.GetParam("path")
+		path := ctx.GetParam(name)
 		if path == "" {
 			path = ctx.Path()
 		}

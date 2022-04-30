@@ -5,8 +5,6 @@ package main
 */
 
 import (
-	"context"
-
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
 )
@@ -14,10 +12,10 @@ import (
 func main() {
 	app := eudore.NewApp()
 	app.AddMiddleware(func(ctx eudore.Context) {
-		ctx.WithContext(context.WithValue(ctx.GetContext(), "val", "this is val"))
+		ctx.SetValue("val", "this is val")
 	})
 	app.AnyFunc("/*", func(ctx eudore.Context) {
-		ctx.Debugf("val: %s", ctx.GetContext().Value("val"))
+		ctx.Debugf("val: %s", ctx.Value("val"))
 	})
 
 	client := httptest.NewClient(app)

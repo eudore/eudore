@@ -32,6 +32,10 @@ type Controller interface {
 	Inject(Controller, Router) error
 }
 
+type controllerName interface {
+	ControllerName() string
+}
+
 type controllerGroup interface {
 	ControllerGroup(string) string
 }
@@ -62,7 +66,7 @@ type controllerError struct {
 func NewControllerError(ctl Controller, err error) Controller {
 	return &controllerError{
 		Error: err,
-		Name:  getConrtrollerName(ctl),
+		Name:  getControllerPathName(ctl),
 	}
 }
 
@@ -73,10 +77,10 @@ func (ctl *controllerError) Inject(Controller, Router) error {
 	return ctl.Error
 }
 
-// The String method returns the controller name of controllerError.
+// The ControllerName method returns the controller name of controllerError.
 //
-// String 方法返回controllerError的控制器名称。
-func (ctl *controllerError) String() string {
+// ControllerName 方法返回controllerError的控制器名称。
+func (ctl *controllerError) ControllerName() string {
 	return ctl.Name
 }
 
@@ -114,13 +118,12 @@ func (ctl *ControllerAutoRoute) Inject(controller Controller, router Router) err
 //
 // 控制器组合: 如果控制器组合了其他对象，仅保留名称后缀为Controller的对象的方法，其他嵌入属性的方法将被忽略。
 func ControllerInjectAutoRoute(controller Controller, router Router) error {
-	pType := reflect.TypeOf(controller)
-	pValue := reflect.ValueOf(controller)
-	iType := reflect.TypeOf(controller).Elem()
+	iType := reflect.TypeOf(controller)
+	iValue := reflect.ValueOf(controller)
 
 	// 添加控制器组。
-	cname := iType.Name()
-	cpkg := iType.PkgPath()
+	cname := getControllerName(reflect.Indirect(iValue))
+	cpkg := reflect.Indirect(iValue).Type().PkgPath()
 	router = router.Group(getContrllerRouterGroup(controller, cname, router))
 
 	// 获取路由参数函数
@@ -133,12 +136,12 @@ func ControllerInjectAutoRoute(controller Controller, router Router) error {
 	// 路由器注册控制器方法
 	names, paths := getSortMapValue(getControllerRoutes(controller))
 	for i, name := range names {
-		m, ok := pType.MethodByName(name)
+		m, ok := iType.MethodByName(name)
 		if !ok || paths[i] == "-" {
 			continue
 		}
 
-		h := pValue.Method(m.Index).Interface()
+		h := iValue.Method(m.Index).Interface()
 		SetHandlerAliasName(h, fmt.Sprintf("%s.%s.%s", cpkg, cname, name))
 		method := getMethodByName(name)
 		if method == "" {
@@ -159,11 +162,11 @@ func getContrllerRouterGroup(controller Controller, name string, router Router) 
 		router.Params().Del(ParamControllerGroup)
 	case strings.HasSuffix(name, "Controller"):
 		buf := make([]rune, 0, len(name)*2)
-		for _, i := range name[:len(name)-10] {
-			if 64 < i && i < 91 {
-				buf = append(buf, '/', i+0x20)
+		for _, b := range name[:len(name)-10] {
+			if 64 < b && b < 91 {
+				buf = append(buf, '/', b+0x20)
 			} else {
-				buf = append(buf, i)
+				buf = append(buf, b)
 			}
 		}
 		group = string(buf)
@@ -201,7 +204,7 @@ func getSortMapValue(data map[string]string) ([]string, []string) {
 
 // getControllerRoutes 函数获得一个控制器类型注入的全部名称和路由路径的映射。
 func getControllerRoutes(controller Controller) map[string]string {
-	routes := getContrllerAllowMethos(reflect.TypeOf(controller))
+	routes := getContrllerAllowMethos(reflect.ValueOf(controller))
 	for name := range routes {
 		if getMethodByName(name) != "" {
 			routes[name] = getRouteByName(name)
@@ -224,20 +227,20 @@ func getControllerRoutes(controller Controller) map[string]string {
 	return routes
 }
 
-func getContrllerAllowMethos(iType reflect.Type) map[string]string {
+func getContrllerAllowMethos(iValue reflect.Value) map[string]string {
 	names := make(map[string]string)
-	for _, name := range getContrllerAllMethos(iType) {
+	for _, name := range getContrllerAllMethos(iValue) {
 		names[name] = ""
 	}
-	if iType.Kind() == reflect.Ptr {
-		iType = iType.Elem()
-	}
-	if iType.Kind() == reflect.Struct {
+
+	iValue = reflect.Indirect(iValue)
+	iType := iValue.Type()
+	if iValue.Kind() == reflect.Struct {
 		// 删除嵌入非控制器方法
-		for i := 0; i < iType.NumField(); i++ {
+		for i := 0; i < iValue.NumField(); i++ {
 			if iType.Field(i).Anonymous {
-				if !strings.HasSuffix(getReflectTypeName(iType.Field(i).Type), "Controller") {
-					for _, name := range getContrllerAllMethos(iType.Field(i).Type) {
+				if !strings.HasSuffix(getControllerName(iValue.Field(i)), "Controller") {
+					for _, name := range getContrllerAllMethos(iValue.Field(i)) {
 						delete(names, name)
 					}
 				}
@@ -246,8 +249,8 @@ func getContrllerAllowMethos(iType reflect.Type) map[string]string {
 		// 追加嵌入控制器方法
 		for i := 0; i < iType.NumField(); i++ {
 			if iType.Field(i).Anonymous {
-				if strings.HasSuffix(getReflectTypeName(iType.Field(i).Type), "Controller") {
-					for _, name := range getContrllerAllMethos(iType.Field(i).Type) {
+				if strings.HasSuffix(getControllerName(iValue.Field(i)), "Controller") {
+					for _, name := range getContrllerAllMethos(iValue.Field(i)) {
 						names[name] = ""
 					}
 				}
@@ -258,7 +261,8 @@ func getContrllerAllowMethos(iType reflect.Type) map[string]string {
 }
 
 // getContrllerAllMethos 函数获得一共类型包含指针类型的全部方法名称。
-func getContrllerAllMethos(iType reflect.Type) []string {
+func getContrllerAllMethos(iValue reflect.Value) []string {
+	iType := iValue.Type()
 	if iType.Kind() != reflect.Ptr {
 		iType = reflect.New(iType).Type()
 	}
@@ -269,11 +273,21 @@ func getContrllerAllMethos(iType reflect.Type) []string {
 	return names
 }
 
-func getReflectTypeName(iType reflect.Type) string {
-	if iType.Kind() == reflect.Ptr {
-		iType = iType.Elem()
+func getControllerName(iValue reflect.Value) string {
+	if iValue.Kind() == reflect.Ptr && iValue.IsNil() {
+		iValue = reflect.New(iValue.Type().Elem())
 	}
-	return iType.Name()
+	var name string
+	if iValue.Type().Implements(typeControllerName) && iValue.CanSet() {
+		name = iValue.MethodByName("ControllerName").Call(nil)[0].String()
+	} else {
+		name = reflect.Indirect(iValue).Type().Name()
+	}
+	pos := strings.IndexByte(name, '[')
+	if pos != -1 {
+		name = name[:pos]
+	}
+	return name
 }
 
 // getRouteByName 函数使用函数名称生成路由路径。
@@ -299,14 +313,13 @@ func getRouteByName(name string) string {
 }
 
 func getMethodByName(name string) string {
-	method := getFirstUp(name)
-	if method == "Any" {
+	name = strings.ToUpper(getFirstUp(name))
+	if name == "ANY" {
 		return MethodAny
 	}
-	method = strings.ToUpper(method)
-	for _, i := range RouterAllMethod {
-		if i == method {
-			return method
+	for _, method := range RouterAllMethod {
+		if method == name {
+			return name
 		}
 	}
 	return ""
@@ -322,14 +335,24 @@ func getFirstUp(name string) string {
 }
 
 // splitTitleName 方法基于路径首字符大写切割
-func splitTitleName(name string) (strs []string) {
-	var head int
-	for i, c := range name {
-		if 0x40 < c && c < 0x5B && i != 0 {
-			strs = append(strs, name[head:i])
-			head = i
+func splitTitleName(str string) []string {
+	var body []byte
+	for i := range str {
+		if i != 0 && byteIn(str[i], 0x40) && byteIn(str[i-1], 0x60) {
+			body = append(body, ' ')
+			body = append(body, str[i])
+		} else if i != 0 && i != len(str)-1 && byteIn(str[i], 0x40) && byteIn(str[i-1], 0x40) && byteIn(str[i+1], 0x60) {
+			body = append(body, ' ')
+			body = append(body, str[i])
+		} else if byteIn(str[i], 0x40) && i != 0 {
+			body = append(body, str[i]+0x20)
+		} else {
+			body = append(body, str[i])
 		}
 	}
-	strs = append(strs, name[head:])
-	return
+	return strings.Split(string(body), " ")
+}
+
+func byteIn(b byte, r byte) bool {
+	return r < b && b < r+0x1B
 }

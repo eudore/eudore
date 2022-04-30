@@ -30,7 +30,8 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(eudore.NewLoggerStd(map[string]interface{}{
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(map[string]interface{}{
 		"std":        false,
 		"path":       "",
 		"Level":      "1",

@@ -4,19 +4,43 @@ package eudore
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 )
 
-type contextKey struct {
-	name string
-}
-
 var (
-	// AppContextKey 定义从context.Value中获取app实例对象的key，如果app支持的话。
-	AppContextKey = &contextKey{"app"}
-	// UserContextKey 定义policy从context.Value中获取user信息的key。
-	UserContextKey = &contextKey{"user"}
+	// ContextKeyApp 定义获取app的Key。
+	ContextKeyApp = NewContextKey("app")
+	// ContextKeyLogger 定义获取logger的Key。
+	ContextKeyLogger = NewContextKey("logger")
+	// ContextKeyConfig 定义获取config的Key。
+	ContextKeyConfig = NewContextKey("config")
+	// ContextKeyDatabase 定义获取database的Key。
+	ContextKeyDatabase = NewContextKey("database")
+	// ContextKeyClient 定义获取client的Key。
+	ContextKeyClient = NewContextKey("client")
+	// ContextKeyServer 定义获取server的Key。
+	ContextKeyServer = NewContextKey("server")
+	// ContextKeyRouter 定义获取router的Key。
+	ContextKeyRouter = NewContextKey("router")
+	// ContextKeyContextPool 定义获取context-pool的Key。
+	ContextKeyContextPool = NewContextKey("context-pool")
+	// ContextKeyError 定义获取error的Key。
+	ContextKeyError = NewContextKey("error")
+	// ContextKeyBind 定义获取bind的Key。
+	ContextKeyBind = NewContextKey("bind")
+	// ContextKeyValidate 定义获取validate的Key。
+	ContextKeyValidate = NewContextKey("validate")
+	// ContextKeyFilte 定义获取filte的Key。
+	ContextKeyFilte = NewContextKey("filte")
+	// ContextKeyRender 定义获取render的Key。
+	ContextKeyRender = NewContextKey("render")
+	// ContextKeyFuncCreator 定义获取func-creator的Key。
+	ContextKeyFuncCreator = NewContextKey("func-creator")
+	// ContextKeyTempldate 定义获取templdate的Key。
+	ContextKeyTempldate = NewContextKey("templdate")
+
 	// DefaultBodyMaxMemory 默认Body解析占用内存。
 	DefaultBodyMaxMemory int64 = 32 << 20 // 32 MB
 	// DefaultGetSetTags 定义Get/Set函数使用的默认tag。
@@ -27,10 +51,16 @@ var (
 	DefaultConvertFormTags = []string{"form", "alias"}
 	// DefaultConvertURLTags 定义bind url使用tags。
 	DefaultConvertURLTags = []string{"url", "alias"}
-	// DefaultConvertRowsTags 定义ConvertRows默认使用tags。
-	DefaultConvertRowsTags = []string{"alias"}
+	// DefaultNewValidateFieldTag 定义NewValidateField获取校验规则的结构体tag。
+	DefaultNewValidateFieldTag = "validate"
+	// DefaultClientHost 定义ClientWarp默认使用的Host。
+	DefaultClientHost = "localhost:80"
+	// DefaultLoggerTimeFormat 定义默认日志输出和contextBase.WriteError的时间格式
+	DefaultLoggerTimeFormat = "2006-01-02 15:04:05"
+	// DefaulerServerShutdownWait 定义Server优雅退出等待时间。
+	DefaulerServerShutdownWait = 30 * time.Second
 	// DefaultRecoverDepth 定义GetPanicStack函数默认显示栈最大层数。
-	DefaultRecoverDepth = 20
+	DefaultRecoverDepth = 64
 	// LogLevelString 定义日志级别输出字符串。
 	LogLevelString = [5]string{"DEBUG", "INFO", "WARNING", "ERROR", "FATAL"}
 	// RouterAllMethod 定义路由器允许注册的全部方法，注册其他方法别忽略,前六种方法始终存在。
@@ -40,12 +70,21 @@ var (
 	defaultRouterAnyMethod = append([]string{}, RouterAnyMethod...)
 	// ConfigAllParseFunc 定义ConfigMap和ConfigEudore默认使用的解析函数。
 	ConfigAllParseFunc = []ConfigParseFunc{NewConfigParseJSON("config"), NewConfigParseArgs(nil), NewConfigParseEnvs("ENV_"), NewConfigParseWorkdir("workdir"), NewConfigParseHelp("help")}
+	// DefaultFuncCreator 定义全局默认FuncCreator,RouetrCoreStd默认使用。
+	DefaultFuncCreator = NewFuncCreator()
 	// DefaultHandlerExtend 为默认的函数扩展处理者，是RouterStd使用的最顶级的函数扩展处理者。
 	DefaultHandlerExtend = NewHandlerExtendBase()
-	// DefaultValidater 定义默认的验证器
-	DefaultValidater = NewValidaterBase()
-	// DefaultRouterValidater 为RouterStd提供生成ValidateStringFunc功能,需要实现interface{GetValidateStringFunc(string) ValidateStringFunc}接口。
-	DefaultRouterValidater = DefaultValidater
+	// DefaultLoggerNull 定义空日志输出器。
+	DefaultLoggerNull = NewLoggerNull()
+	// DefaultHandlerExtendAllowType 定义handlerExtendBase允许使用的参数类型。
+	DefaultHandlerExtendAllowType = map[reflect.Kind]struct{}{
+		reflect.Func:      {},
+		reflect.Interface: {},
+		reflect.Map:       {},
+		reflect.Ptr:       {},
+		reflect.Slice:     {},
+		reflect.Struct:    {},
+	}
 )
 
 // 定义各种类型的反射类型。
@@ -55,35 +94,35 @@ var (
 	typeError     = reflect.TypeOf((*error)(nil)).Elem()
 	typeInterface = reflect.TypeOf((*interface{})(nil)).Elem()
 
-	typeContext           = reflect.TypeOf((*Context)(nil)).Elem()
-	typeController        = reflect.TypeOf((*Controller)(nil)).Elem()
-	typeHandlerFunc       = reflect.TypeOf((*HandlerFunc)(nil)).Elem()
-	typeValidateInterface = reflect.TypeOf((*validateInterface)(nil)).Elem()
-	typeTimeTime          = reflect.TypeOf((*time.Time)(nil)).Elem()
+	typeContext        = reflect.TypeOf((*Context)(nil)).Elem()
+	typeController     = reflect.TypeOf((*Controller)(nil)).Elem()
+	typeHandlerFunc    = reflect.TypeOf((*HandlerFunc)(nil)).Elem()
+	typeTimeTime       = reflect.TypeOf((*time.Time)(nil)).Elem()
+	typeStringer       = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
+	typeControllerName = reflect.TypeOf((*controllerName)(nil)).Elem()
 )
 
 // 检测各类接口
 var (
-	_ Context    = (*contextBase)(nil)
-	_ Config     = (*configMap)(nil)
-	_ Config     = (*configEudore)(nil)
-	_ Logger     = (*loggerInit)(nil)
-	_ Logger     = (*LoggerStd)(nil)
-	_ Server     = (*serverStd)(nil)
-	_ Server     = (*serverFcgi)(nil)
-	_ Router     = (*RouterStd)(nil)
-	_ RouterCore = (*routerCoreStd)(nil)
-	_ RouterCore = (*routerCoreDebug)(nil)
-	_ RouterCore = (*routerCoreHost)(nil)
-	_ RouterCore = (*routerCoreLock)(nil)
-
+	_ Logger          = (*LoggerStd)(nil)
+	_ LoggerStdData   = (*loggerStdDataJSON)(nil)
+	_ LoggerStdData   = (*loggerStdDataInit)(nil)
+	_ Config          = (*configStd)(nil)
+	_ Config          = (*configMap)(nil)
+	_ Server          = (*serverStd)(nil)
+	_ Server          = (*serverFcgi)(nil)
+	_ Router          = (*RouterStd)(nil)
+	_ RouterCore      = (*routerCoreStd)(nil)
+	_ RouterCore      = (*routerCoreDebug)(nil)
+	_ RouterCore      = (*routerCoreHost)(nil)
+	_ RouterCore      = (*routerCoreLock)(nil)
+	_ Context         = (*contextBase)(nil)
 	_ ResponseWriter  = (*responseWriterHTTP)(nil)
 	_ Controller      = (*ControllerAutoRoute)(nil)
 	_ Controller      = (*controllerError)(nil)
 	_ HandlerExtender = (*handlerExtendBase)(nil)
 	_ HandlerExtender = (*handlerExtendWarp)(nil)
 	_ HandlerExtender = (*handlerExtendTree)(nil)
-	_ Validater       = (*validaterBase)(nil)
 )
 
 // 定义日志级别
@@ -93,7 +132,6 @@ const (
 	LogWarning
 	LogError
 	LogFatal
-	_hex = "0123456789abcdef"
 )
 
 var (
@@ -103,6 +141,7 @@ var (
 	loggerpart3  = []byte(`,"message":"`)
 	loggerpart4  = []byte("\"}\n")
 	loggerpart5  = []byte("}\n")
+	_hex         = "0123456789abcdef"
 )
 
 // 定义默认错误
@@ -117,23 +156,20 @@ var (
 	ErrConverterTargetDataNil = errors.New("Converter target data is nil")
 	// ErrLoggerLevelUnmarshalText 日志级别解码错误，请检查输出的[]byte是否有效。
 	ErrLoggerLevelUnmarshalText = errors.New("logger level UnmarshalText error")
+	ErrRenderHandlerSkip        = errors.New("render hander skip")
 	// ErrRegisterNewHandlerParamNotFunc 调用RegisterHandlerExtend函数时，参数必须是一个函数。
 	ErrRegisterNewHandlerParamNotFunc = errors.New("The parameter type of RegisterNewHandler must be a function")
 	// ErrResponseWriterHTTPNotHijacker ResponseWriterHTTP对象没有实现http.Hijacker接口。
 	ErrResponseWriterHTTPNotHijacker = errors.New("http.Hijacker interface is not supported")
 	// ErrSeterNotSupportField Seter对象不支持设置当前属性。
 	ErrSeterNotSupportField = errors.New("Converter seter not support set field")
+	// ErrMiddlewareRequestEntityTooLarge middleware/BodyLimit 分段请求body读取时限制长队返回错误。
+	ErrMiddlewareRequestEntityTooLarge = errors.New("Request Entity Too Large")
 
 	// ErrFormatBindDefaultNotSupportContentType BindDefault函数不支持当前的Content-Type Header。
 	ErrFormatBindDefaultNotSupportContentType = "BindDefault not support content type header: %s"
-	// ErrFormatControllerBind 执行控制器方法bind时返回错误
-	ErrFormatControllerBind = "Controller bind error: %v"
 	// ErrFormatConverterGet 在Get方法路径查找返回错误。
 	ErrFormatConverterGet = "Get path '%s' error: %s"
-	// ErrFormatConverterGetWithTags 在Get方法时，无法或到值，返回错误描述。
-	ErrFormatConverterGetWithTags = "Get or GetWithTags func cannot get the value of the attribute '%s', error description: %v"
-	// ErrFormatConverterNotGetValue 在Get方法时，getValue无法继续查找新的属性值。
-	ErrFormatConverterNotGetValue = "The getValue method cannot continue to obtain a value, the current type is %s, and the remaining path is: %v"
 	// ErrFormatConverterNotCanset 在Set方法时，结构体不支持该项属性。
 	ErrFormatConverterNotCanset = "The attribute '%s' of structure %s is not set, please use public field"
 	// ErrFormatConverterSetArrayIndexInvalid 在Set方法时，设置数组的索引的无效
@@ -147,7 +183,7 @@ var (
 	// ErrFormatConverterSetWithValue setWithValue函数中类型无法赋值。
 	ErrFormatConverterSetWithValue = "The setWithValue method type %s cannot be assigned to type %s"
 	// ErrFormatRegisterHandlerExtendInputParamError RegisterHandlerExtend函数注册的函数参数错误。
-	ErrFormatRegisterHandlerExtendInputParamError = "The '%s' input parameter is illegal and should be one"
+	ErrFormatRegisterHandlerExtendInputParamError = "The '%s' input parameter is illegal and should be one func/interface/ptr/struct"
 	// ErrFormatRegisterHandlerExtendOutputParamError RegisterHandlerExtend函数注册的函数返回值错误。
 	ErrFormatRegisterHandlerExtendOutputParamError = "The '%s' output parameter is illegal and should be a HandlerFunc object"
 	// ErrFormatRouterStdAddController RouterStd控制器路由注入错误
@@ -160,6 +196,11 @@ var (
 	ErrFormatRouterStdRegisterHandlersRecover = "The RouterStd.registerHandlers arg method is '%s' and path is '%s', recover error: %v"
 	// ErrFormatRouterStdNewHandlerFuncsUnregisterType RouterStd添加处理对象或中间件的第n个参数类型未注册，需要先使用RegisterHandlerExtend或AddHandlerExtend注册该函数类型。
 	ErrFormatRouterStdNewHandlerFuncsUnregisterType = "The RouterStd.newHandlerFuncs path is '%s', %dth handler parameter type is '%s', this is the unregistered handler type"
+
+	ErrFormarRouterStdLoadInvalidFunc       = "loadCheckFunc path is invalid, load path '%s' error: %v "
+	ErrFormatParseValidateFieldError        = "validateField %s.%s parse field %s create rule %s error: %s"
+	ErrFormatFuncCreatorRegisterInvalidType = "Register func %s type is %T, must 'func(T) bool' or 'func(string) (func(T) bool, error)'"
+	ErrFormatFuncCreatorNotFunc             = "not found or create func %s"
 )
 
 // 定义eudore定义各种常量。
@@ -332,11 +373,8 @@ const (
 	HeaderXRealIP                         = "X-Real-Ip"
 	HeaderXRequestID                      = "X-Request-Id"
 	HeaderXTraceID                        = "X-Trace-Id"
-
-	// eudore Header
-
-	HeaderXEudoreAdmin = "X-Eudore-Admin"
-	HeaderXMatchRoute  = "X-Match-Route"
+	HeaderXEudoreAdmin                    = "X-Eudore-Admin"
+	HeaderXMatchRoute                     = "X-Match-Route"
 
 	// 默认http请求方法
 
@@ -379,6 +417,7 @@ const (
 
 	ParamAction          = "action"
 	ParamAllow           = "allow"
+	ParamBasicAuth       = "basicauth"
 	ParamCaller          = "caller"
 	ParamControllerGroup = "controllergroup"
 	ParamRegister        = "register"

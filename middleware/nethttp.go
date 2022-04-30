@@ -8,6 +8,8 @@ import (
 	"encoding/base64"
 	"net/http"
 	"strings"
+
+	"github.com/eudore/eudore"
 )
 
 // NewNetHTTPBasicAuthFunc 函数创建一个net/http BasicAuth中间件处理函数，文档见NewBasicAuthFunc函数。
@@ -91,9 +93,11 @@ func NewNetHTTPRateRequestFunc(next http.Handler, speed, max int64, options ...i
 
 // getRealClientIP 函数获取http请求的真实ip
 func getRealClientIP(r *http.Request) string {
-	xforward := r.Header.Get("X-Forwarded-For")
-	if "" == xforward {
-		return strings.SplitN(r.RemoteAddr, ":", 2)[0]
+	if realip := r.Header.Get(eudore.HeaderXRealIP); realip != "" {
+		return realip
 	}
-	return strings.SplitN(string(xforward), ",", 2)[0]
+	if xforward := r.Header.Get(eudore.HeaderXForwardedFor); xforward != "" {
+		return strings.SplitN(string(xforward), ",", 2)[0]
+	}
+	return strings.SplitN(r.RemoteAddr, ":", 2)[0]
 }

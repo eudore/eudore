@@ -25,9 +25,7 @@ func main() {
 		})
 		app.Listen(":8088")
 
-		app2.Options(app2.Parse())
-		app2.CancelFunc()
-		app.CancelFunc()
+		app2.Parse()
 		app.Run()
 	}(app)
 

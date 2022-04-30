@@ -14,7 +14,8 @@ import (
 
 func main() {
 	defer os.RemoveAll("logger")
-	app := eudore.NewApp(eudore.NewLoggerStd(&eudore.LoggerStdConfig{
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(&eudore.LoggerStdConfig{
 		Path:       "logger/logger-yyyy-MM-dd-HH-index.log",
 		Link:       "logger/logger.log",
 		MaxSize:    1 << 10, // 1k

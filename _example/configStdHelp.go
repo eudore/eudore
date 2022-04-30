@@ -23,7 +23,8 @@ func main() {
 	os.Args = append(os.Args, "-db=localhost", "-h", "eudore", "--help", "--component.server.readtimeout=12s")
 	conf := &helpConfig{Iface: &helpDBConfig{}}
 	conf.Link = conf
-	app := eudore.NewApp(eudore.NewConfigEudore(conf))
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfigStd(conf))
 	app.Parse()
 
 	app.Infof("config db is %v", conf.Component)

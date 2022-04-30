@@ -1,9 +1,5 @@
 package main
 
-/*
-先设置bind调用validate app.Binder = eudore.NewValidateBinder(app.Binder)，然后bind时会调用Validate验证数据。
-*/
-
 import (
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
@@ -16,7 +12,8 @@ type bindHeader struct {
 
 func main() {
 	app := eudore.NewApp()
-	app.Binder = eudore.NewBinderHeader(app.Binder)
+	app.SetValue(eudore.ContextKeyBind, eudore.NewBindWithHeader(eudore.NewBinds(nil)))
+	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
 
 	// 上传文件信息
 	app.AnyFunc("/*", func(ctx eudore.Context) {

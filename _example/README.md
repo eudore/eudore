@@ -2,21 +2,20 @@
 
 本部分为演示例子目录功能导航,保存eudore、middleware、policy、component实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore),仅保证eudore和middleware两个库的稳定性，component系列库可能重构或移除,Alpha的演示库不稳定。
 
-exmaple都默认使用[httptest](https://github.com/eudore/eudore/tree/master/component/httptest)库传输请求，单元测试执行gotest.sh脚本(OUT=coverage.html GOROOT=/usr/local/go1.13 bash gotest.sh)。
+单元测试： `CGO_ENABLED=1 go test -v -timeout=2m -race -cover -coverpkg='github.com/eudore/eudore,github.com/eudore/eudore/middleware,github.com/eudore/eudore/policy' *_test.go
+`
 
-go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/policy, github.com/eudore/eudore/component/httptest
+go version go1.18.1 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/policy
 
 - Application
 	- [New](appNew.go)
-	- [自定义app](appExtend.go)
 	- [静态文件](appStatic.go)
 	- [全局请求中间件](appMiddleware.go)
 	- [后台启动](appDaemon.go)(Alpha)
 	- [启动命令解析](appCommand.go)(Alpha)
 	- [监听代码自动编译重启](appNotify.go)(Alpha)
+	- [自定义app](appExtend.go)
 	- [重新加载配置](appReload.go)
-	- [反向代理](appProxy.go)
-	- [隧道代理](appTunnel.go)
 - Config
 	- [map存储配置](configMap.go)
 	- [结构体存储配置](configEudore.go)
@@ -34,7 +33,8 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [日志切割](loggerStdRotate.go)
 	- [日志清理](loggerStdClean.go)
 	- [写入Elastic](loggerElastic.go)
-	- [logrus Logger适配](loggerLogrus.go)
+	- [日志脱敏](loggerSensitive.go)
+	- [logrus库适配](loggerLogrus.go)
 - Server
 	- [设置超时](serverStd.go)
 	- [服务监听](serverListen.go)
@@ -84,13 +84,13 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [分级匹配扩展](handlerWarp.go)
 	- [Rpc式请求](handlerRpc.go)
 	- [map Rpc式请求](handlerRpcMap.go)
+	- [使用embed](handlerEmbed.go)
 	- [使用jwt](handlerJwt.go)
 - Controller
 	- [路由控制器](controllerAutoRoute.go)
 	- [控制器组合](controllerCompose.go)
 	- [控制器自定义参数](controllerParams.go)
 	- [控制器错误处理](controllerError.go)
-	- [Gorm控制器](controllerGorm.go)
 - Middleware
 	- [Admin中间件管理后台](middlewareAdmin.go)
 	- [BasicAuth](middlewareBasicAuth.go)
@@ -105,6 +105,7 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [Dump捕捉请求信息](middlewareCsrf.go)
 	- [Gzip压缩](middlewareGzip.go)
 	- [Header写入响应](middlewareHeader.go)
+	- [Header外部过滤](middlewareHeaderFilte.go)
 	- [Logger访问日志](middlewareLogger.go)
 	- [LoggerLevel设置请求独立的日志级别](middlewareLoggerLevel.go)
 	- [Look查看对象数据](middlewareLook.go)
@@ -148,3 +149,6 @@ go version go1.13 linux/amd64 coverage: 100.0% of statements in github.com/eudor
 	- [中间件 路径重写](nethttpRewrite.go)
 	- [中间件 BasicAuth](nethttpBasicAuth.go)
 	- [中间件 限流](nethttpRateRequest.go)
+- other
+	- [反向代理](otherProxy.go)
+	- [隧道代理](otherTunnel.go)

@@ -119,6 +119,7 @@ var pprofIndexTemplate, _ = template.New("index").Parse(`
 <html>
 <head>
 <title>eudore pprof</title>
+<script>console.log('godoc=https://golang.org 设置html格式链接的godoc服务地址');</script>
 </head>
 <body>
 Types of profiles available:
@@ -235,8 +236,13 @@ func newGoroutineDebug1(str string) []goroutineDebug1Block {
 		if routines[i] == "" {
 			continue
 		}
+
+		end := strings.IndexByte(routines[i], '\n')
+		if end == -1 {
+			end = len(routines[i])
+		}
 		var block goroutineDebug1Block
-		block.Args = strings.Split(routines[i][:strings.IndexByte(routines[i], '\n')], " ")
+		block.Args = strings.Split(routines[i][:end], " ")
 		matchs := reg.FindAllStringSubmatch(routines[i], -1)
 		for _, m := range matchs {
 			block.Lines = append(block.Lines, goroutineDebug1Line{Pointer: m[1], Func: m[2], Pos: m[3], Space: m[4], File: m[5], Line: m[6]})

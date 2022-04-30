@@ -19,10 +19,10 @@ package eudore // import "github.com/eudore/eudore"
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
-	"time"
 )
 
 /*
@@ -45,119 +45,170 @@ App 组合主要功能接口，本身仅实现简单的基本方法。
 type App struct {
 	context.Context    `alias:"context"`
 	context.CancelFunc `alias:"cancelfunc"`
-	Config             `alias:"config"`
 	Logger             `alias:"logger"`
+	Config             `alias:"config"`
+	Database           `alias:"database"`
+	Client             `alias:"client"`
 	Server             `alias:"server"`
 	Router             `alias:"router"`
-	Validater          `alias:"validater"`
-	Binder             `alias:"binder"`
-	Renderer           `alias:"renderer"`
 	GetWarp            `alias:"getwarp"`
-	HandlerFuncs       `alias:"handlerfuncs"`
-	ContextPool        sync.Pool `alias:"contextpool"`
-	CancelError        error     `alias:"cancelerror"`
+	HandlerFuncs       HandlerFuncs `alias:"handlerfuncs"`
+	ContextPool        *sync.Pool   `alias:"contextpool"`
+	CancelError        error        `alias:"cancelerror"`
 	cancelMutex        sync.Mutex
+	Values             []interface{}
 }
 
 // NewApp function creates an App object.
 //
 // NewApp 函数创建一个App对象。
-func NewApp(options ...interface{}) *App {
-	app := &App{
-		Config:    NewConfigMap(nil),
-		Logger:    NewLoggerStd(nil),
-		Server:    NewServerStd(nil),
-		Router:    NewRouterStd(nil),
-		Binder:    BindDefault,
-		Renderer:  RenderDefault,
-		Validater: DefaultValidater,
-	}
-	app.Context, app.CancelFunc = context.WithCancel(context.WithValue(context.Background(), AppContextKey, app))
-	app.Server.SetHandler(app)
+func NewApp() *App {
+	app := &App{}
 	app.GetWarp = NewGetWarpWithApp(app)
 	app.HandlerFuncs = HandlerFuncs{app.serveContext}
-	app.ContextPool.New = func() interface{} { return NewContextBase(app) }
-	Set(app.Config, "print", NewPrintFunc(app))
-	Set(app.Server, "print", NewPrintFunc(app))
-	Set(app.Router, "print", NewPrintFunc(app))
-	app.Options(options...)
+	app.Context, app.CancelFunc = context.WithCancel(context.Background())
+	app.SetValue(ContextKeyLogger, NewLoggerStd(nil))
+	app.SetValue(ContextKeyConfig, NewConfigStd(nil))
+	app.SetValue(ContextKeyDatabase, NewDatabaseStd(nil))
+	app.SetValue(ContextKeyClient, NewClientStd(nil))
+	app.SetValue(ContextKeyServer, NewServerStd(nil))
+	app.SetValue(ContextKeyRouter, NewRouterStd(nil))
+	app.ContextPool = NewContextBasePool(app)
 	return app
 }
 
-// Options method loads the app component. When the option type is context.Context, Logger, Config, Server, Router, Binder, Renderer, Validater, the app property will be set,
-// and the print property of the component will be set. If the type is error, it will be the app end error Return to the Run method.
+// Run method starts the App to block and wait for the App to end.
 //
-// Options 方法加载app组件，option类型为context.Context、Logger、Config、Server、Router、Binder、Renderer、Validater时会设置app属性，
-// 并设置组件的print属性，如果类型为error将作为app结束错误返回给Run方法。
-func (app *App) Options(options ...interface{}) {
-	for _, i := range options {
-		if i == nil {
-			continue
-		}
-		switch val := i.(type) {
-		case context.Context:
-			app.Context = val
-			app.Context, app.CancelFunc = context.WithCancel(app.Context)
-		case Logger:
-			initlog, ok := app.Logger.(loggerInitHandler)
-			app.Logger = val
-			Set(app.Config, "print", NewPrintFunc(val))
-			Set(app.Server, "print", NewPrintFunc(val))
-			Set(app.Router, "print", NewPrintFunc(val))
-			if ok {
-				initlog.NextHandler(val)
-			}
-		case Config:
-			app.Config = val
-			Set(app.Config, "print", NewPrintFunc(app))
-		case Server:
-			app.Server = val
-			app.Server.SetHandler(app)
-			Set(app.Server, "print", NewPrintFunc(app))
-		case Router:
-			app.Router = val
-			Set(app.Router, "print", NewPrintFunc(app))
-		case Binder:
-			app.Binder = val
-		case Renderer:
-			app.Renderer = val
-		case Validater:
-			app.Validater = val
-		case error:
-			app.Error("eudore app cannel context on handler error: " + val.Error())
-			app.cancelMutex.Lock()
-			defer app.cancelMutex.Unlock()
-			// 记录第一个错误
-			if app.CancelError == nil {
-				app.CancelError = val
-			}
-			Set(app.Router, "print", printEmpty)
-			app.CancelFunc()
-		default:
-			app.Logger.Warningf("eudore app invalid option: %v", i)
-		}
-	}
-}
-
-// Run method starts the App and blocks and waits for the end of the App, and periodically calls app.Logger.Sync() to output the log.
-//
-// Run 方法启动App阻塞等待App结束，并周期调用app.Logger.Sync()将日志输出。
+// Run 方法启动App阻塞等待App结束。
 func (app *App) Run() error {
-	ticker := time.NewTicker(time.Millisecond * 80)
-	defer ticker.Stop()
-	go func() {
-		for range ticker.C {
-			app.Logger.Sync()
+	defer app.SetValue(ContextKeyLogger, nil)
+	defer app.SetValue(ContextKeyConfig, nil)
+	defer app.SetValue(ContextKeyDatabase, nil)
+	defer app.SetValue(ContextKeyClient, nil)
+	defer app.SetValue(ContextKeyServer, nil)
+	defer app.SetValue(ContextKeyRouter, nil)
+	defer func() {
+		for i := len(app.Values) - 2; i > -1; i -= 2 {
+			app.SetValue(app.Values[i], nil)
 		}
+		app.Fatal("eudore app cannel context error:", app.Err())
 	}()
 
 	<-app.Done()
-	time.Sleep(time.Millisecond * 100)
-	app.Shutdown(context.Background())
-	time.Sleep(time.Millisecond * 100)
+	return app.Err()
+}
+
+// SetValue method sets the specified key value from the App.
+// If the value implements the Mount/Unmount method,
+// this method is automatically called when setting and unsetting.
+//
+// SetValue 方法从App设置指定键值，如果值实现Mount/Unmount方法在设置和取消设置时自动调用该方法。
+func (app *App) SetValue(key, val interface{}) {
+	withMount(app, val)
+	switch key {
+	case ContextKeyLogger:
+		defer withUnmount(app, app.Logger)
+		app.Logger, _ = val.(Logger)
+	case ContextKeyConfig:
+		defer withUnmount(app, app.Config)
+		app.Config, _ = val.(Config)
+	case ContextKeyDatabase:
+		defer withUnmount(app, app.Database)
+		app.Database, _ = val.(Database)
+	case ContextKeyClient:
+		defer withUnmount(app, app.Client)
+		app.Client, _ = val.(Client)
+	case ContextKeyServer:
+		defer withUnmount(app, app.Server)
+		app.Server, _ = val.(Server)
+	case ContextKeyRouter:
+		defer withUnmount(app, app.Router)
+		app.Router, _ = val.(Router)
+	case ContextKeyContextPool:
+		app.ContextPool, _ = val.(*sync.Pool)
+	case ContextKeyError:
+		if val != nil {
+			app.cancelMutex.Lock()
+			defer app.cancelMutex.Unlock()
+			err, ok := val.(error)
+			if !ok {
+				err = fmt.Errorf("%v", val)
+			}
+			app.CancelError = err
+			app.CancelFunc()
+		}
+	default:
+		for i := 0; i < len(app.Values); i += 2 {
+			if app.Values[i] == key {
+				defer withUnmount(app, app.Values[i+1])
+				app.Values[i+1] = val
+				return
+			}
+		}
+		app.Values = append(app.Values, key, val)
+	}
+}
+
+// Value method gets the specified key value from the App.
+//
+// Value 方法从App获取指定键值。
+func (app *App) Value(key interface{}) interface{} {
+	switch key {
+	case ContextKeyApp:
+		return app
+	case ContextKeyLogger:
+		return app.Logger
+	case ContextKeyConfig:
+		return app.Config
+	case ContextKeyDatabase:
+		return app.Database
+	case ContextKeyClient:
+		return app.Client
+	case ContextKeyServer:
+		return app.Server
+	case ContextKeyRouter:
+		return app.Router
+	}
+	for i := 0; i < len(app.Values); i += 2 {
+		if app.Values[i] == key {
+			return app.Values[i+1]
+		}
+	}
+	return app.Context.Value(key)
+}
+
+// Err method returns an error at the end of the App Context.
+//
+// Err 方法返回App Context结束时错误。
+func (app *App) Err() error {
 	app.cancelMutex.Lock()
 	defer app.cancelMutex.Unlock()
-	return app.CancelError
+	if app.CancelError != nil {
+		return app.CancelError
+	}
+	return app.Context.Err()
+}
+
+func withMount(ctx context.Context, i interface{}) {
+	loader, ok := i.(interface{ Mount(context.Context) })
+	if ok {
+		loader.Mount(ctx)
+	}
+}
+
+func withUnmount(ctx context.Context, i interface{}) {
+	closer, ok := i.(interface{ Unmount(context.Context) })
+	if ok {
+		closer.Unmount(ctx)
+	}
+}
+
+func withMetadata(i interface{}) interface{} {
+	metaer, ok := i.(interface{ Metadata() interface{} })
+	if ok {
+		return metaer.Metadata()
+	}
+	return nil
 }
 
 // serveContext Implement the request context function.
@@ -178,12 +229,13 @@ func (app *App) serveContext(ctx Context) {
 // 创建并初始化一个Context，然后设置app.HandlerFuncs为Context的处理者处理全局中间件链，
 // 在app.HandlerFuncs最后一次处理时，调用了app.serveContext方法，使用app.Router匹配出这个请求的路由中间件和路由处理函数进行二次请求处理。
 func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx := app.ContextPool.Get().(Context)
+	pool := app.ContextPool
+	ctx := pool.Get().(Context)
 	ctx.Reset(w, r)
 	ctx.SetHandler(-1, app.HandlerFuncs)
 	ctx.Next()
 	ctx.End()
-	app.ContextPool.Put(ctx)
+	pool.Put(ctx)
 }
 
 // AddMiddleware If the first parameter of the AddMiddleware method is the string "global",
@@ -249,7 +301,8 @@ func (app *App) ListenTLS(addr, key, cert string) error {
 //
 // Serve 方法非阻塞启动一个Server监听，并使用app处理监听结束返回错误。
 func (app *App) Serve(ln net.Listener) {
+	srv := app.Server
 	go func() {
-		app.Options(app.Server.Serve(ln))
+		app.SetValue(ContextKeyError, srv.Serve(ln))
 	}()
 }

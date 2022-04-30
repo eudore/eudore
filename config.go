@@ -1,12 +1,15 @@
 package eudore
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
+	"unsafe"
 )
 
 // ConfigParseFunc 定义配置解析函数。
@@ -52,19 +55,12 @@ type Config interface {
 	Parse() error
 }
 
-// configMap 使用map保存配置。
-type configMap struct {
-	Keys   map[string]interface{} `alias:"keys"`
-	Print  func(...interface{})   `alias:"print"`
-	funcs  []ConfigParseFunc      `alias:"-"`
-	Locker sync.RWMutex           `alias:"-"`
-}
-
-// configEudore 使用结构体或map保存配置，通过属性或反射来读写属性。
-type configEudore struct {
-	Keys          interface{}          `alias:"keys"`
-	Print         func(...interface{}) `alias:"print"`
-	funcs         []ConfigParseFunc    `alias:"-"`
+// configStd 使用结构体或map保存配置，通过属性或反射来读写属性。
+type configStd struct {
+	Data          interface{}          `alias:"data" description:"all data"`
+	Print         func(...interface{}) `alias:"print" description:"logger print func"`
+	Funcs         []ConfigParseFunc    `alias:"funcs" description:"config parse funcs"`
+	Err           error                `alias:"err" description:"config pasre error"`
 	configRLocker `alias:"-"`
 }
 
@@ -72,6 +68,143 @@ type configRLocker interface {
 	sync.Locker
 	RLock()
 	RUnlock()
+}
+
+// configMap 使用map保存配置。
+type configMap struct {
+	Data         map[string]interface{} `alias:"data" description:"all data"`
+	Print        func(...interface{})   `alias:"print" description:"logger print func"`
+	Funcs        []ConfigParseFunc      `alias:"funcs" description:"config parse funcs"`
+	Err          error                  `alias:"err" description:"config pasre error"`
+	sync.RWMutex `alias:"-"`
+}
+
+type configMetadata struct {
+	Health       bool          `json:"health"`
+	Name         string        `json:"name"`
+	Err          error         `json:"err"`
+	Keys         []string      `json:"keys"`
+	Values       []interface{} `json:"values"`
+	Descriptions []interface{} `json:"descriptions"`
+	refs         map[unsafe.Pointer]reflect.Value
+}
+
+// NewConfigStd creates a ConfigStd. If the input parameter is empty, use an empty map[string]interface{} as the initialization data.
+//
+// ConfigEduoew allows to pass in a map or struct as configuration storage, and use eudore.Set and eudore.Get methods to read and write data.
+//
+// If the incoming configuration object implements the same read-write lock method as sync.RLock,
+// the configured read-write lock is used, otherwise a sync.RWMutex lock will be created.
+//
+// ConfigEduoe has implemented the json.Marshaler and json.Unmarshaler interfaces.
+//
+// NewConfigStd 创建一个ConfigStd，如果传入参数为空，使用空map[string]interface{}作为初始化数据。
+//
+// ConfigEduoew允许传入一个map或struct作为配置存储，使用eudore.Set和eudore.Get方法去读写数据。
+//
+// 如果传入的配置对象实现sync.RLock一样的读写锁方法，则使用配置的读写锁，否则会创建一个sync.RWMutex锁。
+//
+// ConfigEduoe已实现json.Marshaler和json.Unmarshaler接口.
+func NewConfigStd(i interface{}) Config {
+	if i == nil {
+		m := make(map[string]interface{})
+		i = &m
+	}
+	mu, ok := i.(configRLocker)
+	if !ok {
+		mu = new(sync.RWMutex)
+	}
+	return &configStd{
+		Data:          i,
+		Print:         printEmpty,
+		Funcs:         ConfigAllParseFunc,
+		configRLocker: mu,
+	}
+}
+
+// Mount 方法获取ContextKeyApp.(Logger)初始化日志输出函数。
+func (c *configStd) Mount(ctx context.Context) {
+	c.Print = NewPrintFunc(ctx.Value(ContextKeyApp).(Logger))
+}
+
+func (c *configStd) Metadata() interface{} {
+	c.RLock()
+	defer c.RUnlock()
+	return newConfigMetadata("eudore.configStd", c.Err, c.Data)
+}
+
+// The Get method realizes to read the data attributes, and uses the RLock method to lock the data.
+//
+// Get 方法实现读取数据属性，并使用RLock方法锁定数据。
+func (c *configStd) Get(key string) interface{} {
+	if len(key) == 0 {
+		return c.Data
+	}
+	c.RLock()
+	defer c.RUnlock()
+	return Get(c.Data, key)
+}
+
+// The Set method implements setting data, and uses the Lock method to lock the data.
+//
+// Set 方法实现设置数据，并使用Lock方法锁定数据。
+func (c *configStd) Set(key string, val interface{}) error {
+	c.Lock()
+	defer c.Unlock()
+	if len(key) == 0 {
+		c.Data = val
+	} else if key == "print" {
+		fn, ok := val.(func(...interface{}))
+		if ok {
+			c.Print = fn
+		} else {
+			c.Print(val)
+		}
+	} else {
+		return Set(c.Data, key, val)
+	}
+	return nil
+}
+
+// ParseOption executes a configuration parsing function option.
+//
+// ParseOption 执行一个配置解析函数选项。
+func (c *configStd) ParseOption(fn []ConfigParseFunc) []ConfigParseFunc {
+	c.Funcs, fn = fn, c.Funcs
+	return fn
+}
+
+// The Parse method executes all configuration parsing functions.
+// If the parsing function returns error, it stops parsing and returns error.
+//
+// Parse 方法执行全部配置解析函数，如果其中解析函数返回error，则停止解析并返回error。
+func (c *configStd) Parse() error {
+	for _, fn := range c.Funcs {
+		c.Err = fn(c)
+		if c.Err != nil {
+			c.Print(c.Err)
+			return c.Err
+		}
+	}
+	return nil
+}
+
+// MarshalJSON implements the json.Marshaler interface, which enables json serialization to directly manipulate the saved data.
+//
+// MarshalJSON 实现json.Marshaler接口，使json序列化直接操作保存的数据。
+func (c *configStd) MarshalJSON() ([]byte, error) {
+	c.RLock()
+	defer c.RUnlock()
+	return json.Marshal(c.Data)
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface, which enables json deserialization to directly manipulate the saved data.
+//
+// UnmarshalJSON 实现json.Unmarshaler接口，使json反序列化直接操作保存的数据。
+func (c *configStd) UnmarshalJSON(data []byte) error {
+	c.Lock()
+	defer c.Unlock()
+	return json.Unmarshal(data, &c.Data)
 }
 
 // NewConfigMap creates a ConfigMap, if the input parameter is map[string]interface{}, it will be used as the initialization data.
@@ -86,29 +219,40 @@ type configRLocker interface {
 //
 // ConfigMap已实现json.Marshaler和json.Unmarshaler接口.
 func NewConfigMap(arg interface{}) Config {
-	var keys map[string]interface{}
+	var data map[string]interface{}
 	if ks, ok := arg.(map[string]interface{}); ok {
-		keys = ks
+		data = ks
 	} else {
-		keys = make(map[string]interface{})
+		data = make(map[string]interface{})
 	}
 	return &configMap{
-		Keys:  keys,
+		Data:  data,
 		Print: printEmpty,
-		funcs: ConfigAllParseFunc,
+		Funcs: ConfigAllParseFunc,
 	}
+}
+
+// Mount 方法获取ContextKeyApp.(Logger)初始化日志输出函数。
+func (c *configMap) Mount(ctx context.Context) {
+	c.Print = NewPrintFunc(ctx.Value(ContextKeyApp).(Logger))
+}
+
+func (c *configMap) Metadata() interface{} {
+	c.RLock()
+	defer c.RUnlock()
+	return newConfigMetadata("eudore.configStd", c.Err, c.Data)
 }
 
 // The Get method gets an attribute. If the key is an empty string, it returns the map object that holds all the data.
 //
 // Get 方法获取一个属性，如果键为空字符串，返回保存全部数据的map对象。
 func (c *configMap) Get(key string) interface{} {
-	c.Locker.RLock()
-	defer c.Locker.RUnlock()
+	c.RLock()
+	defer c.RUnlock()
 	if len(key) == 0 {
-		return c.Keys
+		return c.Data
 	}
-	return c.Keys[key]
+	return c.Data[key]
 }
 
 // The Set method sets an attribute. If the key is an empty string and the value type is map[string]interface{},
@@ -116,12 +260,12 @@ func (c *configMap) Get(key string) interface{} {
 //
 // Set 方法设置一个属性，如果键为空字符串且值类型是map[string]interface{},则替换保存全部数据的map对象。
 func (c *configMap) Set(key string, val interface{}) error {
-	c.Locker.Lock()
-	defer c.Locker.Unlock()
+	c.Lock()
+	defer c.Unlock()
 	if len(key) == 0 {
 		keys, ok := val.(map[string]interface{})
 		if ok {
-			c.Keys = keys
+			c.Data = keys
 		}
 	} else if key == "print" {
 		fn, ok := val.(func(...interface{}))
@@ -131,7 +275,7 @@ func (c *configMap) Set(key string, val interface{}) error {
 			c.Print(val)
 		}
 	} else {
-		c.Keys[key] = val
+		c.Data[key] = val
 	}
 	return nil
 }
@@ -140,7 +284,7 @@ func (c *configMap) Set(key string, val interface{}) error {
 //
 // ParseOption 执行一个配置解析函数选项。
 func (c *configMap) ParseOption(fn []ConfigParseFunc) []ConfigParseFunc {
-	c.funcs, fn = fn, c.funcs
+	c.Funcs, fn = fn, c.Funcs
 	return fn
 }
 
@@ -148,12 +292,12 @@ func (c *configMap) ParseOption(fn []ConfigParseFunc) []ConfigParseFunc {
 // If the parsing function returns error, it stops parsing and returns error.
 //
 // Parse 方法执行全部配置解析函数，如果其中解析函数返回error，则停止解析并返回error。
-func (c *configMap) Parse() (err error) {
-	for _, fn := range c.funcs {
-		err = fn(c)
-		if err != nil {
-			c.Print(err)
-			return
+func (c *configMap) Parse() error {
+	for _, fn := range c.Funcs {
+		c.Err = fn(c)
+		if c.Err != nil {
+			c.Print(c.Err)
+			return c.Err
 		}
 	}
 	return nil
@@ -163,124 +307,93 @@ func (c *configMap) Parse() (err error) {
 //
 // MarshalJSON 实现json.Marshaler接口，使json序列化直接操作保存的数据。
 func (c *configMap) MarshalJSON() ([]byte, error) {
-	c.Locker.RLock()
-	defer c.Locker.RUnlock()
-	return json.Marshal(c.Keys)
+	c.RLock()
+	defer c.RUnlock()
+	return json.Marshal(c.Data)
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface, which enables json deserialization to directly manipulate the saved data.
 //
 // UnmarshalJSON 实现json.Unmarshaler接口，使json反序列化直接操作保存的数据。
 func (c *configMap) UnmarshalJSON(data []byte) error {
-	c.Locker.Lock()
-	defer c.Locker.Unlock()
-	return json.Unmarshal(data, &c.Keys)
-}
-
-// NewConfigEudore creates a ConfigEudore. If the input parameter is empty, use an empty map[string]interface{} as the initialization data.
-//
-// ConfigEduoew allows to pass in a map or struct as configuration storage, and use eudore.Set and eudore.Get methods to read and write data.
-//
-// If the incoming configuration object implements the same read-write lock method as sync.RLock,
-// the configured read-write lock is used, otherwise a sync.RWMutex lock will be created.
-//
-// ConfigEduoe has implemented the json.Marshaler and json.Unmarshaler interfaces.
-//
-// NewConfigEudore 创建一个ConfigEudore，如果传入参数为空，使用空map[string]interface{}作为初始化数据。
-//
-// ConfigEduoew允许传入一个map或struct作为配置存储，使用eudore.Set和eudore.Get方法去读写数据。
-//
-// 如果传入的配置对象实现sync.RLock一样的读写锁方法，则使用配置的读写锁，否则会创建一个sync.RWMutex锁。
-//
-// ConfigEduoe已实现json.Marshaler和json.Unmarshaler接口.
-func NewConfigEudore(i interface{}) Config {
-	if i == nil {
-		i = make(map[string]interface{})
-	}
-	mu, ok := i.(configRLocker)
-	if !ok {
-		mu = new(sync.RWMutex)
-	}
-	return &configEudore{
-		Keys:          i,
-		Print:         printEmpty,
-		funcs:         ConfigAllParseFunc,
-		configRLocker: mu,
-	}
-}
-
-// The Get method realizes to read the data attributes, and uses the RLock method to lock the data.
-//
-// Get 方法实现读取数据属性，并使用RLock方法锁定数据。
-func (c *configEudore) Get(key string) interface{} {
-	if len(key) == 0 {
-		return c.Keys
-	}
-	c.RLock()
-	defer c.RUnlock()
-	return Get(c.Keys, key)
-}
-
-// The Set method implements setting data, and uses the Lock method to lock the data.
-//
-// Set 方法实现设置数据，并使用Lock方法锁定数据。
-func (c *configEudore) Set(key string, val interface{}) error {
 	c.Lock()
 	defer c.Unlock()
-	if len(key) == 0 {
-		c.Keys = val
-	} else if key == "print" {
-		fn, ok := val.(func(...interface{}))
+	return json.Unmarshal(data, &c.Data)
+}
+
+func newConfigMetadata(name string, err error, data interface{}) interface{} {
+	meta := &configMetadata{
+		Health: true,
+		Name:   name,
+		Err:    err,
+		refs:   make(map[unsafe.Pointer]reflect.Value),
+	}
+	meta.EachData("", reflect.ValueOf(data), "")
+	return *meta
+}
+
+func (meta *configMetadata) EachData(prefix string, iValue reflect.Value, desc string) {
+	if meta.eachDataNotValue(prefix, iValue, desc) {
+		return
+	}
+
+	switch iValue.Kind() {
+	case reflect.Interface, reflect.Ptr:
+		meta.EachData(prefix, iValue.Elem(), desc)
+	case reflect.Struct:
+		iType := iValue.Type()
+		for i := 0; i < iType.NumField(); i++ {
+			field := iValue.Field(i)
+			if field.CanSet() {
+				meta.EachData(prefix+"."+iType.Field(i).Name, field, iType.Field(i).Tag.Get("description"))
+			}
+		}
+	case reflect.Map:
+		for _, key := range iValue.MapKeys() {
+			v := iValue.MapIndex(key)
+			meta.EachData(prefix+"."+fmt.Sprint(key.Interface()), v, "")
+		}
+	case reflect.Slice, reflect.Array:
+		meta.Keys = append(meta.Keys, prefix[1:]+" "+iValue.Kind().String())
+		meta.Values = append(meta.Values, fmt.Sprint(iValue.Interface()))
+		meta.Descriptions = append(meta.Descriptions, desc)
+	case reflect.Chan:
+		meta.Keys = append(meta.Keys, prefix[1:]+" "+iValue.Kind().String())
+		meta.Values = append(meta.Values, fmt.Sprintf("chan %s, len: %d, cap: %d", iValue.Type().Elem(), iValue.Len(), iValue.Cap()))
+		meta.Descriptions = append(meta.Descriptions, desc)
+	case reflect.Func:
+		meta.Keys = append(meta.Keys, prefix[1:]+" "+iValue.Kind().String())
+		meta.Values = append(meta.Values, runtime.FuncForPC(iValue.Pointer()).Name())
+		meta.Descriptions = append(meta.Descriptions, desc)
+	default:
+		meta.Keys = append(meta.Keys, prefix[1:]+" "+iValue.Kind().String())
+		meta.Values = append(meta.Values, iValue.Interface())
+		meta.Descriptions = append(meta.Descriptions, desc)
+	}
+}
+
+func (meta *configMetadata) eachDataNotValue(prefix string, iValue reflect.Value, desc string) bool {
+	switch iValue.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Interface:
+		if iValue.IsNil() {
+			meta.Keys = append(meta.Keys, prefix[1:])
+			meta.Values = append(meta.Values, nil)
+			meta.Descriptions = append(meta.Descriptions, desc)
+			return true
+		}
+		_, ok := meta.refs[getValuePointer(iValue)]
 		if ok {
-			c.Print = fn
-		} else {
-			c.Print(val)
+			return true
 		}
-	} else {
-		return Set(c.Keys, key, val)
+		meta.refs[getValuePointer(iValue)] = iValue
 	}
-	return nil
-}
 
-// ParseOption executes a configuration parsing function option.
-//
-// ParseOption 执行一个配置解析函数选项。
-func (c *configEudore) ParseOption(fn []ConfigParseFunc) []ConfigParseFunc {
-	c.funcs, fn = fn, c.funcs
-	return fn
-}
-
-// The Parse method executes all configuration parsing functions.
-// If the parsing function returns error, it stops parsing and returns error.
-//
-// Parse 方法执行全部配置解析函数，如果其中解析函数返回error，则停止解析并返回error。
-func (c *configEudore) Parse() (err error) {
-	for _, fn := range c.funcs {
-		err = fn(c)
-		if err != nil {
-			c.Print(err)
-			return
-		}
+	if iValue.CanSet() && iValue.Type().Implements(typeStringer) {
+		meta.Keys = append(meta.Keys, prefix[1:])
+		meta.Values = append(meta.Values, iValue.MethodByName("String").Call(nil)[0].String())
+		return true
 	}
-	return nil
-}
-
-// MarshalJSON implements the json.Marshaler interface, which enables json serialization to directly manipulate the saved data.
-//
-// MarshalJSON 实现json.Marshaler接口，使json序列化直接操作保存的数据。
-func (c *configEudore) MarshalJSON() ([]byte, error) {
-	c.RLock()
-	defer c.RUnlock()
-	return json.Marshal(c.Keys)
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface, which enables json deserialization to directly manipulate the saved data.
-//
-// UnmarshalJSON 实现json.Unmarshaler接口，使json反序列化直接操作保存的数据。
-func (c *configEudore) UnmarshalJSON(data []byte) error {
-	c.Lock()
-	defer c.Unlock()
-	return json.Unmarshal(data, &c.Keys)
+	return false
 }
 
 func configPrint(c Config, args ...interface{}) {

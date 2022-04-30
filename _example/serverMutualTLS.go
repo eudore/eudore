@@ -61,7 +61,7 @@ func main() {
 	if err == nil {
 		client.Client.Transport = tp
 	} else {
-		app.Options(err)
+		app.SetValue(eudore.ContextKeyError, err)
 	}
 	client.NewRequest("GET", "https://localhost:8088/").Do().CheckStatus(200).Out()
 

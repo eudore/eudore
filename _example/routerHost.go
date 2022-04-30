@@ -6,7 +6,9 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(eudore.NewRouterStd(eudore.NewRouterCoreHost(nil)))
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreHost(nil)))
+
 	app.AnyFunc("/* host=eudore.com", echoHandleHost)
 	app.AnyFunc("/* host=eudore.com:8088", echoHandleHost)
 	app.AnyFunc("/* host=eudore.cn", echoHandleHost)

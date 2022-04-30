@@ -21,26 +21,29 @@ func main() {
 	app.Init()
 	// 访问reload 触发重新加载
 	app.AnyFunc("/reload", app.Init)
+
 	app.Listen(":8088")
-	// app.CancelFunc()
 	app.Run()
 }
 
 func NewAppReload() *AppReload {
 	conf := &ConfigReload{Name: "eudore"}
-	return &AppReload{
-		App: eudore.NewApp(
-			// 使用读写路由核心，允许并发增删路由规则。
-			eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)),
-			eudore.NewConfigEudore(conf),
-		),
+	app := &AppReload{
+		App:          eudore.NewApp(),
 		ConfigReload: conf,
 	}
+	// 使用读写路由核心，允许并发增删路由规则。
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)))
+	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfigStd(conf))
+	return app
 }
 
 // Init 方法加载配置并注册路由
 func (app *AppReload) Init() error {
-	app.Options(app.Parse())
+	err := app.Parse()
+	if err != nil {
+		return err
+	}
 	app.Time = time.Now().String()
 	return app.AddController(NewUserReloadController(app))
 }

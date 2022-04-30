@@ -96,6 +96,7 @@ func (b *Breaker) NewBreakerFunc(router eudore.Router) eudore.HandlerFunc {
 		b.RUnlock()
 		if !ok {
 			b.Lock()
+			b.Index++
 			route = &breakRoute{
 				breaker:    b,
 				ID:         b.Index,
@@ -105,7 +106,6 @@ func (b *Breaker) NewBreakerFunc(router eudore.Router) eudore.HandlerFunc {
 			}
 			b.Mapping[b.Index] = name
 			b.Routes[name] = route
-			b.Index++
 			b.Unlock()
 		}
 
@@ -121,7 +121,7 @@ func (b *Breaker) data(ctx eudore.Context) {
 
 func (b *Breaker) getRoute(ctx eudore.Context) {
 	id := eudore.GetStringInt(ctx.GetParam("id"), -1)
-	if id < 0 || id >= b.Index {
+	if id < 0 || id > b.Index {
 		ctx.Fatal("id is invalid")
 		return
 	}
@@ -133,8 +133,8 @@ func (b *Breaker) getRoute(ctx eudore.Context) {
 
 func (b *Breaker) putRouteState(ctx eudore.Context) {
 	id := eudore.GetStringInt(ctx.GetParam("id"), -1)
-	state := eudore.GetStringInt(ctx.GetParam("state"), -1)
-	if id < 0 || id >= b.Index {
+	state := eudore.GetStringInt(ctx.GetParam("state"))
+	if id < 0 || id > b.Index {
 		ctx.Fatal("id is invalid")
 		return
 	}

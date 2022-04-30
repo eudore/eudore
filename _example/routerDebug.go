@@ -11,11 +11,10 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(
-		eudore.NewRouterStd(eudore.NewRouterCoreDebug(nil)),
-		eudore.NewRouterStd(eudore.NewRouterCoreDebug(eudore.NewRouterCoreStd())),
-		eudore.Renderer(eudore.RenderJSON),
-	)
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreDebug(eudore.NewRouterCoreStd())))
+	app.SetValue(eudore.ContextKeyRender, eudore.RenderJSON)
+	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
 
 	api := app.Group("/api/{v 1} version=v1")
 	api.AddMiddleware(middleware.NewLoggerFunc(app, "route"))

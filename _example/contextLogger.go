@@ -29,9 +29,8 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(
-		eudore.NewLoggerStd(map[string]interface{}{"FileLine": true}),
-	)
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(map[string]interface{}{"FileLine": true}))
 	app.AddMiddleware(func(ctx eudore.Context) {
 		ctx.Request().Header.Add(eudore.HeaderXRequestID, "requestid")
 	})
@@ -50,9 +49,8 @@ func main() {
 		ctx.Debug("err:", ctx.Err())
 	})
 	app.AnyFunc("/field", func(ctx eudore.Context) {
-		ctx.Logger().WithField("key", "test-firle").Debug("debug")
 		ctx.WithFields([]string{"key", "name"}, []interface{}{"ctx.WithFields", "eudore"}).Debug("hello fields")
-		ctx.WithFields(nil, nil).Debug("hello empty fields")
+		ctx.WithField("logger", true).Debug("hello empty fields")
 		ctx.WithField("key", "test-firle").Debug("debug")
 		ctx.WithField("key", "test-firle").Debugf("debugf")
 		ctx.WithField("key", "test-firle").Info("hello")

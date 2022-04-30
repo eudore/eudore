@@ -10,10 +10,8 @@ bind根据请求中Content-Type Header来决定bind解析数据的方法，常�
 
 import (
 	"encoding/xml"
-	"errors"
 	"github.com/eudore/eudore"
 	"github.com/eudore/eudore/component/httptest"
-	"io"
 )
 
 type (
@@ -41,9 +39,10 @@ func main() {
 	app := eudore.NewApp()
 	// 上传文件信息
 	app.PutFunc("/file/data/:path", func(ctx eudore.Context) {
+		ctx.Infof("%s", ctx.Body())
 		var info putFileInfo
 		ctx.Bind(&info)
-		ctx.RenderWith(&info, eudore.RenderJSON)
+		ctx.Debugf("%#v", info)
 	})
 	app.PutFunc("/person/:path", func(ctx eudore.Context) {
 		var person xmlResult
@@ -54,13 +53,7 @@ func main() {
 		ctx.Debugf("body: %s", ctx.Body())
 		var data map[string]interface{}
 		ctx.Bind(&data)
-	})
-	app.PutFunc("/with", func(ctx eudore.Context) {
-		ctx.Debugf("body: %s", ctx.Body())
-		var data map[string]interface{}
-		ctx.BindWith(&data, func(eudore.Context, io.Reader, interface{}) error {
-			return errors.New("test bind with error")
-		})
+		ctx.Debugf("%#v", data)
 	})
 
 	client := httptest.NewClient(app)
@@ -85,7 +78,6 @@ func main() {
 		</Person>
 	`).Do().CheckStatus(200).Out()
 	client.NewRequest("PUT", "/body").WithBodyString(`{"name": "eudore","type": "file", "size":720,"lastModified":1257894000}`).Do()
-	client.NewRequest("PUT", "/with").WithBodyString(`{"name": "eudore","type": "file", "size":720,"lastModified":1257894000}`).Do()
 
 	app.Listen(":8088")
 	// app.CancelFunc()

@@ -11,12 +11,13 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(eudore.NewServerStd(&eudore.ServerStdConfig{
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyServer, eudore.NewServerStd(&eudore.ServerStdConfig{
 		ReadTimeout:  eudore.TimeDuration(4 * time.Second),
 		WriteTimeout: eudore.TimeDuration(12 * time.Second),
 		IdleTimeout:  eudore.TimeDuration(60 * time.Second),
 	}))
+
 	app.Listen(":8088")
-	// app.CancelFunc()
 	app.Run()
 }

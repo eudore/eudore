@@ -9,8 +9,9 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(eudore.NewServerFcgi())
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyServer, eudore.NewServerFcgi())
+
 	app.Listen(":8088")
-	// app.CancelFunc()
 	app.Run()
 }

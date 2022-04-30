@@ -3,6 +3,7 @@ package eudore
 // Router对象用于定义请求的路由器
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"runtime"
@@ -111,7 +112,7 @@ type RouterStd struct {
 	HandlerExtender `alias:"handlerextender"`
 	Middlewares     *middlewareTree      `alias:"middlewares"`
 	Print           func(...interface{}) `alias:"print"`
-	params          *Params              `alias:"params"`
+	params          Params               `alias:"params"`
 }
 
 // HandlerRouter405 function defines the default 405 processing and returns Allow and X-Match-Route Header.
@@ -146,15 +147,31 @@ func NewRouterStd(core RouterCore) Router {
 		core = NewRouterCoreStd()
 	}
 	return &RouterStd{
-		RouterCore: core,
-		params: &Params{
-			Keys: []string{ParamRoute},
-			Vals: []string{""},
-		},
+		RouterCore:      core,
+		params:          Params{ParamRoute, ""},
 		HandlerExtender: NewHandlerExtendWarp(NewHandlerExtendTree(), DefaultHandlerExtend),
 		Middlewares:     newMiddlewareTree(),
 		Print:           printEmpty,
 	}
+}
+
+// Mount 方法使RouterStd挂载上下文，上下文传递给RouterCore。
+//
+// 并从ctx.Value(ContextKeyApp)获取Logger，初始化RouterStd日志输出函数。
+func (r *RouterStd) Mount(ctx context.Context) {
+	r.Print = NewPrintFunc(ctx.Value(ContextKeyApp).(Logger))
+	withMount(ctx, r.RouterCore)
+}
+
+// Unmount 方法使RouterStd卸载上下文，上下文传递给RouterCore。
+func (r *RouterStd) Unmount(ctx context.Context) {
+	withUnmount(ctx, r.RouterCore)
+	r.Print = printEmpty
+}
+
+// Metadata 方法返回RouterCore的Metadata。
+func (r *RouterStd) Metadata() interface{} {
+	return withMetadata(r.RouterCore)
 }
 
 // Group method returns a new group router.
@@ -176,50 +193,33 @@ func NewRouterStd(core RouterCore) Router {
 // 以及链式创建一个新的HandlerExtender，若HandlerExtender无法注册的类型将调用上一个Router.HandlerExtender处理。
 //
 // 最顶级HandlerExtender对象为defaultHandlerExtend，可以使用RegisterHandlerExtend函数和NewHandlerFuncs函数调用defaultHandlerExtend对象。
-func (m *RouterStd) Group(path string) Router {
+func (r *RouterStd) Group(path string) Router {
 	// 构建新的路由方法配置器
 	return &RouterStd{
-		RouterCore:      m.RouterCore,
-		params:          m.paramsCombine(path),
-		HandlerExtender: NewHandlerExtendWarp(NewHandlerExtendTree(), m.HandlerExtender),
-		Middlewares:     m.Middlewares.clone(),
-		Print:           m.Print,
+		RouterCore:      r.RouterCore,
+		params:          r.params.Clone().CombineWithRoute(NewParamsRoute(path)),
+		HandlerExtender: NewHandlerExtendWarp(NewHandlerExtendTree(), r.HandlerExtender),
+		Middlewares:     r.Middlewares.clone(),
+		Print:           r.Print,
 	}
 }
 
 // Params method returns the current route parameters, and the route parameter value is an empty string will not be used.
 //
 // Params 方法返回当前路由参数，路由参数值为空字符串不会被使用。
-func (m *RouterStd) Params() *Params {
-	return m.params
-}
-
-// paramsCombine method parses a string path and merges it into a copy of the current routing parameters.
-//
-// For example, the path format is: /user action=user
-//
-// paramsCombine 方法解析一个字符串路径，并合并到一个当前路由参数的副本中。
-//
-// 例如路径格式为：/user action=user
-func (m *RouterStd) paramsCombine(path string) *Params {
-	newparams := m.params.Clone()
-	params := NewParamsRoute(path)
-	newparams.Vals[0] = newparams.Vals[0] + params.Vals[0]
-	for i := range params.Keys[1:] {
-		newparams.Add(params.Keys[i+1], params.Vals[i+1])
-	}
-	return newparams
+func (r *RouterStd) Params() *Params {
+	return &r.params
 }
 
 // printError 方法输出一个err，附加错误的函数名称和文件位置。
-func (m *RouterStd) printError(depth int, err error) {
+func (r *RouterStd) printError(depth int, err error) {
 	name, file, line := logFormatNameFileLine(depth + 3)
-	m.Print([]string{"params", "func", "file", "line"}, []interface{}{m.params, name, file, line}, err)
+	r.Print([]string{"params", "func", "file", "line"}, []interface{}{r.params, name, file, line}, err)
 }
 
 // printPanic 方法输出一个err，附加当前stack。
-func (m *RouterStd) printPanic(err error) {
-	m.Print([]string{"params", "stack"}, []interface{}{m.params, GetPanicStack(4)}, err)
+func (r *RouterStd) printPanic(err error) {
+	r.Print([]string{"params", "stack"}, []interface{}{r.params, GetPanicStack(4)}, err)
 }
 
 // getRoutePath 函数截取到路径中的route，支持'{}'进行块匹配。
@@ -278,21 +278,21 @@ func getRouteParam(path, key string) string {
 //
 // 中间件数据会根据当前路由路径从数据中匹配，然后将请求处理函数附加到处理函数之前。
 //
-func (m *RouterStd) AddHandler(method, path string, hs ...interface{}) error {
-	return m.registerHandlers(method, path, hs...)
+func (r *RouterStd) AddHandler(method, path string, hs ...interface{}) error {
+	return r.registerHandlers(method, path, hs...)
 }
 
 // registerHandlers 方法将handler转换成HandlerFuncs，添加路由路径对应的请求中间件，并调用RouterCore对象注册路由方法。
-func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (err error) {
+func (r *RouterStd) registerHandlers(method, path string, hs ...interface{}) (err error) {
 	defer func() {
 		// RouterCoreStd 注册未知校验规则存在panic,或者其他自定义路由注册出现panic。
 		if rerr := recover(); rerr != nil {
 			err = fmt.Errorf(ErrFormatRouterStdRegisterHandlersRecover, method, path, rerr)
-			m.printPanic(err)
+			r.printPanic(err)
 		}
 	}()
 
-	params := m.paramsCombine(path)
+	params := r.params.Clone().CombineWithRoute(NewParamsRoute(path))
 	path = params.Get("route")
 	fullpath := params.String()
 	// 如果方法为404、405方法，route为空
@@ -301,34 +301,34 @@ func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 	}
 	method = strings.ToUpper(method)
 
-	handlers, err := m.newHandlerFuncs(path, hs)
+	handlers, err := r.newHandlerFuncs(path, hs)
 	if err != nil {
-		m.printError(1, err)
+		r.printError(1, err)
 		return err
 	}
 	// 如果注册方法是TEST则输出RouterStd debug信息
 	if method == "TEST" {
-		m.Print(fmt.Sprintf("Test handlers params is %s, split path to: ['%s'], match middlewares is: %v, register handlers is: %v.", params.String(), strings.Join(getSplitPath(path), "', '"), m.Middlewares.Lookup(path), handlers))
+		r.Print(fmt.Sprintf("Test handlers params is %s, split path to: ['%s'], match middlewares is: %v, register handlers is: %v.", params.String(), strings.Join(getSplitPath(path), "', '"), r.Middlewares.Lookup(path), handlers))
 		return
 	}
-	m.Print("Register handler:", method, strings.TrimPrefix(params.String(), "route="), handlers)
+	r.Print("Register handler:", method, strings.TrimPrefix(params.String(), "route="), handlers)
 	if handlers != nil {
-		handlers = NewHandlerFuncsCombine(m.Middlewares.Lookup(path), handlers)
+		handlers = NewHandlerFuncsCombine(r.Middlewares.Lookup(path), handlers)
 	}
 
 	// 处理多方法
-	var errs muliterror
-	for _, i := range strings.Split(method, ",") {
-		i = strings.TrimSpace(i)
-		if checkMethod(i) {
-			m.RouterCore.HandleFunc(i, fullpath, handlers)
+	var errs errormulit
+	for _, method := range strings.Split(method, ",") {
+		method = strings.TrimSpace(method)
+		if checkMethod(method) {
+			r.RouterCore.HandleFunc(method, fullpath, handlers)
 		} else {
-			err := fmt.Errorf(ErrFormatRouterStdRegisterHandlersMethodInvalid, i, method, fullpath)
+			err := fmt.Errorf(ErrFormatRouterStdRegisterHandlersMethodInvalid, method, method, fullpath)
 			errs.HandleError(err)
-			m.printError(1, err)
+			r.printError(1, err)
 		}
 	}
-	return errs.GetError()
+	return errs.Unwrap()
 }
 
 // The newHandlerFuncs method creates HandlerFuncs based on the path and multiple parameters.
@@ -338,19 +338,19 @@ func (m *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 // newHandlerFuncs 方法根据路径和多个参数创建HandlerFuncs。
 //
 // RouterStd先调用当前HandlerExtender.NewHandlerFuncs创建多个函数处理者，如果返回空会从上级HandlerExtender创建。
-func (m *RouterStd) newHandlerFuncs(path string, hs []interface{}) (HandlerFuncs, error) {
-	var handlers HandlerFuncs
-	var errs muliterror
+func (r *RouterStd) newHandlerFuncs(path string, handlers []interface{}) (HandlerFuncs, error) {
+	var hs HandlerFuncs
+	var errs errormulit
 	// 转换处理函数
-	for i, h := range hs {
-		handler := m.HandlerExtender.NewHandlerFuncs(path, h)
+	for i, fn := range handlers {
+		handler := r.HandlerExtender.NewHandlerFuncs(path, fn)
 		if handler != nil && len(handler) > 0 {
-			handlers = NewHandlerFuncsCombine(handlers, handler)
+			hs = NewHandlerFuncsCombine(hs, handler)
 		} else {
-			errs.HandleError(fmt.Errorf(ErrFormatRouterStdNewHandlerFuncsUnregisterType, path, i, reflect.TypeOf(h).String()))
+			errs.HandleError(fmt.Errorf(ErrFormatRouterStdNewHandlerFuncsUnregisterType, path, i, reflect.TypeOf(fn).String()))
 		}
 	}
-	return handlers, errs.GetError()
+	return hs, errs.Unwrap()
 }
 
 func checkMethod(method string) bool {
@@ -358,8 +358,8 @@ func checkMethod(method string) bool {
 	case "ANY", "404", "405", "NotFound", "MethodNotAllowed":
 		return true
 	}
-	for _, i := range RouterAllMethod {
-		if i == method {
+	for _, allMethod := range RouterAllMethod {
+		if allMethod == method {
 			return true
 		}
 	}
@@ -373,26 +373,26 @@ func checkMethod(method string) bool {
 // AddController 方式使用内置的控制器解析函数解析控制器获得路由配置。
 //
 // 如果控制器实现了RoutesInjecter接口，调用控制器自身注入路由。
-func (m *RouterStd) AddController(cs ...Controller) error {
-	var errs muliterror
-	for _, c := range cs {
-		name := getConrtrollerName(c)
-		m.Print("Register controller:", m.params.String(), name)
-		err := c.Inject(c, m)
+func (r *RouterStd) AddController(controllers ...Controller) error {
+	var errs errormulit
+	for _, controller := range controllers {
+		name := getControllerPathName(controller)
+		r.Print("Register controller:", r.params.String(), name)
+		err := controller.Inject(controller, r)
 		if err != nil {
 			err = fmt.Errorf(ErrFormatRouterStdAddController, name, err)
 			errs.HandleError(err)
-			m.printError(0, err)
+			r.printError(0, err)
 		}
 	}
-	return errs.GetError()
+	return errs.Unwrap()
 }
 
-// getConrtrollerName 函数获取控制器的名称
-func getConrtrollerName(ctl Controller) string {
-	ster, ok := ctl.(fmt.Stringer)
+// getControllerPathName 函数获取控制器的名称
+func getControllerPathName(ctl Controller) string {
+	ster, ok := ctl.(controllerName)
 	if ok {
-		return ster.String()
+		return ster.ControllerName()
 	}
 	cType := reflect.Indirect(reflect.ValueOf(ctl)).Type()
 	return fmt.Sprintf("%s.%s", cType.PkgPath(), cType.Name())
@@ -405,12 +405,12 @@ func getConrtrollerName(ctl Controller) string {
 // AddMiddleware 给路由器添加多个中间件函数，会使用HandlerExtender转换参数。
 //
 // 如果参数数量大于1且第一个参数为字符串类型，会将第一个字符串类型参数作为添加中间件的路径。
-func (m *RouterStd) AddMiddleware(hs ...interface{}) error {
+func (r *RouterStd) AddMiddleware(hs ...interface{}) error {
 	if len(hs) == 0 {
 		return nil
 	}
 
-	path := m.Params().Get("route")
+	path := r.params.Get("route")
 	if len(hs) > 1 {
 		route, ok := hs[0].(string)
 		if ok {
@@ -419,15 +419,15 @@ func (m *RouterStd) AddMiddleware(hs ...interface{}) error {
 		}
 	}
 
-	handlers, err := m.newHandlerFuncs(path, hs)
+	handlers, err := r.newHandlerFuncs(path, hs)
 	if err != nil {
-		m.printError(0, err)
+		r.printError(0, err)
 		return err
 	}
 
-	m.Middlewares.Insert(path, handlers)
-	m.RouterCore.HandleFunc("Middlewares", path, handlers)
-	m.Print("Register middleware:", path, handlers)
+	r.Middlewares.Insert(path, handlers)
+	r.RouterCore.HandleFunc("Middlewares", path, handlers)
+	r.Print("Register middleware:", path, handlers)
 	return nil
 }
 
@@ -438,35 +438,35 @@ func (m *RouterStd) AddMiddleware(hs ...interface{}) error {
 // AddHandlerExtend 方法给当前Router添加扩展函数。
 //
 // 如果参数数量大于1且第一个参数为字符串类型，会将第一个字符串类型参数作为添加扩展函数的路径。
-func (m *RouterStd) AddHandlerExtend(hs ...interface{}) error {
-	if len(hs) == 0 {
+func (r *RouterStd) AddHandlerExtend(handlers ...interface{}) error {
+	if len(handlers) == 0 {
 		return nil
 	}
 
-	path := m.Params().Get("route")
-	if len(hs) > 1 {
-		route, ok := hs[0].(string)
+	path := r.params.Get("route")
+	if len(handlers) > 1 {
+		route, ok := handlers[0].(string)
 		if ok {
 			path = path + route
-			hs = hs[1:]
+			handlers = handlers[1:]
 		}
 	}
 
-	var errs muliterror
-	for _, h := range hs {
-		err := m.HandlerExtender.RegisterHandlerExtend(path, h)
+	var errs errormulit
+	for _, handler := range handlers {
+		err := r.HandlerExtender.RegisterHandlerExtend(path, handler)
 		if err != nil {
 			err = fmt.Errorf(ErrFormatRouterStdAddHandlerExtend, path, err)
 			errs.HandleError(err)
-			m.printError(0, err)
+			r.printError(0, err)
 		} else {
-			iValue := reflect.ValueOf(h)
+			iValue := reflect.ValueOf(handler)
 			if iValue.Kind() == reflect.Func {
-				m.Print("Register extend:", runtime.FuncForPC(iValue.Pointer()).Name(), iValue.Type().In(0).String())
+				r.Print("Register extend:", runtime.FuncForPC(iValue.Pointer()).Name(), iValue.Type().In(0).String())
 			}
 		}
 	}
-	return errs.GetError()
+	return errs.Unwrap()
 }
 
 // AnyFunc method realizes the http request processing function that registers an Any method.
@@ -479,38 +479,38 @@ func (m *RouterStd) AddHandlerExtend(hs ...interface{}) error {
 //
 // Any方法注册的路由规则会被指定方法注册覆盖，反之不行。
 // Any默认注册方法包含Get Post Put Delete Head Patch六种，定义在全局变量RouterAnyMethod。
-func (m *RouterStd) AnyFunc(path string, h ...interface{}) {
-	m.registerHandlers(MethodAny, path, h...)
+func (r *RouterStd) AnyFunc(path string, h ...interface{}) {
+	r.registerHandlers(MethodAny, path, h...)
 }
 
 // GetFunc 方法实现注册一个Get方法的http请求处理函数。
-func (m *RouterStd) GetFunc(path string, h ...interface{}) {
-	m.registerHandlers(MethodGet, path, h...)
+func (r *RouterStd) GetFunc(path string, h ...interface{}) {
+	r.registerHandlers(MethodGet, path, h...)
 }
 
 // PostFunc 方法实现注册一个Post方法的http请求处理函数。
-func (m *RouterStd) PostFunc(path string, h ...interface{}) {
-	m.registerHandlers(MethodPost, path, h...)
+func (r *RouterStd) PostFunc(path string, h ...interface{}) {
+	r.registerHandlers(MethodPost, path, h...)
 }
 
 // PutFunc 方法实现注册一个Put方法的http请求处理函数。
-func (m *RouterStd) PutFunc(path string, h ...interface{}) {
-	m.registerHandlers(MethodPut, path, h...)
+func (r *RouterStd) PutFunc(path string, h ...interface{}) {
+	r.registerHandlers(MethodPut, path, h...)
 }
 
 // DeleteFunc 方法实现注册一个Delete方法的http请求处理函数。
-func (m *RouterStd) DeleteFunc(path string, h ...interface{}) {
-	m.registerHandlers(MethodDelete, path, h...)
+func (r *RouterStd) DeleteFunc(path string, h ...interface{}) {
+	r.registerHandlers(MethodDelete, path, h...)
 }
 
 // HeadFunc 方法实现注册一个Head方法的http请求处理函数。
-func (m *RouterStd) HeadFunc(path string, h ...interface{}) {
-	m.registerHandlers(MethodHead, path, h...)
+func (r *RouterStd) HeadFunc(path string, h ...interface{}) {
+	r.registerHandlers(MethodHead, path, h...)
 }
 
 // PatchFunc 方法实现注册一个Patch方法的http请求处理函数。
-func (m *RouterStd) PatchFunc(path string, h ...interface{}) {
-	m.registerHandlers(MethodPatch, path, h...)
+func (r *RouterStd) PatchFunc(path string, h ...interface{}) {
+	r.registerHandlers(MethodPatch, path, h...)
 }
 
 // middlewareTree 定义中间件信息存储树
@@ -661,6 +661,16 @@ type routerCoreDebug struct {
 	RouterCore   `json:"-" xml:"-"`
 	Methods      []string   `json:"methods" xml:"methods"`
 	Paths        []string   `json:"paths" xml:"paths"`
+	Params       []Params   `json:"params" xml:"params"`
+	HandlerNames [][]string `json:"handlernames" xml:"handlernames"`
+}
+
+type routerCoreMetadata struct {
+	Health       bool       `json:"health" xml:"health"`
+	Name         string     `json:"name" xml:"name"`
+	Methods      []string   `json:"methods" xml:"methods"`
+	Paths        []string   `json:"paths" xml:"paths"`
+	Params       []Params   `json:"params" xml:"params"`
 	HandlerNames [][]string `json:"handlernames" xml:"handlernames"`
 }
 
@@ -685,15 +695,16 @@ func NewRouterCoreDebug(core RouterCore) RouterCore {
 // HandleFunc implements the eudore.RouterCore interface and records all routing information.
 //
 // HandleFunc 实现eudore.RouterCore接口，记录全部路由信息。
-func (r *routerCoreDebug) HandleFunc(method, path string, hs HandlerFuncs) {
-	r.RouterCore.HandleFunc(method, path, hs)
+func (r *routerCoreDebug) HandleFunc(method, path string, handlers HandlerFuncs) {
+	r.RouterCore.HandleFunc(method, path, handlers)
 	// 删除记录的路由信息
-	if getRouteParam(path, ParamRegister) == "off" || hs == nil {
+	if getRouteParam(path, ParamRegister) == "off" || handlers == nil {
 		path = getRoutePath(path)
 		for i := range r.Methods {
 			if r.Paths[i] == path && r.Methods[i] == method {
 				r.Methods = r.Methods[:i+copy(r.Methods[i:], r.Methods[i+1:])]
 				r.Paths = r.Paths[:i+copy(r.Paths[i:], r.Paths[i+1:])]
+				r.Params = r.Params[:i+copy(r.Params[i:], r.Params[i+1:])]
 				r.HandlerNames = r.HandlerNames[:i+copy(r.HandlerNames[i:], r.HandlerNames[i+1:])]
 				break
 			}
@@ -701,19 +712,32 @@ func (r *routerCoreDebug) HandleFunc(method, path string, hs HandlerFuncs) {
 		return
 	}
 
-	names := make([]string, len(hs))
-	for i := range hs {
-		names[i] = fmt.Sprint(hs[i])
+	names := make([]string, len(handlers))
+	for i := range handlers {
+		names[i] = fmt.Sprint(handlers[i])
 	}
 	r.Methods = append(r.Methods, method)
 	r.Paths = append(r.Paths, getRoutePath(path))
+	r.Params = append(r.Params, NewParamsRoute(path))
 	r.HandlerNames = append(r.HandlerNames, names)
+}
+
+// Metadata 方法返回routerCoreDebug记录的路由信息
+func (r *routerCoreDebug) Metadata() interface{} {
+	return routerCoreMetadata{
+		Health:       true,
+		Name:         "eudore.routerCoreDebug",
+		Methods:      r.Methods,
+		Paths:        r.Paths,
+		Params:       r.Params,
+		HandlerNames: r.HandlerNames,
+	}
 }
 
 // HandleHTTP 方法返回debug路由信息数据。
 func (r *routerCoreDebug) HandleHTTP(ctx Context) {
 	ctx.SetHeader(HeaderXEudoreAdmin, "router-debug")
-	ctx.Render(r)
+	ctx.Render(r.Metadata())
 }
 
 // routerCoreHost 实现基于host进行路由匹配

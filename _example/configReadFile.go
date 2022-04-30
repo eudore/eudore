@@ -28,8 +28,8 @@ func main() {
 	// 设置config路径
 	app.Set("config", []string{filepath, "example", "/dev/null"})
 	app.Set("help", true)
-	app.Options(app.Parse())
+	app.Parse()
+
 	app.Debug(app.Get(""))
-	app.CancelFunc()
 	app.Run()
 }

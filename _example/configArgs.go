@@ -28,7 +28,7 @@ func main() {
 	app := eudore.NewApp()
 	// 指定NewConfigParseArgs方法的短参数映射，默认使用结构体数据tag获取。
 	app.ParseOption([]eudore.ConfigParseFunc{eudore.NewConfigParseArgs(shorts)})
-	app.Options(app.Parse())
+	app.SetValue(eudore.ContextKeyError, app.Parse())
 	app.Debug("get name:", app.GetString("name"))
 	app.Debug(app.Get(""))
 	app.CancelFunc()

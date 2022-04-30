@@ -13,7 +13,8 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(eudore.NewLoggerInit())
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerInit())
 	app.Debug("debug")
 	app.Info("info")
 	app.Warning("warning")
@@ -27,8 +28,7 @@ func main() {
 	logout.WithField("level", "error").Error("error")
 
 	app.AnyFunc("/*path", eudore.HandlerEmpty)
-	app.Options(eudore.NewLoggerStd(nil))
 	app.WithField("depth", "enable").Info("info")
-	app.CancelFunc()
+
 	app.Run()
 }

@@ -2,162 +2,160 @@ package eudore_test
 
 import (
 	"errors"
-	"io"
+	"fmt"
+	"testing"
 
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
-	"testing"
 )
+
+func TestControllerError(t *testing.T) {
+	app := eudore.NewApp()
+	app.AddController(NewErrController(-10))
+	app.AddController(NewErrController(10))
+
+	app.CancelFunc()
+	app.Run()
+}
+
+type errController struct {
+	eudore.ControllerAutoRoute
+}
+
+func NewErrController(i int) eudore.Controller {
+	ctl := new(errController)
+	if i < 0 {
+		// controller创建错误处理。
+		return eudore.NewControllerError(ctl, errors.New("int must grate 0"))
+	}
+	return ctl
+}
+
+func (ctl *errController) ControllerGroup(string) string {
+	return "err"
+}
+
+func (ctl *errController) Any(ctx eudore.Context) {
+	ctx.Info("errController Any")
+}
+
+// Get 方法注册不存在的扩展函数，触发注册error。
+func (*errController) Get(eudore.ControllerAutoRoute) interface{} {
+	return "get errController"
+}
+
+func TestControllerAutoRoute(t *testing.T) {
+	app := eudore.NewApp()
+	app.AddController(new(autoController))
+
+	app.CancelFunc()
+	app.Run()
+}
+
+type autoController struct {
+	eudore.ControllerAutoRoute
+}
+
+// Any 方法注册 Any /*路径。
+func (*autoController) Any(ctx eudore.Context) {
+	ctx.Info("autoController Any")
+}
+
+// Get 方法注册 Get /*路径。
+func (*autoController) GetBy(ctx eudore.Context) interface{} {
+	ctx.Debug("get")
+	return "get autoController"
+}
+
+// GetInfoById 方法注册GET /info/:id/name 路由路径。
+func (*autoController) GetInfoByIDName(ctx eudore.Context) interface{} {
+	return ctx.GetParam("id")
+}
+
+// String 方法返回控制器名称，响应Router.AddController输出的名称。
+func (*autoController) String() string {
+	return "hello.autoController"
+}
+
+// Help 方法定义一个控制器本身的方法。
+func (*autoController) Help(ctx eudore.Context) {}
+
+func (*autoController) GetData(ctx eudore.Context) {}
+
+func (*autoController) Inject(controller eudore.Controller, router eudore.Router) error {
+	router = router.Group("")
+	params := router.Params()
+	*params = params.Set(eudore.ParamControllerGroup, "/auto")
+	return eudore.ControllerInjectAutoRoute(controller, router)
+}
+
+// ControllerRoute 方法返回控制器路由推导修改信息。
+func (*autoController) ControllerRoute() map[string]string {
+	return map[string]string{
+		// 修改Path方法的路由注册,路径为空就是忽略改方法
+		"GetData": "-",
+		"Help":    "/help",
+		// 给Any方法自动生成的路径添加参数iaany
+		"Any": " isany=1",
+	}
+}
+
+// ControllerParam 方法添加路由参数信息。
+func (*autoController) ControllerParam(pkg, name, method string) string {
+	return fmt.Sprintf("source=ControllerParam cpkg=%s cname=%s cmethod=%s", pkg, name, method)
+}
+
+func TestControllerCompose(t *testing.T) {
+	app := eudore.NewApp()
+	app.AddController(new(MethodController))
+	app.AddController(new(RouteController))
+
+	app.CancelFunc()
+	app.Run()
+}
+
+// Controllerwebsite 是基础方法的控制器
+type Controllerwebsite struct {
+	eudore.ControllerAutoRoute
+}
+type MethodController struct {
+	// Controllerwebsite 因名称后缀不为Controller所以不会注册Hello方法为路由。
+	Controllerwebsite
+}
+type tableController struct {
+	eudore.ControllerAutoRoute
+}
+
+// RouteController 从tableController嵌入两个方法注册成路由。
+type RouteController struct {
+	tableController
+	*baseMethod
+}
 
 type baseMethod struct{}
 
 func (baseMethod) Any() {}
 
-type mybGroupcontroller struct {
-	eudore.ControllerAutoRoute
-	baseMethod
+// Hello 方法返回heelo
+func (ctl *Controllerwebsite) Hello() string {
+	return "hello eudore"
 }
 
-type mybGroupController struct {
-	eudore.ControllerAutoRoute
-	baseMethod
+// Get 方法不会被组合
+func (ctl *Controllerwebsite) Get(ctx eudore.Context) {}
+
+// Any 方法处理控制器全部请求。
+func (ctl *MethodController) Any(ctx eudore.Context) {
+	ctx.Debug("MethodController Any", ctl.Hello())
 }
 
-type mysGroup struct {
-	eudore.ControllerAutoRoute
-	baseMethod
-}
-type mysGroupcontroller struct {
-	eudore.ControllerAutoRoute
-	baseMethod
-}
-type mysGroupController struct {
-	eudore.ControllerAutoRoute
-	baseMethod
+func (ctl tableController) ControllerName() string {
+	return "tableController[Context]"
 }
 
-func (ctl *mysGroupController) InfoBy() {}
-
-func (ctl *mysGroupController) Error(*mybGroupcontroller) {}
-
-func TestControllerGroup2(*testing.T) {
-	app := eudore.NewApp()
-	app.Params().Set("controllergroup", "/g1")
-	app.AddController(new(mybGroupcontroller))
-	app.AddController(new(mybGroupcontroller))
-	app.AddController(new(mybGroupController))
-	app.AddController(new(mysGroup))
-	app.AddController(new(mysGroupcontroller))
-	app.AddController(new(mysGroupController))
-	app.CancelFunc()
-	app.Run()
+func (ctl *tableController) Hello() interface{} {
+	return "hello eudore"
 }
 
-type myexecConrtoller struct {
-	eudore.ControllerAutoRoute
-	baseMethod
-}
-
-func (ctl *myexecConrtoller) Error() error {
-	return errors.New("test error myexecConrtoller.Error")
-}
-func (ctl *myexecConrtoller) RenderError1() (interface{}, error) {
-	return "hello", errors.New("test error RenderError1")
-}
-func (ctl *myexecConrtoller) RenderError2() (interface{}, error) {
-	return "hello", nil
-}
-
-func (ctl *myexecConrtoller) Context(eudore.Context) {
-}
-func (ctl *myexecConrtoller) Render() interface{} {
-	return "hello"
-}
-func (ctl *myexecConrtoller) ContextRender(eudore.Context) interface{} {
-	return "hello"
-}
-func (ctl *myexecConrtoller) ContextError1(eudore.Context) error {
-	return errors.New("test error")
-}
-func (ctl *myexecConrtoller) ContextError2(eudore.Context) error {
-	return nil
-}
-func (ctl *myexecConrtoller) ContextRenderError1(eudore.Context) (interface{}, error) {
-	return "hello", errors.New("test error")
-}
-func (ctl *myexecConrtoller) ContextRenderError2(eudore.Context) (interface{}, error) {
-	return "hello", nil
-}
-
-func (ctl *myexecConrtoller) MapString(map[string]interface{}) {
-}
-func (ctl *myexecConrtoller) MapStringRender(map[string]interface{}) interface{} {
-	return "hello"
-}
-func (ctl *myexecConrtoller) MapStringError1(map[string]interface{}) error {
-	return errors.New("test error")
-}
-func (ctl *myexecConrtoller) MapStringError2(map[string]interface{}) error {
-	return nil
-}
-func (ctl *myexecConrtoller) MapStringRenderError1(map[string]interface{}) (interface{}, error) {
-	return "hello", errors.New("test error")
-}
-func (ctl *myexecConrtoller) MapStringRenderError2(map[string]interface{}) (interface{}, error) {
-	return "hello", nil
-}
-func TestControllerExtendExec2(*testing.T) {
-	app := eudore.NewApp()
-	app.AddController(new(eudore.ControllerAutoRoute))
-	app.AddController(new(myexecConrtoller))
-	app.Group(" controllergroup=name").AddController(new(mysGroupController))
-
-	client := httptest.NewClient(app)
-	client.NewRequest("GET", "/init").Do()
-	client.NewRequest("GET", "/release").Do()
-	client.NewRequest("GET", "/name/info/init").Do()
-	client.NewRequest("GET", "/name/info/release").Do()
-	client.NewRequest("GET", "/name/info").Do()
-
-	client.NewRequest("GET", "/error").Do()
-	client.NewRequest("GET", "/render/error1").Do()
-	client.NewRequest("GET", "/render/error2").Do()
-	client.NewRequest("GET", "/context").Do()
-	client.NewRequest("GET", "/context/error1").Do()
-	client.NewRequest("GET", "/context/error2").Do()
-	client.NewRequest("GET", "/context/render/error1").Do()
-	client.NewRequest("GET", "/context/render/error2").Do()
-	client.NewRequest("GET", "/map/string").Do()
-	client.NewRequest("GET", "/map/string/render").Do()
-	client.NewRequest("GET", "/map/string/error1").Do()
-	client.NewRequest("GET", "/map/string/error2").Do()
-	client.NewRequest("GET", "/map/string/render/error1").Do()
-	client.NewRequest("GET", "/map/string/render/error2").Do()
-
-	app.Renderer = func(eudore.Context, interface{}) error {
-		return errors.New("test render error")
-	}
-	client.NewRequest("GET", "/map/string/render").Do()
-	app.Binder = func(eudore.Context, io.Reader, interface{}) error {
-		return errors.New("test binder error")
-	}
-	client.NewRequest("GET", "/error").Do()
-	client.NewRequest("GET", "/render/error1").Do()
-	client.NewRequest("GET", "/render/error2").Do()
-	client.NewRequest("GET", "/render").Do()
-	client.NewRequest("GET", "/context").Do()
-	client.NewRequest("GET", "/context/render").Do()
-	client.NewRequest("GET", "/context/error1").Do()
-	client.NewRequest("GET", "/context/error2").Do()
-	client.NewRequest("GET", "/context/render/error1").Do()
-	client.NewRequest("GET", "/context/render/error2").Do()
-	client.NewRequest("GET", "/map/string").Do()
-	client.NewRequest("GET", "/map/string/render").Do()
-	client.NewRequest("GET", "/map/string/error1").Do()
-	client.NewRequest("GET", "/map/string/error2").Do()
-	client.NewRequest("GET", "/map/string/render/error1").Do()
-	client.NewRequest("GET", "/map/string/render/error2").Do()
-
-	app.CancelFunc()
-	app.Run()
+func (ctl *tableController) Any(ctx eudore.Context) {
+	ctx.Debug("tableController Any", ctl.Hello())
 }

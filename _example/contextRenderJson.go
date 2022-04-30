@@ -13,7 +13,10 @@ import (
 
 func main() {
 	// 设置默认Render为JSON，所有Render数据均使用json返回
-	app := eudore.NewApp(eudore.Renderer(eudore.RenderJSON))
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyRender, eudore.RenderJSON)
+	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
+
 	app.AddMiddleware(middleware.NewRequestIDFunc(nil))
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
 		ctx.WriteJSON(map[string]interface{}{
@@ -37,6 +40,5 @@ func main() {
 	client.NewRequest("GET", "/json2").Do().OutBody()
 
 	app.Listen(":8088")
-	// app.CancelFunc()
 	app.Run()
 }

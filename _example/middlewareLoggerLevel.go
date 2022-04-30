@@ -10,7 +10,6 @@ func main() {
 	app := eudore.NewApp()
 	// 设置日志级别Info，使用Options方法加载Logger刷新pinrt函数使用的日志级别
 	app.SetLevel(eudore.LogInfo)
-	app.Options(app.Logger)
 
 	app.AddMiddleware(middleware.NewLoggerLevelFunc(nil))
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))

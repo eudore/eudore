@@ -31,13 +31,15 @@ import (
 
 func main() {
 	app := eudore.NewApp()
-	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
-	app.AnyFunc("/*", func(ctx eudore.Context) {
+	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"), middleware.NewRequestIDFunc(nil))
+	app.AnyFunc("/* version=v1", func(ctx eudore.Context) {
 		ctx.WriteString("host: " + ctx.Host())
 		ctx.WriteString("\nmethod: " + ctx.Method())
 		ctx.WriteString("\npath: " + ctx.Path())
-		ctx.WriteString("\nreal ip: " + ctx.RealIP())
+		ctx.WriteString("\nparams: " + ctx.Params().String())
 		ctx.WriteString("\ncontext type: " + ctx.ContentType())
+		ctx.WriteString("\nreal ip: " + ctx.RealIP())
+		ctx.WriteString("\nrequest id: " + ctx.RequestID())
 		ctx.WriteString("\nistls: " + fmt.Sprint(ctx.Istls()))
 		body := ctx.Body()
 		if len(body) > 0 {

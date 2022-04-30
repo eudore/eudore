@@ -17,7 +17,8 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(eudore.NewLoggerStd(&eudore.LoggerStdConfig{
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(&eudore.LoggerStdConfig{
 		Writer: NewSyncWriterElastic("http://localhost:9200", "eudore"),
 		Level:  eudore.LogDebug,
 		// 时间格式必须为RFC3339Nano，Kibana才能作为索引识别

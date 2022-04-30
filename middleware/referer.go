@@ -56,13 +56,10 @@ func NewRefererFunc(data map[string]bool) eudore.HandlerFunc {
 }
 
 func checkRefererOrigin(ctx eudore.Context, referer string) bool {
-	if referer == "" {
+	if referer == "" || len(referer) < 8 {
 		return false
 	}
-	if ctx.Istls() {
-		return strings.HasPrefix(referer[8:], ctx.Host())
-	}
-	return strings.HasPrefix(referer[7:], ctx.Host())
+	return strings.HasPrefix(referer[7:], ctx.Host()) || strings.HasPrefix(referer[8:], ctx.Host())
 }
 
 type refererNode struct {

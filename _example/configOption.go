@@ -25,7 +25,7 @@ func main() {
 	app := eudore.NewApp()
 	// 设置配置解析函数为一个自定义函数返回错误。
 	app.ParseOption([]eudore.ConfigParseFunc{parseJSONOutput, parseError})
-	app.Options(app.Parse())
+	app.Parse()
 	app.Run()
 }
 

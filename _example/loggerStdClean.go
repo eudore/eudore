@@ -18,12 +18,13 @@ func main() {
 	defer os.RemoveAll("logger")
 
 	lw, err := eudore.NewLoggerWriterRotate("logger/logger-index.log", false, 1<<10, newCleanSizeFile(6))
-	app := eudore.NewApp(eudore.NewLoggerStd(&eudore.LoggerStdConfig{
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(&eudore.LoggerStdConfig{
 		Writer:     lw,
 		Level:      eudore.LogDebug,
 		TimeFormat: "Mon Jan 2 15:04:05 -0700 MST 2006",
 	}))
-	app.Options(err)
+	app.Info(err)
 
 	for i := 0; i < 100; i++ {
 		app.Debug("now is", time.Now().String())

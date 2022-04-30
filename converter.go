@@ -21,7 +21,6 @@ func ConvertRowsWithTags(rows *sql.Rows, i interface{}, tags []string) error
 */
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -31,16 +30,11 @@ import (
 	"time"
 )
 
-// seter 定义对象set属性的方法。
-type seter interface {
-	Set(string, interface{}) error
-}
-
-type getSeter struct {
-	all   bool
-	index int
-	keys  []string
-	tags  []string
+type convertValue struct {
+	Tags  []string
+	All   bool
+	Keys  []string
+	Index int
 	Value interface{}
 }
 
@@ -89,44 +83,29 @@ type converter struct {
 //
 // 如果传入的目标类型是数组、map、结构体，会使用json反序列化设置对象。
 func Set(i interface{}, key string, val interface{}) error {
-	return SetWithTags(i, key, val, DefaultGetSetTags)
+	return SetWithTags(i, key, val, DefaultGetSetTags, false)
 }
 
 // SetWithTags 函数和Set函数相同，可以额外设置tags。
-func SetWithTags(i interface{}, key string, val interface{}, tags []string) error {
-	if i == nil {
+func SetWithTags(i interface{}, key string, val interface{}, tags []string, all bool) error {
+	if i == nil || key == "" {
 		return ErrConverterInputDataNil
 	}
-	seter, ok := i.(seter)
-	if ok {
-		err := seter.Set(key, val)
-		if err == nil || err != ErrSeterNotSupportField {
-			return err
-		}
-	}
-	iValue := reflect.ValueOf(i)
-	switch iValue.Kind() {
-	case reflect.Ptr, reflect.Map, reflect.Interface:
-		if iValue.IsNil() {
-			return ErrConverterInputDataNil
-		}
-	default:
+	// 检测目标是指针类型。
+	if reflect.TypeOf(i).Kind() != reflect.Ptr {
 		return ErrConverterInputDataNotPtr
 	}
-	if key == "" {
-		return ErrConverterInputDataNil
-	}
-	s := &getSeter{
-		keys:  strings.Split(key, "."),
-		tags:  tags,
+	return (&convertValue{
+		Tags:  tags,
+		All:   all,
+		Keys:  strings.Split(key, "."),
 		Value: val,
-	}
-	return s.setValue(iValue)
+	}).setValue(reflect.ValueOf(i))
 }
 
-func (s *getSeter) setValue(iValue reflect.Value) error {
-	if len(s.keys) == 0 {
-		return setWithValue(reflect.ValueOf(s.Value), iValue)
+func (v *convertValue) setValue(iValue reflect.Value) error {
+	if len(v.Keys) == 0 {
+		return setWithValue(reflect.ValueOf(v.Value), iValue)
 	}
 	switch iValue.Kind() {
 	case reflect.Ptr:
@@ -134,23 +113,23 @@ func (s *getSeter) setValue(iValue reflect.Value) error {
 			// 将空指针赋值
 			iValue.Set(reflect.New(iValue.Type().Elem()))
 		}
-		return s.setValue(iValue.Elem())
+		return v.setValue(iValue.Elem())
 	case reflect.Interface:
-		return s.setInterface(iValue)
+		return v.setInterface(iValue)
 	case reflect.Struct:
-		return s.setStruct(iValue)
+		return v.setStruct(iValue)
 	case reflect.Map:
-		return s.setMap(iValue)
+		return v.setMap(iValue)
 	case reflect.Slice:
-		return s.setSlice(iValue)
+		return v.setSlice(iValue)
 	case reflect.Array:
-		return s.setArray(iValue)
+		return v.setArray(iValue)
 	}
-	return fmt.Errorf(ErrFormatConverterSetTypeError, iValue.Kind(), s.keys, s.Value)
+	return fmt.Errorf(ErrFormatConverterSetTypeError, iValue.Kind(), v.Keys, v.Value)
 }
 
 // 设置接口类型
-func (s *getSeter) setInterface(iValue reflect.Value) (err error) {
+func (v *convertValue) setInterface(iValue reflect.Value) (err error) {
 	// 如果是空接口，初始化为map[string]interface{}类型
 	if iValue.IsNil() {
 		if iValue.Type() != typeInterface {
@@ -161,7 +140,7 @@ func (s *getSeter) setInterface(iValue reflect.Value) (err error) {
 	// 创建一个可取地址的临时变量，并设置值用于下一步设置。
 	newValue := reflect.New(iValue.Elem().Type()).Elem()
 	newValue.Set(iValue.Elem())
-	err = s.setValue(newValue)
+	err = v.setValue(newValue)
 	// 将修改后的值重新赋值给对象
 	if err == nil {
 		iValue.Set(newValue)
@@ -170,25 +149,25 @@ func (s *getSeter) setInterface(iValue reflect.Value) (err error) {
 }
 
 // 处理结构体设置属性
-func (s *getSeter) setStruct(iValue reflect.Value) error {
+func (v *convertValue) setStruct(iValue reflect.Value) error {
 	// 查找属性是结构体的第几个属性。
-	var index = getStructIndexOfTags(iValue.Type(), s.keys[0], s.tags)
+	var index = getStructIndexOfTags(iValue.Type(), v.Keys[0], v.Tags)
 	// 未找到直接返回错误。
 	if index == -1 {
-		return fmt.Errorf(ErrFormatConverterSetStructNotField, s.keys[0])
+		return fmt.Errorf(ErrFormatConverterSetStructNotField, v.Keys[0])
 	}
 
 	// 获取结构体的属性
 	structField := iValue.Field(index)
 	if !structField.CanSet() {
-		return fmt.Errorf(ErrFormatConverterNotCanset, s.keys[0], iValue.Type().String())
+		return fmt.Errorf(ErrFormatConverterNotCanset, v.Keys[0], iValue.Type().String())
 	}
-	s.keys = s.keys[1:]
-	return s.setValue(structField)
+	v.Keys = v.Keys[1:]
+	return v.setValue(structField)
 }
 
 // 处理map
-func (s *getSeter) setMap(iValue reflect.Value) error {
+func (v *convertValue) setMap(iValue reflect.Value) error {
 	iType := iValue.Type()
 	// 对空map初始化
 	if iValue.IsNil() {
@@ -197,7 +176,7 @@ func (s *getSeter) setMap(iValue reflect.Value) error {
 
 	// 创建map需要匹配的key
 	mapKey := reflect.New(iType.Key()).Elem()
-	setWithString(mapKey, s.keys[0])
+	setWithString(mapKey, v.Keys[0])
 
 	newValue := reflect.New(iType.Elem()).Elem()
 	mapvalue := iValue.MapIndex(mapKey)
@@ -205,8 +184,8 @@ func (s *getSeter) setMap(iValue reflect.Value) error {
 		newValue.Set(mapvalue)
 	}
 
-	s.keys = s.keys[1:]
-	err := s.setValue(newValue)
+	v.Keys = v.Keys[1:]
+	err := v.setValue(newValue)
 	// 将修改后的mapvalue重新赋值给map
 	if err == nil {
 		iValue.SetMapIndex(mapKey, newValue)
@@ -214,17 +193,17 @@ func (s *getSeter) setMap(iValue reflect.Value) error {
 	return err
 }
 
-func (s *getSeter) setArray(iValue reflect.Value) error {
-	index, err := strconv.Atoi(s.keys[0])
+func (v *convertValue) setArray(iValue reflect.Value) error {
+	index, err := strconv.Atoi(v.Keys[0])
 	if err != nil || index < 0 || index >= iValue.Len() {
-		return fmt.Errorf(ErrFormatConverterSetArrayIndexInvalid, s.keys[0], iValue.Len())
+		return fmt.Errorf(ErrFormatConverterSetArrayIndexInvalid, v.Keys[0], iValue.Len())
 	}
-	s.keys = s.keys[1:]
-	return s.setValue(iValue.Index(index))
+	v.Keys = v.Keys[1:]
+	return v.setValue(iValue.Index(index))
 }
 
 // 处理数组和切片
-func (s *getSeter) setSlice(iValue reflect.Value) error {
+func (v *convertValue) setSlice(iValue reflect.Value) error {
 	iType := iValue.Type()
 	// 空切片初始化，默认长度2
 	if iValue.IsNil() {
@@ -232,7 +211,7 @@ func (s *getSeter) setSlice(iValue reflect.Value) error {
 	}
 	// 创建新元素的类型和值
 	newValue := reflect.New(iType.Elem()).Elem()
-	index, err := strconv.Atoi(s.keys[0])
+	index, err := strconv.Atoi(v.Keys[0])
 	if err != nil {
 		index = -1
 	}
@@ -249,8 +228,8 @@ func (s *getSeter) setSlice(iValue reflect.Value) error {
 		newValue.Set(iValue.Index(index))
 	}
 
-	s.keys = s.keys[1:]
-	err = s.setValue(newValue)
+	v.Keys = v.Keys[1:]
+	err = v.setValue(newValue)
 	if err == nil {
 		if index > -1 {
 			iValue.Index(index).Set(newValue)
@@ -277,7 +256,7 @@ func (s *getSeter) setSlice(iValue reflect.Value) error {
 //
 // 如果匹配失败直接返回空值。
 func Get(i interface{}, key string) interface{} {
-	val, err := getValue(i, key, false, DefaultGetSetTags)
+	val, err := getValue(i, key, DefaultGetSetTags, false)
 	if err != nil {
 		return nil
 	}
@@ -285,8 +264,8 @@ func Get(i interface{}, key string) interface{} {
 }
 
 // GetWithTags 函数和Get函数相同，可以额外设置tags，同时会返回error。
-func GetWithTags(i interface{}, key string, tags []string) (interface{}, error) {
-	val, err := getValue(i, key, false, tags)
+func GetWithTags(i interface{}, key string, tags []string, all bool) (interface{}, error) {
+	val, err := getValue(i, key, tags, false)
 	if err != nil {
 		return nil, err
 	}
@@ -294,11 +273,11 @@ func GetWithTags(i interface{}, key string, tags []string) (interface{}, error) 
 }
 
 // GetWithValue 函数和Get函数相同，可以允许查找私有属性并返回reflect.Value。
-func GetWithValue(i interface{}, key string, all bool) (reflect.Value, error) {
-	return getValue(i, key, all, nil)
+func GetWithValue(i interface{}, key string, tags []string, all bool) (reflect.Value, error) {
+	return getValue(i, key, tags, all)
 }
 
-func getValue(i interface{}, key string, all bool, tags []string) (reflect.Value, error) {
+func getValue(i interface{}, key string, tags []string, all bool) (reflect.Value, error) {
 	val := reflect.ValueOf(i)
 	if i == nil {
 		return val, ErrConverterInputDataNil
@@ -306,10 +285,10 @@ func getValue(i interface{}, key string, all bool, tags []string) (reflect.Value
 	if key == "" {
 		return val, nil
 	}
-	s := &getSeter{
-		all:  all,
-		keys: strings.Split(key, "."),
-		tags: tags,
+	s := &convertValue{
+		All:  all,
+		Keys: strings.Split(key, "."),
+		Tags: tags,
 	}
 	val, err := s.getValue(val)
 	if err != nil {
@@ -319,81 +298,81 @@ func getValue(i interface{}, key string, all bool, tags []string) (reflect.Value
 }
 
 // 从目标类型获取字符串路径的属性
-func (s *getSeter) getValue(iValue reflect.Value) (reflect.Value, error) {
-	if len(s.keys) == s.index {
+func (v *convertValue) getValue(iValue reflect.Value) (reflect.Value, error) {
+	if len(v.Keys) == v.Index {
 		return iValue, nil
 	}
 	switch iValue.Kind() {
 	case reflect.Ptr, reflect.Interface:
 		if iValue.IsNil() {
-			return iValue, s.newGetError("is nil ptr or interface")
+			return iValue, v.newGetError("is nil ptr or interface")
 		}
-		return s.getValue(iValue.Elem())
+		return v.getValue(iValue.Elem())
 	case reflect.Struct:
-		return s.getStruct(iValue)
+		return v.getStruct(iValue)
 	case reflect.Map:
-		return s.getMap(iValue)
+		return v.getMap(iValue)
 	case reflect.Array, reflect.Slice:
-		return s.getSlice(iValue)
+		return v.getSlice(iValue)
 	}
-	return iValue, s.newGetError("not find sub path")
+	return iValue, v.newGetError("not find sub path")
 }
 
 // 处理结构体对象的读取
-func (s *getSeter) getStruct(iValue reflect.Value) (reflect.Value, error) {
+func (v *convertValue) getStruct(iValue reflect.Value) (reflect.Value, error) {
 	// 查找key对应的属性索引，不存在返回-1。
-	var index = getStructIndexOfTags(iValue.Type(), s.keys[s.index], s.tags)
+	var index = getStructIndexOfTags(iValue.Type(), v.Keys[v.Index], v.Tags)
 	if index == -1 {
-		return iValue, s.newGetError("not field")
+		return iValue, v.newGetError("not field")
 	}
 	// 获取key对应结构的属性。
 	structField := iValue.Field(index)
-	if structField.CanSet() || s.all {
-		s.index++
-		return s.getValue(structField)
+	if structField.CanSet() || v.All {
+		v.Index++
+		return v.getValue(structField)
 	}
-	return iValue, s.newGetError("field is not CanSet")
+	return iValue, v.newGetError("field is not CanSet")
 }
 
 // 处理map读取属性
-func (s *getSeter) getMap(iValue reflect.Value) (reflect.Value, error) {
+func (v *convertValue) getMap(iValue reflect.Value) (reflect.Value, error) {
 	// 检测map是否为空
 	if iValue.IsNil() {
-		return iValue, s.newGetError("is nil map")
+		return iValue, v.newGetError("is nil map")
 	}
 	// 创建map需要的key
 	mapKey := reflect.New(iValue.Type().Key()).Elem()
-	err := setWithString(mapKey, s.keys[s.index])
+	err := setWithString(mapKey, v.Keys[v.Index])
 	if err != nil {
-		return iValue, s.newGetError("map key is invalid")
+		return iValue, v.newGetError("map key is invalid")
 	}
 
 	// 获得map的value, 如果值无效则返回空。
 	mapvalue := iValue.MapIndex(mapKey)
 	if mapvalue.Kind() == reflect.Invalid {
-		return iValue, s.newGetError("map value is invalid")
+		return iValue, v.newGetError("map value is invalid")
 	}
-	s.index++
-	return s.getValue(mapvalue)
+	v.Index++
+	return v.getValue(mapvalue)
 }
 
 // 处理数组切片读取属性
-func (s *getSeter) getSlice(iValue reflect.Value) (reflect.Value, error) {
+func (v *convertValue) getSlice(iValue reflect.Value) (reflect.Value, error) {
 	// 检测切片是否为空
 	if iValue.Kind() == reflect.Slice && iValue.IsNil() {
-		return iValue, s.newGetError("is nil slice")
+		return iValue, v.newGetError("is nil slice")
 	}
 	// 检测索引是否存在
-	index, err := strconv.Atoi(s.keys[s.index])
+	index, err := strconv.Atoi(v.Keys[v.Index])
 	if err != nil || index < 0 || iValue.Len() <= index {
-		return iValue, s.newGetError("slice index is invalid")
+		return iValue, v.newGetError("slice index is invalid")
 	}
-	s.index++
-	return s.getValue(iValue.Index(index))
+	v.Index++
+	return v.getValue(iValue.Index(index))
 }
 
-func (s *getSeter) newGetError(str string) error {
-	return fmt.Errorf(ErrFormatConverterGet, strings.Join(s.keys[:s.index+1], "."), str)
+func (v *convertValue) newGetError(str string) error {
+	return fmt.Errorf(ErrFormatConverterGet, strings.Join(v.Keys[:v.Index+1], "."), str)
 }
 
 // ConvertMapString 函数将一个map或struct转换成map[string]interface{}。
@@ -551,330 +530,6 @@ func (c *converter) convertMapMapToMap(iValue reflect.Value, val map[interface{}
 		// 设置新map的值为原map匹配的值的转换，值为基本类型会直接返回。
 		val[key.Interface()] = c.convertMap(v)
 	}
-}
-
-// ConvertTo 将一个对象属性复制给另外一个对象,可转换对象属性会覆盖原值。
-func ConvertTo(source interface{}, target interface{}) error {
-	return ConvertToWithTags(source, target, DefaultConvertTags)
-}
-
-// ConvertToWithTags 函数与ConvertTo相同，允许使用额外的tags。
-func ConvertToWithTags(source interface{}, target interface{}, tags []string) error {
-	if source == nil {
-		return ErrConverterInputDataNil
-	}
-	if target == nil {
-		return ErrConverterTargetDataNil
-	}
-
-	// 检测目标是指针类型。
-	iValue := reflect.ValueOf(target)
-	switch iValue.Kind() {
-	case reflect.Ptr:
-	case reflect.Map, reflect.Interface:
-		if iValue.IsNil() {
-			return ErrConverterInputDataNotPtr
-		}
-	default:
-		return ErrConverterInputDataNotPtr
-	}
-
-	c := &converter{
-		tags: tags,
-	}
-	return c.convertTo(reflect.ValueOf(source), reflect.ValueOf(target))
-}
-
-func (c *converter) convertTo(sValue reflect.Value, tValue reflect.Value) error {
-	if sValue.Kind() == reflect.Ptr || sValue.Kind() == reflect.Interface || tValue.Kind() == reflect.Ptr || tValue.Kind() == reflect.Interface {
-		stypes, svalues := getIndirectAllValue(sValue)
-		ttypes, tvalues := getIndirectAllValue(tValue)
-		sValue = svalues[len(svalues)-1]
-		tValue = tvalues[len(tvalues)-1]
-		for i, ttype := range ttypes {
-			for j, stype := range stypes {
-				// 转换接口类型、相同类型、type别名类型
-				if stype.ConvertibleTo(ttype) && tvalues[i].CanSet() {
-					// 如果类型最终指向map或struct则进行最后转换，将map或struct转换成map或struct
-					if ttype.Kind() == reflect.Ptr && indirectKindInMapStruct(ttype) && indirectKindInMapStruct(stype) {
-						return c.convertTo(sValue, tValue)
-					}
-					return c.convertToData(svalues[j], tvalues[i])
-				}
-			}
-		}
-
-		// 目标类型如果是空指针，则尝试进行初始化并转换
-		if tValue.Kind() == reflect.Ptr && tValue.IsNil() {
-			newValue := reflect.New(tValue.Type().Elem())
-			err := c.convertTo(sValue, newValue)
-			if err == nil {
-				tValue.Set(newValue)
-			}
-			return err
-		}
-	}
-	return c.convertToData(sValue, tValue)
-}
-
-func indirectKindInMapStruct(iType reflect.Type) bool {
-	for iType.Kind() == reflect.Ptr {
-		iType = iType.Elem()
-	}
-	return iType.Kind() == reflect.Struct || iType.Kind() == reflect.Map
-}
-
-func (c *converter) convertToData(sValue reflect.Value, tValue reflect.Value) error {
-	skind := sValue.Kind()
-	tkind := tValue.Kind()
-	// map和struct转换
-	switch {
-	case skind == reflect.Map && tkind == reflect.Map:
-		c.convertToMapToMap(sValue, tValue)
-	case skind == reflect.Map && tkind == reflect.Struct:
-		c.convertToMapToStruct(sValue, tValue)
-	case skind == reflect.Struct && tkind == reflect.Map:
-		c.convertToStructToMap(sValue, tValue)
-	case skind == reflect.Struct && tkind == reflect.Struct:
-		c.convertToStructToStruct(sValue, tValue)
-	case (skind == reflect.Slice || skind == reflect.Array) && (tkind == reflect.Slice || tkind == reflect.Array):
-		c.convertToSlice(sValue, tValue)
-	case checkValueIsZero(sValue):
-		return nil
-	default:
-		setWithValueData(sValue, tValue)
-	}
-	return nil
-}
-
-func (c *converter) convertToSlice(sValue reflect.Value, tValue reflect.Value) {
-	num := sValue.Len() - tValue.Len()
-	if num > 0 && tValue.CanSet() {
-		tValue.Set(reflect.AppendSlice(tValue, reflect.MakeSlice(tValue.Type(), num, num)))
-	}
-	if num > 0 {
-		num = tValue.Len()
-	} else {
-		num = sValue.Len()
-	}
-	for i := 0; i < num; i++ {
-		c.convertTo(sValue.Index(i), tValue.Index(i))
-	}
-}
-
-func (c *converter) convertToMapToMap(sValue reflect.Value, tValue reflect.Value) {
-	tType := tValue.Type()
-	if tValue.IsNil() {
-		tValue.Set(reflect.MakeMap(tType))
-	}
-	for _, key := range sValue.MapKeys() {
-		mapvalue := reflect.New(tType.Elem()).Elem()
-		if err := c.convertTo(sValue.MapIndex(key), mapvalue); err == nil {
-			tValue.SetMapIndex(key, mapvalue)
-		}
-	}
-}
-
-func (c *converter) convertToMapToStruct(sValue reflect.Value, tValue reflect.Value) {
-	tType := tValue.Type()
-	for _, key := range sValue.MapKeys() {
-		index := getStructIndexOfTags(tType, fmt.Sprint(key.Interface()), c.tags)
-		if index == -1 || !tValue.Field(index).CanSet() {
-			continue
-		}
-		c.convertTo(sValue.MapIndex(key), tValue.Field(index))
-	}
-}
-
-func (c *converter) convertToStructToMap(sValue reflect.Value, tValue reflect.Value) {
-	sType := sValue.Type()
-	tType := tValue.Type()
-	if tValue.IsNil() {
-		tValue.Set(reflect.MakeMap(tType))
-	}
-	for i := 0; i < sType.NumField(); i++ {
-		if !sValue.Field(i).CanSet() || checkValueIsZero(sValue.Field(i)) {
-			continue
-		}
-		mapvalue := reflect.New(tType.Elem()).Elem()
-		if err := c.convertTo(sValue.Field(i), mapvalue); err == nil {
-			tValue.SetMapIndex(reflect.ValueOf(sType.Field(i).Name), mapvalue)
-		}
-	}
-}
-
-func (c *converter) convertToStructToStruct(sValue reflect.Value, tValue reflect.Value) {
-	sType := sValue.Type()
-	tType := tValue.Type()
-	for i := 0; i < sType.NumField(); i++ {
-		if !sValue.CanSet() || checkValueIsZero(sValue.Field(i)) {
-			continue
-		}
-		index := getStructIndexOfTags(tType, sType.Field(i).Name, c.tags)
-		if index == -1 || !tValue.Field(index).CanSet() {
-			continue
-		}
-		c.convertTo(sValue.Field(i), tValue.Field(index))
-	}
-}
-
-// ConvertRows 函数将*sql.Rows数据解析成指定struct、map、slice。
-func ConvertRows(rows *sql.Rows, i interface{}) error {
-	return ConvertRowsWithTags(rows, i, DefaultConvertRowsTags)
-}
-
-// ConvertRowsWithTags 函数指定tags将*sql.Rows数据解析成指定struct、map、slice。
-func ConvertRowsWithTags(rows *sql.Rows, i interface{}, tags []string) error {
-	columns, err := rows.Columns()
-	if err != nil {
-		return fmt.Errorf("ConvertRows get columns error: %s", err.Error())
-	}
-	iValue := reflect.ValueOf(i)
-	if iValue.Kind() == reflect.Invalid {
-		return fmt.Errorf("ConvertRows target is invalid zero value")
-	}
-	scaner := &sqlScaner{
-		tags:    tags,
-		Rows:    rows,
-		columns: columns,
-		isrow:   true,
-	}
-	err = scaner.Scan(iValue)
-	if err != nil {
-		return fmt.Errorf("ConvertRows scan type %s error: %s", reflect.TypeOf(i).String(), err.Error())
-	}
-	return nil
-}
-
-type sqlScaner struct {
-	tags         []string
-	Rows         *sql.Rows
-	columns      []string
-	isrow        bool
-	structFields []int
-	mapValues    []interface{}
-}
-
-func (scan *sqlScaner) Scan(iValue reflect.Value) error {
-	switch iValue.Kind() {
-	case reflect.Slice, reflect.Array:
-		scan.isrow = false
-		return scan.ScanSlice(iValue)
-	case reflect.Struct:
-		if iValue.CanAddr() {
-			return scan.ScanStruct(iValue)
-		}
-		return fmt.Errorf("struct %s must can addr", iValue.Type().String())
-	case reflect.Map:
-		return scan.ScanMap(iValue)
-	case reflect.Ptr:
-		if iValue.IsNil() {
-			if iValue.CanSet() {
-				iValue.Set(reflect.New(iValue.Type().Elem()))
-			} else {
-				return fmt.Errorf("ptr %s is nil and not set", iValue.Type().String())
-			}
-		}
-		return scan.Scan(iValue.Elem())
-	case reflect.Interface:
-		if iValue.IsNil() {
-			return fmt.Errorf("interface %s is nil", iValue.Type().String())
-		}
-		return scan.Scan(iValue.Elem())
-	case reflect.String, reflect.Int, reflect.Uint, reflect.Float32, reflect.Float64, reflect.Bool, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		if len(scan.columns) == 1 && iValue.CanAddr() {
-			if scan.isrow && scan.Rows.Next() {
-				defer scan.Rows.Close()
-			}
-			return scan.Rows.Scan(iValue.Addr().Interface())
-		}
-		return fmt.Errorf("base type scan columns must is one,this is %d", len(scan.columns))
-	}
-	return fmt.Errorf("scan invalid type %s", iValue.Type().String())
-}
-
-func (scan *sqlScaner) ScanSlice(iValue reflect.Value) error {
-	num := iValue.Len()
-	if iValue.Kind() == reflect.Slice {
-		num = iValue.Cap()
-	}
-	if num == 0 {
-		num = 65536
-	}
-	for i := 0; scan.Rows.Next() && i < num; i++ {
-		if i >= iValue.Len() {
-			iValue.Set(reflect.Append(iValue, reflect.New(iValue.Type().Elem()).Elem()))
-		}
-		err := scan.Scan(iValue.Index(i))
-		if err != nil {
-			return err
-		}
-	}
-	scan.Rows.Close()
-	return scan.Rows.Err()
-}
-
-func (scan *sqlScaner) ScanStruct(iValue reflect.Value) error {
-	if scan.isrow && scan.Rows.Next() {
-		defer scan.Rows.Close()
-	}
-	if scan.structFields == nil {
-		scan.structFields = scan.getStructFiles(iValue.Type(), scan.columns)
-	}
-	datas := make([]interface{}, len(scan.structFields))
-	for i, field := range scan.structFields {
-		datas[i] = iValue.Field(field).Addr().Interface()
-	}
-	return scan.Rows.Scan(datas...)
-}
-
-func (scan *sqlScaner) getStructFiles(iType reflect.Type, columns []string) []int {
-	fields := make([]int, 0, len(columns))
-	for _, column := range columns {
-		for i := 0; i < iType.NumField(); i++ {
-			field := iType.Field(i)
-			if strings.ToLower(field.Name) == column {
-				fields = append(fields, i)
-				break
-			}
-			for _, tag := range scan.tags {
-				if field.Tag.Get(tag) == column {
-					fields = append(fields, i)
-					break
-				}
-			}
-		}
-	}
-	return fields
-}
-
-func (scan *sqlScaner) ScanMap(iValue reflect.Value) error {
-	if iValue.Type().Key() != typeString {
-		return fmt.Errorf("map key type must is string, current key type is %s", iValue.Type().String())
-	}
-	if iValue.IsNil() {
-		if !iValue.CanSet() {
-			return fmt.Errorf("map %s is nil and not set", iValue.Type().String())
-		}
-		iValue.Set(reflect.MakeMap(iValue.Type()))
-	}
-	if scan.isrow && scan.Rows.Next() {
-		defer scan.Rows.Close()
-	}
-	if scan.mapValues == nil {
-		types, _ := scan.Rows.ColumnTypes()
-		scan.mapValues = make([]interface{}, len(scan.columns))
-		for i := 0; i < len(scan.columns); i++ {
-			scan.mapValues[i] = reflect.New(types[i].ScanType()).Interface()
-		}
-	}
-	err := scan.Rows.Scan(scan.mapValues...)
-	if err == nil {
-		for i := 0; i < len(scan.columns); i++ {
-			iValue.SetMapIndex(reflect.ValueOf(scan.columns[i]), reflect.ValueOf(scan.mapValues[i]).Elem())
-		}
-	}
-	return err
 }
 
 // checkValueIsZero 函数检测一个值是否为空, 修改go.1.13 refletv.Value.IsZero方法。
@@ -1065,7 +720,7 @@ func setWithString(iValue reflect.Value, val string) error {
 	case reflect.String:
 		iValue.SetString(val)
 	case reflect.Struct:
-		if iValue.Type() == typeTimeTime {
+		if iValue.Type().ConvertibleTo(typeTimeTime) {
 			return setTimeField(val, iValue)
 		}
 		return json.Unmarshal([]byte(val), iValue.Addr().Interface())
@@ -1205,7 +860,11 @@ func setTimeField(str string, iValue reflect.Value) (err error) {
 	for _, f := range timeformats {
 		t, err = time.Parse(f, str)
 		if err == nil {
-			iValue.Set(reflect.ValueOf(t))
+			if iValue.Type() != typeTimeTime {
+				iValue.Set(reflect.ValueOf(t).Convert(iValue.Type()))
+			} else {
+				iValue.Set(reflect.ValueOf(t))
+			}
 			return
 		}
 	}

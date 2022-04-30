@@ -12,6 +12,21 @@ import (
 	"github.com/eudore/eudore"
 )
 
+type responseMessage struct {
+	Time       string   `json:"time"`
+	Host       string   `json:"host"`
+	Method     string   `json:"method"`
+	Path       string   `json:"path"`
+	Route      string   `json:"route"`
+	Status     int      `json:"status"`
+	Message    string   `json:"message,omitempty"`
+	Error      string   `json:"error,omitempty"`
+	Stack      []string `json:"stack,omitempty"`
+	Size       int64    `json:"size,omitempty"`
+	XRequestID string   `json:"x-request-id,omitempty"`
+	XTraceID   string   `json:"x-trace-id,omitempty"`
+}
+
 // HandlerAdmin 函数返回Admin UI界面。
 func HandlerAdmin(ctx eudore.Context) {
 	ctx.SetHeader("X-Eudore-Admin", "ui")
@@ -34,12 +49,12 @@ func NewBasicAuthFunc(names map[string]string) eudore.HandlerFunc {
 		if len(auth) > 5 && auth[:6] == "Basic " {
 			name, ok := checks[auth[6:]]
 			if ok {
-				ctx.SetParam("basicauth", name)
+				ctx.SetParam(eudore.ParamBasicAuth, name)
 				return
 			}
 		}
 		ctx.SetHeader(eudore.HeaderWWWAuthenticate, "Basic")
-		ctx.WriteHeader(401)
+		ctx.WriteHeader(eudore.StatusUnauthorized)
 		ctx.End()
 	}
 }
@@ -50,11 +65,18 @@ func NewBodyLimitFunc(size int64) eudore.HandlerFunc {
 		req := ctx.Request()
 		if req.ContentLength > size {
 			ctx.WriteHeader(http.StatusRequestEntityTooLarge)
-			ctx.Render(struct {
-				Status  int    `json:"status" xml:"status"`
-				Message string `json:"message" xml:"message"`
-				Size    int64  `json:"size" xml:"size"`
-			}{Status: 413, Message: "Request Entity Too Large", Size: req.ContentLength})
+			ctx.Render(responseMessage{
+				Time:       time.Now().Format(eudore.DefaultLoggerTimeFormat),
+				Host:       ctx.Host(),
+				Method:     ctx.Method(),
+				Path:       ctx.Path(),
+				Route:      ctx.GetParam(eudore.ParamRoute),
+				Status:     http.StatusRequestEntityTooLarge,
+				Message:    http.StatusText(http.StatusRequestEntityTooLarge),
+				Size:       req.ContentLength,
+				XRequestID: ctx.Response().Header().Get(eudore.HeaderXRequestID),
+				XTraceID:   ctx.Response().Header().Get(eudore.HeaderXTraceID),
+			})
 			ctx.End()
 			return
 		}
@@ -70,7 +92,7 @@ type limitedReader struct {
 
 func (l *limitedReader) Read(p []byte) (n int, err error) {
 	if l.N <= 0 {
-		return 0, io.EOF
+		return 0, eudore.ErrMiddlewareRequestEntityTooLarge
 	}
 	if int64(len(p)) > l.N {
 		p = p[0:l.N]
@@ -78,6 +100,52 @@ func (l *limitedReader) Read(p []byte) (n int, err error) {
 	n, err = l.ReadCloser.Read(p)
 	l.N -= int64(n)
 	return
+}
+
+// NewContextWarpFunc 函数中间件使之后的处理函数使用的eudore.Context对象为新的Context。
+//
+// 装饰器下可以直接对Context进行包装，而责任链下无法修改Context主体故设计该中间件作为中间件执行机制补充。
+func NewContextWarpFunc(fn func(eudore.Context) eudore.Context) eudore.HandlerFunc {
+	return func(ctx eudore.Context) {
+		index, handler := ctx.GetHandler()
+		wctx := &contextWarp{
+			Context: fn(ctx),
+			index:   index,
+			handler: handler,
+		}
+		wctx.Next()
+		ctx.SetHandler(wctx.index, wctx.handler)
+	}
+}
+
+type contextWarp struct {
+	eudore.Context
+	index   int
+	handler eudore.HandlerFuncs
+}
+
+// SetHandler 方法设置请求上下文的全部请求处理者。
+func (ctx *contextWarp) SetHandler(index int, hs eudore.HandlerFuncs) {
+	ctx.index, ctx.handler = index, hs
+}
+
+// GetHandler 方法获取请求上下文的当前处理索引和全部请求处理者。
+func (ctx *contextWarp) GetHandler() (int, eudore.HandlerFuncs) {
+	return ctx.index, ctx.handler
+}
+
+// Next 方法调用请求上下文下一个处理函数。
+func (ctx *contextWarp) Next() {
+	ctx.index++
+	for ctx.index < len(ctx.handler) {
+		ctx.handler[ctx.index](ctx)
+		ctx.index++
+	}
+}
+
+// End 结束请求上下文的处理。
+func (ctx *contextWarp) End() {
+	ctx.index = 0xff
 }
 
 // NewHeaderFunc 函数创建响应header写入中间件。
@@ -96,9 +164,9 @@ func NewHeaderFunc(h http.Header) eudore.HandlerFunc {
 // NewHeaderWithSecureFunc 函数创建响应header写入中间件，并额外附加基本安全header。
 func NewHeaderWithSecureFunc(h http.Header) eudore.HandlerFunc {
 	header := http.Header{
-		"X-XSS-Protection":       []string{"1; mode=block"},
-		"X-Frame-Options":        []string{"SAMEORIGIN"},
-		"X-Content-Type-Options": []string{"nosniff"},
+		eudore.HeaderXXSSProtection:      []string{"1; mode=block"},
+		eudore.HeaderXFrameOptions:       []string{"SAMEORIGIN"},
+		eudore.HeaderXContentTypeOptions: []string{"nosniff"},
 	}
 	for k, v := range h {
 		header[k] = append(header[k], v...)
@@ -106,12 +174,41 @@ func NewHeaderWithSecureFunc(h http.Header) eudore.HandlerFunc {
 	return NewHeaderFunc(header)
 }
 
+// NewHeaderFilteFunc 函数创建请求header过滤中间件，对来源于外部ip请求，过滤指定header。
+func NewHeaderFilteFunc(iplist, names []string) eudore.HandlerFunc {
+	if iplist == nil {
+		iplist = []string{"10.0.0.0/8", "172.16.0.0/12", "192.0.0.0/24", "127.0.0.1"}
+	}
+	if names == nil {
+		names = []string{eudore.HeaderXRealIP, eudore.HeaderXForwardedFor, eudore.HeaderXForwardedHost, eudore.HeaderXForwardedProto, eudore.HeaderXRequestID, eudore.HeaderXTraceID}
+	}
+	var list BlackNode
+	for _, ip := range iplist {
+		list.Insert(ip)
+	}
+	return func(ctx eudore.Context) {
+		addr := ctx.Request().RemoteAddr
+		pos := strings.IndexByte(addr, ':')
+		if pos != -1 {
+			addr = addr[:pos]
+		}
+		if list.Look(ip2int(addr)) {
+			return
+		}
+		h := ctx.Request().Header
+		for _, name := range names {
+			h.Del(name)
+		}
+	}
+}
+
 // NewLoggerFunc 函数创建一个请求日志记录中间件。
 //
 // app参数传入*eudore.App需要使用其Logger输出日志，paramsh获取Context.Params如果不为空则添加到输出日志条目中
 //
 // 状态码如果为40x、50x输出日志级别为Error。
-func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
+func NewLoggerFunc(log eudore.Logger, params ...string) eudore.HandlerFunc {
+	log = log.WithField("logger", true)
 	keys := []string{"method", "path", "realip", "proto", "host", "status", "request-time", "size"}
 	headerkeys := [...]string{eudore.HeaderXRequestID, eudore.HeaderXTraceID, eudore.HeaderLocation}
 	headernames := [...]string{"x-request-id", "x-trace-id", "location"}
@@ -120,7 +217,7 @@ func NewLoggerFunc(app *eudore.App, params ...string) eudore.HandlerFunc {
 		ctx.Next()
 		status := ctx.Response().Status()
 		// 连续WithField保证field顺序
-		out := app.WithFields(keys, []interface{}{
+		out := log.WithFields(keys, []interface{}{
 			ctx.Method(), ctx.Path(), ctx.RealIP(), ctx.Request().Proto,
 			ctx.Host(), status, time.Now().Sub(now).String(), ctx.Response().Size(),
 		})
@@ -170,9 +267,9 @@ func NewLoggerLevelFunc(fn func(ctx eudore.Context) int) eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
 		l := fn(ctx)
 		if -1 < l && l < 5 {
-			log := ctx.Logger().WithFields(nil, nil)
+			log := ctx.Value(eudore.ContextKeyLogger).(eudore.Logger).WithField("logger", true)
 			log.SetLevel(eudore.LoggerLevel(l))
-			ctx.SetLogger(log)
+			ctx.SetValue(eudore.ContextKeyLogger, log)
 		}
 	}
 }
@@ -190,24 +287,30 @@ func NewRecoverFunc() eudore.HandlerFunc {
 			if !ok {
 				err = fmt.Errorf("%v", r)
 			}
-			stack := eudore.GetPanicStack(5)
+			stack := eudore.GetPanicStack(3)
 			ctx.WithField("error", "recover error").WithField("stack", stack).Error(err)
 
 			if ctx.Response().Size() == 0 {
-				ctx.WriteHeader(500)
+				ctx.WriteHeader(eudore.StatusInternalServerError)
 			}
-			ctx.Render(map[string]interface{}{
-				"error":        err.Error(),
-				"stack":        stack,
-				"status":       ctx.Response().Status(),
-				"x-request-id": ctx.RequestID(),
+			ctx.Render(responseMessage{
+				Time:       time.Now().Format(eudore.DefaultLoggerTimeFormat),
+				Host:       ctx.Host(),
+				Method:     ctx.Method(),
+				Path:       ctx.Path(),
+				Route:      ctx.GetParam(eudore.ParamRoute),
+				Status:     ctx.Response().Status(),
+				Error:      err.Error(),
+				Stack:      stack,
+				XRequestID: ctx.Response().Header().Get(eudore.HeaderXRequestID),
+				XTraceID:   ctx.Response().Header().Get(eudore.HeaderXTraceID),
 			})
 		}()
 		ctx.Next()
 	}
 }
 
-// NewRequestIDFunc 函数创建一个请求ID注入处理函数，不给定请求ID创建函数，默认使用时间戳和随机数。
+// NewRequestIDFunc 函数创建一个请求ID注入处理函数，不给定请求ID创建函数，默认使用时间戳和随机数,会将request-id写入协议和附加到日志field。
 func NewRequestIDFunc(fn func(eudore.Context) string) eudore.HandlerFunc {
 	if fn == nil {
 		fn = func(eudore.Context) string {
@@ -221,9 +324,8 @@ func NewRequestIDFunc(fn func(eudore.Context) string) eudore.HandlerFunc {
 		requestID := ctx.GetHeader(eudore.HeaderXRequestID)
 		if requestID == "" {
 			requestID = fn(ctx)
-			ctx.Request().Header.Add(eudore.HeaderXRequestID, requestID)
 		}
 		ctx.SetHeader(eudore.HeaderXRequestID, requestID)
-		ctx.SetLogger(ctx.Logger().WithField("x-request-id", requestID).WithFields(nil, nil))
+		ctx.SetValue(eudore.ContextKeyLogger, ctx.Value(eudore.ContextKeyLogger).(eudore.Logger).WithField("x-request-id", requestID).WithField("logger", true))
 	}
 }

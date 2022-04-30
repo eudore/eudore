@@ -117,66 +117,28 @@ func NewLoggerStd(arg interface{}) Logger {
 	return log
 }
 
-// NewLoggerInit 函数创建一个初始化日志处理器。
-func NewLoggerInit() Logger {
-	data := &loggerStdDataInit{}
-	log := data.GetLogger()
-	log.LoggerStdData = data
-	log.Logger = true
-	return &loggerInit{
-		loggerStdDataInit: data,
-		LoggerStd:         log,
-	}
-}
-
-// loggerInit the initial log processor only records the log. After setting the log processor,
+// NewLoggerInit the initial log processor only records the log. After setting the log processor,
 // it will forward the log of the current record to the new log processor for processing the log generated before the program is initialized.
 //
 // loggerInit 初始日志处理器仅记录日志，再设置日志处理器后，
 // 会将当前记录的日志交给新日志处理器处理，用于处理程序初始化之前产生的日志。
 //
 // LoggerInit实现了NextHandler(Logger)方法，断言调用该方法设置next logger就会将LoggerInit的日子输出给next logger。
-type loggerInit struct {
-	*loggerStdDataInit
-	*LoggerStd
+func NewLoggerInit() Logger {
+	return NewLoggerStd(&loggerStdDataInit{})
 }
 
-// NextHandler 方法实现loggerInitHandler接口。
-func (log *loggerInit) NextHandler(logger Logger) {
-	log.Lock()
-	logger = logger.WithField("depth", "disable").WithFields(nil, nil)
-	for _, data := range log.Data {
-		entry := logger.WithField("time", data.Time)
-		for i := range data.Keys {
-			entry = entry.WithField(data.Keys[i], data.Vals[i])
-		}
-		switch data.Level {
-		case LogDebug:
-			entry.Debug(data.Message)
-		case LogInfo:
-			entry.Info(data.Message)
-		case LogWarning:
-			entry.Warning(data.Message)
-		case LogError:
-			entry.Error(data.Message)
-		case LogFatal:
-			entry.Fatal(data.Message)
-		}
-	}
-	log.Data = log.Data[0:0]
-	log.Unlock()
-	logger.Sync()
-}
-
-func (log *loggerInit) Sync() error {
-	return log.loggerStdDataInit.Sync()
+// NewLoggerNull 定义空日志输出，丢弃所有日志。
+func NewLoggerNull() Logger {
+	return NewLoggerStd(&loggerStdDataNull{})
 }
 
 // NewLoggerStdDataJSON 函数创建一个LoggerStd的JSON数据处理器。
 func NewLoggerStdDataJSON(arg interface{}) LoggerStdData {
-	var config LoggerStdConfig
-	config.TimeFormat = "2006-01-02 15:04:05"
-	ConvertTo(arg, &config)
+	config := &LoggerStdConfig{
+		TimeFormat: DefaultLoggerTimeFormat,
+	}
+	ConvertTo(arg, config)
 	logdepath := 3
 	if !config.FileLine {
 		logdepath = 3 - 0x7f
@@ -196,10 +158,10 @@ func NewLoggerStdDataJSON(arg interface{}) LoggerStdData {
 		return &LoggerStd{
 			LoggerStdData: data,
 			Level:         config.Level,
-			Timeformat:    "2006-01-02 15:04:05",
 			Buffer:        make([]byte, 0, 2048),
 			Keys:          make([]string, 0, 4),
 			Vals:          make([]interface{}, 0, 4),
+			Timeformat:    config.TimeFormat,
 			Depth:         logdepath,
 		}
 	}
@@ -210,6 +172,7 @@ type loggerStdDataJSON struct {
 	sync.Mutex
 	sync.Pool
 	LoggerWriter
+	*time.Ticker
 }
 
 func (data *loggerStdDataJSON) GetLogger() *LoggerStd {
@@ -239,6 +202,25 @@ func (data *loggerStdDataJSON) PutLogger(entry *LoggerStd) {
 	data.Put(entry)
 }
 
+// Mount 方法启动周期Sync，每80ms执行一次。
+func (data *loggerStdDataJSON) Mount(ctx context.Context) {
+	data.Ticker = time.NewTicker(time.Millisecond * 80)
+	go func() {
+		for range data.Ticker.C {
+			data.Sync()
+		}
+	}()
+}
+
+// Unmount 方法关闭周期Sync。
+func (data *loggerStdDataJSON) Unmount(ctx context.Context) {
+	if data.Ticker != nil {
+		data.Ticker.Stop()
+	}
+	data.Sync()
+	time.Sleep(time.Millisecond * 20)
+}
+
 type loggerStdDataInit struct {
 	sync.Mutex
 	Data []*LoggerStd
@@ -256,7 +238,59 @@ func (data *loggerStdDataInit) PutLogger(entry *LoggerStd) {
 	data.Unlock()
 }
 
+// Unmount 方法获取ContextKeyLogger.(Logger)接受Init存储的日志。
+func (data *loggerStdDataInit) Unmount(ctx context.Context) {
+	logger, _ := ctx.Value(ContextKeyLogger).(Logger)
+	if logger == nil {
+		logger = NewLoggerStd(nil)
+	}
+	data.NextHandler(logger)
+	logger.Sync()
+}
+
+// NextHandler 方法实现loggerInitHandler接口。
+func (data *loggerStdDataInit) NextHandler(logger Logger) {
+	data.Lock()
+	logger = logger.WithField("depth", "disable").WithField("logger", true)
+	for _, data := range data.Data {
+		entry := logger.WithField("time", data.Time)
+		for i := range data.Keys {
+			entry = entry.WithField(data.Keys[i], data.Vals[i])
+		}
+		switch data.Level {
+		case LogDebug:
+			entry.Debug(data.Message)
+		case LogInfo:
+			entry.Info(data.Message)
+		case LogWarning:
+			entry.Warning(data.Message)
+		case LogError:
+			entry.Error(data.Message)
+		case LogFatal:
+			entry.Fatal(data.Message)
+		}
+	}
+	data.Data = data.Data[0:0]
+	data.Unlock()
+	logger.Sync()
+}
+
 func (data *loggerStdDataInit) Sync() error {
+	return nil
+}
+
+type loggerStdDataNull struct{}
+
+func (data *loggerStdDataNull) GetLogger() *LoggerStd {
+	return &LoggerStd{
+		LoggerStdData: data,
+	}
+}
+
+func (data *loggerStdDataNull) PutLogger(entry *LoggerStd) {
+}
+
+func (data *loggerStdDataNull) Sync() error {
 	return nil
 }
 
@@ -269,6 +303,25 @@ func (entry *LoggerStd) getEntry() *LoggerStd {
 		newentry.Vals = append(newentry.Vals, entry.Vals...)
 	}
 	return newentry
+}
+
+// Mount 方法使LoggerStd挂载上下文，上下文传递给LoggerStdData。
+func (entry *LoggerStd) Mount(ctx context.Context) {
+	withMount(ctx, entry.LoggerStdData)
+}
+
+// Unmount 方法使LoggerStd卸载上下文，上下文传递给LoggerStdData。
+func (entry *LoggerStd) Unmount(ctx context.Context) {
+	withUnmount(ctx, entry.LoggerStdData)
+}
+
+// Metadata 方法从LoggerStdData获取元数据返回。
+func (entry *LoggerStd) Metadata() interface{} {
+	metaer, ok := entry.LoggerStdData.(interface{ Metadata() interface{} })
+	if ok {
+		return metaer.Metadata()
+	}
+	return nil
 }
 
 // SetLevel 方法设置日志输出级别。
@@ -432,11 +485,6 @@ func (entry *LoggerStd) Fatalf(format string, args ...interface{}) {
 //
 // WithFields不会设置Field属性。
 func (entry *LoggerStd) WithFields(key []string, value []interface{}) Logger {
-	if key == nil && value == nil {
-		entry = entry.getEntry()
-		entry.Logger = true
-		return entry
-	}
 	if entry.Logger {
 		entry = entry.getEntry()
 	}
@@ -465,6 +513,7 @@ func (entry *LoggerStd) WithField(key string, value interface{}) Logger {
 			for i := range entry.Keys {
 				if entry.Keys[i] == "context" {
 					entry.Vals[i] = val
+					return entry
 				}
 			}
 		}
@@ -488,6 +537,12 @@ func (entry *LoggerStd) WithField(key string, value interface{}) Logger {
 		val, ok := value.(time.Time)
 		if ok {
 			entry.Time = val
+			return entry
+		}
+	case "logger":
+		val, ok := value.(bool)
+		if ok && val {
+			entry.Logger = true
 			return entry
 		}
 	}
@@ -557,8 +612,8 @@ func (l *LoggerLevel) UnmarshalText(text []byte) error {
 //
 // 如果参数是一个error则输出error级别日志，否在输出info级别日志。
 func NewPrintFunc(log Logger) func(...interface{}) {
-	log = log.WithField("depth", 2).WithFields(nil, nil)
 	return func(args ...interface{}) {
+		log := log.WithField("depth", 2)
 		if len(args) > 2 {
 			keys, ok1 := args[0].([]string)
 			vals, ok2 := args[1].([]interface{})

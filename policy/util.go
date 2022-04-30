@@ -24,7 +24,7 @@ func stringSliceNotIn(strs []string, str string) bool {
 type ControllerAction struct{}
 
 // ControllerParam 方法定义ControllerAction生成action参数。
-func (ctl *ControllerAction) ControllerParam(pkg, name, method string) string {
+func (ControllerAction) ControllerParam(pkg, name, method string) string {
 	pos := strings.LastIndexByte(pkg, '/') + 1
 	if pos != 0 {
 		pkg = pkg[pos:]
@@ -82,6 +82,14 @@ type starTree struct {
 	// Const   string
 	children []*starTree
 	wildcard *starTree
+}
+
+func newStarTree(data []string) *starTree {
+	tree := &starTree{}
+	for i := range data {
+		tree.Insert(data[i])
+	}
+	return tree
 }
 
 func (tree *starTree) Insert(path string) {

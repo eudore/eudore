@@ -45,6 +45,34 @@ pbac条件直接使用And关系,允许使用多种多样的方法限制请求，
 				{"kind": "value", "name": "user_id", "not": true, "value": ["value:param:Userid"]},
 				{"kind": "range", "name": "group_id", "min": "1", "max": "4"},
 				{"kind": "sql", "name": "group_id", "sql": "group_id in %s", "value": ["1", "3"]}
+			],
+			"sql": [
+				{
+					"schema":"",
+					"table":"",
+					"disable": ["password","salf"],
+					"conditions": [
+						{"expr":"creat_time<now()-3d"},
+						{"expr":"user_id=?", "values": ["value:param:Userid"] }
+					]
+				},
+				{
+					"schema":"",
+					"table":"Accopt:UserMenu",
+					"conditions": [{"expr": "MenuName='Home'"} ]
+				}
+			],
+			"fitle": [
+				{
+					"package":"",
+					"name":"",
+					"rows":[
+						{"creat_time": "now-3d", } 
+					],
+					"cloumns": [
+						{"field": "email", "action": "zero", }
+					]
+				}
 			]
 		}
 	]

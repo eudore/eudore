@@ -21,13 +21,13 @@ func main() {
 		middleware.NewRecoverFunc(),
 		// middleware.NewTimeoutFunc(3*time.Second/10),
 	)
-	app.AnyFunc("/*", func(ctx eudore.ContextData) {
-		time.Sleep(time.Duration(ctx.GetParamInt64("*")) * time.Second / 10)
+	app.AnyFunc("/*", func(ctx eudore.Context) {
+		time.Sleep(time.Duration(eudore.GetStringInt64(ctx.GetParam("*"))) * time.Second / 10)
 		ctx.WriteString("hello")
 		ctx.WriteString("eudore")
 	})
-	app.AnyFunc("/h/*", func(ctx eudore.ContextData) {
-		time.Sleep(time.Duration(ctx.GetParamInt64("*")) * time.Second / 10)
+	app.AnyFunc("/h/*", func(ctx eudore.Context) {
+		time.Sleep(time.Duration(eudore.GetStringInt64(ctx.GetParam("*"))) * time.Second / 10)
 		ctx.SetHeader("X-MetaData", "timeout")
 		ctx.WriteHeader(200)
 		ctx.WriteString("hello")

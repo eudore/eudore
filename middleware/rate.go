@@ -215,7 +215,6 @@ func (r *rateBucket) Allow(n int64) bool {
 
 func (r *rateBucket) Wait(ctx context.Context, n int64) bool {
 	r.Lock()
-	defer r.Unlock()
 	now := time.Now().UnixNano()
 	n = r.last + n*r.speed
 	if n < now {
@@ -224,21 +223,26 @@ func (r *rateBucket) Wait(ctx context.Context, n int64) bool {
 		if r.last < now {
 			r.last = now
 		}
+		r.Unlock()
 		return true
 	}
 
 	dead, ok := ctx.Deadline()
 	if ok && dead.UnixNano() < n {
+		r.Unlock()
 		return false
 	}
 
+	// 预支令牌 等待可用
 	ticker := time.NewTicker(time.Duration(n - now))
 	defer ticker.Stop()
+	r.last = n
+	r.Unlock()
 	select {
 	case <-ticker.C:
-		r.last = n
 		return true
 	case <-ctx.Done():
+		// 取消上下文不退还令牌
 		return false
 	}
 }

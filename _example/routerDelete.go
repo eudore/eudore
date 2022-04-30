@@ -13,9 +13,8 @@ import (
 )
 
 func main() {
-	app := eudore.NewApp(
-		eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)),
-	)
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)))
 
 	client := httptest.NewClient(app)
 
@@ -44,7 +43,7 @@ func main() {
 
 	// ---------------- 测试 ----------------
 
-	app.Options(eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)))
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)))
 	register = app.Group(" register=off")
 	app.AnyFunc("/eudore/debug/look/*", middleware.NewLookFunc(app))
 	app.AnyFunc("/version", echoStringHandler("any version"))
@@ -81,7 +80,6 @@ func main() {
 	register.AnyFunc("/api/v1/user/name/*name", eudore.HandlerEmpty)
 
 	app.Listen(":8088")
-	// app.CancelFunc()
 	app.Run()
 }
 

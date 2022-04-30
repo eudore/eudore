@@ -43,7 +43,8 @@ type (
 
 func main() {
 	conf := &eudoreLockerConfig{}
-	app := eudore.NewApp(eudore.NewConfigEudore(conf))
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfigStd(conf))
 
 	// 设属性
 	conf.Lock()

@@ -41,7 +41,8 @@ func main() {
 		},
 	}
 
-	app := eudore.NewApp(eudore.NewConfigEudore(c))
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfigStd(c))
 	app.Info(app.Get("component.server.readtimeout"), c.Component.Server.ReadTimeout)
 	app.Info(app.Get("component.logger.path"), c.Component.Logger.Path)
 

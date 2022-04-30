@@ -3,30 +3,57 @@ package eudore_test
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 )
+
+func BindTestErr(ctx eudore.Context, i interface{}) error {
+	if ctx.GetQuery("binderr") != "" {
+		return errors.New("test bind error")
+	}
+	return eudore.NewBinds(nil)(ctx, i)
+}
+
+func RenderTestErr(ctx eudore.Context, i interface{}) error {
+	if ctx.GetQuery("rendererr") != "" {
+		return errors.New("test render error")
+	}
+	return eudore.RenderJSON(ctx, i)
+}
 
 type handlerHttp1 struct{}
 type handlerHttp2 struct{}
 type handlerHttp3 struct{}
+type handlerControler4 struct{ eudore.ControllerAutoRoute }
 
 func (handlerHttp1) HandleHTTP(eudore.Context)                      {}
 func (h handlerHttp2) CloneHandler() http.Handler                   { return h }
 func (h handlerHttp2) ServeHTTP(http.ResponseWriter, *http.Request) {}
 func (handlerHttp3) String() string                                 { return "hello" }
+func (ctl handlerControler4) Get(eudore.Context)                    {}
 
-func TestHandlerReister2(t *testing.T) {
+func TestHandlerReister(t *testing.T) {
+	client := eudore.NewClientWarp()
 	app := eudore.NewApp()
-	t.Log(app.AddHandlerExtend(00))
-	t.Log(app.AddHandlerExtend(00, 00))
-	t.Log(app.AddHandlerExtend(func(int) {}))
-	t.Log(app.AddHandlerExtend(func(interface{}) {}))
+	app.SetValue(eudore.ContextKeyClient, client)
+	app.SetValue(eudore.ContextKeyBind, BindTestErr)
+	app.SetValue(eudore.ContextKeyRender, RenderTestErr)
+	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
+
+	app.Info(app.AddHandlerExtend(00))
+	app.Info(app.AddHandlerExtend(00, 00))
+	app.Info(app.AddHandlerExtend(func(int) {}))
+	app.Info(app.AddHandlerExtend(func(interface{}) {}))
+	app.Info(app.AddHandlerExtend(func(interface{}, interface{}) {}))
+	app.Info(app.AddHandlerExtend(func(route string, _ func(string)) eudore.HandlerFunc {
+		return func(ctx eudore.Context) {
+			ctx.WriteString("route: " + route)
+		}
+	}))
+	app.AddController(new(handlerControler4))
 
 	app.AnyFunc("/1/1", func(eudore.Context) {})
 	app.AnyFunc("/1/2", eudore.HandlerFunc(eudore.HandlerEmpty))
@@ -44,6 +71,8 @@ func TestHandlerReister2(t *testing.T) {
 	app.AnyFunc("/1/13", new(handlerHttp1))
 	app.AnyFunc("/1/14", new(handlerHttp2))
 	app.AnyFunc("/1/15", handlerHttp3{})
+	app.AnyFunc("/1/15", handlerHttp3{})
+	app.AnyFunc("/1/16", func(string) {})
 
 	app.AnyFunc("/2/1", func(eudore.Context) error {
 		return errors.New("test handler error")
@@ -77,35 +106,31 @@ func TestHandlerReister2(t *testing.T) {
 	})
 	app.AnyFunc("/2/11", func() {
 	})
+	app.AnyFunc("/2/12", func(*testing.T) {
+	})
+	app.AnyFunc("/2/13", func(eudore.Context) (*testing.T, error) {
+		return t, nil
+	})
 
-	client := httptest.NewClient(app)
-	for i := 1; i < 16; i++ {
+	for i := 1; i < 17; i++ {
 		client.NewRequest("GET", fmt.Sprintf("/1/%d", i)).Do()
 	}
-	for i := 1; i < 12; i++ {
+	for i := 1; i < 14; i++ {
 		client.NewRequest("GET", fmt.Sprintf("/2/%d", i)).Do()
 	}
 
-	app.Renderer = func(eudore.Context, interface{}) error {
-		return errors.New("test render error")
+	for i := 1; i < 14; i++ {
+		client.NewRequest("GET", fmt.Sprintf("/2/%d", i)).AddQuery("binderr", "1").Do()
 	}
-
-	for i := 1; i < 12; i++ {
-		client.NewRequest("GET", fmt.Sprintf("/2/%d", i)).Do()
-	}
-
-	app.Binder = func(eudore.Context, io.Reader, interface{}) error {
-		return errors.New("test binder error")
-	}
-	for i := 1; i < 12; i++ {
-		client.NewRequest("GET", fmt.Sprintf("/2/%d", i)).Do()
+	for i := 1; i < 14; i++ {
+		client.NewRequest("GET", fmt.Sprintf("/2/%d", i)).AddQuery("rendererr", "1").Do()
 	}
 
 	app.CancelFunc()
 	app.Run()
 }
 
-func TestHandlerList2(t *testing.T) {
+func TestHandlerList(t *testing.T) {
 	app := eudore.NewApp()
 	app.AddHandlerExtend("/api/user", func(interface{}) eudore.HandlerFunc {
 		return eudore.HandlerEmpty
@@ -133,8 +158,14 @@ type (
 	}
 )
 
-func TestHandlerRPC2(t *testing.T) {
+func TestHandlerRPC(t *testing.T) {
 	app := eudore.NewApp()
+	client := eudore.NewClientWarp()
+	app.SetValue(eudore.ContextKeyClient, client)
+	app.SetValue(eudore.ContextKeyBind, BindTestErr)
+	app.SetValue(eudore.ContextKeyRender, RenderTestErr)
+	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
+
 	app.AnyFunc("/1/1", func(eudore.Context, *rpcrequest) (rpcresponse, error) {
 		return rpcresponse{Messahe: "success"}, nil
 	})
@@ -142,24 +173,19 @@ func TestHandlerRPC2(t *testing.T) {
 		return nil, errors.New("test rpc error")
 	})
 
-	client := httptest.NewClient(app)
-	client.NewRequest("GET", "/1/1").Do()
-	client.NewRequest("GET", "/1/2").WithHeaderValue(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
-
-	app.Renderer = func(eudore.Context, interface{}) error {
-		return errors.New("test render error")
-	}
-	client.NewRequest("GET", "/1/1").Do()
-	app.Binder = func(eudore.Context, io.Reader, interface{}) error {
-		return errors.New("test binder error")
-	}
-	client.NewRequest("GET", "/1/1").Do()
+	client.NewRequest("PUT", "/1/1").Do()
+	client.NewRequest("PUT", "/1/2").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
+	client.NewRequest("PUT", "/1/2").BodyJSON(map[string]interface{}{
+		"name": "eudore",
+	}).Do()
+	client.NewRequest("GET", "/1/1").AddQuery("binderr", "1").Do()
+	client.NewRequest("GET", "/1/1").AddQuery("rendererr", "1").Do()
 
 	app.CancelFunc()
 	app.Run()
 }
 
-func TestHandlerFunc2(t *testing.T) {
+func TestHandlerFunc(t *testing.T) {
 	eudore.SetHandlerAliasName(new(handlerHttp1), "")
 	eudore.SetHandlerAliasName(new(handlerHttp1), "handlerHttp1-test")
 	defer func() {
@@ -172,4 +198,15 @@ func TestHandlerFunc2(t *testing.T) {
 		hs = eudore.NewHandlerFuncsCombine(hs, hs)
 	}
 	t.Log(len(hs))
+}
+
+func TestHandlerStatic(t *testing.T) {
+	app := eudore.NewApp()
+	client := eudore.NewClientWarp()
+	app.SetValue(eudore.ContextKeyClient, client)
+	app.AnyFunc("/static/*", eudore.NewStaticHandler("", ""))
+
+	client.NewRequest("GET", "/static/index.html").Do()
+	app.CancelFunc()
+	app.Run()
 }

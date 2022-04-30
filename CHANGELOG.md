@@ -1,9 +1,18 @@
 # Change Log
 
 Next
-- policy		api完善
-- policy		数据权限描述细化规则
+- Client		优化api
+- policy		定义http控制器
 - component		优化尝试移除
+
+2022年4月30日
+- App和Context	生命周期管理
+- DataHandlerFunc   合并Bind Validate Filte Render
+- Client	移入App组合
+- Server	实现ServeConn方法
+- ConvertTo	重构实现
+- example	重写单位测试，不将example转换成测试文件。
+
 
 2021年10月31日
 - RouterStd			添加others方法，清理deleteRoute参数。
