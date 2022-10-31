@@ -6,7 +6,6 @@ package main
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 )
 
 func main() {
@@ -18,10 +17,7 @@ func main() {
 		ctx.Debugf("val: %s", ctx.Value("val"))
 	})
 
-	client := httptest.NewClient(app)
-	client.NewRequest("PUT", "/fl").Do().CheckStatus(200)
-
+	app.NewRequest(app, "PUT", "/fl", eudore.NewClientCheckStatus(201))
 	app.Listen(":8088")
-	// app.CancelFunc()
 	app.Run()
 }

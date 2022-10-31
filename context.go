@@ -84,11 +84,13 @@ type Context interface {
 	Push(string, *http.PushOptions) error
 	Render(interface{}) error
 	WriteString(string) error
-	WriteJSON(interface{}) error
 	WriteFile(string) error
-	WriteError(error)
 
-	// log Logger interface
+	// Database interface
+	Query(interface{}, DatabaseStmt) error
+	Exec(DatabaseStmt) error
+	NewRequest(string, string, ...interface{}) error
+	// Logger interface
 	Debug(...interface{})
 	Info(...interface{})
 	Warning(...interface{})
@@ -132,9 +134,11 @@ type contextBaseConfig struct {
 
 type contextBaseValue struct {
 	context.Context
-	Logger Logger
-	Error  error
-	Values []interface{}
+	Logger   Logger
+	Database Database
+	Client   Client
+	Error    error
+	Values   []interface{}
 }
 
 // ResponseWriter 接口用于写入http请求响应体status、header、body。
@@ -214,7 +218,7 @@ func newContextBaseConfig(ctx context.Context) *contextBaseConfig {
 		bind = NewBinds(nil)
 	}
 	if render == nil {
-		render = NewRenders(nil, nil)
+		render = NewRenders(nil)
 	}
 	return &contextBaseConfig{
 		Logger:   ctx.Value(ContextKeyApp).(Logger).WithField("logger", true),
@@ -235,7 +239,7 @@ func (ctx *contextBase) Reset(w http.ResponseWriter, r *http.Request) {
 	ctx.httpParams = ctx.httpParams[0:2]
 	ctx.httpParams[1] = ""
 	// cookies body
-	ctx.contextValues.Reset(r.Context(), ctx.config.Logger)
+	ctx.contextValues.Reset(r.Context(), ctx.config)
 	ctx.httpResponse.Reset(w)
 	ctx.cookies = ctx.cookies[0:0]
 	ctx.bodyContent = nil
@@ -305,7 +309,7 @@ func (ctx *contextBase) Next() {
 
 // End 结束请求上下文的处理。
 func (ctx *contextBase) End() {
-	ctx.index = 0xff
+	ctx.index = DefaultContextMaxHandler
 	ctx.httpResponse.writeStatus()
 }
 
@@ -342,7 +346,11 @@ func (ctx *contextBase) RealIP() string {
 	if xforward := ctx.RequestReader.Header.Get(HeaderXForwardedFor); xforward != "" {
 		return strings.SplitN(string(xforward), ",", 2)[0]
 	}
-	return strings.SplitN(ctx.RequestReader.RemoteAddr, ":", 2)[0]
+	addr := strings.SplitN(ctx.RequestReader.RemoteAddr, ":", 2)[0]
+	if addr == "pipe" {
+		return strings.SplitN(DefaultClientInternalHost, ":", 2)[0]
+	}
+	return addr
 }
 
 // RequestID 获取响应中的X-Request-Id Header
@@ -385,13 +393,18 @@ func (ctx *contextBase) Body() []byte {
 // 如果Validate不为空，则使用Validate校验数据。
 func (ctx *contextBase) Bind(i interface{}) error {
 	err := ctx.config.Bind(ctx, i)
-	if err == nil && ctx.config.Validate != nil {
-		err = ctx.config.Validate(ctx, i)
-	}
 	if err != nil {
 		ctx.contextValues.Logger.WithField("depth", 1).WithField(ParamCaller, "Context.Bind").Error(err)
+		return NewErrorStatusCode(err, StatucBindFail, CodeBindFail)
 	}
-	return err
+	if ctx.config.Validate != nil {
+		err = ctx.config.Validate(ctx, i)
+		if err != nil {
+			ctx.contextValues.Logger.WithField("depth", 1).WithField(ParamCaller, "Context.Bind(Validate)").Error(err)
+			return NewErrorStatusCode(err, StatucValidateFail, CodeValidateFail)
+		}
+	}
+	return nil
 }
 
 // Params 获得请求的全部参数。
@@ -513,7 +526,7 @@ func (ctx *contextBase) FormFiles() map[string][]*multipart.FileHeader {
 
 // parseForm 解析form数据。
 func (ctx *contextBase) parseForm() error {
-	err := ctx.RequestReader.ParseMultipartForm(DefaultBodyMaxMemory)
+	err := ctx.RequestReader.ParseMultipartForm(DefaultContextFormMaxMemory)
 	if err != nil && err.Error() != "http: multipart handled by MultipartReader" {
 		ctx.contextValues.Logger.WithField("depth", 2).WithField(ParamCaller, "Context.Form...").Error(err)
 		return err
@@ -545,7 +558,8 @@ func (ctx *contextBase) Push(target string, opts *http.PushOptions) error {
 
 	err := ctx.ResponseWriter.Push(target, opts)
 	if err != nil {
-		ctx.contextValues.Logger.WithField("depth", 1).WithField(ParamCaller, "Context.Push").Errorf("Failed to push: %v, Resource path: %s.", err, target)
+		ctx.contextValues.Logger.WithField("depth", 1).WithField(ParamCaller, "Context.Push").
+			Errorf("Failed to push: %v, Resource path: %s.", err, target)
 	}
 	return err
 }
@@ -555,14 +569,17 @@ func (ctx *contextBase) Render(i interface{}) error {
 	var err error
 	if ctx.config.Filte != nil {
 		err = ctx.config.Filte(ctx, i)
+		if err != nil {
+			ctx.contextValues.Logger.WithField("depth", 1).WithField(ParamCaller, "Context.Render(Filte)").Error(err)
+			return NewErrorStatusCode(err, StatucFilteFail, CodeFilteFail)
+		}
 	}
-	if err == nil {
-		err = ctx.config.Render(ctx, i)
-	}
+
+	err = ctx.config.Render(ctx, i)
 	if err != nil {
 		ctx.contextValues.Logger.WithField("depth", 1).WithField(ParamCaller, "Context.Render").Error(err)
 	}
-	return err
+	return NewErrorStatusCode(err, StatucRenderFail, CodeRenderFail)
 }
 
 // Write 实现io.Writer，向响应写入数据。
@@ -587,57 +604,59 @@ func (ctx *contextBase) WriteString(i string) (err error) {
 	return
 }
 
-// WriteJSON 使用RenderJSON直接返回数据，不检查Filte。
-func (ctx *contextBase) WriteJSON(i interface{}) error {
-	return RenderJSON(ctx, i)
-}
-
 // WriteFile 使用HandlerFile处理一个静态文件。
 func (ctx *contextBase) WriteFile(path string) error {
 	http.ServeFile(ctx.ResponseWriter, ctx.RequestReader, path)
 	return nil
 }
 
-type contextWriteError struct {
-	Time       string      `json:"time"`
-	Host       string      `json:"host"`
-	Method     string      `json:"method"`
-	Path       string      `json:"path"`
-	Route      string      `json:"route"`
-	Status     int         `json:"status"`
-	Code       int         `json:"code,omitempty"`
-	Error      string      `json:"error,omitempty"`
-	Message    interface{} `json:"message,omitempty"`
-	XRequestID string      `json:"x-request-id,omitempty"`
-	XTraceID   string      `json:"x-trace-id,omitempty"`
-}
-
-// WriteError 方法返回error数据，该方法不应该被直接使用，调用ctx.Fatal方法会自动调用WriteError方法。
+// writeError 方法返回error数据，该方法不应该被直接使用，调用ctx.Fatal方法会自动调用writeError方法。
 // 定义次方法用于重写error响应,如果error实现Code() int方法会获取错误响应码。
-func (ctx *contextBase) WriteError(err error) {
+func (ctx *contextBase) writeError(err error) {
 	// 结束Context
 	w := ctx.ResponseWriter
 	if w.Size() == 0 {
 		status := w.Status()
 		if status == 200 {
-			status = getErrorStatus(err)
-			ctx.WriteHeader(status)
+			ctx.WriteHeader(getErrorStatus(err))
 		}
-		ctx.config.Render(ctx, contextWriteError{
-			Time:       time.Now().Format(DefaultLoggerTimeFormat),
-			Host:       ctx.RequestReader.Host,
-			Method:     ctx.RequestReader.Method,
-			Path:       ctx.RequestReader.URL.Path,
-			Route:      ctx.GetParam(ParamRoute),
-			Code:       getErrorCode(err),
-			Status:     ctx.Response().Status(),
-			Error:      err.Error(),
-			XRequestID: w.Header().Get(HeaderXRequestID),
-			XTraceID:   w.Header().Get(HeaderXTraceID),
-		})
+		ctx.Render(NewContextMessgae(ctx, err, nil))
 	}
 	ctx.contextValues.Error = err
 	ctx.End()
+}
+
+// NewContextMessgae 方法从请求上下文创建一个error或对象响应对象，记录请求上下文相关信息。
+func NewContextMessgae(ctx Context, err error, message interface{}) interface{} {
+	type contextMessage struct {
+		Time       string      `json:"time" protobuf:"1,name=time" xml:"time" yaml:"time"`
+		Host       string      `json:"host" protobuf:"2,name=host" xml:"host" yaml:"host"`
+		Method     string      `json:"method" protobuf:"3,name=method" xml:"method" yaml:"method"`
+		Path       string      `json:"path" protobuf:"4,name=path" xml:"path" yaml:"path"`
+		Route      string      `json:"route" protobuf:"5,name=route" xml:"route" yaml:"route"`
+		Status     int         `json:"status" protobuf:"6,name=status" xml:"status" yaml:"status"`
+		Code       int         `json:"code,omitempty" protobuf:"7,name=code" xml:"code,omitempty" yaml:"code,omitempty"`
+		XRequestID string      `json:"x-request-id,omitempty" protobuf:"8,name=x-request-id" xml:"x-request-id,omitempty" yaml:"x-request-id,omitempty"`
+		XTraceID   string      `json:"x-trace-id,omitempty" protobuf:"9,name=x-trace-id" xml:"x-trace-id,omitempty" yaml:"x-trace-id,omitempty"`
+		Error      string      `json:"error,omitempty" protobuf:"10,name=error" xml:"error,omitempty" yaml:"error,omitempty"`
+		Message    interface{} `json:"message,omitempty" protobuf:"11,name=message" xml:"message,omitempty" yaml:"message,omitempty"`
+	}
+	msg := contextMessage{
+		Time:       time.Now().Format(DefaultLoggerTimeFormat),
+		Host:       ctx.Host(),
+		Method:     ctx.Method(),
+		Path:       ctx.Path(),
+		Route:      ctx.GetParam(ParamRoute),
+		XRequestID: ctx.Response().Header().Get(HeaderXRequestID),
+		XTraceID:   ctx.Response().Header().Get(HeaderXTraceID),
+		Status:     ctx.Response().Status(),
+		Message:    message,
+	}
+	if err != nil {
+		msg.Code = getErrorCode(err)
+		msg.Error = err.Error()
+	}
+	return msg
 }
 
 func getErrorStatus(err error) int {
@@ -674,6 +693,28 @@ func getErrorCode(err error) int {
 	}
 }
 
+// Query 方法调用Database.Query查询数据块。
+func (ctx *contextBase) Query(data interface{}, stmt DatabaseStmt) error {
+	err := ctx.contextValues.Database.Query(ctx.context, data, stmt)
+	if err != nil {
+		ctx.contextValues.Logger.WithField("depth", 1).WithField(ParamCaller, "Context.Query").Error(err)
+	}
+	return err
+}
+
+// Exec 方法调用Database.Exec执行数据块。
+func (ctx *contextBase) Exec(stmt DatabaseStmt) error {
+	err := ctx.contextValues.Database.Exec(ctx.context, stmt)
+	if err != nil {
+		ctx.contextValues.Logger.WithField("depth", 1).WithField(ParamCaller, "Context.Exec").Error(err)
+	}
+	return err
+}
+
+func (ctx *contextBase) NewRequest(method, path string, options ...interface{}) error {
+	return ctx.contextValues.Client.NewRequest(ctx.context, method, path, options...)
+}
+
 // Debug 方法写入Debug日志。
 func (ctx *contextBase) Debug(args ...interface{}) {
 	ctx.contextValues.Logger.WithField("depth", 1).Debug(args...)
@@ -699,7 +740,7 @@ func (ctx *contextBase) Error(args ...interface{}) {
 // 注意：如果err中存在敏感信息会被写入到响应中。
 func (ctx *contextBase) Fatal(args ...interface{}) {
 	err := getMessagError(args)
-	ctx.WriteError(err)
+	ctx.writeError(err)
 	ctx.contextValues.Logger.WithField("depth", 1).Error(err.Error())
 }
 
@@ -740,7 +781,7 @@ func (ctx *contextBase) Errorf(format string, args ...interface{}) {
 // 注意：如果err中存在敏感信息会被写入到响应中。
 func (ctx *contextBase) Fatalf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	ctx.WriteError(errors.New(msg))
+	ctx.writeError(errors.New(msg))
 	ctx.contextValues.Logger.WithField("depth", 1).Errorf(msg)
 }
 
@@ -765,14 +806,14 @@ func (ctx *contextBase) WithFields(keys []string, fields []interface{}) Logger {
 // Fatal 方法重写Context的Fatal方法，不执行panic，http返回500和请求id。
 func (e *contextBaseEntry) Fatal(args ...interface{}) {
 	err := getMessagError(args)
-	e.Context.WriteError(err)
+	e.Context.writeError(err)
 	e.Logger.WithField("depth", 1).Error(err.Error())
 }
 
 // Fatalf 方法重写Context的Fatalf方法，不执行panic，http返回500和请求id。
 func (e *contextBaseEntry) Fatalf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	e.Context.WriteError(errors.New(msg))
+	e.Context.writeError(errors.New(msg))
 	e.Logger.WithField("depth", 1).Error(msg)
 }
 
@@ -858,9 +899,11 @@ var isTokenTable = [127]bool{
 	'x': true, 'y': true, 'z': true, '|': true, '~': true,
 }
 
-func (ctx *contextBaseValue) Reset(c context.Context, log Logger) {
+func (ctx *contextBaseValue) Reset(c context.Context, config *contextBaseConfig) {
 	ctx.Context = c
-	ctx.Logger = log
+	ctx.Logger = config.Logger
+	ctx.Database = config.Database
+	ctx.Client = config.Client
 	ctx.Error = nil
 	ctx.Values = ctx.Values[0:0]
 }
@@ -868,21 +911,29 @@ func (ctx *contextBaseValue) SetValue(key, val interface{}) {
 	switch key {
 	case ContextKeyLogger:
 		ctx.Logger = val.(Logger)
-		return
-	}
-	for i := 0; i < len(ctx.Values); i += 2 {
-		if ctx.Values[i] == key {
-			ctx.Values[i+1] = val
-			return
+	case ContextKeyDatabase:
+		ctx.Database = val.(Database)
+	case ContextKeyClient:
+		ctx.Client = val.(Client)
+	default:
+		for i := 0; i < len(ctx.Values); i += 2 {
+			if ctx.Values[i] == key {
+				ctx.Values[i+1] = val
+				return
+			}
 		}
+		ctx.Values = append(ctx.Values, key, val)
 	}
-	ctx.Values = append(ctx.Values, key, val)
 }
 
 func (ctx *contextBaseValue) Value(key interface{}) interface{} {
 	switch key {
 	case ContextKeyLogger:
 		return ctx.Logger
+	case ContextKeyDatabase:
+		return ctx.Database
+	case ContextKeyClient:
+		return ctx.Client
 	}
 	for i := 0; i < len(ctx.Values); i += 2 {
 		if ctx.Values[i] == key {

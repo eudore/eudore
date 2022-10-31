@@ -2,6 +2,7 @@ package eudore_test
 
 import (
 	"context"
+	"fmt"
 	"html/template"
 	"reflect"
 	"strings"
@@ -16,9 +17,7 @@ func TestHandlerDataBind(*testing.T) {
 		Name string `json:"name" xml:"name"`
 	}
 
-	client := eudore.NewClientWarp()
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.SetValue(eudore.ContextKeyBind, eudore.NewBindWithHeader(eudore.NewBindWithURL(eudore.NewBinds(nil))))
 	app.SetValue(eudore.ContextKeyRender, eudore.RenderJSON)
 	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
@@ -35,13 +34,16 @@ func TestHandlerDataBind(*testing.T) {
 		return &data, nil
 	})
 
-	client.NewRequest("GET", "/hello").BodyString("trace").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/data/header").AddHeader("name", "eudore").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/data/get-url").AddQuery("name", "eudore").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("POST", "/data/post-url").AddQuery("name", "eudore").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("PUT", "/data/json").BodyJSONValue("name", "eudore").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("PUT", "/data/json").AddHeader(eudore.HeaderContentType, eudore.MimeTextXML).BodyString("<Data><name>eudore</name></Data>").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("PUT", "/data/form").BodyFormValue("name", "eudore").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
+	app.NewRequest(nil, "GET", "/hello", eudore.NewClientBodyString("trace"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/data/header", eudore.NewClientHeader("name", "eudore"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/data/get-url", eudore.NewClientQuery("name", "eudore"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "POST", "/data/post-url", eudore.NewClientQuery("name", "eudore"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "POST", "/data/post-mime", eudore.NewClientQuery("name", "eudore"), eudore.NewClientHeader(eudore.HeaderContentType, "pb"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "PATCH", "/data/patch-mime", eudore.NewClientQuery("name", "eudore"), eudore.NewClientHeader(eudore.HeaderContentType, "pb"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "DELETE", "/data/detele-mime", eudore.NewClientQuery("name", "eudore"), eudore.NewClientHeader(eudore.HeaderContentType, "pb"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "PUT", "/data/json", eudore.NewClientBodyJSONValue("name", "eudore"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "PUT", "/data/json", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationXML), eudore.NewClientBodyString("<Data><name>eudore</name></Data>"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "PUT", "/data/form", eudore.NewClientBodyFormValue("name", "eudore"), eudore.NewClientCheckStatus(200))
 
 	app.CancelFunc()
 	app.Run()
@@ -52,9 +54,14 @@ func TestHandlerDataRender(*testing.T) {
 		Name string `json:"name" xml:"name"`
 	}
 
-	client := eudore.NewClientWarp()
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyClient, client)
+	app.SetValue(eudore.ContextKeyFilte, func(ctx eudore.Context, i interface{}) error {
+		if ctx.Path() == "/err" {
+			return fmt.Errorf("filte error")
+		}
+		return nil
+	})
+	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
 	app.AnyFunc("/data/* template=data", func(ctx eudore.Context) interface{} {
 		return &Data{"eudore"}
 	})
@@ -65,20 +72,25 @@ func TestHandlerDataRender(*testing.T) {
 		return "text/string"
 	})
 
-	client.NewRequest("GET", "/data/text").AddHeader(eudore.HeaderAccept, eudore.MimeText).Do()
-	client.NewRequest("GET", "/data/json").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
-	client.NewRequest("GET", "/data/xml").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationXML).Do()
-	client.NewRequest("GET", "/data/html").AddHeader(eudore.HeaderAccept, eudore.MimeTextHTML).Do()
-	client.NewRequest("GET", "/text/stringer").AddHeader(eudore.HeaderAccept, eudore.MimeText).Do()
-	client.NewRequest("GET", "/text/string").AddHeader(eudore.HeaderAccept, eudore.MimeText).Do()
-	client.NewRequest("GET", "/text/string").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
+	app.NewRequest(nil, "GET", "/err", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextPlain))
+	app.NewRequest(nil, "GET", "/data/text", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextPlain))
+	app.NewRequest(nil, "GET", "/data/json", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "GET", "/data/xml", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationXML))
+	app.NewRequest(nil, "GET", "/data/html", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
+	eudore.DefaultRenderHTMLTemplate = nil
+	app.NewRequest(nil, "GET", "/data/html", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
+	app.NewRequest(nil, "GET", "/data/accept")
+	app.NewRequest(nil, "GET", "/text/stringer", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextPlain))
+	app.NewRequest(nil, "GET", "/text/string", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextPlain))
+	app.NewRequest(nil, "GET", "/text/string", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "GET", "/text/string", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSONCharsetUtf8))
 
 	temp, _ := template.New("").Parse(`{{- define "data" -}} Data Name is {{.Name}} {{- end -}}`)
-	app.SetValue(eudore.ContextKeyTempldate, temp)
+	app.SetValue(eudore.ContextKeyTemplate, temp)
 
-	client.NewRequest("GET", "/data/html").AddHeader(eudore.HeaderAccept, eudore.MimeTextHTML).Do()
-	client.NewRequest("GET", "/text/string").AddHeader(eudore.HeaderAccept, eudore.MimeTextHTML).Do()
-	client.NewRequest("GET", "/text/string").AddHeader(eudore.HeaderAccept, eudore.MimeTextHTML).Do()
+	app.NewRequest(nil, "GET", "/data/html", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
+	app.NewRequest(nil, "GET", "/text/string", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
+	app.NewRequest(nil, "GET", "/text/string", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
 
 	app.CancelFunc()
 	app.Run()
@@ -89,9 +101,7 @@ func TestFuncCreator(*testing.T) {
 		Name string `json:"name" xml:"name"`
 	}
 
-	client := eudore.NewClientWarp()
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyClient, client)
 
 	fc := eudore.NewFuncCreator()
 	app.SetValue(eudore.ContextKeyFuncCreator, fc)
@@ -225,9 +235,7 @@ func TestHandlerDataValidateField(*testing.T) {
 	}
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
 	fc := eudore.NewFuncCreator()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.SetValue(eudore.ContextKeyFuncCreator, fc)
 	app.SetValue(eudore.ContextKeyValidate, eudore.NewValidateField(app))
 	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
@@ -264,12 +272,12 @@ func TestHandlerDataValidateField(*testing.T) {
 		ctx.Bind(&data)
 	})
 
-	client.NewRequest("POST", "/data/1").BodyJSON(&DataValidate01{Name: "eudore", Email: "postmaster@eudore.cn", Phone: "15512344321"}).Do()
-	client.NewRequest("POST", "/data/2").BodyJSON([]DataValidate01{{Name: "eudore"}}).Do()
-	client.NewRequest("POST", "/data/3").BodyJSON(&DataValidate02{Name: "eudore"}).Do()
-	client.NewRequest("POST", "/data/4").BodyJSON([]*DataValidate02{{Name: "eudore"}}).Do()
-	client.NewRequest("POST", "/data/5").BodyJSON([]*DataValidate02{{Name: "eudore"}, {Name: "eudore"}}).Do()
-	client.NewRequest("POST", "/data/7").BodyJSON(&DataValidate02{Name: "eudore"}).Do()
+	app.NewRequest(nil, "POST", "/data/1", eudore.NewClientBodyJSON(&DataValidate01{Name: "eudore", Email: "postmaster@eudore.cn", Phone: "15512344321"}))
+	app.NewRequest(nil, "POST", "/data/2", eudore.NewClientBodyJSON([]DataValidate01{{Name: "eudore"}}))
+	app.NewRequest(nil, "POST", "/data/3", eudore.NewClientBodyJSON(&DataValidate02{Name: "eudore"}))
+	app.NewRequest(nil, "POST", "/data/4", eudore.NewClientBodyJSON([]*DataValidate02{{Name: "eudore"}}))
+	app.NewRequest(nil, "POST", "/data/5", eudore.NewClientBodyJSON([]*DataValidate02{{Name: "eudore"}, {Name: "eudore"}}))
+	app.NewRequest(nil, "POST", "/data/7", eudore.NewClientBodyJSON(&DataValidate02{Name: "eudore"}))
 
 	app.CancelFunc()
 	app.Run()

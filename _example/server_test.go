@@ -16,11 +16,16 @@ import (
 
 func TestServerStd(t *testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware(middleware.NewLoggerFunc(app))
 
 	app.GetFunc("/index", eudore.HandlerEmpty)
+	app.GetFunc("/wrote", func(ctx eudore.Context) {
+		ctx.WriteString("hello")
+		ctx.WriteHeader(400)
+	})
+	app.GetFunc("/panic", func(ctx eudore.Context) {
+		panic(400)
+	})
 	app.GetFunc("/meta", func(ctx eudore.Context) interface{} {
 		meta, ok := app.Server.(interface{ Metadata() interface{} })
 		if ok {
@@ -32,12 +37,14 @@ func TestServerStd(t *testing.T) {
 		var app eudore.App
 		app.CancelFunc()
 	})
-
-	client.NewRequest("GET", "/index").Do()
-	client.NewRequest("GET", "/err").Do()
-	client.NewRequest("GET", "/meta").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
-
 	app.Listen(":8088")
+
+	app.NewRequest(nil, "GET", "/index")
+	app.NewRequest(nil, "GET", "/wrote")
+	app.NewRequest(nil, "GET", "/panic")
+	app.NewRequest(nil, "GET", "/err")
+	app.NewRequest(nil, "GET", "/meta", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+
 	app.CancelFunc()
 	app.Run()
 }

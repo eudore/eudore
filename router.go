@@ -12,11 +12,13 @@ import (
 )
 
 /*
-Router interface is divided into RouterCore and RouterMethod. RouterCore implements router matching algorithm and logic, and RouterMethod implements the encapsulation of routing rule registration.
+Router interface is divided into RouterCore and RouterMethod. RouterCore implements router matching algorithm and logic,
+and RouterMethod implements the encapsulation of routing rule registration.
 
 RouterCore implements route matching details. RouterMethod calls RouterCore to provide methods for external use.
 
-RouterMethod The default directly registered interface of the route. Set the routing parameters, group routing, middleware, function extensions, controllers and other behaviors.
+RouterMethod The default directly registered interface of the route. Set the routing parameters, group routing, middleware,
+function extensions, controllers and other behaviors.
 
 Do not use the RouterCore method to register routes directly at any time. You should use the Add ... method of RouterMethod.
 
@@ -32,13 +34,13 @@ RouterCore has four router cores to implement the following functions:
     Request for additional default parameters (including current routing matching rules)
     Extend custom routing methods
     Variable and wildcard matching
-    Matching priority Constant > Variable verification > Variable > Wildcard verification > Wildcard (RouterCoreStd five-level priority)
+    Matching priority Constant > Variable verification > Variable > Wildcard verification > Wildcard
     Method priority Specify method > Any method (The specified method will override the Any method, and vice versa)
     Variables and wildcards support regular and custom functions to verify data
     Variables and wildcards support constant prefix
     Get all registered routing rule information (RouterCoreBebug implementation)
     Routing rule matching based on Host (implemented by RouterCoreHost)
-    Allows dynamic addition and deletion of router rules at runtime (RouterCoreStd implementation, the outer layer requires RouterCoreLock packaging layer)
+    Allows dynamic addition and deletion of router rules at runtime (RouterCoreStd implementation)
 
 Router 接口分为RouterCore和RouterMethod，RouterCore实现路由器匹配算法和逻辑，RouterMethod实现路由规则注册的封装。
 
@@ -110,9 +112,9 @@ type RouterCore interface {
 type RouterStd struct {
 	RouterCore      `alias:"routercore"`
 	HandlerExtender `alias:"handlerextender"`
-	Middlewares     *middlewareTree      `alias:"middlewares"`
-	Print           func(...interface{}) `alias:"print"`
-	params          Params               `alias:"params"`
+	Middlewares     *middlewareTree `alias:"middlewares"`
+	logger          Logger          `alias:"logger"`
+	params          Params          `alias:"params"`
 }
 
 // HandlerRouter405 function defines the default 405 processing and returns Allow and X-Match-Route Header.
@@ -121,7 +123,7 @@ type RouterStd struct {
 func HandlerRouter405(ctx Context) {
 	const page405 string = "405 method not allowed"
 	ctx.SetHeader(HeaderAllow, ctx.GetParam(ParamAllow))
-	ctx.SetHeader(HeaderXMatchRoute, ctx.GetParam(ParamRoute))
+	ctx.SetHeader(HeaderXEudoreRoute, ctx.GetParam(ParamRoute))
 	ctx.WriteHeader(405)
 	ctx.Render(page405)
 }
@@ -151,7 +153,7 @@ func NewRouterStd(core RouterCore) Router {
 		params:          Params{ParamRoute, ""},
 		HandlerExtender: NewHandlerExtendWarp(NewHandlerExtendTree(), DefaultHandlerExtend),
 		Middlewares:     newMiddlewareTree(),
-		Print:           printEmpty,
+		logger:          DefaultLoggerNull,
 	}
 }
 
@@ -159,14 +161,17 @@ func NewRouterStd(core RouterCore) Router {
 //
 // 并从ctx.Value(ContextKeyApp)获取Logger，初始化RouterStd日志输出函数。
 func (r *RouterStd) Mount(ctx context.Context) {
-	r.Print = NewPrintFunc(ctx.Value(ContextKeyApp).(Logger))
+	log, ok := ctx.Value(ContextKeyApp).(Logger)
+	if ok {
+		r.logger = log
+	}
 	withMount(ctx, r.RouterCore)
 }
 
 // Unmount 方法使RouterStd卸载上下文，上下文传递给RouterCore。
 func (r *RouterStd) Unmount(ctx context.Context) {
 	withUnmount(ctx, r.RouterCore)
-	r.Print = printEmpty
+	r.logger = DefaultLoggerNull
 }
 
 // Metadata 方法返回RouterCore的Metadata。
@@ -176,13 +181,17 @@ func (r *RouterStd) Metadata() interface{} {
 
 // Group method returns a new group router.
 //
-// The parameters, middleware, and function extensions of each Group group route registration will not affect the superior, but the subordinate will inherit the superior data.
+// The parameters, middleware, and function extensions of each Group group route registration will not affect the superior,
+// but the subordinate will inherit the superior data.
 //
-// The new Router will use the old RouterCore and Print objects; the middleware information and routing parameters are deep copied from the superior, while processing the Group parameters.
+// The new Router will use the old RouterCore and Print objects;
+// the middleware information and routing parameters are deep copied from the superior, while processing the Group parameters.
 //
-// And create a new HandlerExtender in chain, if the type that HandlerExtender cannot register will call the previous Router.HandlerExtender to process.
+// And create a new HandlerExtender in chain,
+// if the type that HandlerExtender cannot register will call the previous Router.HandlerExtender to process.
 //
-// The top-level HandlerExtender object is defaultHandlerExtend. You can use the RegisterHandlerExtend function and the NewHandlerFuncs function to call the defaultHandlerExtend object.
+// The top-level HandlerExtender object is defaultHandlerExtend.
+// You can use the RegisterHandlerExtend function and the NewHandlerFuncs function to call the defaultHandlerExtend object.
 //
 // Group 方法返回一个新的组路由器。
 //
@@ -192,15 +201,16 @@ func (r *RouterStd) Metadata() interface{} {
 //
 // 以及链式创建一个新的HandlerExtender，若HandlerExtender无法注册的类型将调用上一个Router.HandlerExtender处理。
 //
-// 最顶级HandlerExtender对象为defaultHandlerExtend，可以使用RegisterHandlerExtend函数和NewHandlerFuncs函数调用defaultHandlerExtend对象。
+// 最顶级HandlerExtender对象为defaultHandlerExtend，
+// 可以使用RegisterHandlerExtend函数和NewHandlerFuncs函数调用defaultHandlerExtend对象。
 func (r *RouterStd) Group(path string) Router {
 	// 构建新的路由方法配置器
 	return &RouterStd{
 		RouterCore:      r.RouterCore,
-		params:          r.params.Clone().CombineWithRoute(NewParamsRoute(path)),
 		HandlerExtender: NewHandlerExtendWarp(NewHandlerExtendTree(), r.HandlerExtender),
 		Middlewares:     r.Middlewares.clone(),
-		Print:           r.Print,
+		logger:          r.logger,
+		params:          r.params.Clone().CombineWithRoute(NewParamsRoute(path)),
 	}
 }
 
@@ -209,17 +219,6 @@ func (r *RouterStd) Group(path string) Router {
 // Params 方法返回当前路由参数，路由参数值为空字符串不会被使用。
 func (r *RouterStd) Params() *Params {
 	return &r.params
-}
-
-// printError 方法输出一个err，附加错误的函数名称和文件位置。
-func (r *RouterStd) printError(depth int, err error) {
-	name, file, line := logFormatNameFileLine(depth + 3)
-	r.Print([]string{"params", "func", "file", "line"}, []interface{}{r.params, name, file, line}, err)
-}
-
-// printPanic 方法输出一个err，附加当前stack。
-func (r *RouterStd) printPanic(err error) {
-	r.Print([]string{"params", "stack"}, []interface{}{r.params, GetPanicStack(4)}, err)
 }
 
 // getRoutePath 函数截取到路径中的route，支持'{}'进行块匹配。
@@ -255,22 +254,31 @@ func getRouteParam(path, key string) string {
 
 // AddHandler method adds a new route, allowing multiple request methods to be added separately using','.
 //
-// You can register 9 methods defined by http (three of the Router interfaces do not provide direct registration),
-// or you can register the method as: ANY TEST 404 405 NotFound MethodNotAllowed, register Any, TEST, 404, 405 routing rules.
-// the registration method is ANY to register all methods, the ANY method route will be covered by the same path non-ANY method,
-// and vice versa; the registration method is TEST will output the debug information related to the route registration,
-// but the registration behavior will not be performed;
+// Nine methods defined by http can be registered (three of the Router interfaces do not provide direct registration),
+// You can also register the method as: ANY TEST 404 405 NotFound MethodNotAllowed.
+// If the registration method is ANY to register all methods,
+// the ANY method route will be overwritten by the non-ANY method of the same path, and vice versa;
+// if the registration method is TEST, it will output debug information related to route registration,
+// but will not execute the registration behavior;
+// The global variables DefaultRouterAnyMethod and DefaultRouterAllMethod
+// set the Any registration method and the method that allows registration.
 //
-// The handler parameter is processed using the HandlerExtender.NewHandlerFuncs() method of the current RouterStd to generate the corresponding HandlerFuncs.
+// The handler parameter is processed using the HandlerExtender.NewHandlerFuncs() method
+// of the current RouterStd to generate the corresponding HandlerFuncs.
 //
-// If the current Router cannot be processed, call the HandlerExtender or defaultHandlerExtend of the upper-level group for processing,
+// If the current Router cannot be processed,
+// call the HandlerExtender or defaultHandlerExtend of the upper-level group for processing,
 // and output the error log if all of them cannot be processed.
 //
-// The middleware data will be matched from the data according to the current routing path, and then the request processing function will be appended before the processing function.
+// The middleware data will be matched from the data according to the current routing path,
+// and then the request processing function will be appended before the processing function.
 //
 // AddHandler 方法添加一条新路由, 允许添加多个请求方法使用','分开。
 //
-// 可以注册http定义的9种方法(其中三种Router接口未提供直接注册),也可以注册方法为：ANY TEST 404 405 NotFound MethodNotAllowed，注册Any、TEST、404、405路由规则。注册方法为ANY注册全部方法，ANY方法路由会被同路径非ANY方法覆盖，反之不行；注册方法为TEST会输出路由注册相关debug信息，但不执行注册行为;
+// 可以注册http定义的9种方法(其中三种Router接口未提供直接注册),
+// 也可以注册方法为：ANY TEST 404 405 NotFound MethodNotAllowed。
+// 注册方法为ANY注册全部方法，ANY方法路由会被同路径非ANY方法覆盖，反之不行；注册方法为TEST会输出路由注册相关debug信息，但不执行注册行为;
+// 全局变量DefaultRouterAnyMethod和DefaultRouterAllMethod设置Any注册方法和允许注册的方法。
 //
 // handler参数使用当前RouterStd的HandlerExtender.NewHandlerFuncs()方法处理，生成对应的HandlerFuncs。
 //
@@ -288,7 +296,7 @@ func (r *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 		// RouterCoreStd 注册未知校验规则存在panic,或者其他自定义路由注册出现panic。
 		if rerr := recover(); rerr != nil {
 			err = fmt.Errorf(ErrFormatRouterStdRegisterHandlersRecover, method, path, rerr)
-			r.printPanic(err)
+			r.logger.WithField("depth", "stack").WithField("params", r.params).Error(err)
 		}
 	}()
 
@@ -303,15 +311,19 @@ func (r *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 
 	handlers, err := r.newHandlerFuncs(path, hs)
 	if err != nil {
-		r.printError(1, err)
+		r.logger.WithField("depth", getContrllerDepth()).WithField("params", r.params).Error(err)
 		return err
 	}
 	// 如果注册方法是TEST则输出RouterStd debug信息
 	if method == "TEST" {
-		r.Print(fmt.Sprintf("Test handlers params is %s, split path to: ['%s'], match middlewares is: %v, register handlers is: %v.", params.String(), strings.Join(getSplitPath(path), "', '"), r.Middlewares.Lookup(path), handlers))
+		r.logger.WithField("depth", getContrllerDepth()).Debugf(
+			"Test handlers params is %s, split path to: ['%s'], match middlewares is: %v, register handlers is: %v.",
+			params.String(), strings.Join(getSplitPath(path), "', '"), r.Middlewares.Lookup(path), handlers,
+		)
 		return
 	}
-	r.Print("Register handler:", method, strings.TrimPrefix(params.String(), "route="), handlers)
+	r.logger.WithField("depth", getContrllerDepth()).Info("Register handler:",
+		method, strings.TrimPrefix(params.String(), "route="), handlers)
 	if handlers != nil {
 		handlers = NewHandlerFuncsCombine(r.Middlewares.Lookup(path), handlers)
 	}
@@ -325,15 +337,35 @@ func (r *RouterStd) registerHandlers(method, path string, hs ...interface{}) (er
 		} else {
 			err := fmt.Errorf(ErrFormatRouterStdRegisterHandlersMethodInvalid, method, method, fullpath)
 			errs.HandleError(err)
-			r.printError(1, err)
+			r.logger.WithField("depth", getContrllerDepth()).WithField("params", r.params).Error(err)
 		}
 	}
 	return errs.Unwrap()
 }
 
+func getContrllerDepth() int {
+	pc := make([]uintptr, 10)
+	n := runtime.Callers(2, pc)
+	if n > 0 {
+		index := 1
+		frames := runtime.CallersFrames(pc[:n])
+		frame, more := frames.Next()
+		for more {
+			if strings.HasSuffix(frame.Function, ".AddController") {
+				return index
+			}
+
+			index++
+			frame, more = frames.Next()
+		}
+	}
+	return 2
+}
+
 // The newHandlerFuncs method creates HandlerFuncs based on the path and multiple parameters.
 //
-// RouterStd first calls the current HandlerExtender.NewHandlerFuncs to create multiple function handlers. If it returns null, it will be created from the superior HandlerExtender.
+// RouterStd first calls the current HandlerExtender.NewHandlerFuncs to create multiple function handlers.
+// If it returns null, it will be created from the superior HandlerExtender.
 //
 // newHandlerFuncs 方法根据路径和多个参数创建HandlerFuncs。
 //
@@ -358,7 +390,7 @@ func checkMethod(method string) bool {
 	case "ANY", "404", "405", "NotFound", "MethodNotAllowed":
 		return true
 	}
-	for _, allMethod := range RouterAllMethod {
+	for _, allMethod := range DefaultRouterAllMethod {
 		if allMethod == method {
 			return true
 		}
@@ -366,23 +398,19 @@ func checkMethod(method string) bool {
 	return false
 }
 
-// AddController method uses the built-in controller parsing function to resolve the controller to obtain the routing configuration.
+// AddController method registers the controller, and the controller determines the routing registration behavior.
 //
-// If the controller implements the RoutesInjecter interface, call the controller to inject the route itself.
-//
-// AddController 方式使用内置的控制器解析函数解析控制器获得路由配置。
-//
-// 如果控制器实现了RoutesInjecter接口，调用控制器自身注入路由。
+// AddController 方法注册控制器，由控制器决定路由注册行为。
 func (r *RouterStd) AddController(controllers ...Controller) error {
 	var errs errormulit
 	for _, controller := range controllers {
 		name := getControllerPathName(controller)
-		r.Print("Register controller:", r.params.String(), name)
+		r.logger.WithField("depth", 1).Info("Register controller:", r.params.String(), name)
 		err := controller.Inject(controller, r)
 		if err != nil {
 			err = fmt.Errorf(ErrFormatRouterStdAddController, name, err)
 			errs.HandleError(err)
-			r.printError(0, err)
+			r.logger.WithField("depth", 1).WithField("params", r.params).Error(err)
 		}
 	}
 	return errs.Unwrap()
@@ -400,7 +428,8 @@ func getControllerPathName(ctl Controller) string {
 
 // AddMiddleware adds multiple middleware functions to the router, which will use HandlerExtender to convert parameters.
 //
-// If the number of parameters is greater than 1 and the first parameter is a string type, the first string type parameter is used as the path to add the middleware.
+// If the number of parameters is greater than 1 and the first parameter is a string type,
+// the first string type parameter is used as the path to add the middleware.
 //
 // AddMiddleware 给路由器添加多个中间件函数，会使用HandlerExtender转换参数。
 //
@@ -421,19 +450,28 @@ func (r *RouterStd) AddMiddleware(hs ...interface{}) error {
 
 	handlers, err := r.newHandlerFuncs(path, hs)
 	if err != nil {
-		r.printError(0, err)
+		r.logger.WithField("depth", getMiddlewareDepath()).WithField("params", r.params).Error(err)
 		return err
 	}
 
 	r.Middlewares.Insert(path, handlers)
 	r.RouterCore.HandleFunc("Middlewares", path, handlers)
-	r.Print("Register middleware:", path, handlers)
+	r.logger.WithField("depth", getMiddlewareDepath()).Info("Register middleware:", path, handlers)
 	return nil
+}
+
+func getMiddlewareDepath() int {
+	ptr, _, _, ok := runtime.Caller(2)
+	if ok && strings.HasSuffix(runtime.FuncForPC(ptr).Name(), ".(*App).AddMiddleware") {
+		return 2
+	}
+	return 1
 }
 
 // AddHandlerExtend method adds an extension function to the current Router.
 //
-// If the number of parameters is greater than 1 and the first parameter is a string type, the first string type parameter is used as the path to add the extension function.
+// If the number of parameters is greater than 1 and the first parameter is a string type,
+// the first string type parameter is used as the path to add the extension function.
 //
 // AddHandlerExtend 方法给当前Router添加扩展函数。
 //
@@ -458,11 +496,12 @@ func (r *RouterStd) AddHandlerExtend(handlers ...interface{}) error {
 		if err != nil {
 			err = fmt.Errorf(ErrFormatRouterStdAddHandlerExtend, path, err)
 			errs.HandleError(err)
-			r.printError(0, err)
+			r.logger.WithField("depth", 1).WithField("params", r.params).Error(err)
 		} else {
 			iValue := reflect.ValueOf(handler)
 			if iValue.Kind() == reflect.Func {
-				r.Print("Register extend:", runtime.FuncForPC(iValue.Pointer()).Name(), iValue.Type().In(0).String())
+				r.logger.WithField("depth", 1).Info("Register extend:",
+					runtime.FuncForPC(iValue.Pointer()).Name(), iValue.Type().In(0).String())
 			}
 		}
 	}
@@ -620,7 +659,8 @@ func indexsCombine(hs1, hs2 []int) []int {
 	return hs
 }
 
-// routerCoreLock allows reading and writing of RouterCore to be locked, which is used to dynamically add and delete routing rules at runtime.
+// routerCoreLock allows reading and writing of RouterCore to be locked,
+// which is used to dynamically add and delete routing rules at runtime.
 //
 // routerCoreLock 允许对RouterCore读写进行加锁，用于运行时动态增删路由规则。
 type routerCoreLock struct {
@@ -639,7 +679,8 @@ func NewRouterCoreLock(core RouterCore) RouterCore {
 	return &routerCoreLock{RouterCore: core}
 }
 
-// The HandleFunc method adds a write lock to the router core to register routing rules, and defer prevents panic from being unable to unlock.
+// The HandleFunc method adds a write lock to the router core to register routing rules,
+// and defer prevents panic from being unable to unlock.
 //
 // HandleFunc 方法对路由器核心加写锁进行注册路由规则, defer 防止panic导致无法解锁。
 func (r *routerCoreLock) HandleFunc(method, path string, hs HandlerFuncs) {
@@ -674,7 +715,8 @@ type routerCoreMetadata struct {
 	HandlerNames [][]string `json:"handlernames" xml:"handlernames"`
 }
 
-// NewRouterCoreDebug function specifies the routing core to create a debug core, using eudore.RouterCoreStd as the core by default.
+// NewRouterCoreDebug function specifies the routing core to create a debug core,
+// using eudore.RouterCoreStd as the core by default.
 //
 // Visit GET /eudore/debug/router/data to get router registration information.
 //
@@ -747,7 +789,8 @@ type routerCoreHost struct {
 	newRouteCore func(string) RouterCore
 }
 
-// NewRouterCoreHost function creates a Host routing core, and a function that creates a routing core based on the host value needs to be given.
+// NewRouterCoreHost function creates a Host routing core,
+// and a function that creates a routing core based on the host value needs to be given.
 //
 // If the parameter is empty, each route Host will create NewRouterCoreStd by default.
 //
@@ -773,7 +816,8 @@ func NewRouterCoreHost(fn func(string) RouterCore) RouterCore {
 // The host value is a host mode, and * is allowed, which means any character from the current to the next'.' or the end.
 //
 // If the host value is'*', the registration will be added to all current router cores.
-// If the host value is empty and registered to the router core of'*', multiple hosts are allowed to use',' to divide the registration to multiple hosts at once.
+// If the host value is empty and registered to the router core of'*',
+// multiple hosts are allowed to use',' to divide the registration to multiple hosts at once.
 //
 // HandleFunc 方法从path中寻找host参数选择路由器注册匹配
 //

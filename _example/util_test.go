@@ -20,8 +20,6 @@ func TestUtilTimeDuration(*testing.T) {
 	}
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AnyFunc("/time/*", func(ctx eudore.Context) interface{} {
 		return eudore.TimeDuration(12000000000)
 	})
@@ -33,11 +31,11 @@ func TestUtilTimeDuration(*testing.T) {
 		return err
 	})
 
-	client.NewRequest("GET", "/time/text").AddHeader(eudore.HeaderAccept, eudore.MimeText).Do()
-	client.NewRequest("GET", "/time/json").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
-	client.NewRequest("PUT", "/time/bind").AddHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON).BodyString(`{"time":"12s"}`).Do()
-	client.NewRequest("PUT", "/time/bind").AddHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON).BodyString(`{"time":12000000000}`).Do()
-	client.NewRequest("PUT", "/time/bind").AddHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON).BodyString(`{"time":"x"}`).Do()
+	app.NewRequest(nil, "GET", "/time/text", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeText))
+	app.NewRequest(nil, "GET", "/time/json", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "PUT", "/time/bind", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON), eudore.NewClientBodyString(`{"time":"12s"}`))
+	app.NewRequest(nil, "PUT", "/time/bind", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON), eudore.NewClientBodyString(`{"time":12000000000}`))
+	app.NewRequest(nil, "PUT", "/time/bind", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON), eudore.NewClientBodyString(`{"time":"x"}`))
 
 	app.CancelFunc()
 	app.Run()

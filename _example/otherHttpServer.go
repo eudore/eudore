@@ -13,6 +13,21 @@ import (
 	"time"
 )
 
+func main() {
+	ln, err := net.Listen("tcp", ":8085")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	server := &Server{
+		Handler: func(w *Response, r *Request) {
+			w.Header().Add("Server", "simple server")
+			w.Write([]byte("hello http server. your remote addr is " + r.RemoteAddr()))
+		},
+	}
+	server.Serve(ln)
+}
+
 type (
 	// Server 定义http服务。
 	Server struct {

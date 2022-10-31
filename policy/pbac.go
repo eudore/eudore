@@ -43,8 +43,8 @@ type Member struct {
 	UserID      int       `json:"user_id" alias:"user_id"`
 	PolicyID    int       `json:"policy_id" alias:"policy_id"`
 	Index       int       `json:"index" alias:"index" description:"越大优先级越高，如果小于0移除授权"`
-	Description string    `json:"description" alias:"description"`
-	Expiration  time.Time `json:"expiration" alias:"expiration"`
+	Description string    `json:"description,omitempty" alias:"description"`
+	Expiration  time.Time `json:"expiration,omitempty" alias:"expiration"`
 	Policy      *Policy   `json:"-" alias:"-"`
 }
 
@@ -268,12 +268,17 @@ func (ctl *Policys) parseSignatureUser(ctx eudore.Context) (int, error) {
 	return user.UserID, nil
 }
 
-// AddPolicy 方法实现添加一个策略，如果策略stmt为空则删除策略。
-func (ctl *Policys) AddPolicy(body string) error {
+// AddPolicyString 方法添加一个策略字符串。
+func (ctl *Policys) AddPolicyString(body string) error {
 	policy, err := NewPolicy(body)
 	if err != nil {
 		return err
 	}
+	return ctl.AddPolicy(policy)
+}
+
+// AddPolicy 方法实现添加一个策略，如果策略stmt为空则删除策略。
+func (ctl *Policys) AddPolicy(policy *Policy) error {
 	if policy.PolicyName == "" {
 		policy.PolicyName = fmt.Sprintf("pbac:policy:%d", policy.PolicyID)
 	}

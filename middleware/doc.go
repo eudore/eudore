@@ -69,6 +69,19 @@ Cache
 example:
 	app.AddMiddleware(middleware.NewCacheFunc(time.Second*10, app.Context))
 
+Compress
+
+创建响应压缩中间件，默认提供gzip和deflate压缩
+参数:
+	string	压缩名称
+	func() interface{} 压缩器创建函数
+	int	压缩级别
+example:
+	import: "github.com/andybalholm/brotli"
+	app.AddMiddleware(middleware.NewCompressFunc("br", func() interface{} { return brotli.NewWriter(ioutil.Discard) }))
+	app.AddMiddleware(middleware.NewCompressGzipFunc(5))
+	app.AddMiddleware(middleware.NewCompressDeflateFunc(5))
+
 ContextWarp
 
 使中间件之后的处理函数使用的eudore.Context对象为新的Context
@@ -126,15 +139,6 @@ Dump
 	router参数是eudore.Router类型，然后注入拦截路由处理。
 example:
 	app.AddMiddleware(middleware.NewDumpFunc(app.Group("/eudore/debug")))
-
-Gzip
-
-对请求响应body使用gzip压缩
-
-参数:
-	int    gzip压缩等级，非法值设置为5
-example:
-	app.AddMiddleware(middleware.NewGzipFunc(5))
 
 Header
 

@@ -36,9 +36,7 @@ func (handlerHttp3) String() string                                 { return "he
 func (ctl handlerControler4) Get(eudore.Context)                    {}
 
 func TestHandlerReister(t *testing.T) {
-	client := eudore.NewClientWarp()
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.SetValue(eudore.ContextKeyBind, BindTestErr)
 	app.SetValue(eudore.ContextKeyRender, RenderTestErr)
 	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
@@ -61,7 +59,7 @@ func TestHandlerReister(t *testing.T) {
 	app.AnyFunc("/1/4", eudore.HandlerFuncs{eudore.HandlerEmpty})
 	app.AnyFunc("/1/5", eudore.HandlerEmpty, eudore.HandlerEmpty)
 	app.AnyFunc("/1/6", [3]eudore.HandlerFunc{eudore.HandlerEmpty, eudore.HandlerEmpty})
-	app.AnyFunc("/1/8", eudore.LogDebug)
+	app.AnyFunc("/1/8", eudore.LoggerDebug)
 	app.AnyFunc("/1/9", func(http.ResponseWriter, *http.Request) {})
 	app.AnyFunc("/1/10", http.NotFoundHandler())
 	app.AnyFunc("/1/11", func(eudore.Context, int) {})
@@ -113,17 +111,17 @@ func TestHandlerReister(t *testing.T) {
 	})
 
 	for i := 1; i < 17; i++ {
-		client.NewRequest("GET", fmt.Sprintf("/1/%d", i)).Do()
+		app.NewRequest(nil, "GET", fmt.Sprintf("/1/%d", i))
 	}
 	for i := 1; i < 14; i++ {
-		client.NewRequest("GET", fmt.Sprintf("/2/%d", i)).Do()
+		app.NewRequest(nil, "GET", fmt.Sprintf("/2/%d", i))
 	}
 
 	for i := 1; i < 14; i++ {
-		client.NewRequest("GET", fmt.Sprintf("/2/%d", i)).AddQuery("binderr", "1").Do()
+		app.NewRequest(nil, "GET", fmt.Sprintf("/2/%d", i), eudore.NewClientQuery("binderr", "1"))
 	}
 	for i := 1; i < 14; i++ {
-		client.NewRequest("GET", fmt.Sprintf("/2/%d", i)).AddQuery("rendererr", "1").Do()
+		app.NewRequest(nil, "GET", fmt.Sprintf("/2/%d", i), eudore.NewClientQuery("rendererr", "1"))
 	}
 
 	app.CancelFunc()
@@ -160,8 +158,6 @@ type (
 
 func TestHandlerRPC(t *testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.SetValue(eudore.ContextKeyBind, BindTestErr)
 	app.SetValue(eudore.ContextKeyRender, RenderTestErr)
 	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
@@ -173,13 +169,13 @@ func TestHandlerRPC(t *testing.T) {
 		return nil, errors.New("test rpc error")
 	})
 
-	client.NewRequest("PUT", "/1/1").Do()
-	client.NewRequest("PUT", "/1/2").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
-	client.NewRequest("PUT", "/1/2").BodyJSON(map[string]interface{}{
+	app.NewRequest(nil, "PUT", "/1/1")
+	app.NewRequest(nil, "PUT", "/1/2", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "PUT", "/1/2", eudore.NewClientBodyJSON(map[string]interface{}{
 		"name": "eudore",
-	}).Do()
-	client.NewRequest("GET", "/1/1").AddQuery("binderr", "1").Do()
-	client.NewRequest("GET", "/1/1").AddQuery("rendererr", "1").Do()
+	}))
+	app.NewRequest(nil, "GET", "/1/1", eudore.NewClientQuery("binderr", "1"))
+	app.NewRequest(nil, "GET", "/1/1", eudore.NewClientQuery("rendererr", "1"))
 
 	app.CancelFunc()
 	app.Run()
@@ -202,11 +198,9 @@ func TestHandlerFunc(t *testing.T) {
 
 func TestHandlerStatic(t *testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AnyFunc("/static/*", eudore.NewStaticHandler("", ""))
 
-	client.NewRequest("GET", "/static/index.html").Do()
+	app.NewRequest(nil, "GET", "/static/index.html")
 	app.CancelFunc()
 	app.Run()
 }

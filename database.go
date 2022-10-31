@@ -2,29 +2,31 @@ package eudore
 
 import (
 	"context"
+	"database/sql"
 )
 
 // Database 定义数据库操作方法
 type Database interface {
-	WithContext(context.Context) Database
-	AddHook(interface{})
 	AutoMigrate(interface{}) error
-	Query(interface{}, Stmt) error
-	Exec(Stmt) error
+	Metadata(interface{}) interface{}
+	Query(context.Context, interface{}, DatabaseStmt) error
+	Exec(context.Context, DatabaseStmt) error
+	Begin(ctx context.Context, opts *sql.TxOptions) (Database, error)
+	Commit() error
+	Rollback() error
 }
 
-// DatabaseContext 定义数据上下文
-type DatabaseContext interface {
+// DatabaseStmt 定义数据库规则块。
+type DatabaseStmt interface {
+	Build(DatabaseBuilder)
+}
+
+// DatabaseBuilder 定义数据库sql构建者。
+type DatabaseBuilder interface {
 	Context() context.Context
-	WriteString(string)
-	WriteValue(interface{})
-	WriteStmt(Stmt)
-}
-
-// Stmt 定义sql statement接口
-type Stmt interface {
-	Init(DatabaseContext) error
-	Build(DatabaseContext)
+	DriverName() string
+	WriteStmts(...interface{})
+	Result() (string, []interface{}, error)
 }
 
 // NewDatabaseStd 方法创建一个空Database。

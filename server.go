@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/fcgi"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -73,8 +74,8 @@ type ServerStdConfig struct {
 // serverStd 定义使用net/http启动http server。
 type serverStd struct {
 	*http.Server
-	Print         func(...interface{}) `alias:"print"`
 	Mutex         sync.Mutex
+	Logger        Logger
 	localListener localListener
 	Ports         []string
 	Counter       int64
@@ -117,6 +118,7 @@ func NewServerStd(arg interface{}) Server {
 			IdleTimeout:       60 * time.Second,
 			TLSNextProto:      nil,
 		},
+		Logger: DefaultLoggerNull,
 	}
 	// 捕捉net/http.Server输出的error内容。
 	srv.Server.ErrorLog = log.New(srv, "", 0)
@@ -127,19 +129,20 @@ func NewServerStd(arg interface{}) Server {
 // Mount 方法获取ContextKeyApp.(Logger)用于输出http.Server错误日志。
 // 获取ContextKeyApp.(http.Handler)作为http.Server的处理对象。
 func (srv *serverStd) Mount(ctx context.Context) {
-	srv.Print = NewPrintFunc(ctx.Value(ContextKeyApp).(Logger))
 	srv.SetHandler(ctx.Value(ContextKeyApp).(http.Handler))
-	// if go1.13+ set http.Server.BaseContext
-	if Get(srv, "BaseContext") == nil {
-		Set(srv.Server, "BaseContext", func(net.Listener) context.Context {
-			return ctx
-		})
+	srv.BaseContext = func(net.Listener) context.Context {
+		return ctx
+	}
+	log, ok := ctx.Value(ContextKeyApp).(Logger)
+	if ok {
+		srv.Logger = log
 	}
 }
 
 // Unmount 方法等待DefaulerServerShutdownWait(默认60s)优雅停机。
 func (srv *serverStd) Unmount(ctx context.Context) {
-	ctx, _ = context.WithTimeout(context.Background(), DefaulerServerShutdownWait)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultServerShutdownWait)
+	defer cancel()
 	srv.Shutdown(ctx)
 }
 
@@ -187,8 +190,17 @@ func (srv *serverStd) Metadata() interface{} {
 }
 
 func (srv *serverStd) Write(p []byte) (n int, err error) {
-	srv.Print(string(p))
 	atomic.AddInt64(&srv.Counter, 1)
+	strs := strings.Split(string(p), "\n")
+	if strings.HasPrefix(strs[0], "http: panic serving ") {
+		lines := []string{}
+		for i := 2; i < len(strs)-1; i += 2 {
+			lines = append(lines, strs[i]+" "+strs[i+1][2:])
+		}
+		srv.Logger.WithField("depth", "disable").WithField("depth", lines).Errorf("%s %s", strs[0], strs[1][:len(strs[1])-1])
+	} else {
+		srv.Logger.WithField("depth", "disable").Errorf(strs[0])
+	}
 	return 0, nil
 }
 
@@ -200,7 +212,6 @@ type localListener struct {
 func (ln *localListener) Accept() (net.Conn, error) {
 	for conn := range ln.Ch {
 		if conn != nil {
-			// panic(conn)
 			return conn, nil
 		}
 	}
@@ -233,7 +244,8 @@ func (srv *serverFcgi) Mount(ctx context.Context) {
 
 // Unmount 方法等待DefaulerServerShutdownWait(默认60s)优雅停机。
 func (srv *serverFcgi) Unmount(ctx context.Context) {
-	ctx, _ = context.WithTimeout(context.Background(), DefaulerServerShutdownWait)
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultServerShutdownWait)
+	defer cancel()
 	srv.Shutdown(ctx)
 }
 

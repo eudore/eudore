@@ -620,30 +620,23 @@ func (err *errormulit) Unwrap() error {
 	}
 }
 
-// NewErrorCode 封装error实现Code方法。
-func NewErrorCode(err error, code int) error {
-	return errorCode{err, code}
+// NewErrorStatusCode 方法组合ErrorStatus和ErrorCode。
+func NewErrorStatusCode(err error, status, code int) error {
+	if code > 0 {
+		err = errorCode{err, code}
+	}
+	if status > 0 {
+		err = errorStatus{err, status}
+	}
+	return err
 }
 
-type errorCode struct {
-	err  error
-	code int
-}
-
-func (err errorCode) Error() string {
-	return err.err.Error()
-}
-func (err errorCode) Unwrap() error {
-	return err.err
-}
-
-func (err errorCode) Code() int {
-	return err.code
-}
-
-// NewErrorStatus 封装error实现Status方法。
+// NewErrorStatus 方法封装error实现Status方法。
 func NewErrorStatus(err error, status int) error {
-	return errorStatus{err, status}
+	if status > 0 {
+		return errorStatus{err, status}
+	}
+	return err
 }
 
 type errorStatus struct {
@@ -661,4 +654,28 @@ func (err errorStatus) Unwrap() error {
 
 func (err errorStatus) Status() int {
 	return err.status
+}
+
+// NewErrorCode 方法封装error实现Code方法。
+func NewErrorCode(err error, code int) error {
+	if code > 0 {
+		return errorCode{err, code}
+	}
+	return err
+}
+
+type errorCode struct {
+	err  error
+	code int
+}
+
+func (err errorCode) Error() string {
+	return err.err.Error()
+}
+func (err errorCode) Unwrap() error {
+	return err.err
+}
+
+func (err errorCode) Code() int {
+	return err.code
 }

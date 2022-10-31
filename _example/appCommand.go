@@ -15,22 +15,40 @@ command包解析启动命令，支持start、daemon、status、stop、restart五
 */
 
 import (
+	"context"
+	"time"
+
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/command"
+	"github.com/eudore/eudore/daemon"
 )
 
 func main() {
 	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerInit())
+
+	app.ParseOption(append(eudore.DefaultConfigAllParseFunc, daemon.NewParseCommand(app), NewParseLogger(app)))
 	app.SetValue(eudore.ContextKeyError, app.Parse())
-	app.SetValue(eudore.ContextKeyError, command.Init(app))
-	if app.Err() != nil {
-		app.Run()
-		return
-	}
 	app.GetFunc("/*", func(ctx eudore.Context) {
-		ctx.WriteString("hello eudore")
+		ctx.WriteString("server daemon")
 	})
 
+	go func() {
+		select {
+		case <-app.Done():
+		case <-time.After(10 * time.Second):
+			app.CancelFunc()
+		}
+	}()
 	app.Listen(":8088")
 	app.Run()
+}
+
+func NewParseLogger(app *eudore.App) eudore.ConfigParseFunc {
+	return func(ctx context.Context, cnf eudore.Config) error {
+		app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(&eudore.LoggerStdConfig{
+			Std:  true,
+			Path: "/tmp/daemon.log",
+		}))
+		return nil
+	}
 }

@@ -1,11 +1,22 @@
 # Change Log
 
-Next
-- Client		优化api
-- policy		定义http控制器
-- component		优化尝试移除
+setIntField set Duration type
+middleware/cache 不同accept会导致数据格式不同
 
-2022年4月30日
+Next
+- Database 实现
+
+[2022年10月31日]
+- App 优化运行输出日志
+- Client 完整重构
+- Logger 修复Sync方法，更新其他组件日志
+- Config 合并实现方法
+- Render/BindProtobuf   无需proto文件进行编码
+- NewContextMessage 新增函数返回请求上下文消息，复用message。
+- middleware/gzip   使用自定义压缩函数，可以使用br压缩。
+- middleware/look   使用自定义data获取函数。
+
+[2022年4月30日](https://github.com/eudore/eudore/tree/b80422e67f5c9907967e36e577d23220793a6c9c)
 - App和Context	生命周期管理
 - DataHandlerFunc   合并Bind Validate Filte Render
 - Client	移入App组合
@@ -14,7 +25,7 @@ Next
 - example	重写单位测试，不将example转换成测试文件。
 
 
-2021年10月31日
+[2021年10月31日](https://github.com/eudore/eudore/tree/46e8a335592dfd8b498d5f681f2f385204b80a1a)
 - RouterStd			添加others方法，清理deleteRoute参数。
 - ControllerAutoRoute	简化调整规则。
 - middleware/look	解析Accept Header为format值，模板内容优化。

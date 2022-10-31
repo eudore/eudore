@@ -19,12 +19,10 @@ func TestUtilPatch16(t *testing.T) {
 	eudore.DefaultEmbedTime = time.Now()
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.GetFunc("/static/*", root)
 
-	client.NewRequest("GET", "/static/app_test.go").Do()
-	client.NewRequest("GET", "/static/none_test.go").Do()
+	app.NewRequest(nil, "GET", "/static/app_test.go")
+	app.NewRequest(nil, "GET", "/static/none_test.go")
 
 	app.CancelFunc()
 	app.Run()

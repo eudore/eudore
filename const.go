@@ -5,6 +5,7 @@ package eudore
 import (
 	"errors"
 	"fmt"
+	"html/template"
 	"reflect"
 	"time"
 )
@@ -20,6 +21,8 @@ var (
 	ContextKeyDatabase = NewContextKey("database")
 	// ContextKeyClient 定义获取client的Key。
 	ContextKeyClient = NewContextKey("client")
+	// ContextKeyClientTrace 定义获取client-trace的Key。
+	ContextKeyClientTrace = NewContextKey("client-trace")
 	// ContextKeyServer 定义获取server的Key。
 	ContextKeyServer = NewContextKey("server")
 	// ContextKeyRouter 定义获取router的Key。
@@ -38,68 +41,116 @@ var (
 	ContextKeyRender = NewContextKey("render")
 	// ContextKeyFuncCreator 定义获取func-creator的Key。
 	ContextKeyFuncCreator = NewContextKey("func-creator")
-	// ContextKeyTempldate 定义获取templdate的Key。
-	ContextKeyTempldate = NewContextKey("templdate")
+	// ContextKeyTemplate 定义获取templdate的Key。
+	ContextKeyTemplate = NewContextKey("templdate")
+	// ContextKeyTrace 定义获取trace的Key。
+	ContextKeyTrace = NewContextKey("trace")
 
-	// DefaultBodyMaxMemory 默认Body解析占用内存。
-	DefaultBodyMaxMemory int64 = 32 << 20 // 32 MB
+	// DefaultBindFormTags 定义bind form使用tags。
+	DefaultBindFormTags = []string{"form", "alias"}
+	// DefaultBindHeaderTags 定义bind header使用tags。
+	DefaultBindHeaderTags = []string{"header", "alias"}
+	// DefaultBindURLTags 定义bind url使用tags。
+	DefaultBindURLTags = []string{"url", "alias"}
+	// DefaultClientBodyContextType 定义NewClientBody默认使用的内容类型。
+	DefaultClientBodyContextType = MimeApplicationJSONCharsetUtf8
+	// DefaultClientHost 定义clientStd默认使用的Host。
+	DefaultClientHost = "localhost:80"
+	// DefaultClientParseErrStar 定义NewClientParseErr解析err的状态码范围
+	DefaultClientParseErrStar = 500
+	// DefaultClientParseErrEnd 定义NewClientParseErr解析err的状态码范围
+	DefaultClientParseErrEnd = 500
+	// DefaultClientInternalHost 定义clientStd使用内部连接的Host。
+	DefaultClientInternalHost = "127.0.0.10:80"
+	// DefaultConfigAllParseFunc 定义ConfigMap和ConfigEudore默认使用的解析函数。
+	DefaultConfigAllParseFunc = []ConfigParseFunc{NewConfigParseJSON("config"), NewConfigParseArgs(nil),
+		NewConfigParseEnvs("ENV_"), NewConfigParseWorkdir("workdir"), NewConfigParseHelp("help")}
+	// DefaultConfigGetSetTags 定义ConfigStd默认使用GetSet的tag。
+	DefaultConfigGetSetTags = []string{"alias"}
+	// DefaultContextMaxHandler 定义请求上下文handler数量上限，需要小于该值。
+	DefaultContextMaxHandler = 0xff
+	// DefaultContextFormMaxMemory 默认解析From body使用内存。
+	DefaultContextFormMaxMemory int64 = 32 << 20 // 32 MB
+	// DefaultEmbedCacheControl 定义默认NewHandlerEmbedFunc使用的Cache-Control缓存策略
+	DefaultEmbedCacheControl = "no-cache"
+	// DefaultEmbedTime 设置http返回embed文件的最后修改时间，默认为服务启动时间。
+	// 如果服务存在多副本部署，通过设置相同的值保持多副本间的时间版本一致。
+	DefaultEmbedTime = time.Now()
+	// DefaultFuncCreator 定义全局默认FuncCreator,RouetrCoreStd默认使用。
+	DefaultFuncCreator = NewFuncCreator()
+	// DefaultGodocServer 定义应用默认使用的godoc服务器域名。
+	DefaultGodocServer = "https://golang.org"
+	// DefaultHandlerExtend 为默认的函数扩展处理者，是RouterStd使用的最顶级的函数扩展处理者。
+	DefaultHandlerExtend = NewHandlerExtendBase()
+	// DefaultHandlerExtendAllowType 定义handlerExtendBase允许使用的参数类型。
+	DefaultHandlerExtendAllowType = map[reflect.Kind]struct{}{reflect.Func: {}, reflect.Interface: {},
+		reflect.Map: {}, reflect.Ptr: {}, reflect.Slice: {}, reflect.Struct: {}}
+	// DefaultLoggerDepth 定义GetPanicStack函数默认显示栈最大层数。
+	DefaultLoggerDepth = 64
+	// DefaultLoggerLevelString 定义日志级别输出字符串。
+	DefaultLoggerLevelString = [5]string{"DEBUG", "INFO", "WARNING", "ERROR", "FATAL"}
+	// DefaultLoggerNull 定义空日志输出器。
+	DefaultLoggerNull = NewLoggerNull()
+	// DefaultLoggerSyncDuration 定义LoggerStd默认Sync写入日志间隔时间，在Mount时使用。
+	DefaultLoggerSyncDuration = time.Millisecond * 80
+	// DefaultLoggerTimeFormat 定义默认日志输出和contextBase.WriteError的时间格式
+	DefaultLoggerTimeFormat = "2006-01-02 15:04:05"
+	// DefaultRenderFunc 定义默认使用的Render函数。
+	DefaultRenderFunc = RenderJSON
+	// DefaultRenderHTMLTemplate 定义RenderHTML的默认通用模板。
+	DefaultRenderHTMLTemplate *template.Template
+	// DefaultRouterAllMethod 定义路由器允许注册的全部方法，注册其他方法别忽略,前六种方法始终存在。
+	DefaultRouterAllMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions, MethodConnect, MethodTrace}
+	// DefaultRouterAnyMethod 定义Any方法的注册使用的方法。
+	DefaultRouterAnyMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch}
+	// DefaultServerShutdownWait 定义Server优雅退出等待时间。
+	DefaultServerShutdownWait = 30 * time.Second
+	// DefaultTraceServer 定义应用默认使用的jaeger链路追踪服务器域名。
+	DefaultTraceServer = ""
+	// DefaultValidateTag 定义NewValidateField获取校验规则的结构体tag。
+	DefaultValidateTag = "validate"
+	// defaultRouterAnyMethod 定义routerStd默认存储的6种方法处理对象。
+	defaultRouterAnyMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch}
+
 	// DefaultGetSetTags 定义Get/Set函数使用的默认tag。
 	DefaultGetSetTags = []string{"alias"}
 	// DefaultConvertTags 定义默认转换使用的结构体tags。
 	DefaultConvertTags = []string{"alias"}
-	// DefaultConvertFormTags 定义bind form使用tags。
-	DefaultConvertFormTags = []string{"form", "alias"}
-	// DefaultConvertURLTags 定义bind url使用tags。
-	DefaultConvertURLTags = []string{"url", "alias"}
-	// DefaultNewValidateFieldTag 定义NewValidateField获取校验规则的结构体tag。
-	DefaultNewValidateFieldTag = "validate"
-	// DefaultClientHost 定义ClientWarp默认使用的Host。
-	DefaultClientHost = "localhost:80"
-	// DefaultLoggerTimeFormat 定义默认日志输出和contextBase.WriteError的时间格式
-	DefaultLoggerTimeFormat = "2006-01-02 15:04:05"
-	// DefaulerServerShutdownWait 定义Server优雅退出等待时间。
-	DefaulerServerShutdownWait = 30 * time.Second
-	// DefaultRecoverDepth 定义GetPanicStack函数默认显示栈最大层数。
-	DefaultRecoverDepth = 64
-	// LogLevelString 定义日志级别输出字符串。
-	LogLevelString = [5]string{"DEBUG", "INFO", "WARNING", "ERROR", "FATAL"}
-	// RouterAllMethod 定义路由器允许注册的全部方法，注册其他方法别忽略,前六种方法始终存在。
-	RouterAllMethod = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch, MethodOptions, MethodConnect, MethodTrace}
-	// RouterAnyMethod 定义Any方法的注册使用的方法。
-	RouterAnyMethod        = []string{MethodGet, MethodPost, MethodPut, MethodDelete, MethodHead, MethodPatch}
-	defaultRouterAnyMethod = append([]string{}, RouterAnyMethod...)
-	// ConfigAllParseFunc 定义ConfigMap和ConfigEudore默认使用的解析函数。
-	ConfigAllParseFunc = []ConfigParseFunc{NewConfigParseJSON("config"), NewConfigParseArgs(nil), NewConfigParseEnvs("ENV_"), NewConfigParseWorkdir("workdir"), NewConfigParseHelp("help")}
-	// DefaultFuncCreator 定义全局默认FuncCreator,RouetrCoreStd默认使用。
-	DefaultFuncCreator = NewFuncCreator()
-	// DefaultHandlerExtend 为默认的函数扩展处理者，是RouterStd使用的最顶级的函数扩展处理者。
-	DefaultHandlerExtend = NewHandlerExtendBase()
-	// DefaultLoggerNull 定义空日志输出器。
-	DefaultLoggerNull = NewLoggerNull()
-	// DefaultHandlerExtendAllowType 定义handlerExtendBase允许使用的参数类型。
-	DefaultHandlerExtendAllowType = map[reflect.Kind]struct{}{
-		reflect.Func:      {},
-		reflect.Interface: {},
-		reflect.Map:       {},
-		reflect.Ptr:       {},
-		reflect.Slice:     {},
-		reflect.Struct:    {},
-	}
+
+	// 定义HandlerData返回error使用的Status和Code
+
+	// StatucBindFail 定义Bind返回错误的状态码。
+	StatucBindFail = 0
+	// StatucValidateFail 定义Validate返回错误的状态码。
+	StatucValidateFail = 0
+	// StatucFilteFail 定义Filte返回错误的状态码。
+	StatucFilteFail = 0
+	// StatucRenderFail 定义Render返回错误的状态码。
+	StatucRenderFail = 0
+	// CodeBindFail 定义Bind返回错误的Code。
+	CodeBindFail = 0
+	// CodeValidateFail 定义Validate返回错误的Code。
+	CodeValidateFail = 0
+	// CodeFilteFail 定义Filte返回错误的Code。
+	CodeFilteFail = 0
+	// CodeRenderFail 定义Render返回错误的Code。
+	CodeRenderFail = 0
 )
 
 // 定义各种类型的反射类型。
 var (
 	typeBool      = reflect.TypeOf((*bool)(nil)).Elem()
-	typeString    = reflect.TypeOf((*string)(nil)).Elem()
+	typeBytes     = reflect.TypeOf((*[]byte)(nil)).Elem()
 	typeError     = reflect.TypeOf((*error)(nil)).Elem()
 	typeInterface = reflect.TypeOf((*interface{})(nil)).Elem()
+	typeString    = reflect.TypeOf((*string)(nil)).Elem()
 
 	typeContext        = reflect.TypeOf((*Context)(nil)).Elem()
 	typeController     = reflect.TypeOf((*Controller)(nil)).Elem()
-	typeHandlerFunc    = reflect.TypeOf((*HandlerFunc)(nil)).Elem()
-	typeTimeTime       = reflect.TypeOf((*time.Time)(nil)).Elem()
-	typeStringer       = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
 	typeControllerName = reflect.TypeOf((*controllerName)(nil)).Elem()
+	typeHandlerFunc    = reflect.TypeOf((*HandlerFunc)(nil)).Elem()
+	typeStringer       = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
+	typeTimeTime       = reflect.TypeOf((*time.Time)(nil)).Elem()
 )
 
 // 检测各类接口
@@ -108,7 +159,7 @@ var (
 	_ LoggerStdData   = (*loggerStdDataJSON)(nil)
 	_ LoggerStdData   = (*loggerStdDataInit)(nil)
 	_ Config          = (*configStd)(nil)
-	_ Config          = (*configMap)(nil)
+	_ Client          = (*clientStd)(nil)
 	_ Server          = (*serverStd)(nil)
 	_ Server          = (*serverFcgi)(nil)
 	_ Router          = (*RouterStd)(nil)
@@ -123,31 +174,11 @@ var (
 	_ HandlerExtender = (*handlerExtendBase)(nil)
 	_ HandlerExtender = (*handlerExtendWarp)(nil)
 	_ HandlerExtender = (*handlerExtendTree)(nil)
-)
-
-// 定义日志级别
-const (
-	LogDebug LoggerLevel = iota
-	LogInfo
-	LogWarning
-	LogError
-	LogFatal
-)
-
-var (
-	loggerlevels = [][]byte{[]byte("DEBUG"), []byte("INFO"), []byte("WARIRNG"), []byte("ERROR"), []byte("FATAL")}
-	loggerpart1  = []byte(`{"time":"`)
-	loggerpart2  = []byte(`","level":"`)
-	loggerpart3  = []byte(`,"message":"`)
-	loggerpart4  = []byte("\"}\n")
-	loggerpart5  = []byte("}\n")
-	_hex         = "0123456789abcdef"
+	_ FuncCreator     = (*funcCreator)(nil)
 )
 
 // 定义默认错误
 var (
-	// ErrApplicationStop 在app正常退出时返回。
-	ErrApplicationStop = errors.New("stop application success")
 	// ErrConverterInputDataNil 在Converter方法时，输出参数是空。
 	ErrConverterInputDataNil = errors.New("Converter input value is nil")
 	// ErrConverterInputDataNotPtr 在Converter方法时，输出参数是空。
@@ -188,19 +219,32 @@ var (
 	ErrFormatRegisterHandlerExtendOutputParamError = "The '%s' output parameter is illegal and should be a HandlerFunc object"
 	// ErrFormatRouterStdAddController RouterStd控制器路由注入错误
 	ErrFormatRouterStdAddController = "The RouterStd.AddController Inject %s error: %v"
-	// ErrFormatRouterStdAddHandlerExtend RouterStd添加扩展错误
+	// ErrFormatRouterStdAddHandlerExtend RouterStd添加扩展处理函数错误
 	ErrFormatRouterStdAddHandlerExtend = "The RouterStd.AddHandlerExtend path is '%s' RegisterHandlerExtend error: %v"
 	// ErrFormatRouterStdRegisterHandlersMethodInvalid RouterStd.registerHandlers 的添加的是无效的，全部有效方法为RouterAnyMethod。
 	ErrFormatRouterStdRegisterHandlersMethodInvalid = "The RouterStd.registerHandlers arg method '%s' is invalid, complete method: '%s', add fullpath: '%s'"
-	// ErrFormatRouterStdRegisterHandlersRecover RouterStd出现panic。
+	// ErrFormatRouterStdRegisterHandlersRecover RouterStd注册路由时恢复panic。
 	ErrFormatRouterStdRegisterHandlersRecover = "The RouterStd.registerHandlers arg method is '%s' and path is '%s', recover error: %v"
 	// ErrFormatRouterStdNewHandlerFuncsUnregisterType RouterStd添加处理对象或中间件的第n个参数类型未注册，需要先使用RegisterHandlerExtend或AddHandlerExtend注册该函数类型。
 	ErrFormatRouterStdNewHandlerFuncsUnregisterType = "The RouterStd.newHandlerFuncs path is '%s', %dth handler parameter type is '%s', this is the unregistered handler type"
-
-	ErrFormarRouterStdLoadInvalidFunc       = "loadCheckFunc path is invalid, load path '%s' error: %v "
-	ErrFormatParseValidateFieldError        = "validateField %s.%s parse field %s create rule %s error: %s"
+	// ErrFormatProtobufDecodeNilInteface 定义protobuf解码到空接口
+	ErrFormatProtobufDecodeNilInteface    = "protobuf decode %s interface %s is nil"
+	ErrFormatProtobufDecodeInvalidFlag    = "protobuf decode %s invalid flag %d"
+	ErrFormatProtobufDecodeInvalidKind    = "protobuf decode %s invalid kind %s"
+	ErrFormatProtobufDecodeReadError      = "protobuf decode %s read %s error: %w"
+	ErrFormatProtobufDecodeReadInvalid    = "protobuf decode %s read length %d invalid has data %d"
+	ErrFormatProtobufDecodeMessageNotRead = "protobuf decode message has %d not read"
+	ErrFormatProtobufTypeMustSturct       = "protobuf encdoe/decode kind must struct, current type %s"
+	// ErrFormatMiddlewareRequestEntityTooLargeSzie BodyLimit请求长度超过限制。
+	ErrFormatMiddlewareRequestEntityTooLargeSzie = "Request Entity Too Large, limit body size %d"
+	// ErrFormarRouterStdLoadInvalidFunc RouterStd无法加载路径对应的校验函数。
+	ErrFormarRouterStdLoadInvalidFunc = "loadCheckFunc path is invalid, load path '%s' error: %v "
+	// ErrFormatParseValidateFieldError Validate解析结构体规则错误。
+	ErrFormatParseValidateFieldError = "validateField %s.%s parse field %s create rule %s error: %s"
+	// ErrFormatFuncCreatorRegisterInvalidType fc注册函数类似是无效的。
 	ErrFormatFuncCreatorRegisterInvalidType = "Register func %s type is %T, must 'func(T) bool' or 'func(string) (func(T) bool, error)'"
-	ErrFormatFuncCreatorNotFunc             = "not found or create func %s"
+	// ErrFormatFuncCreatorNotFunc 无法创建对应的校验函数。
+	ErrFormatFuncCreatorNotFunc = "not found or create func %s"
 )
 
 // 定义eudore定义各种常量。
@@ -290,6 +334,8 @@ const (
 	HeaderAcceptEncoding                  = "Accept-Encoding"
 	HeaderAcceptLanguage                  = "Accept-Language"
 	HeaderAcceptRanges                    = "Accept-Ranges"
+	HeaderAcceptPost                      = "Accept-Post"
+	HeaderAcceptPatch                     = "Accept-Patch"
 	HeaderAccessControlAllowCredentials   = "Access-Control-Allow-Credentials"
 	HeaderAccessControlAllowHeaders       = "Access-Control-Allow-Headers"
 	HeaderAccessControlAllowMethods       = "Access-Control-Allow-Methods"
@@ -374,9 +420,9 @@ const (
 	HeaderXRequestID                      = "X-Request-Id"
 	HeaderXTraceID                        = "X-Trace-Id"
 	HeaderXEudoreAdmin                    = "X-Eudore-Admin"
-	HeaderXMatchRoute                     = "X-Match-Route"
+	HeaderXEudoreRoute                    = "X-Eudore-Route"
 
-	// 默认http请求方法
+	// default http method by rfc2616
 
 	MethodAny     = "ANY"
 	MethodGet     = "GET"
@@ -392,26 +438,29 @@ const (
 	// Mime
 
 	MimeCharsetUtf8                = "charset=utf-8"
+	MimeMultipartForm              = "multipart/form-data"
 	MimeText                       = "text/*"
 	MimeTextPlain                  = "text/plain"
 	MimeTextPlainCharsetUtf8       = MimeTextPlain + "; " + MimeCharsetUtf8
+	MimeTextMarkdown               = "text/markdown"
+	MimeTextMarkdownCharsetUtf8    = MimeTextMarkdown + "; " + MimeCharsetUtf8
+	MimeTextJavascript             = "text/javascript"
+	MimeTextJavascriptCharsetUtf8  = MimeTextJavascript + "; " + MimeCharsetUtf8
 	MimeTextHTML                   = "text/html"
 	MimeTextHTMLCharsetUtf8        = MimeTextHTML + "; " + MimeCharsetUtf8
 	MimeTextCSS                    = "text/css"
-	MimeTextCSSUtf8                = MimeTextCSS + "; " + MimeCharsetUtf8
-	MimeTextJavascript             = "text/javascript"
-	MimeTextJavascriptUtf8         = MimeTextJavascript + "; " + MimeCharsetUtf8
-	MimeTextMarkdown               = "text/markdown"
-	MimeTextMarkdownUtf8           = MimeTextMarkdown + "; " + MimeCharsetUtf8
+	MimeTextCSSCharsetUtf8         = MimeTextCSS + "; " + MimeCharsetUtf8
 	MimeTextXML                    = "text/xml"
 	MimeTextXMLCharsetUtf8         = MimeTextXML + "; " + MimeCharsetUtf8
-	MimeApplicationJSON            = "application/json"
-	MimeApplicationJSONUtf8        = MimeApplicationJSON + "; " + MimeCharsetUtf8
+	MimeApplicationYAMLCharsetUtf8 = MimeApplicationYAML + "; " + MimeCharsetUtf8
+	MimeApplicationYAML            = "application/yaml"
+	MimeApplicationXMLCharsetUtf8  = MimeApplicationXML + "; " + MimeCharsetUtf8
 	MimeApplicationXML             = "application/xml"
-	MimeApplicationxmlCharsetUtf8  = MimeApplicationXML + "; " + MimeCharsetUtf8
-	MimeApplicationForm            = "application/x-www-form-urlencoded"
+	MimeApplicationProtobuf        = "application/protobuf"
+	MimeApplicationJSONCharsetUtf8 = MimeApplicationJSON + "; " + MimeCharsetUtf8
+	MimeApplicationJSON            = "application/json"
 	MimeApplicationFormCharsetUtf8 = MimeApplicationForm + "; " + MimeCharsetUtf8
-	MimeMultipartForm              = "multipart/form-data"
+	MimeApplicationForm            = "application/x-www-form-urlencoded"
 
 	// Param
 

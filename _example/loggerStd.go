@@ -31,12 +31,12 @@ import (
 
 func main() {
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(map[string]interface{}{
-		"std":        false,
-		"path":       "",
-		"Level":      "1",
-		"TimeFormat": "Mon Jan 2 15:04:05 -0700 MST 2006",
-		"FileLine":   true,
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(&eudore.LoggerStdConfig{
+		Std:        true,
+		Path:       "app.log",
+		Level:      eudore.LogInfo,
+		TimeFormat: "Mon Jan 2 15:04:05 -0700 MST 2006",
+		FileLine:   true,
 	}))
 
 	app.Debug("debug")

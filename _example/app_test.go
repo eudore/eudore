@@ -12,9 +12,7 @@ func init() {
 }
 
 func TestAppRun(*testing.T) {
-	client := eudore.NewClientWarp()
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.SetValue(eudore.ContextKeyRender, eudore.RenderJSON)
 	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
 
@@ -24,7 +22,10 @@ func TestAppRun(*testing.T) {
 		ctx.WriteString("hello eudore")
 	})
 
-	client.NewRequest("GET", "/hello").BodyString("trace").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
+	app.NewRequest(nil, "GET", "/hello",
+		eudore.NewClientBodyString("trace"),
+		eudore.NewClientCheckStatus(200),
+	)
 
 	app.Value(eudore.ContextKeyLogger)
 	app.Value(eudore.ContextKeyConfig)

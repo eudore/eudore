@@ -38,10 +38,10 @@ func main() {
 	client.NewRequest("LOCK", "/dav/1").Do().Out()
 	client.NewRequest("COPY", "/dav/1").Do().Out()
 
-	// 反注册 单元测试
+	// 路由注销 使用参数register=off或空处理函数
 	app.AddHandler("LOCK", "/* register=off", eudore.HandlerEmpty)
 	app.AddHandler("ANY", "/* register=off", eudore.HandlerEmpty)
-	app.AddHandler("MOVE", "/* register=off", eudore.HandlerEmpty)
+	app.AddHandler("MOVE", "/*")
 
 	app.Listen(":8088")
 	// app.CancelFunc()

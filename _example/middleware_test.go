@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -24,11 +25,9 @@ import (
 
 func TestMiddlewareAdmin(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AnyFunc("/", middleware.HandlerAdmin)
 
-	client.NewRequest("GET", "/").Do()
+	app.NewRequest(nil, "GET", "/")
 
 	app.CancelFunc()
 	app.Run()
@@ -36,12 +35,10 @@ func TestMiddlewareAdmin(*testing.T) {
 
 func TestMiddlewareBasicAuth(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("global", middleware.NewBasicAuthFunc(map[string]string{"eudore": "hello"}))
 
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderAuthorization, "Basic ZXVkb3JlOmhlbGxv").Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderAuthorization, "eudore").Do()
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, "Basic ZXVkb3JlOmhlbGxv"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, "eudore"))
 
 	app.CancelFunc()
 	app.Run()
@@ -49,19 +46,17 @@ func TestMiddlewareBasicAuth(*testing.T) {
 
 func TestMiddlewareBodyLimit(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("global", middleware.NewBodyLimitFunc(32))
 	app.AnyFunc("/", func(ctx eudore.Context) {
 		ctx.Body()
 	})
 
-	client.NewRequest("GET", "/").BodyString("123456").Do()
-	client.NewRequest("GET", "/").BodyString("1234567890abcdefghijklmnopqrstuvwxyz").Do()
+	app.NewRequest(nil, "GET", "/", eudore.NewClientBodyString("123456"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientBodyString("1234567890abcdefghijklmnopqrstuvwxyz"))
 	// limit chunck
-	client.NewRequest("GET", "/").BodyJSON(map[string]string{
+	app.NewRequest(nil, "GET", "/", eudore.NewClientBodyFormValues(map[string]string{
 		"name": "eudore", "value": "1234567890abcdefghijklmnopqrstuvwxyz",
-	}).Do()
+	}))
 
 	app.CancelFunc()
 	app.Run()
@@ -69,9 +64,6 @@ func TestMiddlewareBodyLimit(*testing.T) {
 
 func TestMiddlewareContextwarp(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	app.AddMiddleware(middleware.NewContextWarpFunc(newContextParams))
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AnyFunc("/ctx", func(ctx eudore.Context) {
@@ -85,8 +77,8 @@ func TestMiddlewareContextwarp(*testing.T) {
 		ctx.End()
 	})
 
-	client.NewRequest("GET", "/").Do()
-	client.NewRequest("GET", "/ctx").Do()
+	app.NewRequest(nil, "GET", "/")
+	app.NewRequest(nil, "GET", "/ctx")
 
 	app.CancelFunc()
 	app.Run()
@@ -108,12 +100,10 @@ func (ctx contextParams) GetParam(key string) string {
 
 func TestMiddlewareHeader(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("global", middleware.NewHeaderWithSecureFunc(http.Header{"Server": []string{"eudore"}}))
 	app.AddMiddleware("global", middleware.NewHeaderFunc(nil))
 
-	client.NewRequest("GET", "/").Do()
+	app.NewRequest(nil, "GET", "/")
 
 	app.CancelFunc()
 	app.Run()
@@ -121,15 +111,13 @@ func TestMiddlewareHeader(*testing.T) {
 
 func TestMiddlewareHeaderFilte(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AnyFunc("/1", middleware.NewHeaderFilteFunc(nil, nil))
 	app.AnyFunc("/2", middleware.NewHeaderFilteFunc([]string{"127.0.0.0/24"}, nil))
 	app.Listen(":8088")
 
-	client.NewRequest("GET", "http://localhost:8088/1").Do()
-	client.NewRequest("GET", "/1").Do()
-	client.NewRequest("GET", "/2").Do()
+	app.NewRequest(nil, "GET", "http://localhost:8088/1")
+	app.NewRequest(nil, "GET", "/1")
+	app.NewRequest(nil, "GET", "/2")
 
 	app.CancelFunc()
 	app.Run()
@@ -137,8 +125,6 @@ func TestMiddlewareHeaderFilte(*testing.T) {
 
 func TestMiddlewareLogger(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("global", middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware("global", middleware.NewRequestIDFunc(func(eudore.Context) string {
 		return uuid.New().String()
@@ -147,8 +133,8 @@ func TestMiddlewareLogger(*testing.T) {
 		ctx.Fatal("test error")
 	})
 
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderXForwardedFor, "172.17.0.1").Do()
-	client.NewRequest("POST", "/500").Do()
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderXForwardedFor, "172.17.0.1"))
+	app.NewRequest(nil, "POST", "/500")
 
 	app.CancelFunc()
 	app.Run()
@@ -156,13 +142,9 @@ func TestMiddlewareLogger(*testing.T) {
 
 func TestMiddlewareLoggerLevel(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-	app.SetLevel(eudore.LogInfo)
-
+	app.SetLevel(eudore.LoggerInfo)
 	app.AddMiddleware(middleware.NewLoggerLevelFunc(nil))
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
-
 	app.AnyFunc("/api/v1/user", func(ctx eudore.Context) {
 		ctx.Debug("Get User")
 	})
@@ -173,10 +155,10 @@ func TestMiddlewareLoggerLevel(*testing.T) {
 	app.AddHandler("404", "", eudore.HandlerRouter404)
 	app.AddHandler("405", "", eudore.HandlerRouter405)
 
-	client.NewRequest("GET", "/api/v1/user").Do()
-	client.NewRequest("GET", "/api/v1/meta?eudore_debug=0").Do()
-	client.NewRequest("GET", "/api/v1/meta?eudore_debug=1").Do()
-	client.NewRequest("GET", "/api/v1/meta?eudore_debug=5").Do()
+	app.NewRequest(nil, "GET", "/api/v1/user")
+	app.NewRequest(nil, "GET", "/api/v1/meta?eudore_debug=0")
+	app.NewRequest(nil, "GET", "/api/v1/meta?eudore_debug=1")
+	app.NewRequest(nil, "GET", "/api/v1/meta?eudore_debug=5")
 
 	app.CancelFunc()
 	app.Run()
@@ -184,8 +166,6 @@ func TestMiddlewareLoggerLevel(*testing.T) {
 
 func TestMiddlewareRecover(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("global", middleware.NewRecoverFunc())
 	app.AnyFunc("/", func(ctx eudore.Context) {
 		panic("test error")
@@ -194,8 +174,8 @@ func TestMiddlewareRecover(*testing.T) {
 		panic(nil)
 	})
 
-	client.NewRequest("GET", "/").Do()
-	client.NewRequest("GET", "/nil").Do()
+	app.NewRequest(nil, "GET", "/")
+	app.NewRequest(nil, "GET", "/nil")
 
 	app.CancelFunc()
 	app.Run()
@@ -203,11 +183,9 @@ func TestMiddlewareRecover(*testing.T) {
 
 func TestMiddlewareRequestID(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("global", middleware.NewRequestIDFunc(nil))
 
-	client.NewRequest("GET", "/").Do()
+	app.NewRequest(nil, "GET", "/")
 
 	app.CancelFunc()
 	app.Run()
@@ -220,8 +198,6 @@ func TestMiddlewareBlack(*testing.T) {
 	}, nil)
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware(middleware.NewBlackFunc(map[string]bool{
 		"192.168.100.0/24": true,
 		"192.168.75.0/30":  true,
@@ -232,45 +208,45 @@ func TestMiddlewareBlack(*testing.T) {
 	}, app.Group("/eudore/debug")))
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
-	client.NewRequest("GET", "/eudore/debug/black/ui").Do()
-	client.NewRequest("GET", "/eudore/debug/black/ui").Do()
-	client.NewRequest("PUT", "/eudore/debug/black/black/10.127.87.0?mask=24").Do()
-	client.NewRequest("PUT", "/eudore/debug/black/white/10.127.87.0?mask=24").Do()
-	client.NewRequest("GET", "/eudore/debug/black/data").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/black/10.127.87.0?mask=24").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/white/10.127.87.0?mask=24").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/black/10.127.87.0?mask=24").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/white/10.127.87.0?mask=24").Do()
+	app.NewRequest(nil, "GET", "/eudore/debug/black/ui")
+	app.NewRequest(nil, "GET", "/eudore/debug/black/ui")
+	app.NewRequest(nil, "PUT", "/eudore/debug/black/black/10.127.87.0?mask=24")
+	app.NewRequest(nil, "PUT", "/eudore/debug/black/white/10.127.87.0?mask=24")
+	app.NewRequest(nil, "GET", "/eudore/debug/black/data")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/black/10.127.87.0?mask=24")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/white/10.127.87.0?mask=24")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/black/10.127.87.0?mask=24")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/white/10.127.87.0?mask=24")
 
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "127.0.0.1:29398").Do().Callback(eudore.NewResponseReaderCheckStatus(403))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "127.0.0.1:29398").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.75.1:8298").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.100.3/28").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.100.0").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.100.1").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.100.77").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.100.148").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.100.222").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.75.4").Do().Callback(eudore.NewResponseReaderCheckStatus(403))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.75.5").Do().Callback(eudore.NewResponseReaderCheckStatus(403))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.75.6").Do().Callback(eudore.NewResponseReaderCheckStatus(403))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.1.99").Do().Callback(eudore.NewResponseReaderCheckStatus(403))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.1.100").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.1.101").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.1.102").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.1.103").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.1.104").Do().Callback(eudore.NewResponseReaderCheckStatus(403))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.1.105").Do().Callback(eudore.NewResponseReaderCheckStatus(403))
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "127.0.0.1").Do()
-	client.NewRequest("GET", "/eudore").Do().Callback(eudore.NewResponseReaderCheckStatus(403))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "127.0.0.1:29398"), eudore.NewClientCheckStatus(403))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "127.0.0.1:29398"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.75.1:8298"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.100.3/28"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.100.0"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.100.1"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.100.77"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.100.148"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.100.222"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.75.4"), eudore.NewClientCheckStatus(403))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.75.5"), eudore.NewClientCheckStatus(403))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.75.6"), eudore.NewClientCheckStatus(403))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.1.99"), eudore.NewClientCheckStatus(403))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.1.100"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.1.101"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.1.102"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.1.103"), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.1.104"), eudore.NewClientCheckStatus(403))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.1.105"), eudore.NewClientCheckStatus(403))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "127.0.0.1"))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientCheckStatus(403))
 
-	client.NewRequest("DELETE", "/eudore/debug/black/white/0.0.0.0?mask=0").Do()
-	client.NewRequest("PUT", "/eudore/debug/black/white/192.168.75.4?mask=30").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/white/192.168.75.1").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/white/192.168.75.5").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/white/192.168.75.7").Do()
-	client.NewRequest("PUT", "/eudore/debug/black/white/10.16.0.0?mask=16").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/white/192.168.75.4?mask=30").Do()
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/white/0.0.0.0?mask=0")
+	app.NewRequest(nil, "PUT", "/eudore/debug/black/white/192.168.75.4?mask=30")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/white/192.168.75.1")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/white/192.168.75.5")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/white/192.168.75.7")
+	app.NewRequest(nil, "PUT", "/eudore/debug/black/white/10.16.0.0?mask=16")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/white/192.168.75.4?mask=30")
 
 	app.CancelFunc()
 	app.Run()
@@ -279,10 +255,7 @@ func TestMiddlewareBlack(*testing.T) {
 func TestMiddlewareBreaker(*testing.T) {
 	middleware.NewBreakerFunc(nil)
 
-	client := eudore.NewClientWarp()
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	// 创建熔断器并注入管理路由
 	breaker := middleware.NewBreaker()
 	breaker.MaxConsecutiveSuccesses = 3
@@ -300,26 +273,26 @@ func TestMiddlewareBreaker(*testing.T) {
 
 	// 错误请求
 	for i := 0; i < 10; i++ {
-		client.NewRequest("GET", "/1?a=1").Do()
+		app.NewRequest(nil, "GET", "/1?a=1")
 	}
 	for i := 0; i < 5; i++ {
 		time.Sleep(time.Millisecond * 500)
-		client.NewRequest("GET", "/1?a=1").Do()
+		app.NewRequest(nil, "GET", "/1?a=1")
 	}
 	// 除非熔断后访问
 	for i := 0; i < 5; i++ {
 		time.Sleep(time.Millisecond * 500)
-		client.NewRequest("GET", "/1").Do()
+		app.NewRequest(nil, "GET", "/1")
 	}
 
-	client.NewRequest("GET", "/eudore/debug/breaker/ui").Do()
-	client.NewRequest("GET", "/eudore/debug/breaker/ui").Do()
-	client.NewRequest("GET", "/eudore/debug/breaker/data").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
-	client.NewRequest("GET", "/eudore/debug/breaker/1").Do()
-	client.NewRequest("GET", "/eudore/debug/breaker/100").Do()
-	client.NewRequest("PUT", "/eudore/debug/breaker/1/state/0").Do()
-	client.NewRequest("PUT", "/eudore/debug/breaker/1/state/3").Do()
-	client.NewRequest("PUT", "/eudore/debug/breaker/3/state/3").Do()
+	app.NewRequest(nil, "GET", "/eudore/debug/breaker/ui")
+	app.NewRequest(nil, "GET", "/eudore/debug/breaker/ui")
+	app.NewRequest(nil, "GET", "/eudore/debug/breaker/data", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "GET", "/eudore/debug/breaker/1")
+	app.NewRequest(nil, "GET", "/eudore/debug/breaker/100")
+	app.NewRequest(nil, "PUT", "/eudore/debug/breaker/1/state/0")
+	app.NewRequest(nil, "PUT", "/eudore/debug/breaker/1/state/3")
+	app.NewRequest(nil, "PUT", "/eudore/debug/breaker/3/state/3")
 
 	time.Sleep(time.Microsecond * 100)
 	app.CancelFunc()
@@ -328,9 +301,6 @@ func TestMiddlewareBreaker(*testing.T) {
 
 func TestMiddlewareCache(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	app.AddMiddleware("global", middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware(middleware.NewCacheFunc(time.Second/10, app.Context, func(ctx eudore.Context) string {
 		// 自定义缓存key函数，默认实现方法
@@ -348,25 +318,25 @@ func TestMiddlewareCache(*testing.T) {
 		ctx.WriteString("hello eudore")
 	})
 
-	client.NewRequest("GET", "/sf").Do()
+	app.NewRequest(nil, "GET", "/sf")
 	wg := sync.WaitGroup{}
 	wg.Add(5)
 	for n := 0; n < 5; n++ {
 		go func() {
 			for i := 0; i < 3; i++ {
-				client.NewRequest("GET", "/?c="+fmt.Sprint(i)).Do()
-				client.NewRequest("GET", "/?c="+fmt.Sprint(i)).Do()
+				app.NewRequest(nil, "GET", "/?c="+fmt.Sprint(i))
+				app.NewRequest(nil, "GET", "/?c="+fmt.Sprint(i))
 				time.Sleep(time.Millisecond * 200)
-				client.NewRequest("GET", "/?c="+fmt.Sprint(i)).Do()
+				app.NewRequest(nil, "GET", "/?c="+fmt.Sprint(i))
 			}
 			wg.Done()
 		}()
 	}
 	wg.Wait()
 
-	client.NewRequest("GET", "/sf").Do()
-	client.NewRequest("POST", "/sf").Do()
-	client.NewRequest("GET", "/s").Do()
+	app.NewRequest(nil, "GET", "/sf")
+	app.NewRequest(nil, "POST", "/sf")
+	app.NewRequest(nil, "GET", "/s")
 
 	app.CancelFunc()
 	app.Run()
@@ -374,9 +344,6 @@ func TestMiddlewareCache(*testing.T) {
 
 func TestMiddlewareCacheStore(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	app.AddMiddleware("global", middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware(middleware.NewCacheFunc(time.Second/100, app.Context, new(cacheMap)))
 	app.AnyFunc("/sf", func(ctx eudore.Context) {
@@ -388,25 +355,25 @@ func TestMiddlewareCacheStore(*testing.T) {
 		ctx.WriteString("hello eudore")
 	})
 
-	client.NewRequest("GET", "/sf").Do()
+	app.NewRequest(nil, "GET", "/sf")
 	wg := sync.WaitGroup{}
 	wg.Add(5)
 	for n := 0; n < 5; n++ {
 		go func() {
 			for i := 0; i < 3; i++ {
-				client.NewRequest("GET", "/?c="+fmt.Sprint(i)).Do()
-				client.NewRequest("GET", "/?c="+fmt.Sprint(i)).Do()
+				app.NewRequest(nil, "GET", "/?c="+fmt.Sprint(i))
+				app.NewRequest(nil, "GET", "/?c="+fmt.Sprint(i))
 				time.Sleep(time.Millisecond * 20)
-				client.NewRequest("GET", "/?c="+fmt.Sprint(i)).Do()
+				app.NewRequest(nil, "GET", "/?c="+fmt.Sprint(i))
 			}
 			wg.Done()
 		}()
 	}
 	wg.Wait()
 
-	client.NewRequest("GET", "/sf").Do()
-	client.NewRequest("POST", "/sf").Do()
-	client.NewRequest("GET", "/s").Do()
+	app.NewRequest(nil, "GET", "/sf")
+	app.NewRequest(nil, "POST", "/sf")
+	app.NewRequest(nil, "GET", "/s")
 
 	app.CancelFunc()
 	app.Run()
@@ -444,8 +411,6 @@ func TestMiddlewareCors(*testing.T) {
 	})
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("global", middleware.NewCorsFunc([]string{"www.*.com", "example.com", "127.0.0.1:*"}, map[string]string{
 		"Access-Control-Allow-Credentials": "true",
 		"Access-Control-Allow-Headers":     "Authorization,DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,X-Parent-Id",
@@ -454,20 +419,20 @@ func TestMiddlewareCors(*testing.T) {
 		"access-control-max-age":           "1000",
 	}))
 
-	client.NewRequest("OPTIONS", "/1").Do()
-	client.NewRequest("OPTIONS", "/2").AddHeader("Origin", eudore.DefaultClientHost).Do()
-	client.NewRequest("OPTIONS", "/3").AddHeader("Origin", "http://localhost").Do()
-	client.NewRequest("OPTIONS", "/4").AddHeader("Origin", "http://127.0.0.1:8088").Do()
-	client.NewRequest("OPTIONS", "/5").AddHeader("Origin", "http://127.0.0.1:8089").Do()
-	client.NewRequest("OPTIONS", "/6").AddHeader("Origin", "http://example.com").Do()
-	client.NewRequest("OPTIONS", "/6").AddHeader("Origin", "http://www.eudore.cn").Do()
-	client.NewRequest("GET", "/1").Do()
-	client.NewRequest("GET", "/2").AddHeader("Origin", eudore.DefaultClientHost).Do()
-	client.NewRequest("GET", "/3").AddHeader("Origin", "http://localhost").Do()
-	client.NewRequest("GET", "/4").AddHeader("Origin", "http://127.0.0.1:8088").Do()
-	client.NewRequest("GET", "/5").AddHeader("Origin", "http://127.0.0.1:8089").Do()
-	client.NewRequest("GET", "/6").AddHeader("Origin", "http://example.com").Do()
-	client.NewRequest("GET", "/6").AddHeader("Origin", "http://www.eudore.cn").Do()
+	app.NewRequest(nil, "OPTIONS", "/1")
+	app.NewRequest(nil, "OPTIONS", "/2", eudore.NewClientHeader("Origin", eudore.DefaultClientInternalHost))
+	app.NewRequest(nil, "OPTIONS", "/3", eudore.NewClientHeader("Origin", "http://localhost"))
+	app.NewRequest(nil, "OPTIONS", "/4", eudore.NewClientHeader("Origin", "http://127.0.0.1:8088"))
+	app.NewRequest(nil, "OPTIONS", "/5", eudore.NewClientHeader("Origin", "http://127.0.0.1:8089"))
+	app.NewRequest(nil, "OPTIONS", "/6", eudore.NewClientHeader("Origin", "http://example.com"))
+	app.NewRequest(nil, "OPTIONS", "/6", eudore.NewClientHeader("Origin", "http://www.eudore.cn"))
+	app.NewRequest(nil, "GET", "/1")
+	app.NewRequest(nil, "GET", "/2", eudore.NewClientHeader("Origin", eudore.DefaultClientHost))
+	app.NewRequest(nil, "GET", "/3", eudore.NewClientHeader("Origin", "http://localhost"))
+	app.NewRequest(nil, "GET", "/4", eudore.NewClientHeader("Origin", "http://127.0.0.1:8088"))
+	app.NewRequest(nil, "GET", "/5", eudore.NewClientHeader("Origin", "http://127.0.0.1:8089"))
+	app.NewRequest(nil, "GET", "/6", eudore.NewClientHeader("Origin", "http://example.com"))
+	app.NewRequest(nil, "GET", "/6", eudore.NewClientHeader("Origin", "http://www.eudore.cn"))
 
 	app.CancelFunc()
 	app.Run()
@@ -475,25 +440,29 @@ func TestMiddlewareCors(*testing.T) {
 
 func TestMiddlewareCsrf(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AnyFunc("/query", middleware.NewCsrfFunc("query: csrf", "_csrf"), eudore.HandlerEmpty)
 	app.AnyFunc("/header", middleware.NewCsrfFunc("header: "+eudore.HeaderXCSRFToken, eudore.SetCookie{Name: "_csrf", MaxAge: 86400}), eudore.HandlerEmpty)
 	app.AnyFunc("/form", middleware.NewCsrfFunc("form: csrf", &eudore.SetCookie{Name: "_csrf", MaxAge: 86400}), eudore.HandlerEmpty)
 	app.AnyFunc("/fn", middleware.NewCsrfFunc(func(ctx eudore.Context) string { return ctx.GetQuery("csrf") }, "_csrf"), eudore.HandlerEmpty)
 	app.AnyFunc("/*", middleware.NewCsrfFunc(nil, nil), eudore.HandlerEmpty)
 
-	client.NewRequest("GET", "/1").Do().Callback(eudore.NewResponseReaderCheckStatus(200), eudore.NewResponseReaderOutHead())
-	csrfval := client.GetCookie("/", "_csrf")
-	app.Info("csrf token:", csrfval)
-	client.NewRequest("POST", "/2").Do().Callback(eudore.NewResponseReaderCheckStatus(400))
-	client.NewRequest("POST", "/1").AddQuery("csrf", csrfval).Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("POST", "/query").AddQuery("csrf", csrfval).Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("POST", "/header").AddHeader(eudore.HeaderXCSRFToken, csrfval).Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("POST", "/form").BodyFormValue("csrf", csrfval).Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("POST", "/form").BodyJSONValue("csrf", csrfval).Do().Callback(eudore.NewResponseReaderCheckStatus(400))
-	client.NewRequest("POST", "/fn").AddQuery("csrf", csrfval).Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("POST", "/nil").AddQuery("csrf", csrfval).Do().Callback(eudore.NewResponseReaderCheckStatus(200))
+	var csrfval string
+	app.NewRequest(nil, "GET", "/1",
+		eudore.NewClientCheckStatus(200),
+		func(w *http.Response) error {
+			csrfval = w.Header.Get(eudore.HeaderSetCookie)
+			app.Info("csrf token:", csrfval)
+			return nil
+		},
+	)
+	app.NewRequest(nil, "POST", "/2", eudore.NewClientCheckStatus(400))
+	app.NewRequest(nil, "POST", "/1", eudore.NewClientQuery("csrf", csrfval), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "POST", "/query", eudore.NewClientQuery("csrf", csrfval), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "POST", "/header", eudore.NewClientHeader(eudore.HeaderXCSRFToken, csrfval), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "POST", "/form", eudore.NewClientBodyFormValue("csrf", csrfval), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "POST", "/form", eudore.NewClientBodyJSONValue("csrf", csrfval), eudore.NewClientCheckStatus(400))
+	app.NewRequest(nil, "POST", "/fn", eudore.NewClientQuery("csrf", csrfval), eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "POST", "/nil", eudore.NewClientQuery("csrf", csrfval), eudore.NewClientCheckStatus(200))
 
 	app.CancelFunc()
 	app.Run()
@@ -509,30 +478,14 @@ func TestMiddlewareDump(*testing.T) {
 		Method         string
 		RequestURI     string
 		RequestHeader  http.Header
-		RequestBody    []byte
 		Status         int
 		ResponseHeader http.Header
-		ResponseBody   []byte
 		Params         map[string]string
 		Handlers       []string
 	}
-	min := func(a, b int) int {
-		if a > b {
-			return b
-		}
-		return a
-	}
 
 	var wsdialer ws.Dialer
-	wsdialer.Timeout = time.Second * 10
-	closeDumpMessage := func(urlstr string) {
-		conn, _, _, _ := wsdialer.Dial(context.Background(), urlstr)
-		if conn == nil {
-			return
-		}
-		time.Sleep(time.Millisecond * 4)
-		conn.Close()
-	}
+	wsdialer.Timeout = time.Second * 1
 	ReadDumpMessage := func(urlstr string, count int) {
 		conn, _, _, err := wsdialer.Dial(context.Background(), urlstr)
 		if err != nil {
@@ -549,15 +502,11 @@ func TestMiddlewareDump(*testing.T) {
 			if err != nil {
 				break
 			}
-			msg.RequestBody = msg.RequestBody[0:min(100, len(msg.RequestBody))]
-			msg.ResponseBody = msg.ResponseBody[0:min(100, len(msg.RequestBody))]
-			fmt.Printf("%s %# v\n", urlstr, msg)
+			fmt.Printf("%# v\n", msg)
 		}
 	}
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("global", middleware.NewLoggerFunc(app, "route"))
 	app.AddMiddleware(func(ctx eudore.Context) {
 		if ctx.GetQuery("nodump") != "" {
@@ -565,7 +514,7 @@ func TestMiddlewareDump(*testing.T) {
 		}
 	})
 	app.AddMiddleware(middleware.NewDumpFunc(app.Group("/eudore/debug")))
-	app.AnyFunc("/gzip", middleware.NewGzipFunc(5), func(ctx eudore.Context) {
+	app.AnyFunc("/gzip", middleware.NewCompressGzipFunc(5), func(ctx eudore.Context) {
 		ctx.WriteString("gzip body")
 	})
 	app.AnyFunc("/gziperr", func(ctx eudore.Context) {
@@ -576,33 +525,26 @@ func TestMiddlewareDump(*testing.T) {
 		ctx.Write(ctx.Body())
 	})
 	app.AnyFunc("/bigbody", func(ctx eudore.Context) {
-		body := []byte("0123456789abcdef0123456789abcdef0123456789abcdefx")
-		for i := 0; i < 2000; i++ {
-			ctx.Write(body)
-		}
+		ctx.Write([]byte("0123456789abcdef0123456789abcdef0123456789abcdefx"))
+		ctx.Write(make([]byte, 0xffff))
 	})
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 	app.Listen(":8088")
+	time.Sleep(200 * time.Millisecond)
 
-	go closeDumpMessage("ws://localhost:8088/eudore/debug/dump/connect")
-	go ReadDumpMessage("ws://localhost:8088/eudore/debug/dump/connect", 3)
-	go ReadDumpMessage("ws://localhost:8088/eudore/debug/dump/connect", 20)
 	go ReadDumpMessage("ws://localhost:8088/eudore/debug/dump/connect", 1)
 	go ReadDumpMessage("ws://localhost:8088/eudore/debug/dump/connect?nodump=1", 1)
 	time.Sleep(200 * time.Millisecond)
 
-	readall := func(resp eudore.ResponseReader, _ *http.Request, _ eudore.Logger) error {
-		resp.Body()
-		return nil
-	}
-	_ = readall
-	client.NewRequest("GET", "/gzip").AddHeader(eudore.HeaderAcceptEncoding, "gzip").Do().Callback(eudore.NewResponseReaderOutBody())
-	client.NewRequest("GET", "/gziperr").Do().Callback(eudore.NewResponseReaderOutBody())
-	client.NewRequest("GET", "/echo").Do().Callback(eudore.NewResponseReaderOutBody())
-	client.NewRequest("GET", "/bigbody").Do().Callback(readall)
-	client.NewRequest("GET", "/eudore/debug/dump/connect").Do()
+	app.NewRequest(nil, "GET", "http://localhost:8088/eudore/debug/dump/connect")
+	app.NewRequest(nil, "GET", "/gzip", eudore.NewClientHeader(eudore.HeaderAcceptEncoding, "gzip"))
+	app.NewRequest(nil, "GET", "/gziperr")
+	app.NewRequest(nil, "GET", "/echo")
+	app.NewRequest(nil, "GET", "/bigbody", func(resp *http.Response) {
+		io.Copy(io.Discard, resp.Body)
+	})
 
-	time.Sleep(1200 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	app.CancelFunc()
 	app.Run()
 }
@@ -617,11 +559,8 @@ func (nodumpResponse022) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 
 func TestMiddlewareGzip(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
-	app.AddMiddleware(middleware.NewGzipFunc(5))
-	app.AddMiddleware(middleware.NewGzipFunc(10))
+	app.AddMiddleware(middleware.NewCompressDeflateFunc(100))
+	app.AddMiddleware(middleware.NewCompressGzipFunc(10))
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.Debugf("%#v", ctx.Request().Header)
 		ctx.Push("/stat", nil)
@@ -632,8 +571,9 @@ func TestMiddlewareGzip(*testing.T) {
 		ctx.Response().Flush()
 	})
 
-	client.NewRequest("GET", "/1").Do()
-	client.NewRequest("GET", "/1").AddHeader(eudore.HeaderAcceptEncoding, "none").Do()
+	app.NewRequest(nil, "GET", "/1")
+	app.NewRequest(nil, "GET", "/1", eudore.NewClientHeader(eudore.HeaderAcceptEncoding, "deflate"))
+	app.NewRequest(nil, "GET", "/1", eudore.NewClientHeader(eudore.HeaderAcceptEncoding, "none"))
 
 	app.CancelFunc()
 	app.Run()
@@ -649,29 +589,30 @@ func TestMiddlewareLook(*testing.T) {
 		complex(1, 1): complex(5, 5),
 		i:             6,
 		struct{}{}:    7,
-		"bytes":       []byte(`    client.NewRequest("GET", "/1").AddHeader(eudore.HeaderAcceptEncoding, "none").Do()`),
+		"bytes":       []byte(`    app.NewRequest(nil, "GET", "/1").AddHeader(eudore.HeaderAcceptEncoding, "none")`),
 	}
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	{
 		app2 := eudore.NewApp()
 		app2.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerInit())
 		app2.Set("conf", config)
-		app.AnyFunc("/eudore/debug/look/* godoc=/eudore/debug/pprof/godoc", middleware.NewLookFunc(app2))
+		app.AnyFunc("/eudore/debug/look/*", middleware.NewLookFunc(app2))
+		app.AnyFunc("/eudore/debug/data", middleware.NewLookFunc(func(eudore.Context) interface{} {
+			return nil
+		}))
 	}
 
-	client.NewRequest("GET", "/eudore/debug/look/?d=3").Do()
-	client.NewRequest("GET", "/eudore/debug/look/?all=1").Do()
-	client.NewRequest("GET", "/eudore/debug/look/?format=text").Do()
-	client.NewRequest("GET", "/eudore/debug/look/?format=json").Do()
-	client.NewRequest("GET", "/eudore/debug/look/?format=t2").Do()
-	client.NewRequest("GET", "/eudore/debug/look/Config/Keys/2").Do()
-	client.NewRequest("GET", "/eudore/debug/look/?d=3").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
-	client.NewRequest("GET", "/eudore/debug/look/?d=3").AddHeader(eudore.HeaderAccept, eudore.MimeTextHTML).Do()
-	client.NewRequest("GET", "/eudore/debug/look/?d=3").AddHeader(eudore.HeaderAccept, eudore.MimeText).Do()
+	app.NewRequest(nil, "GET", "/eudore/debug/data")
+	app.NewRequest(nil, "GET", "/eudore/debug/look/?d=3")
+	app.NewRequest(nil, "GET", "/eudore/debug/look/?all=1")
+	app.NewRequest(nil, "GET", "/eudore/debug/look/?format=text")
+	app.NewRequest(nil, "GET", "/eudore/debug/look/?format=json")
+	app.NewRequest(nil, "GET", "/eudore/debug/look/?format=t2")
+	app.NewRequest(nil, "GET", "/eudore/debug/look/Config/Keys/2")
+	app.NewRequest(nil, "GET", "/eudore/debug/look/?d=3", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "GET", "/eudore/debug/look/?d=3", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
+	app.NewRequest(nil, "GET", "/eudore/debug/look/?d=3", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeText))
 
 	app.CancelFunc()
 	app.Run()
@@ -679,9 +620,7 @@ func TestMiddlewareLook(*testing.T) {
 
 func TestMiddlewareLookRender(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-	app.SetValue(eudore.ContextKeyRender, middleware.NewBindLook(nil, map[string]eudore.HandlerDataFunc{
+	app.SetValue(eudore.ContextKeyRender, middleware.NewBindLook(map[string]eudore.HandlerDataFunc{
 		eudore.MimeApplicationXML: nil,
 		eudore.MimeTextXML:        eudore.RenderXML,
 	}))
@@ -692,10 +631,10 @@ func TestMiddlewareLookRender(*testing.T) {
 			"date": time.Now(),
 		}
 	})
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderAccept, middleware.MimeValueJSON).Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderAccept, middleware.MimeValueJSON+","+eudore.MimeApplicationJSON).Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderAccept, middleware.MimeValueHTML).Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderAccept, middleware.MimeValueText).Do()
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAccept, middleware.MimeValueJSON))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAccept, middleware.MimeValueJSON+","+eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAccept, middleware.MimeValueHTML))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAccept, middleware.MimeValueText))
 
 	// time.Sleep(100* time.Microsecond)
 	app.CancelFunc()
@@ -704,22 +643,20 @@ func TestMiddlewareLookRender(*testing.T) {
 
 func TestMiddlewarePprof(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.Group("/eudore/debug").AddController(middleware.NewPprofController())
 
-	client.NewRequest("GET", "/eudore/debug/pprof/expvar").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
-	client.NewRequest("GET", "/eudore/debug/pprof/?format=json").Do()
-	client.NewRequest("GET", "/eudore/debug/pprof/?format=text").Do()
-	client.NewRequest("GET", "/eudore/debug/pprof/?format=html").Do()
-	client.NewRequest("GET", "/eudore/debug/pprof/goroutine?debug=0").Do()
-	client.NewRequest("GET", "/eudore/debug/pprof/goroutine?debug=1").Do()
-	client.NewRequest("GET", "/eudore/debug/pprof/goroutine?debug=1&format=json").Do()
-	client.NewRequest("GET", "/eudore/debug/pprof/goroutine?debug=1&format=text").Do()
-	client.NewRequest("GET", "/eudore/debug/pprof/goroutine?debug=1&format=html").Do()
-	client.NewRequest("GET", "/eudore/debug/pprof/goroutine?debug=2&format=json").Do()
-	client.NewRequest("GET", "/eudore/debug/pprof/goroutine?debug=2&format=text").Do()
-	client.NewRequest("GET", "/eudore/debug/pprof/goroutine?debug=2&format=html").Do()
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/expvar", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/?format=json")
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/?format=text")
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/?format=html")
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/goroutine?debug=0")
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/goroutine?debug=1")
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/goroutine?debug=1&format=json")
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/goroutine?debug=1&format=text")
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/goroutine?debug=1&format=html")
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/goroutine?debug=2&format=json")
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/goroutine?debug=2&format=text")
+	app.NewRequest(nil, "GET", "/eudore/debug/pprof/goroutine?debug=2&format=html")
 
 	app.CancelFunc()
 	app.Run()
@@ -727,12 +664,10 @@ func TestMiddlewarePprof(*testing.T) {
 
 func TestMiddlewareRateRequest(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AnyFunc("/*", middleware.NewRateRequestFunc(1, 3, app.Context), eudore.HandlerEmpty)
 
 	for i := 0; i < 8; i++ {
-		client.NewRequest("GET", "/").Do()
+		app.NewRequest(nil, "GET", "/")
 	}
 
 	app.CancelFunc()
@@ -741,8 +676,6 @@ func TestMiddlewareRateRequest(*testing.T) {
 
 func TestMiddlewareRateSpeed1(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware(middleware.NewRateSpeedFunc(16*1024, 64*1024, app.Context))
 	app.PostFunc("/post", func(ctx eudore.Context) {
 		ctx.Debug(string(ctx.Body()))
@@ -752,8 +685,8 @@ func TestMiddlewareRateSpeed1(*testing.T) {
 	})
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
-	client.NewRequest("POST", "/post").BodyString("return body").Do()
-	client.NewRequest("PUT", "/srv").Do()
+	app.NewRequest(nil, "POST", "/post", eudore.NewClientBodyString("return body"))
+	app.NewRequest(nil, "PUT", "/srv")
 
 	app.CancelFunc()
 	app.Run()
@@ -761,17 +694,15 @@ func TestMiddlewareRateSpeed1(*testing.T) {
 
 func TestMiddlewareRateSpeed2(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AnyFunc("/*", middleware.NewRateRequestFunc(1, 3, app.Context, time.Millisecond*100), eudore.HandlerEmpty)
 
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
 	time.Sleep(time.Second / 2)
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
 
 	app.CancelFunc()
 	app.Run()
@@ -779,15 +710,13 @@ func TestMiddlewareRateSpeed2(*testing.T) {
 
 func TestMiddlewareRateSpeed3(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AnyFunc("/*", middleware.NewRateRequestFunc(1, 2, app.Context, time.Microsecond*49), eudore.HandlerEmpty)
 
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
 	time.Sleep(time.Second)
 
 	app.CancelFunc()
@@ -796,8 +725,6 @@ func TestMiddlewareRateSpeed3(*testing.T) {
 
 func TestMiddlewareRateSpeedCannel1(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("/out", func(ctx eudore.Context) {
 		c1 := ctx.GetContext()
 		c2, cannel := context.WithTimeout(context.Background(), time.Millisecond*20)
@@ -814,17 +741,17 @@ func TestMiddlewareRateSpeedCannel1(*testing.T) {
 	app.AnyFunc("/out", eudore.HandlerEmpty)
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
 	time.Sleep(50 * time.Millisecond)
-	client.NewRequest("PUT", "/out").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/out").Do()
-	client.NewRequest("PUT", "/").Do()
+	app.NewRequest(nil, "PUT", "/out")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/out")
+	app.NewRequest(nil, "PUT", "/")
 
 	app.CancelFunc()
 	app.Run()
@@ -832,8 +759,6 @@ func TestMiddlewareRateSpeedCannel1(*testing.T) {
 
 func TestMiddlewareRateSpeedCannel2(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("/out", func(ctx eudore.Context) {
 		c, cannel := context.WithTimeout(ctx.GetContext(), time.Millisecond*2)
 		cannel()
@@ -847,14 +772,14 @@ func TestMiddlewareRateSpeedCannel2(*testing.T) {
 	})
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/").Do()
-	client.NewRequest("PUT", "/out").Do()
-	client.NewRequest("PUT", "/out").Do()
-	client.NewRequest("PUT", "/out").Do()
-	client.NewRequest("PUT", "/out").Do()
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/")
+	app.NewRequest(nil, "PUT", "/out")
+	app.NewRequest(nil, "PUT", "/out")
+	app.NewRequest(nil, "PUT", "/out")
+	app.NewRequest(nil, "PUT", "/out")
 
 	app.CancelFunc()
 	app.Run()
@@ -862,8 +787,6 @@ func TestMiddlewareRateSpeedCannel2(*testing.T) {
 
 func TestMiddlewareRateSpeedTimeout(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.SetHandler(http.TimeoutHandler(app, 2*time.Second, ""))
 
 	// /done限速512B
@@ -887,9 +810,9 @@ func TestMiddlewareRateSpeedTimeout(*testing.T) {
 	})
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
-	client.NewRequest("GET", "/get").Do()
-	client.NewRequest("POST", "/post").BodyString("read body is to long,body太大，会中间件超时无法完全读取。").Do()
-	client.NewRequest("POST", "/done").BodyString("hello").Do()
+	app.NewRequest(nil, "GET", "/get")
+	app.NewRequest(nil, "POST", "/post", eudore.NewClientBodyString("read body is to long,body太大，会中间件超时无法完全读取。"))
+	app.NewRequest(nil, "POST", "/done", eudore.NewClientBodyString("hello"))
 
 	app.CancelFunc()
 	app.Run()
@@ -897,8 +820,6 @@ func TestMiddlewareRateSpeedTimeout(*testing.T) {
 
 func TestMiddlewareReferer(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware(middleware.NewRefererFunc(map[string]bool{
 		"":                         true,
 		"origin":                   false,
@@ -916,16 +837,15 @@ func TestMiddlewareReferer(*testing.T) {
 	}))
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderReferer, "").Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderHost, "www.eudore.cn").AddHeader(eudore.HeaderReferer, "http://www.eudore.cn/").Do()
-	// client.NewRequest("GET", "/").AddHeader(eudore.HeaderHost, "www.eudore.cn").WithTLS().AddHeader(eudore.HeaderReferer, "https://www.eudore.cn/").Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderReferer, "http://www.eudore.cn/").Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderReferer, "http://www.example.com").Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderReferer, "http://www.example.com/").Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderReferer, "http://www.example.com/1").Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderReferer, "http://www.example.com/1/1").Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderReferer, "http://www.example.com/1/2").Do()
-	client.NewRequest("GET", "/").AddHeader(eudore.HeaderReferer, "http://127.0.0.1/1").Do()
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderReferer, ""))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHost("www.eudore.cn"), eudore.NewClientHeader(eudore.HeaderReferer, "http://www.eudore.cn/"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderReferer, "http://www.eudore.cn/"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderReferer, "http://www.example.com"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderReferer, "http://www.example.com/"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderReferer, "http://www.example.com/1"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderReferer, "http://www.example.com/1/1"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderReferer, "http://www.example.com/1/2"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderReferer, "http://127.0.0.1/1"))
 
 	app.CancelFunc()
 	app.Run()
@@ -948,24 +868,22 @@ func TestMiddlewareRewrite(*testing.T) {
 	}
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("global", middleware.NewRewriteFunc(rewritedata))
 	app.AddMiddleware(middleware.NewLoggerFunc(app))
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
-	client.NewRequest("GET", "/").Do()
-	client.NewRequest("GET", "/js/").Do()
-	client.NewRequest("GET", "/js/index.js").Do()
-	client.NewRequest("GET", "/api/v1/user").Do()
-	client.NewRequest("GET", "/api/v1/user/new").Do()
-	client.NewRequest("GET", "/api/v1/users/v3/orders/8920").Do()
-	client.NewRequest("GET", "/api/v1/users/orders").Do()
-	client.NewRequest("GET", "/api/v2").Do()
-	client.NewRequest("GET", "/api/v2/user").Do()
-	client.NewRequest("GET", "/d/3").Do()
-	client.NewRequest("GET", "/help/history").Do()
-	client.NewRequest("GET", "/help/historyv2").Do()
+	app.NewRequest(nil, "GET", "/")
+	app.NewRequest(nil, "GET", "/js/")
+	app.NewRequest(nil, "GET", "/js/index.js")
+	app.NewRequest(nil, "GET", "/api/v1/user")
+	app.NewRequest(nil, "GET", "/api/v1/user/new")
+	app.NewRequest(nil, "GET", "/api/v1/users/v3/orders/8920")
+	app.NewRequest(nil, "GET", "/api/v1/users/orders")
+	app.NewRequest(nil, "GET", "/api/v2")
+	app.NewRequest(nil, "GET", "/api/v2/user")
+	app.NewRequest(nil, "GET", "/d/3")
+	app.NewRequest(nil, "GET", "/help/history")
+	app.NewRequest(nil, "GET", "/help/historyv2")
 
 	app.CancelFunc()
 	app.Run()
@@ -983,16 +901,13 @@ func TestMiddlewareRrouter(*testing.T) {
 	}
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	app.AddMiddleware("global", middleware.NewLoggerFunc(app, "route", "*"))
 	app.AddMiddleware(middleware.NewRouterFunc(routerdata))
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
-	client.NewRequest("GET", "/api/v1/user").Do()
-	client.NewRequest("PUT", "/api/v1/user").Do()
-	client.NewRequest("PUT", "/api/v2/user").Do()
+	app.NewRequest(nil, "GET", "/api/v1/user")
+	app.NewRequest(nil, "PUT", "/api/v1/user")
+	app.NewRequest(nil, "PUT", "/api/v2/user")
 
 	app.CancelFunc()
 	app.Run()
@@ -1011,24 +926,22 @@ func TestMiddlewareRrouterRewrite(*testing.T) {
 	}
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AddMiddleware("global", middleware.NewRouterRewriteFunc(rewritedata))
 	app.AddMiddleware(middleware.NewLoggerFunc(app))
 	app.AnyFunc("/*", eudore.HandlerEmpty)
 
-	client.NewRequest("GET", "/").Do()
-	client.NewRequest("GET", "/js/").Do()
-	client.NewRequest("GET", "/js/index.js").Do()
-	client.NewRequest("GET", "/api/v1/user").Do()
-	client.NewRequest("GET", "/api/v1/user/new").Do()
-	client.NewRequest("GET", "/api/v1/users/v3/orders/8920").Do()
-	client.NewRequest("GET", "/api/v1/users/orders").Do()
-	client.NewRequest("GET", "/api/v2").Do()
-	client.NewRequest("GET", "/api/v2/user").Do()
-	client.NewRequest("GET", "/d/3").Do()
-	client.NewRequest("GET", "/help/history").Do()
-	client.NewRequest("GET", "/help/historyv2").Do()
+	app.NewRequest(nil, "GET", "/")
+	app.NewRequest(nil, "GET", "/js/")
+	app.NewRequest(nil, "GET", "/js/index.js")
+	app.NewRequest(nil, "GET", "/api/v1/user")
+	app.NewRequest(nil, "GET", "/api/v1/user/new")
+	app.NewRequest(nil, "GET", "/api/v1/users/v3/orders/8920")
+	app.NewRequest(nil, "GET", "/api/v1/users/orders")
+	app.NewRequest(nil, "GET", "/api/v2")
+	app.NewRequest(nil, "GET", "/api/v2/user")
+	app.NewRequest(nil, "GET", "/d/3")
+	app.NewRequest(nil, "GET", "/help/history")
+	app.NewRequest(nil, "GET", "/help/historyv2")
 
 	app.CancelFunc()
 	app.Run()
@@ -1038,15 +951,12 @@ func TestMiddlewareNethttpBasicAuth(*testing.T) {
 	data := map[string]string{"user": "pw"}
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {})
 	app.SetHandler(middleware.NewNetHTTPBasicAuthFunc(mux, data))
 
-	client.NewRequest("GET", "/1").Do()
-	client.NewRequest("GET", "/2").AddHeader("Authorization", "Basic dXNlcjpwdw==").Do()
+	app.NewRequest(nil, "GET", "/1")
+	app.NewRequest(nil, "GET", "/2", eudore.NewClientHeader("Authorization", "Basic dXNlcjpwdw=="))
 
 	app.CancelFunc()
 	app.Run()
@@ -1054,9 +964,6 @@ func TestMiddlewareNethttpBasicAuth(*testing.T) {
 
 func TestMiddlewareNethttpBlack(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {})
 	app.SetHandler(middleware.NewNetHTTPBlackFunc(mux, map[string]bool{
@@ -1065,22 +972,22 @@ func TestMiddlewareNethttpBlack(*testing.T) {
 		"10.0.0.0/8":     false,
 	}))
 
-	client.NewRequest("GET", "/eudore/debug/black/ui").Do()
-	client.NewRequest("GET", "/eudore/debug/black/ui").Do()
-	client.NewRequest("PUT", "/eudore/debug/black/black/10.127.87.0?mask=24").Do()
-	client.NewRequest("PUT", "/eudore/debug/black/white/10.127.87.0?mask=24").Do()
-	client.NewRequest("GET", "/eudore/debug/black/data").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/black/10.127.87.0?mask=24").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/white/10.127.87.0?mask=24").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/black/10.127.87.0?mask=24").Do()
-	client.NewRequest("DELETE", "/eudore/debug/black/white/10.127.87.0?mask=24").Do()
+	app.NewRequest(nil, "GET", "/eudore/debug/black/ui")
+	app.NewRequest(nil, "GET", "/eudore/debug/black/ui")
+	app.NewRequest(nil, "PUT", "/eudore/debug/black/black/10.127.87.0?mask=24")
+	app.NewRequest(nil, "PUT", "/eudore/debug/black/white/10.127.87.0?mask=24")
+	app.NewRequest(nil, "GET", "/eudore/debug/black/data")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/black/10.127.87.0?mask=24")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/white/10.127.87.0?mask=24")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/black/10.127.87.0?mask=24")
+	app.NewRequest(nil, "DELETE", "/eudore/debug/black/white/10.127.87.0?mask=24")
 
-	client.NewRequest("GET", "/eudore").Do()
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXForwardedFor, "192.168.1.4 192.168.1.1").Do()
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "127.0.0.1:29398").Do()
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "192.168.75.1:8298").Do()
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "10.1.1.1:2334").Do()
-	client.NewRequest("GET", "/eudore").AddHeader(eudore.HeaderXRealIP, "172.17.1.1:2334").Do()
+	app.NewRequest(nil, "GET", "/eudore")
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXForwardedFor, "192.168.1.4 192.168.1.1"))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "127.0.0.1:29398"))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "192.168.75.1:8298"))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "10.1.1.1:2334"))
+	app.NewRequest(nil, "GET", "/eudore", eudore.NewClientHeader(eudore.HeaderXRealIP, "172.17.1.1:2334"))
 
 	app.CancelFunc()
 	app.Run()
@@ -1088,9 +995,6 @@ func TestMiddlewareNethttpBlack(*testing.T) {
 
 func TestMiddlewareNethttpRateRequest(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {})
 	app.SetHandler(middleware.NewNetHTTPRateRequestFunc(mux, 1, 3, func(req *http.Request) string {
@@ -1098,11 +1002,11 @@ func TestMiddlewareNethttpRateRequest(*testing.T) {
 		return req.UserAgent()
 	}))
 
-	client.NewRequest("GET", "/").Do()
-	client.NewRequest("GET", "/").Do()
-	client.NewRequest("GET", "/").Do()
-	client.NewRequest("GET", "/").Do()
-	client.NewRequest("GET", "/").Do()
+	app.NewRequest(nil, "GET", "/")
+	app.NewRequest(nil, "GET", "/")
+	app.NewRequest(nil, "GET", "/")
+	app.NewRequest(nil, "GET", "/")
+	app.NewRequest(nil, "GET", "/")
 
 	app.CancelFunc()
 	app.Run()
@@ -1121,25 +1025,22 @@ func TestMiddlewareNethttpRewrite(*testing.T) {
 	}
 
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {})
 	app.SetHandler(middleware.NewNetHTTPRewriteFunc(mux, rewritedata))
 
-	client.NewRequest("GET", "/").Do()
-	client.NewRequest("GET", "/js/").Do()
-	client.NewRequest("GET", "/js/index.js").Do()
-	client.NewRequest("GET", "/api/v1/user").Do()
-	client.NewRequest("GET", "/api/v1/user/new").Do()
-	client.NewRequest("GET", "/api/v1/users/v3/orders/8920").Do()
-	client.NewRequest("GET", "/api/v1/users/orders").Do()
-	client.NewRequest("GET", "/api/v2").Do()
-	client.NewRequest("GET", "/api/v2/user").Do()
-	client.NewRequest("GET", "/d/3").Do()
-	client.NewRequest("GET", "/help/history").Do()
-	client.NewRequest("GET", "/help/historyv2").Do()
+	app.NewRequest(nil, "GET", "/")
+	app.NewRequest(nil, "GET", "/js/")
+	app.NewRequest(nil, "GET", "/js/index.js")
+	app.NewRequest(nil, "GET", "/api/v1/user")
+	app.NewRequest(nil, "GET", "/api/v1/user/new")
+	app.NewRequest(nil, "GET", "/api/v1/users/v3/orders/8920")
+	app.NewRequest(nil, "GET", "/api/v1/users/orders")
+	app.NewRequest(nil, "GET", "/api/v2")
+	app.NewRequest(nil, "GET", "/api/v2/user")
+	app.NewRequest(nil, "GET", "/d/3")
+	app.NewRequest(nil, "GET", "/help/history")
+	app.NewRequest(nil, "GET", "/help/historyv2")
 
 	app.CancelFunc()
 	app.Run()

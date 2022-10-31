@@ -19,6 +19,8 @@ const (
 
 // NewLookFunc 函数创建一个访问对象数据处理函数。
 //
+// 如果参数类型为func(eudore.Context) interface{}，可以动态返回需要渲染的数据。
+//
 // 获取请求路由参数"*"为object访问路径，返回object指定属性的数据，允许使用下列参数：
 //	d=10 depth递归显时最大层数
 //	all=false 是否显时非导出属性
@@ -26,7 +28,17 @@ const (
 //	godoc=https://golang.org 设置html格式链接的godoc服务地址
 //	width=60 设置html格式缩进宽度
 func NewLookFunc(data interface{}) eudore.HandlerFunc {
+	fn, ok := data.(func(eudore.Context) interface{})
+	if !ok {
+		fn = func(eudore.Context) interface{} {
+			return data
+		}
+	}
 	return func(ctx eudore.Context) {
+		data := fn(ctx)
+		if data == nil || ctx.Response().Size() > 0 {
+			return
+		}
 		ctx.SetHeader(eudore.HeaderXEudoreAdmin, "look")
 		look := NewLookValue(ctx)
 		val, err := eudore.GetWithValue(data, strings.Replace(ctx.GetParam("*"), "/", ".", -1), nil, look.ShowAll)
@@ -38,46 +50,44 @@ func NewLookFunc(data interface{}) eudore.HandlerFunc {
 
 		switch getRequestForma(ctx) {
 		case "json":
-			ctx.SetHeader(eudore.HeaderContentType, eudore.MimeApplicationJSONUtf8)
+			ctx.SetHeader(eudore.HeaderContentType, eudore.MimeApplicationJSONCharsetUtf8)
 			encoder := json.NewEncoder(ctx)
 			if !strings.Contains(ctx.GetHeader(eudore.HeaderAccept), eudore.MimeApplicationJSON) {
 				encoder.SetIndent("", "\t")
 			}
 			encoder.Encode(look)
-		case "text":
-			tmpl := getLookTemplate(strings.TrimSuffix(ctx.Path(), "/"), ctx.Querys().Encode(), "text")
-			ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextPlainCharsetUtf8)
-			tmpl.ExecuteTemplate(ctx, "text", look)
-		default:
+		case "html":
 			tmpl := getLookTemplate(strings.TrimSuffix(ctx.Path(), "/"), ctx.Querys().Encode(), "view")
 			ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
 			tmpl.ExecuteTemplate(ctx, "view", viewData{ctx.GetParam("*"), eudore.GetStringInt(ctx.GetQuery("width"), 60), look})
+		default:
+			tmpl := getLookTemplate(strings.TrimSuffix(ctx.Path(), "/"), ctx.Querys().Encode(), "text")
+			ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextPlainCharsetUtf8)
+			tmpl.ExecuteTemplate(ctx, "text", look)
 		}
 	}
 }
 
 // NewBindLook 函数创建支持look value的eudore.NewRenders。
-func NewBindLook(fn eudore.HandlerDataFunc, renders map[string]eudore.HandlerDataFunc) eudore.HandlerDataFunc {
+func NewBindLook(renders map[string]eudore.HandlerDataFunc) eudore.HandlerDataFunc {
 	data := map[string]eudore.HandlerDataFunc{
-		eudore.MimeApplicationJSON: eudore.RenderJSON,
-		eudore.MimeApplicationXML:  eudore.RenderXML,
-		eudore.MimeTextHTML:        eudore.RenderHTML,
-		eudore.MimeTextXML:         eudore.RenderXML,
-		eudore.MimeTextPlain:       eudore.RenderText,
-		eudore.MimeText:            eudore.RenderText,
-		MimeValueJSON:              RenderValueJSON,
-		MimeValueHTML:              RenderValueHTML,
-		MimeValueText:              RenderValueText,
+		eudore.MimeApplicationJSON:     eudore.RenderJSON,
+		eudore.MimeApplicationProtobuf: eudore.RenderProtobuf,
+		eudore.MimeApplicationXML:      eudore.RenderXML,
+		eudore.MimeTextHTML:            eudore.RenderHTML,
+		eudore.MimeTextPlain:           eudore.RenderText,
+		MimeValueJSON:                  RenderValueJSON,
+		MimeValueHTML:                  RenderValueHTML,
+		MimeValueText:                  RenderValueText,
 	}
 	for k, v := range renders {
 		if v == nil {
 			delete(data, k)
 		} else {
 			data[k] = v
-
 		}
 	}
-	return eudore.NewRenders(fn, data)
+	return eudore.NewRenders(data)
 }
 
 // RenderValueJSON 实现渲染Value为JSON格式。
@@ -87,7 +97,7 @@ func RenderValueJSON(ctx eudore.Context, data interface{}) error {
 
 	header := ctx.Response().Header()
 	if val := header.Get(eudore.HeaderContentType); len(val) == 0 {
-		header.Add(eudore.HeaderContentType, eudore.MimeApplicationJSONUtf8)
+		header.Add(eudore.HeaderContentType, eudore.MimeApplicationJSONCharsetUtf8)
 	}
 	encoder := json.NewEncoder(ctx)
 	if !strings.Contains(ctx.GetHeader(eudore.HeaderAccept), eudore.MimeApplicationJSON) {
@@ -190,8 +200,7 @@ var lookTemplate, _ = template.New("look").Funcs(template.FuncMap{
 	<meta name="referrer" content="always">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="description" content="Eudore look data all filed value">
-	<style>body>div{font-family:monospace;white-space:pre;}pre{margin: 0 {{.Width}}px;}
-span{white-space:pre-wrap;word-wrap:break-word;overflow:hidden;}</style>
+	<style>body>div{font-family:monospace;white-space:pre;}pre{margin: 0 {{.Width}}px;}span{white-space:pre-wrap;word-wrap:break-word;overflow:hidden;}</style>
 </head>
 <body><div>{{- template "html" .Data -}}</div><script>
 	console.log('d=10 depth递归显时最大层数\nall=false 是否显时非导出属性\nformat=html/json/text 设置数据显示格式\ngodoc=https://golang.org 设置html格式链接的godoc服务地址\nwidth=60 设置html格式缩进宽度');
@@ -237,7 +246,7 @@ span{white-space:pre-wrap;word-wrap:break-word;overflow:hidden;}</style>
 			</pre>
 		{{- end -}}
 		{{- printf "]" -}}
-	{{- else if eq .Kind "interface"}}{{if isnil .Elem}}(nil){{else}}{{template "html" .Elem}}{{end -}}
+	{{- else if eq .Kind "interface"}}{{if isnil .Elem}}(nil){{else}} {{template "html" .Elem}}{{end -}}
 	{{- else if eq .Kind "func" "chan"}}{{if eq .Pointer 0}}(nil){{else}}(0x{{printf "%x" .Pointer}}){{end -}}
 	{{- else -}}
 		{{- if eq .Pointer 0}}(nil){{else if isnil .Elem}}(CYCLIC REFERENCE 0x{{printf "%x" .Pointer -}})
@@ -276,7 +285,7 @@ span{white-space:pre-wrap;word-wrap:break-word;overflow:hidden;}</style>
 		{{- else -}}
 			{{- subtab}}{{printf "]" -}}
 		{{- end -}}
-	{{- else if eq .Kind "interface"}}{{if isnil .Elem}}(nil){{else}}{{template "text" .Elem}}{{end -}}
+	{{- else if eq .Kind "interface"}}{{if isnil .Elem}}(nil){{else}} {{template "text" .Elem}}{{end -}}
 	{{- else if eq .Kind "func" "chan"}}{{if eq .Pointer 0}}(nil){{else}}(0x{{ printf "%x" .Pointer}}){{end -}}
 	{{- else -}}
 		{{- if eq .Pointer 0 }}(nil){{else if isnil .Elem}}(CYCLIC REFERENCE 0x{{ printf "%x" .Pointer -}})
@@ -312,7 +321,7 @@ func NewLookValue(ctx eudore.Context) *LookValue {
 		LookConfig: &LookConfig{
 			Depth:   eudore.GetStringInt(ctx.GetQuery("d"), 10),
 			ShowAll: eudore.GetStringBool(ctx.GetQuery("all")),
-			Godoc:   eudore.GetString(ctx.GetQuery("godoc"), "https://golang.org"),
+			Godoc:   eudore.GetString(strings.TrimSuffix(ctx.GetQuery("godoc"), "/"), eudore.DefaultGodocServer),
 			Refs:    make(map[uintptr]struct{}),
 		},
 	}
@@ -403,7 +412,7 @@ func (look *LookValue) scanStruct(iValue reflect.Value) {
 	if look.Depth > 0 {
 		iType := iValue.Type()
 		for i := 0; i < iValue.NumField(); i++ {
-			if iValue.Field(i).CanSet() || look.ShowAll {
+			if iValue.Field(i).CanInterface() || look.ShowAll {
 				l := LookValue{LookConfig: look.LookConfig}
 				l.Scan(iValue.Field(i))
 				look.Keys = append(look.Keys, iType.Field(i).Name)
@@ -431,7 +440,7 @@ func (look *LookValue) scanMap(iValue reflect.Value) {
 var typeStringer = reflect.TypeOf((*fmt.Stringer)(nil)).Elem()
 
 func getBasicString(iValue reflect.Value) string {
-	if iValue.CanSet() && iValue.Type().Implements(typeStringer) {
+	if iValue.CanInterface() && iValue.Type().Implements(typeStringer) {
 		return iValue.MethodByName("String").Call(nil)[0].String()
 	}
 	return ""

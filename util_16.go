@@ -7,7 +7,6 @@ import (
 	"embed"
 	"net/http"
 	"strings"
-	"time"
 )
 
 func init() {
@@ -24,11 +23,6 @@ func NewExtendFuncEmbed(path string, f embed.FS) HandlerFunc {
 	return NewHandlerEmbedFunc(f, strings.Split(getRouteParam(path, "dir"), ";")...)
 }
 
-// EmbedTime 设置http返回embed文件的最后修改时间，使用http 304缓冲，默认为服务启动时间。
-//
-// 如果服务存在多副本部署，通过设置相同的值保持多副本间的版本一样。
-var DefaultEmbedTime time.Time
-
 // NewHandlerEmbedFunc 函数使用embed.FS和指定目录文件处理响应，依次寻找dirs多个目录是否存在文件，否则使用embed.FS作为默认FS返回响应。
 func NewHandlerEmbedFunc(f embed.FS, dirs ...string) HandlerFunc {
 	var h fileSystems
@@ -38,10 +32,6 @@ func NewHandlerEmbedFunc(f embed.FS, dirs ...string) HandlerFunc {
 		}
 	}
 	h = append(h, http.FS(f))
-	now := time.Now()
-	if !DefaultEmbedTime.IsZero() {
-		now = DefaultEmbedTime
-	}
 	return func(ctx Context) {
 		file, err := h.Open(ctx.GetParam("*"))
 		if err != nil {
@@ -52,7 +42,10 @@ func NewHandlerEmbedFunc(f embed.FS, dirs ...string) HandlerFunc {
 		// embed.FS的ModTime()为空无法使用缓存，设置为启动时间使用304缓存机制。
 		modtime := stat.ModTime()
 		if modtime.IsZero() {
-			modtime = now
+			modtime = DefaultEmbedTime
+		}
+		if ctx.Request().Header.Get(HeaderCacheControl) == "" {
+			ctx.SetHeader(HeaderCacheControl, DefaultEmbedCacheControl)
 		}
 		http.ServeContent(ctx.Response(), ctx.Request(), stat.Name(), modtime, file)
 	}

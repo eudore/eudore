@@ -6,12 +6,12 @@ import (
 	"encoding/xml"
 	"fmt"
 	"html/template"
+	"net/http"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 // HandlerDataFunc 定义请求上下文数据出来函数。
@@ -23,26 +23,43 @@ import (
 // Renderer对象更加Accept Header选择数据对象序列化的方法。
 type HandlerDataFunc = func(Context, interface{}) error
 
+func init() {
+	DefaultRenderHTMLTemplate, _ = template.New("render").Parse(renderHTMLTempdate)
+}
+
 // NewBinds 方法定义ContentType Header映射Bind函数。
 func NewBinds(binds map[string]HandlerDataFunc) HandlerDataFunc {
 	if binds == nil {
 		binds = map[string]HandlerDataFunc{
-			MimeApplicationJSON: BindJSON,
-			MimeApplicationForm: BindURL,
-			MimeMultipartForm:   BindForm,
-			MimeTextXML:         BindXML,
-			MimeApplicationXML:  BindXML,
+			MimeApplicationJSON:     BindJSON,
+			MimeApplicationForm:     BindURL,
+			MimeMultipartForm:       BindForm,
+			MimeApplicationProtobuf: BindProtobuf,
+			MimeApplicationXML:      BindXML,
 		}
 	}
+	var mimes string
+	for k := range binds {
+		mimes += ", " + k
+	}
+	mimes = strings.TrimPrefix(mimes, ", ")
 	return func(ctx Context, i interface{}) error {
-		if ctx.Method() == MethodGet || ctx.Method() == MethodHead {
+		contentType := ctx.GetHeader(HeaderContentType)
+		if ctx.Method() == MethodGet || ctx.Method() == MethodHead || contentType == "" {
 			return BindURL(ctx, i)
 		}
-		fn, ok := binds[strings.SplitN(ctx.GetHeader(HeaderContentType), ";", 2)[0]]
+		fn, ok := binds[strings.SplitN(contentType, ";", 2)[0]]
 		if ok {
 			return fn(ctx, i)
 		}
-		return fmt.Errorf(ErrFormatBindDefaultNotSupportContentType, ctx.GetHeader(HeaderContentType))
+		ctx.WriteHeader(StatusUnsupportedMediaType)
+		switch ctx.Method() {
+		case MethodPost:
+			ctx.SetHeader(HeaderAcceptPost, mimes)
+		case MethodPatch:
+			ctx.SetHeader(HeaderAcceptPatch, mimes)
+		}
+		return fmt.Errorf(ErrFormatBindDefaultNotSupportContentType, contentType)
 	}
 }
 
@@ -64,58 +81,70 @@ func NewBindWithURL(fn HandlerDataFunc) HandlerDataFunc {
 	}
 }
 
-// BindURL 函数使用url参数实现bind。
+// BindURL 函数使用url参数解析绑定body。
 func BindURL(ctx Context, i interface{}) error {
-	return ConvertToWithTags(ctx.Querys(), i, DefaultConvertFormTags)
+	return ConvertToWithTags(ctx.Querys(), i, DefaultBindURLTags)
 }
 
-// BindForm 函数使用form格式body实现bind。
+// BindForm 函数使用form解析绑定body。
 func BindForm(ctx Context, i interface{}) error {
-	ConvertToWithTags(ctx.FormFiles(), i, DefaultConvertFormTags)
-	return ConvertToWithTags(ctx.FormValues(), i, DefaultConvertFormTags)
+	ConvertToWithTags(ctx.FormFiles(), i, DefaultBindFormTags)
+	return ConvertToWithTags(ctx.FormValues(), i, DefaultBindFormTags)
 }
 
-// BindJSON 函数使用json格式body实现bind。
+// BindJSON 函数使用json解析绑定body。
 func BindJSON(ctx Context, i interface{}) error {
 	return json.NewDecoder(ctx).Decode(i)
 }
 
-// BindXML 函数使用xml格式body实现bind。
+// BindXML 函数使用xml解析绑定body。
 func BindXML(ctx Context, i interface{}) error {
 	return xml.NewDecoder(ctx).Decode(i)
 }
 
+// BindProtobuf 函数使用内置protobu解析绑定body。
+func BindProtobuf(ctx Context, i interface{}) error {
+	return NewProtobufDecoder(ctx).Decode(i)
+}
+
 // BindHeader 函数实现使用header数据bind。
 func BindHeader(ctx Context, i interface{}) error {
-	return ConvertToWithTags(ctx.Request().Header, i, DefaultConvertFormTags)
+	return ConvertToWithTags(ctx.Request().Header, i, DefaultBindHeaderTags)
 }
 
 // NewRenders 方法定义默认和Accepte Header映射Render函数。
-func NewRenders(fn HandlerDataFunc, renders map[string]HandlerDataFunc) HandlerDataFunc {
-	if fn == nil {
-		fn = RenderJSON
-	}
+func NewRenders(renders map[string]HandlerDataFunc) HandlerDataFunc {
 	if renders == nil {
 		renders = map[string]HandlerDataFunc{
-			MimeApplicationJSON: RenderJSON,
-			MimeApplicationXML:  RenderXML,
-			MimeTextHTML:        RenderHTML,
-			MimeTextXML:         RenderXML,
-			MimeTextPlain:       RenderText,
-			MimeText:            RenderText,
+			MimeApplicationJSON:     RenderJSON,
+			MimeApplicationProtobuf: RenderProtobuf,
+			MimeApplicationXML:      RenderXML,
+			MimeTextHTML:            RenderHTML,
+			MimeTextPlain:           RenderText,
 		}
 	}
 	return func(ctx Context, i interface{}) error {
 		for _, accept := range strings.Split(ctx.GetHeader(HeaderAccept), ",") {
+			pos := strings.IndexByte(accept, ';')
+			if pos != -1 {
+				accept = accept[:pos]
+			}
 			fn, ok := renders[strings.TrimSpace(accept)]
-			if ok {
+			if ok && fn != nil {
 				err := fn(ctx, i)
 				if err != ErrRenderHandlerSkip {
 					return err
 				}
 			}
 		}
-		return fn(ctx, i)
+		return DefaultRenderFunc(ctx, i)
+	}
+}
+
+func renderSetContentType(ctx Context, mime string) {
+	header := ctx.Response().Header()
+	if val := header.Get(HeaderContentType); len(val) == 0 {
+		header.Add(HeaderContentType, mime)
 	}
 }
 
@@ -123,24 +152,11 @@ func NewRenders(fn HandlerDataFunc, renders map[string]HandlerDataFunc) HandlerD
 //
 // 如果请求Accept不为"application/json"，使用json indent格式输出。
 func RenderJSON(ctx Context, data interface{}) error {
-	header := ctx.Response().Header()
-	if val := header.Get(HeaderContentType); len(val) == 0 {
-		header.Add(HeaderContentType, MimeApplicationJSONUtf8)
-	}
+	renderSetContentType(ctx, MimeApplicationJSONCharsetUtf8)
 	switch reflect.Indirect(reflect.ValueOf(data)).Kind() {
 	case reflect.Struct, reflect.Map, reflect.Slice, reflect.Array:
 	default:
-		data = contextWriteError{
-			Time:       time.Now().Format(DefaultLoggerTimeFormat),
-			Host:       ctx.Host(),
-			Method:     ctx.Method(),
-			Path:       ctx.Path(),
-			Route:      ctx.GetParam(ParamRoute),
-			Status:     ctx.Response().Status(),
-			Message:    data,
-			XRequestID: ctx.Response().Header().Get(HeaderXRequestID),
-			XTraceID:   ctx.Response().Header().Get(HeaderXTraceID),
-		}
+		data = NewContextMessgae(ctx, nil, data)
 	}
 	encoder := json.NewEncoder(ctx)
 	if !strings.Contains(ctx.GetHeader(HeaderAccept), MimeApplicationJSON) {
@@ -151,19 +167,13 @@ func RenderJSON(ctx Context, data interface{}) error {
 
 // RenderXML 函数Render Xml，使用encoding/xml库实现xml反序列化。
 func RenderXML(ctx Context, data interface{}) error {
-	header := ctx.Response().Header()
-	if val := header.Get(HeaderContentType); len(val) == 0 {
-		header.Add(HeaderContentType, MimeApplicationxmlCharsetUtf8)
-	}
+	renderSetContentType(ctx, MimeApplicationXMLCharsetUtf8)
 	return xml.NewEncoder(ctx).Encode(data)
 }
 
 // RenderText 函数Render Text，使用fmt.Fprint函数写入。
 func RenderText(ctx Context, data interface{}) error {
-	header := ctx.Response().Header()
-	if val := header.Get(HeaderContentType); len(val) == 0 {
-		header.Add(HeaderContentType, MimeTextPlainCharsetUtf8)
-	}
+	renderSetContentType(ctx, MimeTextPlainCharsetUtf8)
 	if s, ok := data.(string); ok {
 		return ctx.WriteString(s)
 	}
@@ -174,30 +184,125 @@ func RenderText(ctx Context, data interface{}) error {
 	return err
 }
 
+// RenderProtobuf 函数Render Protobuf，使用内置protobuf编码，无效属性将忽略。
+func RenderProtobuf(ctx Context, i interface{}) error {
+	renderSetContentType(ctx, MimeApplicationProtobuf)
+	return NewProtobufEncoder(ctx).Encode(i)
+}
+
 // RenderHTML 函数使用模板创建一个模板Renderer。
 //
-// 从ctx.Value(eudore.ContextKeyTempldate)加载*template.Template，
+// 从ctx.Value(eudore.ContextKeyTemplate)加载*template.Template，
 // 从ctx.GetParam("template")加载模板函数。
 func RenderHTML(ctx Context, data interface{}) error {
-	t, ok := ctx.Value(ContextKeyTempldate).(*template.Template)
+	t, ok := ctx.Value(ContextKeyTemplate).(*template.Template)
 	if ok {
+		// 模板必须加载name，防止渲染空模板
 		name := ctx.GetParam("template")
 		if name != "" {
 			t = t.Lookup(name)
 			if t != nil {
-				// 模板必须加载name，防止渲染空模板
-				header := ctx.Response().Header()
-				if val := header.Get(HeaderContentType); len(val) == 0 {
-					header.Add(HeaderContentType, MimeTextHTMLCharsetUtf8)
-				}
-
+				renderSetContentType(ctx, MimeTextHTMLCharsetUtf8)
 				return t.Execute(ctx, data)
 			}
 		}
 	}
 
+	if DefaultRenderHTMLTemplate != nil {
+		b, _ := json.MarshalIndent(data, "", "\t")
+		renderSetContentType(ctx, MimeTextHTMLCharsetUtf8)
+		return DefaultRenderHTMLTemplate.Execute(ctx, map[string]interface{}{
+			"Method":         ctx.Method(),
+			"Host":           ctx.Host(),
+			"Path":           ctx.Request().RequestURI,
+			"Query":          ctx.Querys(),
+			"Status":         fmt.Sprintf("%d %s", ctx.Response().Status(), http.StatusText(ctx.Response().Status())),
+			"RemoteAddr":     ctx.RealIP(),
+			"Params":         ctx.Params(),
+			"RequestHeader":  ctx.Request().Header,
+			"ResponseHeader": ctx.Response().Header(),
+			"Data":           string(b),
+			"GodocServer":    DefaultGodocServer,
+			"TraceServer":    DefaultTraceServer,
+		})
+	}
 	return ErrRenderHandlerSkip
 }
+
+var renderHTMLTempdate = `
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Eudore Look Value </title>
+	<meta name="author" content="eudore">
+	<meta name="referrer" content="always">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="description" content="Eudore render text/html">
+	<style>
+		*{margin:0;padding:0}
+		main {display: flex;flex-direction: column;padding: 10px;}
+		fieldset {border: 0;}
+		.title {font-weight: 900;}
+		.name {color: #5f6368;font-weight: 900;margin-left: 20px;}
+	</style>
+</head>
+<body>
+	<main>
+        <h1>Eudore default render html</h1>
+		<fieldset>
+			<legend class="title">General</legend>
+			<div><span class="name">Request URL: </span><span>{{.Host}}{{.Path}}</span></div>
+			<div><span class="name">Request Method: </span><span>{{.Method}}</span></div>
+			<div><span class="name">Status Code: </span><span>{{.Status}}</span></div>
+			<div><span class="name">Remote Address: </span><span>{{.RemoteAddr}}</span></div>
+		</fieldset>
+		{{- if ne (len .Query) 0 }}
+		<fieldset>
+			<legend class="title">Requesst Querys</legend>
+			{{- range $key, $vals := .Query -}}
+			{{- range $i, $val := $vals }}
+			<div><span class="name">{{$key}}: </span><span>{{$val}}</span></div>
+			{{- end }}
+			{{- end }}
+		</fieldset>
+		{{- end }}
+		<fieldset>
+			<legend class="title">Requesst Params</legend>
+			{{- $iskey := true }}
+			{{- range $i,$val := .Params}}
+			{{- if $iskey}}
+			<div><span class="name">{{$val}}: </span>{{- else}}<span>{{$val}}</span></div>{{end}}
+			{{- $iskey = not $iskey}}
+			{{- end}}
+		</fieldset>
+		<fieldset>
+			<legend class="title">Request Headers</legend>
+			{{- range $key, $vals := .RequestHeader -}}
+			{{- range $i, $val := $vals }}
+			<div><span class="name">{{$key}}: </span><span>{{$val}}</span></div>
+			{{- end }}
+			{{- end }}
+		</fieldset>
+		<fieldset>
+			{{- $trace := .TraceServer }}
+			<legend class="title">Response Headers</legend>
+			{{- range $key, $vals := .ResponseHeader -}}
+			{{- range $i, $val := $vals }}
+			{{- if and (eq $key "X-Trace-Id") (ne $trace "")}}
+			<div><span class="name">{{$key}}: </span><span><a href="{{$trace}}/trace/{{$val}}">{{$val}}</a></span></div>
+			{{- else }}
+			<div><span class="name">{{$key}}: </span><span>{{$val}}</span></div>
+			{{- end }}
+			{{- end }}
+			{{- end }}
+		</fieldset>
+		<fieldset>
+			<legend class="title">Response Data</legend>
+			<pre class="name">{{.Data}}</pre>
+		</fieldset>
+	</main>
+</body></html>
+`
 
 // NewValidateField 方法创建结构体属性校验器。
 //
@@ -206,7 +311,7 @@ func RenderHTML(ctx Context, data interface{}) error {
 func NewValidateField(ctx context.Context) HandlerDataFunc {
 	fc, ok := ctx.Value(ContextKeyFuncCreator).(FuncCreator)
 	if !ok {
-		fc = NewFuncCreator()
+		fc = DefaultFuncCreator
 	}
 	validater := &validateField{
 		ValidateTypes: make(map[reflect.Type][]validateFieldValue),
@@ -298,7 +403,7 @@ func (v *validateField) parseStructFields(iType reflect.Type) ([]validateFieldVa
 	var vfs []validateFieldValue
 	for i := 0; i < iType.NumField(); i++ {
 		field := iType.Field(i)
-		tags := field.Tag.Get(DefaultNewValidateFieldTag)
+		tags := field.Tag.Get(DefaultValidateTag)
 		// 解析tags
 		for _, tag := range strings.Split(tags, " ") {
 			if tag == "" {
@@ -350,7 +455,7 @@ func NewFuncCreator() FuncCreator {
 func (fc *funcCreator) Mount(ctx context.Context) {
 	logger, ok := ctx.Value(ContextKeyApp).(Logger)
 	if ok {
-		fc.Logger = logger.WithField("creator", "funcCreator").WithField("logger", true)
+		fc.Logger = logger.WithField("creator", "funcCreator").WithField("depth", 2).WithField("logger", true)
 		fc.initFunc()
 	}
 }
@@ -444,8 +549,7 @@ func (fc *funcCreator) Create(iType reflect.Type, fullname string) (interface{},
 		}
 	}
 
-	err := fmt.Errorf(ErrFormatFuncCreatorNotFunc, fullname)
-	return nil, err
+	return nil, fmt.Errorf(ErrFormatFuncCreatorNotFunc, fullname)
 }
 
 func checkValidateFunc(iType reflect.Type) bool {
@@ -492,7 +596,7 @@ func validateStringNozero(str string) bool {
 
 // validateInterfaceNozero 函数验证一个对象是否为零值，使用reflect.Value.IsZero函数实现。
 func validateInterfaceNozero(i interface{}) bool {
-	return !checkValueIsZero(reflect.ValueOf(i))
+	return !reflect.ValueOf(i).IsZero()
 }
 
 // validateStringIsnum 函数验证一个字符串是否为数字。

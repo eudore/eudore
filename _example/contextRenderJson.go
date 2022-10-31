@@ -19,7 +19,7 @@ func main() {
 
 	app.AddMiddleware(middleware.NewRequestIDFunc(nil))
 	app.AnyFunc("/*path", func(ctx eudore.Context) {
-		ctx.WriteJSON(map[string]interface{}{
+		ctx.Render(map[string]interface{}{
 			"name":    "eudore",
 			"message": "hello eudore",
 		})

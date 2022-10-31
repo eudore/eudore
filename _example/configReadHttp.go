@@ -18,7 +18,7 @@ func main() {
 	go func(app2 *eudore.App) {
 		app := eudore.NewApp()
 		app.AnyFunc("/*", func(ctx eudore.Context) {
-			ctx.WriteJSON(map[string]interface{}{
+			eudore.RenderJSON(ctx, map[string]interface{}{
 				"route": "/*",
 				"name":  "eudore",
 			})

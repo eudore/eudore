@@ -29,7 +29,9 @@ import (
 App combines the main functional interfaces and only implements simple basic methods.
 
 The following functions are realized in addition to the functions of the combined components:
-	Global middleware
+	Manage Object Lifecycle
+	Store global data
+	Register global middleware
 	Start port monitoring
 	Block running service
 	Get configuration value and convert type
@@ -37,7 +39,9 @@ The following functions are realized in addition to the functions of the combine
 App 组合主要功能接口，本身仅实现简单的基本方法。
 
 组合各组件功能外实现下列功能：
-	全局中间件
+	管理对象生命周期
+	存储全局数据
+	注册全局中间件
 	启动端口监听
 	阻塞运行服务
 	获取配置值并转换类型
@@ -70,7 +74,7 @@ func NewApp() *App {
 	app.SetValue(ContextKeyLogger, NewLoggerStd(nil))
 	app.SetValue(ContextKeyConfig, NewConfigStd(nil))
 	app.SetValue(ContextKeyDatabase, NewDatabaseStd(nil))
-	app.SetValue(ContextKeyClient, NewClientStd(nil))
+	app.SetValue(ContextKeyClient, NewClientStd())
 	app.SetValue(ContextKeyServer, NewServerStd(nil))
 	app.SetValue(ContextKeyRouter, NewRouterStd(nil))
 	app.ContextPool = NewContextBasePool(app)
@@ -91,9 +95,12 @@ func (app *App) Run() error {
 		for i := len(app.Values) - 2; i > -1; i -= 2 {
 			app.SetValue(app.Values[i], nil)
 		}
-		app.Fatal("eudore app cannel context error:", app.Err())
+		if app.Err() == context.Canceled {
+			app.Info("eudore app cannel context")
+		} else {
+			app.Fatal("eudore app cannel context error:", app.Err())
+		}
 	}()
-
 	<-app.Done()
 	return app.Err()
 }
@@ -220,14 +227,15 @@ func (app *App) serveContext(ctx Context) {
 
 // The ServeHTTP method implements the http.Handler interface to process http requests.
 //
-// Create and initialize a Context, then set app.HandlerFuncs as the handler of the Context to handle the global middleware chain.
-// When app.HandlerFuncs is processed for the last time, the app.serveContext method is called,
-// and the route of this request is matched using app.Router The middleware and routing processing functions perform secondary request processing.
+// Create and initialize a Context, set app.HandlerFuncs as the global request handler function of Context.
+// When app.HandlerFuncs is last processed, the app.serveContext method is called,
+// Use app.Router to match the route processing function of this request for secondary request processing.
 //
 // ServeHTTP 方法实现http.Handler接口，处理http请求。
 //
-// 创建并初始化一个Context，然后设置app.HandlerFuncs为Context的处理者处理全局中间件链，
-// 在app.HandlerFuncs最后一次处理时，调用了app.serveContext方法，使用app.Router匹配出这个请求的路由中间件和路由处理函数进行二次请求处理。
+// 创建并初始化一个Context，设置app.HandlerFuncs为Context的全局请求处理函数。
+// 在app.HandlerFuncs最后一次处理时，调用了app.serveContext方法，
+// 使用app.Router匹配出这个请求的路由处理函数进行二次请求处理。
 func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	pool := app.ContextPool
 	ctx := pool.Get().(Context)
@@ -239,17 +247,19 @@ func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // AddMiddleware If the first parameter of the AddMiddleware method is the string "global",
-// it will be added to the App as a global request middleware (using DefaultHandlerExtend to create a request processing function),
+// it will be added to the App as a global request middleware,
+// using DefaultHandlerExtend to create a request processing function,
 // otherwise it is equivalent to calling the app.Rputer.AddMiddleware method.
 //
-// AddMiddleware 方法如果第一个参数为字符串"global",则作为全局请求中间件添加给App(使用DefaultHandlerExtend创建请求处理函数),
+// AddMiddleware 方法如果第一个参数为字符串"global",
+// 为全局请求中间件添加给App(使用DefaultHandlerExtend创建请求处理函数),
 // 否则等同于调用app.Rputer.AddMiddleware方法。
 func (app *App) AddMiddleware(hs ...interface{}) error {
 	if len(hs) > 1 {
 		name, ok := hs[0].(string)
 		if ok && name == "global" {
 			handler := DefaultHandlerExtend.NewHandlerFuncs("", hs[1:])
-			app.Info("Register app global middleware:", handler)
+			app.WithField("depth", 1).Info("Register app global middleware:", handler)
 			last := app.HandlerFuncs[len(app.HandlerFuncs)-1]
 			app.HandlerFuncs = NewHandlerFuncsCombine(app.HandlerFuncs[0:len(app.HandlerFuncs)-1], handler)
 			app.HandlerFuncs = NewHandlerFuncsCombine(app.HandlerFuncs, HandlerFuncs{last})
@@ -271,7 +281,7 @@ func (app *App) Listen(addr string) error {
 		app.Error(err)
 		return err
 	}
-	app.Logger.Infof("listen http in %s %s", ln.Addr().Network(), ln.Addr().String())
+	app.Logger.WithField("depth", 1).Infof("listen http in %s %s", ln.Addr().Network(), ln.Addr().String())
 	app.Serve(ln)
 	return nil
 }
@@ -292,7 +302,8 @@ func (app *App) ListenTLS(addr, key, cert string) error {
 		app.Error(err)
 		return err
 	}
-	app.Logger.Infof("listen https in %s %s,host name: %v", ln.Addr().Network(), ln.Addr().String(), conf.Certificate.DNSNames)
+	app.Logger.WithField("depth", 1).Infof("listen https in %s %s,host name: %v",
+		ln.Addr().Network(), ln.Addr().String(), conf.Certificate.DNSNames)
 	app.Serve(ln)
 	return nil
 }

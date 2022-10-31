@@ -98,7 +98,7 @@ func (ctl *ControllerAutoRoute) Inject(controller Controller, router Router) err
 //
 // Routing path: Convert the method with the request method as the prefix to the routing method and path, and then use the map[method]path returned by the'ControllerRoute() map[string]string' method to overwrite the routing path.
 //
-// Method conversion rules: The method prefix must be a valid request method (within RouterAllMethod), the remaining path is converted to a path, ByName is converted to variable matching/:name, and the last By of the method path is converted to /*;
+// Method conversion rules: The method prefix must be a valid request method (within DefaultRouterAllMethod), the remaining path is converted to a path, ByName is converted to variable matching/:name, and the last By of the method path is converted to /*;
 // The return path of ControllerRoute is'-' and the method is ignored. The first character is'', which means it is a path append parameter.
 //
 // Routing parameters: If you implement the'ControllerParam(string, string, string) string' method to return routing parameters, otherwise use "controllername=%s.%s controllermethod=%s".
@@ -111,7 +111,7 @@ func (ctl *ControllerAutoRoute) Inject(controller Controller, router Router) err
 //
 // 路由路径: 将请求方法为前缀的方法转换成路由方法和路径，然后使用'ControllerRoute() map[string]string'方法返回的map[method]path覆盖路由路径。
 //
-// 方法转换规则: 方法前缀必须是有效的请求方法(RouterAllMethod之内)，剩余路径驼峰转路径，ByName转换成变量匹配/:name,方法路径最后一个By转换成/*;
+// 方法转换规则: 方法前缀必须是有效的请求方法(DefaultRouterAllMethod之内)，剩余路径驼峰转路径，ByName转换成变量匹配/:name,方法路径最后一个By转换成/*;
 // ControllerRoute返回路径为'-'则忽略方法，第一个字符为' '表示为路径追加参数。
 //
 // 路由参数: 如果实现'ControllerParam(string, string, string) string'方法返回路由参数，否则使用"controllername=%s.%s controllermethod=%s"。
@@ -317,7 +317,7 @@ func getMethodByName(name string) string {
 	if name == "ANY" {
 		return MethodAny
 	}
-	for _, method := range RouterAllMethod {
+	for _, method := range DefaultRouterAllMethod {
 		if method == name {
 			return name
 		}

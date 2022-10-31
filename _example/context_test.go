@@ -17,9 +17,6 @@ import (
 
 func TestContext(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	app.AddMiddleware(middleware.NewRequestIDFunc(nil), middleware.NewRecoverFunc())
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.Info(ctx.Method(), ctx.Path(), string(ctx.Body()))
@@ -33,7 +30,7 @@ func TestContext(*testing.T) {
 	})
 	eudore.NewContextBaseFunc(app)()
 
-	client.NewRequest("GET", "/context").Do()
+	app.NewRequest(nil, "GET", "/context")
 
 	app.CancelFunc()
 	app.Run()
@@ -41,8 +38,6 @@ func TestContext(*testing.T) {
 
 func TestContextRequest(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.SetValue(eudore.ContextKeyValidate, func(eudore.Context, interface{}) error { return nil })
 	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
 
@@ -79,13 +74,19 @@ func TestContextRequest(*testing.T) {
 	})
 	app.Listen(":8088")
 
-	client.NewRequest("GET", "/info").Do()
-	client.NewRequest("GET", "/realip").Do()
-	client.NewRequest("GET", "/realip").AddHeader(eudore.HeaderXRealIP, "47.11.11.11").Do()
-	client.NewRequest("GET", "/realip").AddHeader(eudore.HeaderXForwardedFor, "47.11.11.11").Do()
-	client.NewRequest("GET", "/bind").BodyJSON(bindData{"eudore"}).Do()
-	client.NewRequest("GET", "/bind").AddHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON).BodyString("eudore").Do()
-	client.NewRequest("POST", "/bind").AddHeader(eudore.HeaderContentType, "value").BodyString("eudore").Do()
+	app.NewRequest(nil, "GET", "/info")
+	app.NewRequest(nil, "GET", "/realip")
+	app.NewRequest(nil, "GET", "/realip", eudore.NewClientHeader(eudore.HeaderXRealIP, "47.11.11.11"))
+	app.NewRequest(nil, "GET", "/realip", eudore.NewClientHeader(eudore.HeaderXForwardedFor, "47.11.11.11"))
+	app.NewRequest(nil, "GET", "/bind", eudore.NewClientBodyJSON(bindData{"eudore"}))
+	app.NewRequest(nil, "GET", "/bind",
+		eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON),
+		eudore.NewClientBodyString("eudore"),
+	)
+	app.NewRequest(nil, "POST", "/bind",
+		eudore.NewClientHeader(eudore.HeaderContentType, "value"),
+		eudore.NewClientBodyString("eudore"),
+	)
 
 	app.CancelFunc()
 	app.Run()
@@ -103,9 +104,6 @@ func (bodyError) Close() error {
 
 func TestContextData(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	app.AnyFunc("/* version=v0", func(ctx eudore.Context) {
 		ctx.Info(ctx.Method(), ctx.Path(), ctx.Params().String(), string(ctx.Body()))
 	})
@@ -177,21 +175,21 @@ func TestContextData(*testing.T) {
 		ctx.Read(body)
 	})
 
-	client.NewRequest("GET", "/").Do()
-	client.NewRequest("GET", "/params").Do()
-	client.NewRequest("GET", "/querys").AddQuery("name", "eudore").AddQuery("debug", "true").Do()
-	client.NewRequest("PUT", "/querys-err1").Do()
-	client.NewRequest("PUT", "/querys-err2").Do()
-	client.NewRequest("GET", "/cookie-get").Do()
-	client.NewRequest("GET", "/cookie-set").Do()
-	client.NewRequest("GET", "/cookie-get").Do()
-	client.NewRequest("GET", "/cookie-get").AddHeader("Cookie", "age=22;").Do()
-	client.NewRequest("GET", "/cookie-err").Do()
-	client.NewRequest("GET", "/form-value").BodyFormValue("name", "eudore").Do()
-	client.NewRequest("GET", "/form-file").BodyFormFile("file", "app.txt", "eudore app").Do()
-	client.NewRequest("GET", "/form-err").BodyString("name=eudore").Do()
-	client.NewRequest("GET", "/body").Do()
-	client.NewRequest("GET", "/read").Do()
+	app.NewRequest(nil, "GET", "/")
+	app.NewRequest(nil, "GET", "/params")
+	app.NewRequest(nil, "GET", "/querys?name=eudore&debug=true")
+	app.NewRequest(nil, "PUT", "/querys-err1")
+	app.NewRequest(nil, "PUT", "/querys-err2")
+	app.NewRequest(nil, "GET", "/cookie-get")
+	app.NewRequest(nil, "GET", "/cookie-set")
+	app.NewRequest(nil, "GET", "/cookie-get")
+	app.NewRequest(nil, "GET", "/cookie-get", http.Header{eudore.HeaderCookie: []string{"age=22"}})
+	app.NewRequest(nil, "GET", "/cookie-err")
+	app.NewRequest(nil, "GET", "/form-value", eudore.NewClientBodyFormValue("name", "eudore"))
+	app.NewRequest(nil, "GET", "/form-file", eudore.NewClientBodyFormFile("file", "app.txt", "eudore app"))
+	app.NewRequest(nil, "GET", "/form-err", eudore.NewClientBodyString("name=eudore"))
+	app.NewRequest(nil, "GET", "/body")
+	app.NewRequest(nil, "GET", "/read")
 
 	app.CancelFunc()
 	app.Run()
@@ -234,8 +232,6 @@ func (w *responseError) Status() int {
 
 func TestContextResponse(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.SetValue(eudore.ContextKeyFilte, func(eudore.Context, interface{}) error { return nil })
 	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
 	app.AddMiddleware(func(ctx eudore.Context) {
@@ -259,23 +255,11 @@ func TestContextResponse(*testing.T) {
 	app.AnyFunc("/push", func(ctx eudore.Context) {
 		ctx.Push("/index.js", nil)
 	})
-	app.AnyFunc("/write-json", func(ctx eudore.Context) {
-		ctx.WriteJSON(map[string]interface{}{
-			"name":  "eudore",
-			"route": ctx.GetParam(eudore.ParamRoute),
-		})
-	})
 	app.AnyFunc("/write-string", func(ctx eudore.Context) {
 		ctx.WriteString("hello")
 	})
 	app.AnyFunc("/write-file", func(ctx eudore.Context) {
 		ctx.WriteFile("/index.html")
-	})
-	app.AnyFunc("/write-error1", func(ctx eudore.Context) {
-		ctx.WriteError(eudore.NewErrorCode(fmt.Errorf("test err"), 1002))
-	})
-	app.AnyFunc("/write-error2", func(ctx eudore.Context) {
-		ctx.WriteError(eudore.NewErrorStatus(fmt.Errorf("test err"), 499))
 	})
 	app.AnyFunc("/render", func(ctx eudore.Context) {
 		ctx.Render(map[string]interface{}{
@@ -293,36 +277,32 @@ func TestContextResponse(*testing.T) {
 		ctx.Response().Hijack()
 	})
 
-	c, ok := client.Client.(*http.Client)
+	client := app.GetClient()
+	tp, ok := client.Transport.(*http.Transport)
 	if ok {
-		tp, ok := c.Transport.(*http.Transport)
-		if ok {
-			tp.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-		}
+		tp.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	app.ListenTLS(":8089", "", "")
 
-	client.NewRequest("GET", "/redirect").Do()
-	client.NewRequest("GET", "/push").Do()
-	client.NewRequest("GET", "/ws").Do()
-	client.NewRequest("GET", "/write-json").Do()
-	client.NewRequest("GET", "/write-string").Do()
-	client.NewRequest("GET", "/write-file").Do()
-	client.NewRequest("GET", "/write-error1").Do()
-	client.NewRequest("GET", "/write-error2").Do()
-	client.NewRequest("GET", "/render").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
-	client.NewRequest("GET", "/status").Do()
-	client.NewRequest("GET", "/response").Do()
-	client.NewRequest("GET", "https://localhost:8089/push").Do()
-	client.NewRequest("GET", "https://localhost:8089/ws").Do()
+	app.NewRequest(nil, "GET", "/redirect")
+	app.NewRequest(nil, "GET", "/push")
+	app.NewRequest(nil, "GET", "/ws")
+	app.NewRequest(nil, "GET", "/write-string")
+	app.NewRequest(nil, "GET", "/write-file")
+	app.NewRequest(nil, "GET", "/render", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "GET", "/status")
+	app.NewRequest(nil, "GET", "/response")
+	app.NewRequest(nil, "GET", "https://localhost:8089/push")
+	app.NewRequest(nil, "GET", "https://localhost:8089/ws")
 
-	client.AddQuery("debug", "1")
-	client.NewRequest("GET", "/redirect").Do()
-	client.NewRequest("GET", "/push").Do()
-	client.NewRequest("GET", "/write-json").Do()
-	client.NewRequest("GET", "/write-string").Do()
-	client.NewRequest("GET", "/write-file").Do()
-	client.NewRequest("GET", "/render").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
+	app.Client = app.WithClient(eudore.NewClientQuery("debug", "1"))
+	app.NewRequest(nil, "GET", "/redirect")
+	app.NewRequest(nil, "GET", "/push")
+	app.NewRequest(nil, "GET", "/response")
+	app.NewRequest(nil, "GET", "/write-json")
+	app.NewRequest(nil, "GET", "/write-string")
+	app.NewRequest(nil, "GET", "/write-file")
+	app.NewRequest(nil, "GET", "/render", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
 
 	app.CancelFunc()
 	app.Run()
@@ -330,9 +310,6 @@ func TestContextResponse(*testing.T) {
 
 func TestContextLogger(*testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-
 	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(map[string]interface{}{"FileLine": true}))
 	app.AddMiddleware("global", middleware.NewRequestIDFunc(func(eudore.Context) string {
 		return uuid.New().String()
@@ -348,10 +325,6 @@ func TestContextLogger(*testing.T) {
 		ctx.Error("test error")
 		ctx.Errorf("test error")
 		ctx.Fatal(nil)
-	})
-	app.AnyFunc("/err", func(ctx eudore.Context) {
-		ctx.Fatalf("fatal logger method: %s path: %s", ctx.Method(), ctx.Path())
-		ctx.Debug("err:", ctx.Err())
 	})
 	app.AnyFunc("/field", func(ctx eudore.Context) {
 		ctx.WithFields([]string{"key", "name"}, []interface{}{"ctx.WithFields", "eudore"}).Debug("hello fields")
@@ -370,10 +343,28 @@ func TestContextLogger(*testing.T) {
 		ctx.WithField("key", "test-firle").WithField("hello", "haha").Fatalf("fatal logger method: %s path: %s", ctx.Method(), ctx.Path())
 		ctx.WithField("method", "WithField").WithFields([]string{"key", "name"}, []interface{}{"ss", "eudore"}).Debug("hello fields")
 	})
+	app.AnyFunc("/err1", func(ctx eudore.Context) {
+		ctx.Fatalf("fatal logger method: %s path: %s", ctx.Method(), ctx.Path())
+		ctx.Debug("err:", ctx.Err())
+	})
+	app.AnyFunc("/err2", func(ctx eudore.Context) {
+		ctx.Fatal(eudore.NewErrorStatusCode(fmt.Errorf("test error"), 432, 10032))
+	})
+	app.AnyFunc("/err3", func(ctx eudore.Context) {
+		eudore.NewErrorStatus(fmt.Errorf("test error"), 0)
+		ctx.Fatal(eudore.NewErrorStatus(fmt.Errorf("test error"), 432))
+	})
+	app.AnyFunc("/err4", func(ctx eudore.Context) {
+		eudore.NewErrorCode(fmt.Errorf("test error"), 0)
+		ctx.Fatal(eudore.NewErrorCode(fmt.Errorf("test error"), 10032))
+	})
 
-	client.NewRequest("GET", "/ffile").Do()
-	client.NewRequest("GET", "/err").Do()
-	client.NewRequest("GET", "/field").Do()
+	app.NewRequest(nil, "GET", "/ffile")
+	app.NewRequest(nil, "GET", "/field")
+	app.NewRequest(nil, "GET", "/err1")
+	app.NewRequest(nil, "GET", "/err2")
+	app.NewRequest(nil, "GET", "/err3")
+	app.NewRequest(nil, "GET", "/err4")
 
 	app.CancelFunc()
 	app.Run()
@@ -384,14 +375,13 @@ func TestContextValue(*testing.T) {
 		Name string `json:"name" xml:"name"`
 	}
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.Set("name", "eudore")
 
 	temp, _ := template.New("").Parse(`{{- define "data" -}}Data Name is {{.Name}}{{- end -}}`)
 	app.AnyFunc("/index", func(ctx eudore.Context) interface{} {
-		ctx.SetValue(eudore.ContextKeyTempldate, temp)
-		ctx.SetValue(eudore.ContextKeyTempldate, temp)
+		ctx.SetValue(eudore.ContextKeyDatabase, ctx.Value(eudore.ContextKeyDatabase))
+		ctx.SetValue(eudore.ContextKeyTemplate, temp)
+		ctx.SetValue(eudore.ContextKeyTemplate, temp)
 		return &Data{ctx.Value(eudore.ContextKeyConfig).(eudore.Config).Get("name").(string)}
 	})
 	app.AnyFunc("/cannel", func(ctx eudore.Context) error {
@@ -401,9 +391,9 @@ func TestContextValue(*testing.T) {
 		return ctx.Err()
 	})
 
-	client.NewRequest("GET", "/index").AddHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON).Do()
-	client.NewRequest("GET", "/index").AddHeader(eudore.HeaderAccept, eudore.MimeTextHTML).Do()
-	client.NewRequest("GET", "/cannel").Do()
+	app.NewRequest(nil, "GET", "/index", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "GET", "/index", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
+	app.NewRequest(nil, "GET", "/cannel")
 
 	app.CancelFunc()
 	app.Run()

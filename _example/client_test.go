@@ -1,127 +1,211 @@
 package eudore_test
 
 import (
+	"bytes"
+	"context"
 	"crypto/tls"
-	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/eudore/eudore"
 )
 
-func init() {
-	eudore.DefaulerServerShutdownWait = time.Microsecond * 100
+func TestClientRequest(t *testing.T) {
+	app := eudore.NewApp()
+	app.AnyFunc("/*", func(ctx eudore.Context) {
+		ctx.Info("server body:", string(ctx.Body()))
+		ctx.Write(ctx.Body())
+	})
+	app.AnyFunc("/ctx", func(ctx eudore.Context) {
+		client := ctx.Value(eudore.ContextKeyClient).(eudore.Client).WithClient(
+			eudore.NewClientHeader(eudore.HeaderAuthorization, ctx.GetHeader(eudore.HeaderAuthorization)),
+		)
+		ctx.SetValue(eudore.ContextKeyClient, client)
+		ctx.NewRequest("GET", "/")
+	})
+
+	client := app.GetClient()
+	tp, ok := client.Transport.(*http.Transport)
+	if ok {
+		tp.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	app.Debug(app.NewRequest(nil, "GET", "/",
+		"eudore body",
+		url.Values{"name": []string{"eudore"}},
+		http.Header{"Client": []string{"eudore-client"}},
+		&http.Cookie{Name: "name", Value: "eudore"},
+		func(*http.Request) {},
+		func(*http.Response) error { return nil },
+		eudore.NewClientQuery("name", "eudore"),
+		eudore.NewClientQuerys(url.Values{"state": []string{"active"}}),
+		eudore.NewClientHeader("Client", "eudore"),
+		eudore.NewClientHeaders(http.Header{"Accept": []string{"application/json"}}),
+		eudore.NewClientCookie("id", "c6e2ada8-8715-465b-af25-f992723b5b0a"),
+		eudore.NewClientBasicAuth("eudore", "pass"),
+		eudore.NewClientTrace(),
+		eudore.NewClientDumpBody(),
+	))
+	app.Debug(app.NewRequest(nil, "GET", "/", []byte("eudore bytes")))
+	app.Debug(app.NewRequest(nil, "GET", "/", bytes.NewBufferString("eudore buffer")))
+	app.Debug(app.NewRequest(nil, "GET", "/", ioutil.NopCloser(bytes.NewBufferString("eudore buffer"))))
+	app.Debug(app.NewRequest(nil, "GET", "\u007f"))
+	app.Debug(app.NewRequest(nil, "GET", ""))
+	app.Debug(app.NewRequest(nil, "GET", "/",
+		func(*http.Response) error { return fmt.Errorf("eudore client test error") },
+	))
+	app.Debug(app.NewRequest(nil, "GET", "/ctx"))
+
+	app.CancelFunc()
+	app.Run()
 }
 
-func TestClientRequest(t *testing.T) {
-	type Data struct {
-		Name string `json:"name"`
+func TestClientRequestBody(t *testing.T) {
+	type Body struct {
+		Name string
 	}
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp(&http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}, func(tp http.RoundTripper) http.RoundTripper {
-		return tp
+	app.AnyFunc("/redirect", func(ctx eudore.Context) {
+		ctx.Body()
+		ctx.Redirect(308, "/")
 	})
-	app.SetValue(eudore.ContextKeyClient, client)
 	app.AnyFunc("/*", func(ctx eudore.Context) {
-		ctx.Info(ctx.Method(), ctx.Path(), string(ctx.Body()))
+		ctx.Info("server body:", string(ctx.Body()))
+		ctx.Write(ctx.Body())
 	})
-	app.AnyFunc("/hello", func(ctx eudore.Context) {
-		ctx.WriteString("hello eudore" + ctx.Host())
-	})
-	app.AnyFunc("/redirect/*", func(ctx eudore.Context) {
-		ctx.Redirect(308, "/"+ctx.GetParam("*"))
-	})
-	app.Listen(":8088")
-	time.Sleep(5 * time.Millisecond)
 
-	client.AddBasicAuth("eudore", "pass")
-	client.AddHeader("Client", "eudore")
-	client.AddHeaders(http.Header{"Debug": []string{"true"}})
-	client.AddQuery("client", "eudore")
-	client.AddQuerys(url.Values{"debug": []string{"true"}})
-	client.AddCookie("", "none", "93df237641ca921e1bacda0eca191030")
-	client.AddCookie("%2", "none", "93df237641ca921e1bacda0eca191030")
+	app.Debug(app.NewRequest(nil, "GET", "/body/string", eudore.NewClientBodyString("eudore body string")))
+	app.Debug(app.NewRequest(nil, "GET", "/body/json", Body{"eudor"}))
+	app.Debug(app.NewRequest(nil, "GET", "/body/jsonstruct", eudore.NewClientBodyJSON(struct{ Name string }{"eudore"})))
+	app.Debug(app.NewRequest(nil, "GET", "/body/jsonmap", eudore.NewClientBodyJSON(map[string]interface{}{"name": "eudore"})))
+	app.Debug(app.NewRequest(nil, "GET", "/body/jsonvalue", eudore.NewClientBodyJSONValue("name", "eudore")))
+	app.Debug(app.NewRequest(nil, "GET", "/bdoy/formvalue",
+		eudore.NewClientBodyFormValue("name", "eudore"),
+		eudore.NewClientBodyFormValues(map[string]string{"server": "eudore"}),
+	))
+	app.Debug(app.NewRequest(nil, "GET", "/body/formfile",
+		eudore.NewClientBodyFormFile("file", "string.txt", "file string"),
+		eudore.NewClientBodyFormFile("file", "bytes.txt", []byte("file bytes")),
+		eudore.NewClientBodyFormFile("file", "buffer.txt", bytes.NewBufferString("file buffer")),
+		eudore.NewClientBodyFormFile("file", "rc.txt", ioutil.NopCloser(bytes.NewBufferString("file rc"))),
+		eudore.NewClientBodyFormFile("file", "none.txt", nil),
+		eudore.NewClientBodyFormLocalFile("file", "", "appNew.go"),
+	))
+	app.Debug(app.NewRequest(nil, "PUT", "/body/json", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON), eudore.NewClientBody(Body{"eudore"})))
+	app.Debug(app.NewRequest(nil, "PUT", "/body/json", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON), eudore.NewClientBody([]Body{{"eudore"}})))
+	app.Debug(app.NewRequest(nil, "PUT", "/body/xml", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationXML), eudore.NewClientBody(Body{"eudore"})))
+	app.Debug(app.NewRequest(nil, "PUT", "/body/pb", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationProtobuf), eudore.NewClientBody(&Body{"eudore"})))
+	app.Debug(app.NewRequest(nil, "PUT", "/body/pb", eudore.NewClientHeader(eudore.HeaderContentType, "pb"), eudore.NewClientBody(Body{"eudore"})))
 
-	app.Info("Client GetCookie / :", client.GetCookie("", "none"))
-	app.Info("Client GetCookie qq.com/ :", client.GetCookie("qq.com/", "none"))
-	app.Info("Client GetCookie %2 :", client.GetCookie("%2", "none"))
+	app.Debug(app.NewRequest(nil, "PUT", "/redirect", ioutil.NopCloser(bytes.NewBufferString("buffer rc"))))
+	app.Debug(app.NewRequest(nil, "PUT", "/redirect", eudore.NewClientBody(Body{"eudore"})))
+	app.Debug(app.NewRequest(nil, "PUT", "/redirect", eudore.NewClientBodyString("eudore body string")))
+	app.Debug(app.NewRequest(nil, "PUT", "/redirect", eudore.NewClientBodyJSONValue("name", "eudore")))
+	app.Debug(app.NewRequest(nil, "PUT", "/redirect", eudore.NewClientBodyFormValue("name", "eudore")))
 
-	client.NewRequest("GET", "http://127.0.0.1:8088/hello").Do()
-	client.NewRequest("GET", "/hello").Do()
-
-	client.NewRequest("GET", "/hello").AddQuery("name", "eudore").Do()
-	client.NewRequest("GET", "/hello").AddHeader("name", "eudore").Do()
-	client.NewRequest("GET", "/hello").AddHeader("Host", "eudore").Do()
-	client.NewRequest("GET", "/hello").AddHeaders(http.Header{"name": []string{"eudore"}}).Do()
-
-	client.NewRequest("PUT", "/redirect/bodystring").Body("trace").Do()
-	client.NewRequest("PUT", "/redirect/bodybytes").Body([]byte("trace")).Do()
-	client.NewRequest("PUT", "/redirect/bodyjson").Body(Data{"eudore"}).Do()
-	client.NewRequest("PUT", "/redirect/bodyreadr").Body(strings.NewReader("file body")).Do()
-	client.NewRequest("PUT", "/redirect/bodyreadcloser").Body(ioutil.NopCloser(strings.NewReader("file body"))).Do()
-
-	client.NewRequest("PUT", "/redirect/body/string").BodyString("trace").Do()
-	client.NewRequest("PUT", "/redirect/body/bytes").BodyBytes([]byte("trace")).Do()
-	client.NewRequest("PUT", "/redirect/body/json/struct").BodyJSON(Data{"eudore"}).Do()
-	client.NewRequest("PUT", "/redirect/body/json/map").BodyJSON(map[string]interface{}{"nanme": "eudore"}).Do()
-	client.NewRequest("PUT", "/redirect/body/json/value").BodyJSONValue("k", "v").Do()
-	client.NewRequest("PUT", "/redirect/body/form/value").BodyFormValue("name", "eudore").Do()
-	client.NewRequest("PUT", "/redirect/body/form/values").BodyFormValues(map[string][]string{"name": {"eudore"}}).Do()
-	client.NewRequest("PUT", "/redirect/body/file/string").BodyFormFile("file", "file", "file body").Do()
-	client.NewRequest("PUT", "/redirect/body/file/bytes").BodyFormFile("file", "file", []byte("file body")).Do()
-	client.NewRequest("PUT", "/redirect/body/file/reader").BodyFormFile("file", "file", strings.NewReader("file body")).Do()
-	client.NewRequest("PUT", "/redirect/body/file/readcloser").BodyFormFile("file", "file", ioutil.NopCloser(strings.NewReader("file body"))).Do()
-	client.NewRequest("PUT", "/redirect/body/file/nil").BodyFormFile("file", "file", 99).Do()
-	client.NewRequest("PUT", "/redirect/body/file/local").BodyFormLocalFile("file", "", "./appNew.go").Do()
-
-	time.Sleep(200 * time.Millisecond)
 	app.CancelFunc()
 	app.Run()
 }
 
-func TestClientCheck(t *testing.T) {
+func TestClientResponse(t *testing.T) {
 	app := eudore.NewApp()
-	client := eudore.NewClientWarp()
-	app.SetValue(eudore.ContextKeyClient, client)
-	app.AnyFunc("/200", func(ctx eudore.Context) {
-		ctx.WriteHeader(200)
-		ctx.WriteString("hello")
+	app.AnyFunc("/*", func(ctx eudore.Context) {
+		ctx.Info("server body:", string(ctx.Body()))
+		ctx.Write(ctx.Body())
 	})
-	app.AnyFunc("/400", func(ctx eudore.Context) {
-		ctx.WriteHeader(400)
+	app.AnyFunc("/trace", func(ctx eudore.Context) {
+		ctx.SetHeader(eudore.HeaderXTraceID, "558ac45caefc87c517a7c1cf49918f1aeudore")
 	})
-	app.AnyFunc("/500", func(ctx eudore.Context) {
-		ctx.WriteHeader(500)
+	app.GetFunc("/body", func(eudore.Context) interface{} {
+		return eudore.LoggerStdConfig{
+			Std:   true,
+			Path:  "/tmp/client.log",
+			Level: eudore.LoggerInfo,
+		}
 	})
-	app.AnyFunc("/cookie", func(ctx eudore.Context) {
-		ctx.SetCookieValue("name", "eudore", -1)
-		ctx.WriteJSON(map[string]string{"name": "eudore"})
-	})
-
-	client.NewRequest("GET", "/200").Do().Callback(eudore.NewResponseReaderCheckStatus(200))
-	client.NewRequest("GET", "/400").Do().Callback(eudore.NewResponseReaderCheckStatus(400))
-	client.NewRequest("GET", "/500").Do().Callback(eudore.NewResponseReaderCheckStatus(500))
-	client.NewRequest("GET", "/500").Do().Callback(eudore.NewResponseReaderCheckStatus(501))
-	client.NewRequest("GET", "/200").Do().Callback(eudore.NewResponseReaderCheckBody("hello"))
-	client.NewRequest("GET", "/200").Do().Callback(eudore.NewResponseReaderCheckBody("hello eudore"))
-	client.NewRequest("GET", "/200").Do().Callback(eudore.NewResponseReaderOutHead())
-	client.NewRequest("GET", "/200").Do().Callback(eudore.NewResponseReaderOutBody())
-	client.NewRequest("GET", "/cookie").Do().Callback(func(resp eudore.ResponseReader, req *http.Request, log eudore.Logger) error {
-		var data map[string]interface{}
-		json.NewDecoder(resp).Decode(&data)
-		log.Info("cookies:", resp.Cookies())
-		log.Info("data:", data)
-		return nil
+	app.GetFunc("/err", func(eudore.Context) error {
+		return fmt.Errorf("test err")
 	})
 
-	eudore.NewClientWarp().NewRequest("GET", "/500").Do().Callback(eudore.NewResponseReaderCheckStatus(501))
+	app.Debug(app.NewRequest(nil, "GET", "https://goproxy.cn",
+		eudore.NewClientTimeout(time.Second),
+		eudore.NewClientTrace(),
+		eudore.NewClientDumpHead(),
+	))
+	app.Debug(app.NewRequest(nil, "GET", "https://golang.org",
+		eudore.NewClientTimeout(time.Second),
+		eudore.NewClientTrace(),
+		eudore.NewClientDumpHead(),
+	))
+	app.Debug(app.NewRequest(context.Background(), "GET", "/",
+		eudore.NewClientTimeout(time.Second),
+		eudore.NewClientDumpHead(),
+	))
+
+	app.NewRequest(nil, "GET", "/check/status", eudore.NewClientCheckStatus(200))
+	app.NewRequest(nil, "GET", "/check/status", eudore.NewClientCheckStatus(201))
+
+	app.NewRequest(nil, "GET", "/trace", eudore.NewClientCheckBody("201"))
+	app.NewRequest(nil, "GET", "/trace", NewClientBodyError(), eudore.NewClientCheckBody("201"))
+
+	app.NewRequest(nil, "GET", "/trace",
+		NewClientBodyError(),
+		eudore.NewClientDumpBody(),
+	)
+
+	var conf eudore.LoggerStdConfig
+	err := app.NewRequest(nil, "GET", "/body",
+		eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON),
+		eudore.NewClientParse(&conf),
+	)
+	app.Debugf("%v %v", conf, err)
+	err = app.NewRequest(nil, "GET", "/body",
+		eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationXML),
+		eudore.NewClientTrace(),
+		eudore.NewClientDumpBody(),
+		eudore.NewClientParse(&conf),
+	)
+	app.Debugf("%v %v", conf, err)
+	app.NewRequest(nil, "GET", "/body",
+		eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML),
+		eudore.NewClientParse(&conf),
+	)
+	app.NewRequest(nil, "GET", "/body",
+		eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationProtobuf),
+		eudore.NewClientParse(&conf),
+		eudore.NewClientParseErr(),
+	)
+	app.NewRequest(nil, "GET", "/err",
+		eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON),
+		eudore.NewClientParseIf(200, &conf),
+		eudore.NewClientParseIn(200, 200, &conf),
+		eudore.NewClientParseErr(),
+	)
+	app.NewRequest(nil, "GET", "/err",
+		eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML),
+		eudore.NewClientParseErr(),
+	)
 
 	app.CancelFunc()
 	app.Run()
+}
+
+func NewClientBodyError() eudore.ClientResponseOption {
+	return func(w *http.Response) error {
+		w.Body = &responseBody{}
+		return nil
+	}
+}
+
+type responseBody struct{}
+
+func (r *responseBody) Read(p []byte) (int, error) {
+	return 0, fmt.Errorf("test error")
+}
+func (r *responseBody) Close() error {
+	return nil
 }

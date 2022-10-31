@@ -22,7 +22,7 @@ func main() {
 
 	app := eudore.NewApp()
 	temp, _ := template.New("").Parse(`{{- define "name" -}} name: {{.name}} message: {{.message}} {{- end -}}`)
-	app.SetValue(eudore.ContextKeyTempldate, temp)
+	app.SetValue(eudore.ContextKeyTemplate, temp)
 
 	app.AnyFunc("/*path template=name", func(ctx eudore.Context) {
 		ctx.SetParam("template", viewpath)

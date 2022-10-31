@@ -4,72 +4,73 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/base64"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net"
 	"net/http"
-	"net/http/cookiejar"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 )
 
-/*
-Client 定义http协议客户端。
-	使用http.Handler处理请求
-	构建json form
-	httptrace
-*/
+// Client 定义http客户端接口，构建并发送http请求。
 type Client interface {
-	Do(*http.Request) (*http.Response, error)
+	NewRequest(context.Context, string, string, ...interface{}) error
+	WithClient(...interface{}) Client
+	GetClient() *http.Client
 }
 
-// NewClientStd 函数创建一个net/http.Client。
-//
-// 如果DialContext的host为DefaultClientHost，上下文获取ContextKeyServer实现ServeConn方法会使用net.Pipe连接。
+// ClientRequestOption 定义http请求选项。
+type ClientRequestOption func(*http.Request)
+
+// ClientResponseOption 定义http响应选项。
+type ClientResponseOption func(*http.Response) error
+
+// clientStd 定义http客户端默认实现。
+type clientStd struct {
+	Context context.Context
+	Client  *http.Client
+	Options []interface{}
+}
+
+// NewClientStd 函数创建默认http客户端实现，参数为默认选项。
 func NewClientStd(options ...interface{}) Client {
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			DialContext:           newDialContext(),
-			ForceAttemptHTTP2:     true,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
+	return &clientStd{
+		Context: context.Background(),
+		Client: &http.Client{
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				DialContext:           newDialContext(),
+				ForceAttemptHTTP2:     true,
+				MaxIdleConns:          100,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
 		},
+		Options: options,
 	}
-	// fix less 1.13
-	// Set(client, "Transport.ForceAttemptHTTP2", true)
-	for _, option := range options {
-		switch val := option.(type) {
-		case http.RoundTripper:
-			ConvertTo(val, client.Transport)
-		case func(http.RoundTripper) http.RoundTripper:
-			tp := val(client.Transport)
-			if tp != nil {
-				client.Transport = tp
-			}
-		case http.CookieJar:
-			client.Jar = val
-		}
-	}
-	return client
 }
 
+// newDialContext 函数创建http客户端Dial函数，如果是内部请求Host，从环境上下文获取到Server处理连接。
 func newDialContext() func(ctx context.Context, network, addr string) (net.Conn, error) {
 	fn := (&net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}).DialContext
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
-		if network == "tcp" && addr == DefaultClientHost {
+		if network == "tcp" && addr == DefaultClientInternalHost {
 			server, ok := ctx.Value(ContextKeyServer).(interface{ ServeConn(conn net.Conn) })
 			if ok {
 				serverConn, clientConn := net.Pipe()
@@ -82,30 +83,573 @@ func newDialContext() func(ctx context.Context, network, addr string) (net.Conn,
 	}
 }
 
-// ClientWarp 定义http客户端包装方法
-type ClientWarp struct {
-	Client  `alias:"client" json:"client"`
-	Context context.Context `alias:"context" json:"context"`
-	Querys  url.Values      `alias:"querys" json:"querys"`
-	Headers http.Header     `alias:"headers" json:"headers"`
-	Cookies http.CookieJar  `alias:"cookies" json:"cookies"`
-}
-
-// NewClientWarp 函数创建ClientWarp对象，提供http请求创建方法。
-func NewClientWarp(options ...interface{}) *ClientWarp {
-	client := &ClientWarp{
-		Context: context.Background(),
-		Querys:  make(url.Values),
-		Headers: make(http.Header),
-	}
-	client.Cookies, _ = cookiejar.New(nil)
-	client.Client = NewClientStd(append([]interface{}{client.Cookies}, options...)...)
-	return client
-}
-
 // Mount 方法保存context.Context作为Client默认发起请求的context.Context
-func (client *ClientWarp) Mount(ctx context.Context) {
+func (client *clientStd) Mount(ctx context.Context) {
 	client.Context = ctx
+}
+
+// NewRequest 方法发送http请求。
+func (client *clientStd) NewRequest(ctx context.Context, method string, path string, options ...interface{}) error {
+	if ctx == nil {
+		ctx = client.Context
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, initRequestPath(ctx, path), nil)
+	if err != nil {
+		return err
+	}
+	ro, wo := initRequestOptions(req, append(client.Options, options...))
+	for i := range ro {
+		ro[i](req)
+	}
+
+	resp, err := client.Client.Do(req)
+	if err != nil {
+		return err
+	}
+	for i := range wo {
+		err = wo[i](resp)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// initRequestPath 函数初始化请求url，如果Host为空设置默认或内部Host，如果请求协议为空设置为http。
+func initRequestPath(ctx context.Context, path string) string {
+	u, err := url.ParseRequestURI(path)
+	if err != nil {
+		return path
+	}
+
+	if u.Host == "" {
+		_, ok := ctx.Value(ContextKeyServer).(interface{ ServeConn(conn net.Conn) })
+		if ok {
+			u.Host = DefaultClientInternalHost
+		} else {
+			u.Host = DefaultClientHost
+		}
+	}
+	if u.Scheme == "" {
+		u.Scheme = "http"
+	}
+	return u.String()
+}
+
+// initRequestOptions 函数初始化请求选项，并返回全部ClientRequestOption和ClientResponseOption。
+func initRequestOptions(r *http.Request, options []interface{}) (ro []ClientRequestOption, wo []ClientResponseOption) {
+	for i := range options {
+		switch option := options[i].(type) {
+		case io.ReadCloser:
+			r.Body = option
+			r.GetBody = initGetBody(r.Body)
+		case io.Reader:
+			r.Body = ioutil.NopCloser(option)
+			r.GetBody = initGetBody(r.Body)
+		case string:
+			ro = append(ro, NewClientBodyString(option))
+		case []byte:
+			ro = append(ro, NewClientBodyString(string(option)))
+		case http.Header:
+			headerCopy(r.Header, option)
+		case *http.Cookie:
+			r.AddCookie(option)
+		case url.Values:
+			v, err := url.ParseQuery(r.URL.RawQuery)
+			if err == nil {
+				headerCopy(v, option)
+				r.URL.RawQuery = v.Encode()
+			}
+		case ClientRequestOption:
+			ro = append(ro, option)
+		case func(*http.Request):
+			ro = append(ro, option)
+		case ClientResponseOption:
+			wo = append(wo, option)
+		case func(*http.Response) error:
+			wo = append(wo, option)
+		default:
+			ro = append(ro, NewClientBody(option))
+		}
+	}
+	return
+}
+
+// WithClient 方法给客户端追加新的选项，返回客户端深拷贝。
+func (client *clientStd) WithClient(options ...interface{}) Client {
+	options = append(client.Options, options...)
+	return &clientStd{
+		Context: client.Context,
+		Client:  client.Client,
+		Options: options,
+	}
+}
+
+// GetClient 方法返回*http.Client对象，用于修改属性。
+func (client *clientStd) GetClient() *http.Client {
+	return client.Client
+}
+
+// NewClientHost 数创建请求选项修改Host。
+func NewClientHost(host string) ClientRequestOption {
+	return func(r *http.Request) {
+		r.Host = host
+		r.Header.Set("Host", host)
+	}
+}
+
+// NewClientQuery 函数创建请求选项追加请求参数。
+func NewClientQuery(key, val string) ClientRequestOption {
+	return func(r *http.Request) {
+		v, err := url.ParseQuery(r.URL.RawQuery)
+		if err == nil {
+			v.Add(key, val)
+			r.URL.RawQuery = v.Encode()
+		}
+	}
+}
+
+// NewClientQuerys 函数创建请求选项加请求参数。
+func NewClientQuerys(querys url.Values) ClientRequestOption {
+	return func(r *http.Request) {
+		v, err := url.ParseQuery(r.URL.RawQuery)
+		if err == nil {
+			headerCopy(v, querys)
+			r.URL.RawQuery = v.Encode()
+		}
+	}
+}
+
+// NewClientHeader 函数创建请求选项追加Header。
+func NewClientHeader(key, val string) ClientRequestOption {
+	return func(r *http.Request) {
+		r.Header.Add(key, val)
+	}
+}
+
+// NewClientHeaders 函数创建请求选项追加Header。
+func NewClientHeaders(headers http.Header) ClientRequestOption {
+	return func(r *http.Request) {
+		headerCopy(r.Header, headers)
+	}
+}
+
+// NewClientCookie 函数创建请求选项追加请求Cookie
+func NewClientCookie(key, val string) ClientRequestOption {
+	return func(r *http.Request) {
+		r.AddCookie(&http.Cookie{Name: key, Value: val})
+	}
+}
+
+// NewClientBasicAuth 函数创建请求选项追加BasicAuth用户信息。
+func NewClientBasicAuth(username, password string) ClientRequestOption {
+	return func(r *http.Request) {
+		r.SetBasicAuth(username, password)
+	}
+}
+
+// NewClientBody 方法追加请求Body字符串。
+func NewClientBody(data interface{}) ClientRequestOption {
+	return func(r *http.Request) {
+		var contenttype string
+		switch reflect.Indirect(reflect.ValueOf(data)).Kind() {
+		case reflect.Struct:
+			contenttype = r.Header.Get(HeaderContentType)
+			if contenttype == "" {
+				contenttype = DefaultClientBodyContextType
+			}
+		case reflect.Slice, reflect.Map:
+			contenttype = MimeApplicationJSON
+		default:
+			return
+		}
+		switch contenttype {
+		case MimeApplicationJSON, MimeApplicationJSONCharsetUtf8:
+			r.Body = &bodyEncoder{data: data, contenttype: MimeApplicationJSON}
+		case MimeApplicationXML, MimeApplicationXMLCharsetUtf8:
+			r.Body = &bodyEncoder{data: data, contenttype: MimeApplicationXML}
+		case MimeApplicationProtobuf:
+			r.Body = &bodyEncoder{data: data, contenttype: MimeApplicationProtobuf}
+		default:
+			return
+		}
+		r.GetBody = initGetBody(r.Body)
+	}
+}
+
+// NewClientBodyString 方法追加请求Body字符串。
+func NewClientBodyString(str string) ClientRequestOption {
+	return func(r *http.Request) {
+		if r.Body == nil {
+			r.Body = &bodyBuffer{}
+			r.GetBody = initGetBody(r.Body)
+		}
+		body, ok := r.Body.(*bodyBuffer)
+		if ok {
+			body.WriteString(str)
+			r.ContentLength = int64(body.Len())
+		}
+	}
+}
+
+// NewClientBodyJSON 方法追加请求json值或json对象。
+func NewClientBodyJSON(data interface{}) ClientRequestOption {
+	return func(r *http.Request) {
+		r.ContentLength = -1
+		r.Header.Add(HeaderContentType, "application/json")
+		body, ok := data.(map[string]interface{})
+		if ok {
+			r.Body = &bodyJSON{values: body}
+		} else {
+			r.Body = &bodyJSON{data: data}
+		}
+		r.GetBody = initGetBody(r.Body)
+	}
+}
+
+// NewClientBodyJSONValue 方法追加请求json值。
+func NewClientBodyJSONValue(key string, val interface{}) ClientRequestOption {
+	return func(r *http.Request) {
+		if r.Body == nil && r.Header.Get(HeaderContentType) == "" {
+			r.ContentLength = -1
+			r.Header.Add(HeaderContentType, "application/json")
+			r.Body = &bodyJSON{values: make(map[string]interface{})}
+			r.GetBody = initGetBody(r.Body)
+		}
+		body, ok := r.Body.(*bodyJSON)
+		if ok {
+			body.values[key] = val
+		}
+	}
+}
+
+// NewClientBodyFormValue 方法追加请求Form值。
+func NewClientBodyFormValue(key string, val string) ClientRequestOption {
+	return func(r *http.Request) {
+		initBodyForm(r)
+		body, ok := r.Body.(*bodyForm)
+		if ok {
+			body.Values[key] = append(body.Values[key], val)
+		}
+	}
+}
+
+// NewClientBodyFormValues 方法追加请求Form值。
+func NewClientBodyFormValues(data map[string]string) ClientRequestOption {
+	return func(r *http.Request) {
+		initBodyForm(r)
+		body, ok := r.Body.(*bodyForm)
+		if ok {
+			for key, val := range data {
+				body.Values[key] = append(body.Values[key], val)
+			}
+		}
+	}
+}
+
+// NewClientBodyFormFile 方法给form添加文件内容，文件类型可以为[]byte string io.ReadCloser io.Reader。
+func NewClientBodyFormFile(key, name string, val interface{}) ClientRequestOption {
+	return func(r *http.Request) {
+		initBodyForm(r)
+		body, ok := r.Body.(*bodyForm)
+		if ok {
+			var content fileContent
+			switch body := val.(type) {
+			case []byte:
+				content.Body = body
+			case string:
+				content.Body = []byte(body)
+			case io.ReadCloser:
+				content.Reader = body
+			case io.Reader:
+				content.Reader = ioutil.NopCloser(body)
+			default:
+				return
+			}
+			content.Name = name
+			body.Files[key] = append(body.Files[key], content)
+		}
+	}
+}
+
+// NewClientBodyFormLocalFile 方法给form添加本地文件内容。
+func NewClientBodyFormLocalFile(key, name, path string) ClientRequestOption {
+	return func(r *http.Request) {
+		initBodyForm(r)
+		body, ok := r.Body.(*bodyForm)
+		if ok {
+			if name == "" {
+				name = filepath.Base(path)
+			}
+			body.Files[key] = append(body.Files[key], fileContent{
+				Name: name,
+				File: path,
+			})
+		}
+	}
+}
+
+// initBodyForm
+func initBodyForm(r *http.Request) {
+	if r.Body == nil && r.Header.Get(HeaderContentType) == "" {
+		var buf [30]byte
+		io.ReadFull(rand.Reader, buf[:])
+		boundary := fmt.Sprintf("%x", buf[:])
+		r.ContentLength = -1
+		r.Header.Add(HeaderContentType, "multipart/form-data; boundary="+boundary)
+		r.Body = &bodyForm{
+			Boundary: boundary,
+			Values:   make(map[string][]string),
+			Files:    make(map[string][]fileContent),
+		}
+		r.GetBody = initGetBody(r.Body)
+	}
+}
+
+// initGetBody 函数创建http.GetBody函数，如果body实现Clone() io.ReadCloser方法，在调用GetBody时使用。
+func initGetBody(data interface{}) func() (io.ReadCloser, error) {
+	return func() (io.ReadCloser, error) {
+		body, ok := data.(interface{ Clone() io.ReadCloser })
+		if ok {
+			return body.Clone(), nil
+		}
+		return http.NoBody, nil
+	}
+}
+
+// NewClientTimeout 函数创建请求选项设置请求超时时间。
+func NewClientTimeout(timeout time.Duration) ClientRequestOption {
+	return func(r *http.Request) {
+		ctx, _ := context.WithTimeout(r.Context(), timeout)
+		*r = *r.WithContext(ctx)
+	}
+}
+
+// NewClientTrace 函数创建请求选项在请求上下文保存ClientTrace对象和httptrace.ClientTrace，实现http客户端追踪。
+func NewClientTrace() ClientRequestOption {
+	return func(r *http.Request) {
+		trace := &ClientTrace{
+			HTTPStart:    time.Now(),
+			WroteHeaders: make(http.Header),
+		}
+		ctx := context.WithValue(r.Context(), ContextKeyClientTrace, trace)
+		ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+			DNSStart: func(info httptrace.DNSStartInfo) { trace.DNSStart = time.Now(); trace.DNSHost = info.Host },
+			DNSDone:  func(info httptrace.DNSDoneInfo) { trace.DNSDone = time.Now(); trace.DNSAddrs = info.Addrs },
+			ConnectStart: func(network, addr string) {
+				trace.ConnectStart = time.Now()
+				trace.ConnectNetwork = network
+				trace.ConnectAddress = addr
+			},
+			ConnectDone:          func(string, string, error) { trace.ConnectDone = time.Now() },
+			GetConn:              func(hostPort string) { trace.GetConn = time.Now(); trace.GetConnHostPort = hostPort },
+			GotConn:              func(httptrace.GotConnInfo) { trace.GotConn = time.Now() },
+			GotFirstResponseByte: func() { trace.GotFirstResponseByte = time.Now() },
+			TLSHandshakeStart:    func() { trace.TLSHandshakeStart = time.Now() },
+			TLSHandshakeDone: func(state tls.ConnectionState, _ error) {
+				trace.TLSHandshakeDone = time.Now()
+				trace.TLSHandshakeState = &state
+			},
+			WroteHeaderField: func(key string, value []string) { trace.WroteHeaders[key] = value },
+		})
+		*r = *r.WithContext(ctx)
+	}
+}
+
+// ClientTrace 定义http客户端请求追踪记录的数据
+type ClientTrace struct {
+	HTTPStart             time.Time            `json:"http-start" xml:"http-start"`
+	HTTPDone              time.Time            `json:"http-done" xml:"http-done"`
+	HTTPDuration          time.Duration        `json:"http-duration" xml:"http-duration"`
+	DNSStart              time.Time            `json:"dns-start,omitempty" xml:"dns-start,omitempty"`
+	DNSDone               time.Time            `json:"dns-done,omitempty" xml:"dns-done,omitempty"`
+	DNSDuration           time.Duration        `json:"dns-duration,omitempty" xml:"dns-duration,omitempty"`
+	DNSHost               string               `json:"dns-host,omitempty" xml:"dns-host,omitempty"`
+	DNSAddrs              []net.IPAddr         `json:"dns-addrs,omitempty" xml:"dns-addrs,omitempty"`
+	ConnectStart          time.Time            `json:"connect-start,omitempty" xml:"connect-start,omitempty"`
+	ConnectDone           time.Time            `json:"connect-done,omitempty" xml:"connect-done,omitempty"`
+	ConnectDuration       time.Duration        `json:"connect-duration,omitempty" xml:"connect-duration,omitempty"`
+	ConnectNetwork        string               `json:"connect-network,omitempty" xml:"connect-network,omitempty"`
+	ConnectAddress        string               `json:"connect-address,omitempty" xml:"connect-address,omitempty"`
+	GetConn               time.Time            `json:"get-conn" xml:"get-conn"`
+	GetConnHostPort       string               `json:"get-conn-host-port" xml:"get-conn-host-port"`
+	GotConn               time.Time            `json:"got-conn" xml:"got-conn"`
+	GotFirstResponseByte  time.Time            `json:"got-first-response-byte" xml:"got-first-response-byte"`
+	TLSHandshakeStart     time.Time            `json:"tls-handshake-start,omitempty" xml:"tls-handshake-start,omitempty"`
+	TLSHandshakeDone      time.Time            `json:"tls-handshake-done,omitempty" xml:"tls-handshake-done,omitempty"`
+	TLSHandshakeDuration  time.Duration        `json:"tls-handshake-duration,omitempty" xml:"tls-handshake-duration,omitempty"`
+	TLSHandshakeState     *tls.ConnectionState `json:"tls-handshake-state,omitempty" xml:"tls-handshake-state,omitempty"`
+	TLSHandshakeIssuer    string               `json:"tls-handshake-issuer,omitempty" xml:"tls-handshake-issuer,omitempty"`
+	TLSHandshakeSubject   string               `json:"tls-handshake-subject,omitempty" xml:"tls-handshake-subject,omitempty"`
+	TLSHandshakeNotBefore time.Time            `json:"tls-handshake-not-before,omitempty" xml:"tls-handshake-not-before,omitempty"`
+	TLSHandshakeNotAfter  time.Time            `json:"tls-handshake-not-after,omitempty" xml:"tls-handshake-not-after,omitempty"`
+	TLSHandshakeDigest    string               `json:"tls-handshake-digest,omitempty" xml:"tls-handshake-digest,omitempty"`
+	WroteHeaders          http.Header          `json:"-" xml:"-" description:"http write header"`
+}
+
+// NewClientParse 方法创建响应选项解析body数据。
+func NewClientParse(data interface{}) ClientResponseOption {
+	return func(w *http.Response) error {
+		return clientParseIn(w, 0, 0xffffffff, data)
+	}
+}
+
+// NewClientParseIf 方法创建响应选项，在指定状态码时解析body数据。
+func NewClientParseIf(status int, data interface{}) ClientResponseOption {
+	return func(w *http.Response) error {
+		return clientParseIn(w, status, status, data)
+	}
+}
+
+// NewClientParseIn 方法创建响应选项，在指定状态码范围时解析body数据。
+func NewClientParseIn(star, end int, data interface{}) ClientResponseOption {
+	return func(w *http.Response) error {
+		return clientParseIn(w, star, end, data)
+	}
+}
+
+// NewClientParseErr 方法创建响应选项，在默认范围时解析body中的Error字段返回。
+func NewClientParseErr() ClientResponseOption {
+	return func(w *http.Response) error {
+		var data struct {
+			Status int    `json:"status" protobuf:"6,name=status" xml:"status" yaml:"status"`
+			Code   int    `json:"code,omitempty" protobuf:"7,name=code" xml:"code,omitempty" yaml:"code,omitempty"`
+			Error  string `json:"error,omitempty" protobuf:"10,name=error" xml:"error,omitempty" yaml:"error,omitempty"`
+		}
+		err := clientParseIn(w, DefaultClientParseErrStar, DefaultClientParseErrEnd, &data)
+		if err != nil {
+			return err
+		}
+		if data.Error != "" {
+			return fmt.Errorf(data.Error)
+		}
+		return nil
+	}
+}
+
+func clientParseIn(w *http.Response, star, end int, data interface{}) error {
+	if w.StatusCode < star || w.StatusCode > end {
+		return nil
+	}
+	mime := w.Header.Get(HeaderContentType)
+	pos := strings.IndexByte(mime, ';')
+	if pos != -1 {
+		mime = mime[:pos]
+	}
+	switch mime {
+	case MimeApplicationJSON:
+		return json.NewDecoder(w.Body).Decode(data)
+	case MimeApplicationXML:
+		return xml.NewDecoder(w.Body).Decode(data)
+	case MimeApplicationProtobuf:
+		return NewProtobufDecoder(w.Body).Decode(data)
+	}
+	return fmt.Errorf("eudore client parse not suppert Content-Type: %s", mime)
+}
+
+// NewClientCheckStatus 方法创建响应选项检查响应状态码。
+func NewClientCheckStatus(status ...int) ClientResponseOption {
+	return func(w *http.Response) error {
+		for i := range status {
+			if status[i] == w.StatusCode {
+				return nil
+			}
+		}
+
+		err := fmt.Errorf("check status is %d not in %v", w.StatusCode, status)
+		r := w.Request
+		NewLoggerWithContext(w.Request.Context()).WithFields(
+			[]string{"method", "host", "path", "query", "status-code", "status"},
+			[]interface{}{r.Method, r.Host, r.URL.Path, r.URL.RawQuery, w.StatusCode, w.Status},
+		).Error(err)
+		return err
+	}
+}
+
+// NewClientCheckBody 方法创建响应选项检查响应body是否包含指定字符串。
+func NewClientCheckBody(str string) ClientResponseOption {
+	return func(w *http.Response) error {
+		body, err := ioutil.ReadAll(w.Body)
+		if err != nil {
+			return err
+		}
+		w.Body = ioutil.NopCloser(bytes.NewReader(body))
+		if strings.Index(string(body), str) == -1 {
+			err := fmt.Errorf("check body not have string '%s'", str)
+			r := w.Request
+			NewLoggerWithContext(w.Request.Context()).WithFields(
+				[]string{"method", "host", "path", "query", "status-code", "status"},
+				[]interface{}{r.Method, r.Host, r.URL.Path, r.URL.RawQuery, w.StatusCode, w.Status},
+			).Error(err)
+			return err
+		}
+		return nil
+	}
+}
+
+// NewClientDumpHead 方法创建响应选项从环境上下文获取Logger输出请求基本信息和Trace信息。
+func NewClientDumpHead() ClientResponseOption {
+	return newClientDumpWithBody(false)
+}
+
+// NewClientDumpBody 方法创建响应选项从环境上下文获取Logger输出响应head和body内容。
+func NewClientDumpBody() ClientResponseOption {
+	return newClientDumpWithBody(true)
+}
+
+func newClientDumpWithBody(hasbody bool) ClientResponseOption {
+	return func(w *http.Response) error {
+		log := NewLoggerWithContext(w.Request.Context())
+		if log == DefaultLoggerNull || log.GetLevel() > LoggerDebug {
+			return nil
+		}
+		r := w.Request
+		log = log.WithFields(
+			[]string{"proto", "method", "host", "path", "query", "status-code", "status", "request-headers", "response-headers"},
+			[]interface{}{w.Proto, r.Method, r.Host, r.URL.Path, r.URL.RawQuery, w.StatusCode, w.Status, r.Header, w.Header},
+		)
+
+		for _, name := range []string{HeaderXRequestID, HeaderXTraceID} {
+			id := w.Header.Get(name)
+			if id != "" {
+				log.WithField(strings.ToLower(name), id)
+				break
+			}
+		}
+
+		trace, ok := w.Request.Context().Value(ContextKeyClientTrace).(*ClientTrace)
+		if ok {
+			trace.HTTPDone = time.Now()
+			trace.HTTPDuration = trace.HTTPDone.Sub(trace.HTTPStart)
+			trace.DNSDuration = trace.DNSDone.Sub(trace.DNSStart)
+			trace.ConnectDuration = trace.ConnectDone.Sub(trace.ConnectStart)
+			trace.TLSHandshakeDuration = trace.TLSHandshakeDone.Sub(trace.TLSHandshakeStart)
+			if trace.TLSHandshakeState != nil {
+				cert := trace.TLSHandshakeState.PeerCertificates[0]
+				h := sha256.New()
+				h.Write(cert.Raw)
+				trace.TLSHandshakeIssuer = cert.Issuer.String()
+				trace.TLSHandshakeSubject = cert.Subject.String()
+				trace.TLSHandshakeNotBefore = cert.NotBefore
+				trace.TLSHandshakeNotAfter = cert.NotAfter
+				trace.TLSHandshakeDigest = hex.EncodeToString(h.Sum(nil))
+				trace.TLSHandshakeState = nil
+			}
+			log = log.WithFields([]string{"wrote-headers", "trace"}, []interface{}{trace.WroteHeaders, trace})
+		}
+
+		if hasbody {
+			body, err := ioutil.ReadAll(w.Body)
+			if err != nil {
+				return err
+			}
+			w.Body = ioutil.NopCloser(bytes.NewReader(body))
+			log.WithField("body", string(body))
+		}
+		log.Debug()
+		return nil
+	}
 }
 
 func headerCopy(dst, src map[string][]string) map[string][]string {
@@ -115,234 +659,18 @@ func headerCopy(dst, src map[string][]string) map[string][]string {
 	return dst
 }
 
-// AddQuery 方法给客户端增加请求参数，客户端发起每个请求都会附加参数。
-func (client *ClientWarp) AddQuery(key, val string) {
-	client.Querys.Add(key, val)
-
-}
-
-// AddQuerys 方法给客户端增加请求参数，客户端发起每个请求都会附加参数。
-func (client *ClientWarp) AddQuerys(querys url.Values) {
-	client.Querys = headerCopy(client.Querys, querys)
-}
-
-// AddHeader 方法给客户端增加Header，客户端发起每个请求都会附加Header。
-func (client *ClientWarp) AddHeader(key, val string) {
-	client.Headers.Add(key, val)
-}
-
-// AddHeaders 方法给客户端增加Header，客户端发起每个请求都会附加Header。
-func (client *ClientWarp) AddHeaders(headers http.Header) {
-	headerCopy(client.Headers, headers)
-}
-
-// AddBasicAuth 方法给客户端添加Basic Auth信息。
-func (client *ClientWarp) AddBasicAuth(name, pass string) {
-	client.Headers.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(name+":"+pass)))
-}
-
-// AddCookie 方法给指定host下添加cookie。
-func (client *ClientWarp) AddCookie(host, key, val string) {
-	u, err := url.Parse(host)
-	if err != nil {
-		return
-	}
-	if u.Scheme == "" {
-		u.Scheme = "http"
-	}
-	if u.Host == "" {
-		u.Host = DefaultClientHost
-	}
-	if u.Path == "" {
-		u.Path = "/"
-	}
-	client.Cookies.SetCookies(u, []*http.Cookie{{Name: key, Value: val}})
-}
-
-// GetCookie 方法读取指定host的cookie。
-func (client *ClientWarp) GetCookie(host, key string) string {
-	u, err := url.Parse(host)
-	if err != nil {
-		return ""
-	}
-	if u.Scheme == "" {
-		u.Scheme = "http"
-	}
-	if u.Host == "" {
-		u.Host = DefaultClientHost
-	}
-	if u.Path == "" {
-		u.Path = "/"
-	}
-	for _, cookie := range client.Cookies.Cookies(u) {
-		if cookie.Name == key {
-			return cookie.Value
-		}
-	}
-	return ""
-}
-
-// NewRequest 方法从客户端创建http请求。
-//
-// 如果schme为空默认为http，如果host为空默认为eudore.DefaultClientHost(go1.9 运行将异常阻塞)
-func (client *ClientWarp) NewRequest(method string, path string) *RequestWriterWarp {
-	u, err := url.Parse(path)
-	if err == nil {
-		if u.Scheme == "" {
-			u.Scheme = "http"
-		}
-		if u.Host == "" {
-			u.Host = DefaultClientHost
-		}
-		path = u.String()
-	}
-	req, _ := http.NewRequest(method, path, nil)
-	req = req.WithContext(client.Context)
-	headerCopy(req.Header, client.Headers)
-	req.URL.RawQuery = url.Values(headerCopy(req.URL.Query(), client.Querys)).Encode()
-	return &RequestWriterWarp{
-		Request: req,
-		Client:  client,
-	}
-}
-
-// RequestWriterWarp 定义http请求对象。
-type RequestWriterWarp struct {
-	*http.Request
-	Client *ClientWarp
-}
-
-// Do 方法发生请求。
-func (req *RequestWriterWarp) Do() ResponseReader {
-	resp, err := req.Client.Do(req.Request)
-	return &responseReaderHttp{
-		Request:  req.Request,
-		Response: resp,
-		Error:    err,
-	}
-}
-
-// AddQuery 方法给请求添加url参数。
-func (req *RequestWriterWarp) AddQuery(key, val string) *RequestWriterWarp {
-	querys := req.URL.Query()
-	querys.Add(key, val)
-	req.URL.RawQuery = querys.Encode()
-	return req
-}
-
-// AddHeaders 方法给请求添加headers。
-func (req *RequestWriterWarp) AddHeaders(headers http.Header) *RequestWriterWarp {
-	headerCopy(req.Header, headers)
-	return req
-}
-
-// AddHeader 方法给请求添加header。
-func (req *RequestWriterWarp) AddHeader(key, val string) *RequestWriterWarp {
-	if strings.ToLower(key) == "host" {
-		req.Host = val
-	}
-	req.Header.Add(key, val)
-	return req
-}
-
-// Body 方法格局对象类型创建http请求body。
-func (req *RequestWriterWarp) Body(i interface{}) *RequestWriterWarp {
-	switch body := i.(type) {
-	case string:
-		req.BodyString(body)
-	case []byte:
-		req.BodyBytes(body)
-	case io.ReadCloser:
-		req.Request.Body = body
-		req.initGetBody()
-	case io.Reader:
-		req.Request.Body = ioutil.NopCloser(body)
-		req.initGetBody()
-	default:
-		req.BodyJSON(body)
-	}
-	return req
-}
-
-func (req *RequestWriterWarp) initGetBody() {
-	req.GetBody = func() (io.ReadCloser, error) {
-		body, ok := req.Request.Body.(interface{ Clone() io.ReadCloser })
-		if ok {
-			return body.Clone(), nil
-		}
-		return http.NoBody, nil
-	}
-}
-
-// BodyBytes 方法使用[]byte创建body。
-func (req *RequestWriterWarp) BodyBytes(b []byte) *RequestWriterWarp {
-	if req.Request.Body == nil {
-		req.Request.Body = &bodyBuffer{}
-		req.initGetBody()
-	}
-	body, ok := req.Request.Body.(*bodyBuffer)
-	if ok {
-		body.Write(b)
-		req.ContentLength = int64(body.Len())
-	}
-	return req
-}
-
-// BodyString 方法使用string创建body。
-func (req *RequestWriterWarp) BodyString(s string) *RequestWriterWarp {
-	if req.Request.Body == nil {
-		req.Request.Body = &bodyBuffer{}
-		req.initGetBody()
-	}
-	body, ok := req.Request.Body.(*bodyBuffer)
-	if ok {
-		body.WriteString(s)
-		req.ContentLength = int64(body.Len())
-	}
-	return req
-}
-
 type bodyBuffer struct {
 	bytes.Buffer
 }
 
 func (body *bodyBuffer) Clone() io.ReadCloser {
-	return &bodyBuffer{*bytes.NewBuffer(body.Bytes())}
+	buf := &bodyBuffer{}
+	buf.Write(body.Bytes())
+	return buf
 }
 
 func (body *bodyBuffer) Close() error {
 	return nil
-}
-
-// BodyJSON 方法使用任意类型创建json请求body。
-func (req *RequestWriterWarp) BodyJSON(data interface{}) *RequestWriterWarp {
-	if req.Request.Body == nil && req.Header.Get("Content-Type") == "" {
-		req.ContentLength = -1
-		req.Header.Add("Content-Type", "application/json")
-		body, ok := data.(map[string]interface{})
-		if ok {
-			req.Request.Body = &bodyJSON{values: body}
-		} else {
-			req.Request.Body = &bodyJSON{data: data}
-		}
-		req.initGetBody()
-	}
-	return req
-}
-
-// BodyJSONValue 方法使用json键值创建json请求body。
-func (req *RequestWriterWarp) BodyJSONValue(key string, val interface{}) *RequestWriterWarp {
-	if req.Request.Body == nil && req.Header.Get("Content-Type") == "" {
-		req.ContentLength = -1
-		req.Header.Add("Content-Type", "application/json")
-		req.Request.Body = &bodyJSON{values: make(map[string]interface{})}
-		req.initGetBody()
-	}
-	body, ok := req.Request.Body.(*bodyJSON)
-	if ok {
-		body.values[key] = val
-	}
-	return req
 }
 
 type bodyJSON struct {
@@ -376,84 +704,6 @@ func (body *bodyJSON) Read(p []byte) (n int, err error) {
 
 func (body *bodyJSON) Close() error {
 	return body.reader.Close()
-}
-
-func (req *RequestWriterWarp) initbodyForm() {
-	if req.Request.Body == nil && req.Header.Get("Content-Type") == "" {
-		var buf [30]byte
-		io.ReadFull(rand.Reader, buf[:])
-		boundary := fmt.Sprintf("%x", buf[:])
-		req.ContentLength = -1
-		req.Header.Add("Content-Type", "multipart/form-data; boundary="+boundary)
-		req.Request.Body = &bodyForm{
-			Boundary: boundary,
-			Values:   make(map[string][]string),
-			Files:    make(map[string][]fileContent),
-		}
-		req.initGetBody()
-	}
-}
-
-// BodyFormValue 方法给form添加键值数据。
-func (req *RequestWriterWarp) BodyFormValue(key, val string) *RequestWriterWarp {
-	req.initbodyForm()
-	body, ok := req.Request.Body.(*bodyForm)
-	if ok {
-		body.Values[key] = append(body.Values[key], val)
-	}
-	return req
-}
-
-// BodyFormValues 方法给form添加键值数据。
-func (req *RequestWriterWarp) BodyFormValues(data map[string][]string) *RequestWriterWarp {
-	req.initbodyForm()
-	body, ok := req.Request.Body.(*bodyForm)
-	if ok {
-		for key, vals := range data {
-			body.Values[key] = append(body.Values[key], vals...)
-		}
-	}
-	return req
-}
-
-// BodyFormFile 方法给form添加文件内容。
-func (req *RequestWriterWarp) BodyFormFile(key, name string, val interface{}) *RequestWriterWarp {
-	req.initbodyForm()
-	body, ok := req.Request.Body.(*bodyForm)
-	if ok {
-		var content fileContent
-		switch body := val.(type) {
-		case []byte:
-			content.Body = body
-		case string:
-			content.Body = []byte(body)
-		case io.ReadCloser:
-			content.Reader = body
-		case io.Reader:
-			content.Reader = ioutil.NopCloser(body)
-		default:
-			return req
-		}
-		content.Name = name
-		body.Files[key] = append(body.Files[key], content)
-	}
-	return req
-}
-
-// BodyFormLocalFile 方法给form添加本地文件内容。
-func (req *RequestWriterWarp) BodyFormLocalFile(key, name, path string) *RequestWriterWarp {
-	req.initbodyForm()
-	body, ok := req.Request.Body.(*bodyForm)
-	if ok {
-		if name == "" {
-			name = filepath.Base(path)
-		}
-		body.Files[key] = append(body.Files[key], fileContent{
-			Name: name,
-			File: path,
-		})
-	}
-	return req
 }
 
 type bodyForm struct {
@@ -519,138 +769,38 @@ func (body *bodyForm) Close() error {
 	return body.reader.Close()
 }
 
-// ResponseReader 定义响应读取方法。
-type ResponseReader interface {
-	Proto() string
-	Status() int
-	Reason() string
-	Header() http.Header
-	Cookies() []*http.Cookie
-	Read([]byte) (int, error)
-	Body() []byte
-	Err() error
-	Callback(...ResponseReaderCheck)
+type bodyEncoder struct {
+	reader      *io.PipeReader
+	writer      *io.PipeWriter
+	contenttype string
+	data        interface{}
 }
 
-// ResponseReaderCheck 定义响应检查方法。
-type ResponseReaderCheck = func(ResponseReader, *http.Request, Logger) error
-
-type responseReaderHttp struct {
-	Request   *http.Request
-	Response  *http.Response
-	Error     error
-	BodyBytes []byte
-}
-
-// Proto 方法获取响应协议版本。
-func (resp *responseReaderHttp) Proto() string {
-	return resp.Response.Proto
-}
-
-// Status 方法获取响应状态码。
-func (resp *responseReaderHttp) Status() int {
-	return resp.Response.StatusCode
-}
-
-// Reason 方法获取响应描述文本。
-func (resp *responseReaderHttp) Reason() string {
-	return resp.Response.Status
-}
-
-// Header 方法获取响应header。
-func (resp *responseReaderHttp) Header() http.Header {
-	return resp.Response.Header
-}
-
-// Cookies 方法获取响应cookies。
-func (resp *responseReaderHttp) Cookies() []*http.Cookie {
-	return resp.Response.Cookies()
-}
-
-// Read 方法读取响应body。
-func (resp *responseReaderHttp) Read(b []byte) (int, error) {
-	return resp.Response.Body.Read(b)
-}
-
-// Body 方法获取响应body内容。
-func (resp *responseReaderHttp) Body() []byte {
-	if resp.BodyBytes == nil {
-		// TODO: isgzip
-		bts, err := ioutil.ReadAll(resp.Response.Body)
-		if err != nil {
-			resp.BodyBytes = make([]byte, 0)
-			resp.Error = err
-			return nil
-		}
-		resp.BodyBytes = bts
-		resp.Response.Body.Close()
+func (body *bodyEncoder) Clone() io.ReadCloser {
+	return &bodyEncoder{
+		contenttype: body.contenttype,
+		data:        body.data,
 	}
-	resp.Response.Body = ioutil.NopCloser(bytes.NewReader(resp.BodyBytes))
-	return resp.BodyBytes
 }
 
-// Err 方法返回响应error。
-func (resp *responseReaderHttp) Err() error {
-	return resp.Error
-}
-
-// Callback 方法执行响应检查函数。
-func (resp *responseReaderHttp) Callback(calls ...ResponseReaderCheck) {
-	log := clientLogger(resp.Request)
-	if resp.Error == nil {
-		for _, call := range calls {
-			err := call(resp, resp.Request, log)
-			if err != nil {
-				resp.Error = err
-				log.WithFields([]string{"method", "path"}, []interface{}{resp.Request.Method, resp.Request.URL.Path}).Error(resp.Error.Error())
-				return
+func (body *bodyEncoder) Read(p []byte) (n int, err error) {
+	if body.reader == nil {
+		body.reader, body.writer = io.Pipe()
+		go func() {
+			switch body.contenttype {
+			case MimeApplicationJSON:
+				json.NewEncoder(body.writer).Encode(body.data)
+			case MimeApplicationXML:
+				json.NewEncoder(body.writer).Encode(body.data)
+			case MimeApplicationProtobuf:
+				NewProtobufEncoder(body.writer).Encode(body.data)
 			}
-		}
+			body.writer.Close()
+		}()
 	}
+	return body.reader.Read(p)
 }
 
-func clientLogger(req *http.Request) Logger {
-	log, ok := req.Context().Value(ContextKeyApp).(Logger)
-	if ok {
-		// TODO: x-id
-		return log
-	}
-	return DefaultLoggerNull
-}
-
-// NewResponseReaderCheckStatus 函数检查响应状态码
-func NewResponseReaderCheckStatus(status int) ResponseReaderCheck {
-	return func(resp ResponseReader, req *http.Request, log Logger) error {
-		if status != resp.Status() {
-			return fmt.Errorf("ResponseReader check status %d error: status is %d", status, resp.Status())
-		}
-		return nil
-	}
-}
-
-// NewResponseReaderCheckBody 函数检查响应body是否包含状态码。
-func NewResponseReaderCheckBody(str string) ResponseReaderCheck {
-	return func(resp ResponseReader, req *http.Request, log Logger) error {
-		body := resp.Body()
-		if !strings.Contains(string(body), str) {
-			return fmt.Errorf("ResponseReader check body key %s not found,body prefix %s", str, body[0:64])
-		}
-		return resp.Err()
-	}
-}
-
-// NewResponseReaderOutBody 函数输出响应body内容。
-func NewResponseReaderOutBody() ResponseReaderCheck {
-	return func(resp ResponseReader, req *http.Request, log Logger) error {
-		log.Infof("%s", resp.Body())
-		return resp.Err()
-	}
-}
-
-// NewResponseReaderOutHead 函数输出响应状态行。
-func NewResponseReaderOutHead() ResponseReaderCheck {
-	return func(resp ResponseReader, req *http.Request, log Logger) error {
-		log.WithField("header", resp.Header()).Infof("%s %d %s", resp.Proto(), resp.Status(), resp.Reason())
-		return resp.Err()
-	}
+func (body *bodyEncoder) Close() error {
+	return body.reader.Close()
 }

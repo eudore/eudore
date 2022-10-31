@@ -45,8 +45,8 @@ func init() {
 // Policy 定义一个策略.
 type Policy struct {
 	PolicyID    int         `json:"policy_id" alias:"policy_id"`
-	PolicyName  string      `json:"policy_name" alias:"policy_name"`
-	Description string      `json:"description" alias:"description"`
+	PolicyName  string      `json:"policy_name,omitempty" alias:"policy_name"`
+	Description string      `json:"description,omitempty" alias:"description"`
 	Statement   []Statement `json:"statement" alias:"statement"`
 }
 
@@ -55,6 +55,7 @@ type Statement struct {
 	Effect       bool                         `json:"effect"`
 	Action       []string                     `json:"action"`
 	Resource     []string                     `json:"resource"`
+	Description  string                       `json:"description,omitempty" alias:"description"`
 	Conditions   map[string]json.RawMessage   `json:"conditions,omitempty"`
 	Data         map[string][]json.RawMessage `json:"data,omitempty"`
 	treeAction   *starTree

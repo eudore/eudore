@@ -10,11 +10,11 @@ Middleware包实现基础eudore请求中间件。
 | 04 |  [Black](#Black) |  拦截 |  黑白名单 | [example](../_example/middlewareBlack.go) [nethttp](../_example/nethttpBalck.go) api |
 | 05 |  [Breaker](#Breaker) |  拦截 |  熔断器 | [example](../_example/middlewareBreaker.go) api groups |
 | 06 |  [Cache](#Cache) |  拦截 |  请求缓存 | [example](../_example/middlewareCache.go) [example2](../_example/middlewareCacheStore.go) groups |
-| 07 |  [ContextWarp](#ContextWarp) |  辅助 |  封装Context | [example](../_example/middlewareContextWarp.go)  |
-| 08 |  [Cors](#Cors) |  拦截 |  跨域处理 | [example](../_example/middlewareCors.go)  |
-| 09 |  [Csrf](#Csrf) |  拦截 |  CSRF token检查 | [example](../_example/middlewareCsrf.go)  |
-| 10 |  [Dump](#Dump) |  调试 |  捕捉请求信息 | [example](../_example/middlewareDump.go) api  |
-| 11 |  [Gzip](#Gzip) |  追加 |  gzip压缩 | [example](../_example/middlewareGzip.go)  |
+| 07 |  [Compress](#Compress) | 辅助 | 响应压缩| [example](../_example/middlewareCompress.go) |
+| 08 |  [ContextWarp](#ContextWarp) |  辅助 |  封装Context | [example](../_example/middlewareContextWarp.go)  |
+| 09 |  [Cors](#Cors) |  拦截 |  跨域处理 | [example](../_example/middlewareCors.go)  |
+| 10 |  [Csrf](#Csrf) |  拦截 |  CSRF token检查 | [example](../_example/middlewareCsrf.go)  |
+| 11 |  [Dump](#Dump) |  调试 |  捕捉请求信息 | [example](../_example/middlewareDump.go) api  |
 | 12 |  [Header](#Header) |  追加 |  添加响应header信息 |  [example](../_example/middlewareHeader.go) |
 | 13 |  [HeaderFilte](#HeaderFilte) |  追加 |   过滤外部请求header |  [example](../_example/middlewareHeaderFilte.go) |
 | 14 |  [Logger](#Logger) |  追加 |  输出access日志 | [example](../_example/middlewareLogger.go)  |
@@ -113,6 +113,22 @@ example:
 
 `app.AddMiddleware(middleware.NewCacheFunc(time.Second*10, app.Context))`
 
+## Compress
+
+创建响应压缩中间件，默认提供gzip和deflate压缩
+参数:
+- string	压缩名称
+- func() interface{} 压缩器创建函数
+-	int	压缩级别
+
+example:
+```golang
+import: "github.com/andybalholm/brotli"
+app.AddMiddleware(middleware.NewCompressFunc("br", func() interface{} { return brotli.NewWriter(ioutil.Discard) }))
+app.AddMiddleware(middleware.NewCompressGzipFunc(5))
+app.AddMiddleware(middleware.NewCompressDeflateFunc(5))
+```
+
 ## ContextWarp
 
 使中间件之后的处理函数使用的eudore.Context对象为新的Context
@@ -121,7 +137,9 @@ example:
 - func(eudore.Context) eudore.Context    指定ContextWarp使用的eudore.Context封装函数
 
 example:
-```app.AddMiddleware(middleware.NewContextWarpFunc(newContextParams))
+
+```golang
+app.AddMiddleware(middleware.NewContextWarpFunc(newContextParams))
 func newContextParams(ctx eudore.Context) eudore.Context {
 	return contextParams{ctx}
 }

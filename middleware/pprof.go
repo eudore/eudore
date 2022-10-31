@@ -99,18 +99,18 @@ func HandlerPporfIndex(ctx eudore.Context) {
 
 	switch getRequestForma(ctx) {
 	case "json":
-		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeApplicationJSONUtf8)
+		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeApplicationJSONCharsetUtf8)
 		encoder := json.NewEncoder(ctx)
 		if !strings.Contains(ctx.GetHeader(eudore.HeaderAccept), eudore.MimeApplicationJSON) {
 			encoder.SetIndent("", "\t")
 		}
 		encoder.Encode(profiles)
-	case "text":
-		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextPlainCharsetUtf8)
-		pprofIndexTemplate.ExecuteTemplate(ctx, "index-text", profiles)
-	default:
+	case "html":
 		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
 		pprofIndexTemplate.ExecuteTemplate(ctx, "index-html", profiles)
+	default:
+		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextPlainCharsetUtf8)
+		pprofIndexTemplate.ExecuteTemplate(ctx, "index-text", profiles)
 	}
 }
 
@@ -171,14 +171,14 @@ func HandlerPprofGoroutine(ctx eudore.Context) {
 	}
 
 	if format == "json" {
-		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeApplicationJSONUtf8)
+		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeApplicationJSONCharsetUtf8)
 		encoder := json.NewEncoder(ctx)
 		if !strings.Contains(ctx.GetHeader(eudore.HeaderAccept), eudore.MimeApplicationJSON) {
 			encoder.SetIndent("", "\t")
 		}
 		encoder.Encode(data)
 	} else {
-		godoc := eudore.GetString(ctx.GetQuery("godoc"), ctx.GetParam("godoc"), "https://golang.org")
+		godoc := eudore.GetString(ctx.GetQuery("godoc"), ctx.GetParam("godoc"), eudore.DefaultGodocServer)
 		godoc = strings.TrimSuffix(godoc, "/")
 		tmpl, _ := template.New("goroutine").Funcs(template.FuncMap{
 			"getPackage": getGodocPackage(godoc),

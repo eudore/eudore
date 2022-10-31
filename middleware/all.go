@@ -65,18 +65,7 @@ func NewBodyLimitFunc(size int64) eudore.HandlerFunc {
 		req := ctx.Request()
 		if req.ContentLength > size {
 			ctx.WriteHeader(http.StatusRequestEntityTooLarge)
-			ctx.Render(responseMessage{
-				Time:       time.Now().Format(eudore.DefaultLoggerTimeFormat),
-				Host:       ctx.Host(),
-				Method:     ctx.Method(),
-				Path:       ctx.Path(),
-				Route:      ctx.GetParam(eudore.ParamRoute),
-				Status:     http.StatusRequestEntityTooLarge,
-				Message:    http.StatusText(http.StatusRequestEntityTooLarge),
-				Size:       req.ContentLength,
-				XRequestID: ctx.Response().Header().Get(eudore.HeaderXRequestID),
-				XTraceID:   ctx.Response().Header().Get(eudore.HeaderXTraceID),
-			})
+			ctx.Render(eudore.NewContextMessgae(ctx, nil, fmt.Sprintf(eudore.ErrFormatMiddlewareRequestEntityTooLargeSzie, req.ContentLength)))
 			ctx.End()
 			return
 		}
@@ -146,6 +135,7 @@ func (ctx *contextWarp) Next() {
 // End 结束请求上下文的处理。
 func (ctx *contextWarp) End() {
 	ctx.index = 0xff
+	ctx.Context.End()
 }
 
 // NewHeaderFunc 函数创建响应header写入中间件。
@@ -177,7 +167,7 @@ func NewHeaderWithSecureFunc(h http.Header) eudore.HandlerFunc {
 // NewHeaderFilteFunc 函数创建请求header过滤中间件，对来源于外部ip请求，过滤指定header。
 func NewHeaderFilteFunc(iplist, names []string) eudore.HandlerFunc {
 	if iplist == nil {
-		iplist = []string{"10.0.0.0/8", "172.16.0.0/12", "192.0.0.0/24", "127.0.0.1"}
+		iplist = []string{"10.0.0.0/8", "172.16.0.0/12", "192.0.0.0/24", "127.0.0.1", "127.0.0.10"}
 	}
 	if names == nil {
 		names = []string{eudore.HeaderXRealIP, eudore.HeaderXForwardedFor, eudore.HeaderXForwardedHost, eudore.HeaderXForwardedProto, eudore.HeaderXRequestID, eudore.HeaderXTraceID}
@@ -208,7 +198,7 @@ func NewHeaderFilteFunc(iplist, names []string) eudore.HandlerFunc {
 //
 // 状态码如果为40x、50x输出日志级别为Error。
 func NewLoggerFunc(log eudore.Logger, params ...string) eudore.HandlerFunc {
-	log = log.WithField("logger", true)
+	log = log.WithField("depth", "disable").WithField("logger", true)
 	keys := []string{"method", "path", "realip", "proto", "host", "status", "request-time", "size"}
 	headerkeys := [...]string{eudore.HeaderXRequestID, eudore.HeaderXTraceID, eudore.HeaderLocation}
 	headernames := [...]string{"x-request-id", "x-trace-id", "location"}
@@ -288,23 +278,11 @@ func NewRecoverFunc() eudore.HandlerFunc {
 				err = fmt.Errorf("%v", r)
 			}
 			stack := eudore.GetPanicStack(3)
-			ctx.WithField("error", "recover error").WithField("stack", stack).Error(err)
-
+			ctx.WithField("stack", stack).Error(err)
 			if ctx.Response().Size() == 0 {
 				ctx.WriteHeader(eudore.StatusInternalServerError)
+				ctx.Render(eudore.NewContextMessgae(ctx, err, stack))
 			}
-			ctx.Render(responseMessage{
-				Time:       time.Now().Format(eudore.DefaultLoggerTimeFormat),
-				Host:       ctx.Host(),
-				Method:     ctx.Method(),
-				Path:       ctx.Path(),
-				Route:      ctx.GetParam(eudore.ParamRoute),
-				Status:     ctx.Response().Status(),
-				Error:      err.Error(),
-				Stack:      stack,
-				XRequestID: ctx.Response().Header().Get(eudore.HeaderXRequestID),
-				XTraceID:   ctx.Response().Header().Get(eudore.HeaderXTraceID),
-			})
 		}()
 		ctx.Next()
 	}

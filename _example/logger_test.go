@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"runtime"
 	"sync"
@@ -18,7 +19,7 @@ func TestLogger(t *testing.T) {
 	log := eudore.NewApp()
 	log.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerInit())
 
-	log.SetLevel(eudore.LogFatal)
+	log.SetLevel(eudore.LoggerFatal)
 	log.Debug("0")
 	log.Debugf("0")
 	log.Info("1")
@@ -30,7 +31,7 @@ func TestLogger(t *testing.T) {
 	log.Fatal("4")
 	log.Fatalf("4")
 
-	log.SetLevel(eudore.LogDebug)
+	log.SetLevel(eudore.LoggerDebug)
 	log.Debug("0")
 	log.Debugf("0")
 	log.Info("1")
@@ -68,7 +69,7 @@ func TestLogger(t *testing.T) {
 	// 设置logger
 	log.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(nil))
 
-	log.SetLevel(eudore.LogDebug)
+	log.SetLevel(eudore.LoggerDebug)
 	log.Debug("0")
 	log.Debugf("0")
 	log.Info("1")
@@ -103,9 +104,9 @@ func TestLogger(t *testing.T) {
 	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Fatal("4")
 	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Fatalf("4")
 
-	log.Sync()
-	time.Sleep(time.Millisecond * 100)
+	log.WithField("depth", "stack").Info("1")
 
+	log.Sync()
 	eudore.DefaultLoggerNull.Sync()
 
 	log.CancelFunc()
@@ -127,6 +128,7 @@ func TestLoggerOption(t *testing.T) {
 	log = log.WithField("depth", "enable").WithField("context", context.Background()).WithField("caller", "log depth").WithField("logger", true)
 	log.Info("file line")
 	log.WithField("depth", "disable").Info("file line")
+	log.WithField("depth", []string{"disable"}).Info("file line")
 
 	log.WithField("context", context.TODO()).Info("logger context")
 }
@@ -245,11 +247,14 @@ func (marsha4) MarshalText() ([]byte, error) {
 }
 
 func TestLoggerStdJSON(t *testing.T) {
+	var ptr *time.Time
+	var slice = []int{1}
 	log := eudore.NewLoggerStd(nil)
 	log.Debug("debug")
 	log.Info("info")
-	log.WithField("json", eudore.LogDebug).Debug()
+	log.WithField("json", eudore.LoggerDebug).Debug()
 	log.WithField("stringer", eudore.HandlerFunc(eudore.HandlerEmpty)).Debug("2")
+	log.WithField("error", fmt.Errorf("logger wirte error")).Debug()
 	log.WithField("bool", true).Debug("2")
 	log.WithField("int", 1).Debug("2")
 	log.WithField("uint", uint(2)).Debug("2")
@@ -258,7 +263,11 @@ func TestLoggerStdJSON(t *testing.T) {
 	log.WithField("array", []int{1, 2, 3}).Debug("2")
 	log.WithField("map", map[string]int{"a": 1, "b": 2}).Debug("2")
 	log.WithField("struct", struct{ Name string }{"name"}).Debug("2")
+	log.WithField("struct", struct{}{}).Debug("2")
 	log.WithField("ptr", &struct{ Name string }{"name"}).Debug("2")
+	log.WithField("ptr", ptr).Debug("2")
+	log.WithField("slice", slice[0:0]).Debug("2")
+	log.WithField("emptry face", []interface{}{ptr}).Debug("2")
 	log.WithField("func", TestLoggerStdJSON).Debug("2")
 	log.WithField("bytes", []byte("bytes")).Debug("2")
 	var i interface{}
@@ -292,17 +301,6 @@ func TestLoggerLevel(t *testing.T) {
 	t.Logf("%v\t%#v\n", err, conf)
 }
 
-func TestLoggerPrintFunc(t *testing.T) {
-	log := eudore.NewLoggerStd(nil)
-	fn := eudore.NewPrintFunc(log.WithField("depth", "enable"))
-	fn("info logger")
-	fn([]string{"name"}, []interface{}{"eudore"}, "info", eudore.GetPanicStack(0))
-	fn([]string{"name"}, []interface{}{"eudore"}, errors.New("print err"))
-
-	router := eudore.NewRouterStd(nil)
-	router.AnyFunc("/")
-}
-
 type loggerStdData016 struct {
 	eudore.LoggerStdData
 	meta *loggerStdData016Meta
@@ -327,15 +325,15 @@ func (log loggerStdData016) GetLogger() *eudore.LoggerStd {
 
 func (log loggerStdData016) PutLogger(entry *eudore.LoggerStd) {
 	switch entry.Level {
-	case eudore.LogDebug:
+	case eudore.LoggerDebug:
 		log.meta.debug++
-	case eudore.LogInfo:
+	case eudore.LoggerInfo:
 		log.meta.info++
-	case eudore.LogWarning:
+	case eudore.LoggerWarning:
 		log.meta.warning++
-	case eudore.LogError:
+	case eudore.LoggerError:
 		log.meta.error++
-	case eudore.LogFatal:
+	case eudore.LoggerFatal:
 		log.meta.fatal++
 	}
 	log.LoggerStdData.PutLogger(entry)
@@ -376,9 +374,7 @@ func TestLoggerMonkey(t *testing.T) {
 	defer patch2.Unpatch()
 
 	log := eudore.NewLoggerStd(nil)
-	fn := eudore.NewPrintFunc(log.WithField("depth", "enable"))
-	fn([]string{"name"}, []interface{}{"eudore"}, "info", eudore.GetPanicStack(0))
-	fn([]string{"name"}, []interface{}{"eudore"}, errors.New("print err"))
+	log.WithField("depth", "enable").Error(eudore.GetPanicStack(0))
 
 	defer os.RemoveAll("logger")
 	log = eudore.NewLoggerStd(&eudore.LoggerStdConfig{
@@ -386,7 +382,7 @@ func TestLoggerMonkey(t *testing.T) {
 		Link:       "logger/logger.log",
 		MaxSize:    1 << 10, // 1k
 		Std:        false,
-		Level:      eudore.LogDebug,
+		Level:      eudore.LoggerDebug,
 		TimeFormat: "Mon Jan 2 15:04:05 -0700 MST 2006",
 	})
 
@@ -426,59 +422,3 @@ func BenchmarkLoggerStd(b *testing.B) {
 	log.Sync()
 	os.Remove("t2.log")
 }
-
-/*
-
-
-func TestLoggerStdOut3(t *testing.T) {
-	log := eudore.NewLoggerStd(&eudore.LoggerStdConfig{
-		Writer: eudore.NewLoggerWriterStd(),
-	})
-	log.Info("hello")
-	log.Sync()
-}
-
-func TestLoggerStdOut4(t *testing.T) {
-	defer func() {
-		os.RemoveAll("logger")
-		t.Log(recover())
-	}()
-	log := eudore.NewLoggerStd(&eudore.LoggerStdConfig{
-		Path: "logger/",
-	})
-	log.Info("hello")
-	log.Sync()
-}
-
-
-
-func TestLoggerStdOut6(t *testing.T) {
-	defer func() {
-		os.RemoveAll("logger")
-		t.Log(recover())
-	}()
-	log := eudore.NewLoggerStd(&eudore.LoggerStdConfig{
-		Std:     true,
-		Path:    "logger/log-index/",
-		MaxSize: 16 << 10,
-	})
-	log.Info("hello")
-	log.Sync()
-}
-
-func TestLoggerCaller5(t *testing.T) {
-	patch1 := monkey.Patch(runtime.Caller, func(int) (uintptr, string, int, bool) { return 0, "", 0, false })
-	patch2 := monkey.Patch(runtime.Callers, func(int, []uintptr) int { return 0 })
-	defer patch1.Unpatch()
-	defer patch2.Unpatch()
-
-	app := eudore.NewApp()
-	app.AddMiddleware("8888")
-	app.AnyFunc("/:path|panic", eudore.HandlerEmpty)
-	app.AnyFunc("/*", eudore.HandlerRouter404)
-
-	app.CancelFunc()
-	app.Run()
-}
-
-*/

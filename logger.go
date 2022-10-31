@@ -18,6 +18,15 @@ import (
 	"unicode/utf8"
 )
 
+// 定义日志级别
+const (
+	LoggerDebug LoggerLevel = iota
+	LoggerInfo
+	LoggerWarning
+	LoggerError
+	LoggerFatal
+)
+
 /*
 Logger 定义日志输出接口实现下列功能:
 	五级日志格式化输出
@@ -40,6 +49,7 @@ type Logger interface {
 	Fatalf(string, ...interface{})
 	WithField(string, interface{}) Logger
 	WithFields([]string, []interface{}) Logger
+	GetLevel() LoggerLevel
 	SetLevel(LoggerLevel)
 	Sync() error
 }
@@ -70,30 +80,30 @@ type loggerInitHandler interface {
 //
 // FileLine 是否输出调用日志输出的函数和文件位置
 type LoggerStdConfig struct {
-	Writer     LoggerWriter `json:"-" alias:"writer" description:"Logger output writer."`
-	Std        bool         `json:"std" alias:"std" description:"Is output to os.Stdout."`
-	Path       string       `json:"path" alias:"path" description:"Output logger file path."`
-	MaxSize    uint64       `json:"maxsize" alias:"maxsize" description:"Output file max size, 'Path' must contain 'index'."`
-	Link       string       `json:"link" alias:"link" description:"Output file link to path."`
-	Level      LoggerLevel  `json:"level" alias:"level" description:"Logger Output level."`
-	TimeFormat string       `json:"timeformat" alias:"timeformat" description:"Logger output timeFormat, default '2006-01-02 15:04:05'"`
-	FileLine   bool         `json:"fileline" alias:"fileline" description:"Is output file and line."`
+	Writer     LoggerWriter `json:"-" xml:"-" alias:"writer" description:"Logger output writer."`
+	Std        bool         `json:"std" xml:"std" alias:"std" description:"Is output to os.Stdout."`
+	Path       string       `json:"path" xml:"path" alias:"path" description:"Output logger file path."`
+	MaxSize    uint64       `json:"maxsize" xml:"maxsize" alias:"maxsize" description:"Output file max size, 'Path' must contain 'index'."`
+	Link       string       `json:"link" xml:"link" alias:"link" description:"Output file link to path."`
+	Level      LoggerLevel  `json:"level" xml:"level" alias:"level" description:"Logger Output level."`
+	TimeFormat string       `json:"timeformat" xml:"timeformat" alias:"timeformat" description:"Logger output timeFormat, default '2006-01-02 15:04:05'"`
+	FileLine   bool         `json:"fileline" xml:"fileline" alias:"fileline" description:"Is output file and line."`
 }
 
 // LoggerStd 定义日志默认实现条目信息。
 type LoggerStd struct {
 	LoggerStdData
-	// 日志标识 true是Logger false是Entry
-	Logger bool
 	// enrty data
-	Level      LoggerLevel
 	Time       time.Time
 	Message    string
 	Keys       []string
 	Vals       []interface{}
 	Buffer     []byte
 	Timeformat string
-	Depth      int
+	// 日志标识 true是Logger false是Entry
+	Logger bool
+	Level  LoggerLevel
+	Depth  int
 }
 
 // LoggerStdData 定义loggerStd的数据存储
@@ -117,13 +127,18 @@ func NewLoggerStd(arg interface{}) Logger {
 	return log
 }
 
-// NewLoggerInit the initial log processor only records the log. After setting the log processor,
-// it will forward the log of the current record to the new log processor for processing the log generated before the program is initialized.
+// NewLoggerWithContext 方法从环境上下文ContextKeyLogger获取Logger，如果无法获取Logger返回DefaultLoggerNull对象。
+func NewLoggerWithContext(ctx context.Context) Logger {
+	log, ok := ctx.Value(ContextKeyLogger).(Logger)
+	if ok {
+		return log
+	}
+	return DefaultLoggerNull
+}
+
+// NewLoggerInit The initial log processor only records logs, and gets a new Logger to process logs when Unmount.
 //
-// loggerInit 初始日志处理器仅记录日志，再设置日志处理器后，
-// 会将当前记录的日志交给新日志处理器处理，用于处理程序初始化之前产生的日志。
-//
-// LoggerInit实现了NextHandler(Logger)方法，断言调用该方法设置next logger就会将LoggerInit的日子输出给next logger。
+// NewLoggerInit 初始日志处理器仅记录日志，在Unmount时获取新Logger处理日志.
 func NewLoggerInit() Logger {
 	return NewLoggerStd(&loggerStdDataInit{})
 }
@@ -140,12 +155,13 @@ func NewLoggerStdDataJSON(arg interface{}) LoggerStdData {
 	}
 	ConvertTo(arg, config)
 	logdepath := 3
-	if !config.FileLine {
-		logdepath = 3 - 0x7f
+	if config.FileLine {
+		logdepath |= 0x100
 	}
 	if config.Writer == nil {
 		var err error
-		config.Writer, err = NewLoggerWriterRotate(strings.TrimSpace(config.Path), config.Std, config.MaxSize, newLoggerLinkName(config.Link))
+		config.Path = strings.TrimSpace(config.Path)
+		config.Writer, err = NewLoggerWriterRotate(config.Path, config.Std, config.MaxSize, newLoggerLinkName(config.Link))
 		if err != nil {
 			panic(err)
 		}
@@ -169,10 +185,49 @@ func NewLoggerStdDataJSON(arg interface{}) LoggerStdData {
 }
 
 type loggerStdDataJSON struct {
+	LoggerWriter
 	sync.Mutex
 	sync.Pool
-	LoggerWriter
-	*time.Ticker
+	done chan struct{}
+}
+
+// Mount 方法启动周期Sync，每80ms执行一次。
+func (data *loggerStdDataJSON) Mount(ctx context.Context) {
+	data.Lock()
+	defer data.Unlock()
+	if data.done == nil {
+		data.done = make(chan struct{})
+	}
+	go func() {
+		ticker := time.NewTicker(DefaultLoggerSyncDuration)
+		for {
+			select {
+			case <-data.done:
+				ticker.Stop()
+				close(data.done)
+				data.done = nil
+				return
+			case <-ticker.C:
+				data.Sync()
+			}
+		}
+	}()
+}
+
+// Unmount 方法关闭周期Sync。
+func (data *loggerStdDataJSON) Unmount(ctx context.Context) {
+	data.Lock()
+	defer data.Unlock()
+	if data.done != nil {
+		data.done <- struct{}{}
+	}
+	data.LoggerWriter.Sync()
+}
+
+func (data *loggerStdDataJSON) Sync() error {
+	data.Lock()
+	defer data.Unlock()
+	return data.LoggerWriter.Sync()
 }
 
 func (data *loggerStdDataJSON) GetLogger() *LoggerStd {
@@ -181,44 +236,29 @@ func (data *loggerStdDataJSON) GetLogger() *LoggerStd {
 
 func (data *loggerStdDataJSON) PutLogger(entry *LoggerStd) {
 	if len(entry.Message) > 0 || len(entry.Keys) > 0 {
-		if entry.Depth > 0 {
-			name, file, line := logFormatNameFileLine(entry.Depth)
+		switch entry.Depth >> 8 {
+		case 1:
+			name, file, line := logFormatNameFileLine(entry.Depth & 0xff)
 			entry.Keys = append(entry.Keys, "name", "file", "line")
 			entry.Vals = append(entry.Vals, name, file, line)
+		case 2, 3:
+			entry.Keys = append(entry.Keys, "stack")
+			entry.Vals = append(entry.Vals, GetPanicStack(entry.Depth&0xff+1))
 		}
 		if len(entry.Keys) > len(entry.Vals) {
 			entry.Keys = entry.Keys[0:len(entry.Vals)]
 			entry.WithField("loggererr", "LoggerStd.loggerStdDataJSON: The number of field keys and values are not equal")
 		}
 		loggerEntryStdFormat(entry)
-		data.Mutex.Lock()
-		data.LoggerWriter.Write(entry.Buffer)
-		data.Mutex.Unlock()
+		data.Lock()
+		data.Write(entry.Buffer)
+		data.Unlock()
 		entry.Message = ""
 		entry.Keys = entry.Keys[0:0]
 		entry.Vals = entry.Vals[0:0]
 		entry.Buffer = entry.Buffer[0:0]
 	}
 	data.Put(entry)
-}
-
-// Mount 方法启动周期Sync，每80ms执行一次。
-func (data *loggerStdDataJSON) Mount(ctx context.Context) {
-	data.Ticker = time.NewTicker(time.Millisecond * 80)
-	go func() {
-		for range data.Ticker.C {
-			data.Sync()
-		}
-	}()
-}
-
-// Unmount 方法关闭周期Sync。
-func (data *loggerStdDataJSON) Unmount(ctx context.Context) {
-	if data.Ticker != nil {
-		data.Ticker.Stop()
-	}
-	data.Sync()
-	time.Sleep(time.Millisecond * 20)
 }
 
 type loggerStdDataInit struct {
@@ -240,17 +280,13 @@ func (data *loggerStdDataInit) PutLogger(entry *LoggerStd) {
 
 // Unmount 方法获取ContextKeyLogger.(Logger)接受Init存储的日志。
 func (data *loggerStdDataInit) Unmount(ctx context.Context) {
+	data.Lock()
+	defer data.Unlock()
 	logger, _ := ctx.Value(ContextKeyLogger).(Logger)
 	if logger == nil {
 		logger = NewLoggerStd(nil)
 	}
-	data.NextHandler(logger)
-	logger.Sync()
-}
 
-// NextHandler 方法实现loggerInitHandler接口。
-func (data *loggerStdDataInit) NextHandler(logger Logger) {
-	data.Lock()
 	logger = logger.WithField("depth", "disable").WithField("logger", true)
 	for _, data := range data.Data {
 		entry := logger.WithField("time", data.Time)
@@ -258,20 +294,19 @@ func (data *loggerStdDataInit) NextHandler(logger Logger) {
 			entry = entry.WithField(data.Keys[i], data.Vals[i])
 		}
 		switch data.Level {
-		case LogDebug:
+		case LoggerDebug:
 			entry.Debug(data.Message)
-		case LogInfo:
+		case LoggerInfo:
 			entry.Info(data.Message)
-		case LogWarning:
+		case LoggerWarning:
 			entry.Warning(data.Message)
-		case LogError:
+		case LoggerError:
 			entry.Error(data.Message)
-		case LogFatal:
+		case LoggerFatal:
 			entry.Fatal(data.Message)
 		}
 	}
 	data.Data = data.Data[0:0]
-	data.Unlock()
 	logger.Sync()
 }
 
@@ -317,14 +352,15 @@ func (entry *LoggerStd) Unmount(ctx context.Context) {
 
 // Metadata 方法从LoggerStdData获取元数据返回。
 func (entry *LoggerStd) Metadata() interface{} {
-	metaer, ok := entry.LoggerStdData.(interface{ Metadata() interface{} })
-	if ok {
-		return metaer.Metadata()
-	}
-	return nil
+	return withMetadata(entry.LoggerStdData)
 }
 
-// SetLevel 方法设置日志输出级别。
+// GetLevel 方法获取当前日志输出级别，判断级别取消日志生成。
+func (entry *LoggerStd) GetLevel() LoggerLevel {
+	return entry.Level
+}
+
+// SetLevel 方法设置当前日志输出级别。
 func (entry *LoggerStd) SetLevel(level LoggerLevel) {
 	entry.Level = level
 }
@@ -414,8 +450,8 @@ func (entry *LoggerStd) Debugf(format string, args ...interface{}) {
 	if entry.Logger {
 		entry = entry.getEntry()
 	}
-	if entry.Level < 1 {
-		entry.Level = 0
+	if entry.Level < LoggerInfo {
+		entry.Level = LoggerDebug
 		entry.Message = fmt.Sprintf(format, args...)
 	} else {
 		entry.Keys = entry.Keys[0:0]
@@ -429,8 +465,8 @@ func (entry *LoggerStd) Infof(format string, args ...interface{}) {
 	if entry.Logger {
 		entry = entry.getEntry()
 	}
-	if entry.Level < 2 {
-		entry.Level = 1
+	if entry.Level < LoggerWarning {
+		entry.Level = LoggerInfo
 		entry.Message = fmt.Sprintf(format, args...)
 	} else {
 		entry.Keys = entry.Keys[0:0]
@@ -444,8 +480,8 @@ func (entry *LoggerStd) Warningf(format string, args ...interface{}) {
 	if entry.Logger {
 		entry = entry.getEntry()
 	}
-	if entry.Level < 3 {
-		entry.Level = 2
+	if entry.Level < LoggerError {
+		entry.Level = LoggerWarning
 		entry.Message = fmt.Sprintf(format, args...)
 	} else {
 		entry.Keys = entry.Keys[0:0]
@@ -459,8 +495,8 @@ func (entry *LoggerStd) Errorf(format string, args ...interface{}) {
 	if entry.Logger {
 		entry = entry.getEntry()
 	}
-	if entry.Level < 4 {
-		entry.Level = 3
+	if entry.Level < LoggerFatal {
+		entry.Level = LoggerError
 		entry.Message = fmt.Sprintf(format, args...)
 	} else {
 		entry.Keys = entry.Keys[0:0]
@@ -518,21 +554,7 @@ func (entry *LoggerStd) WithField(key string, value interface{}) Logger {
 			}
 		}
 	case "depth":
-		val, ok := value.(int)
-		if ok {
-			entry.Depth += val
-			return entry
-		}
-		vals, ok := value.(string)
-		if ok {
-			if vals == "enable" && entry.Depth < 0 {
-				entry.Depth += 0x7f
-			}
-			if vals == "disable" && entry.Depth > 0 {
-				entry.Depth -= 0x7f
-			}
-			return entry
-		}
+		return entry.withFieldDepth(key, value)
 	case "time":
 		val, ok := value.(time.Time)
 		if ok {
@@ -550,6 +572,40 @@ func (entry *LoggerStd) WithField(key string, value interface{}) Logger {
 	entry.Vals = append(entry.Vals, value)
 	return entry
 }
+
+// withFieldDepth 方法处理withDepth属性，cost 67 可内联。
+func (entry *LoggerStd) withFieldDepth(key string, value interface{}) Logger {
+	val, ok := value.(int)
+	if ok {
+		entry.Depth += val
+		return entry
+	}
+	vals, ok := value.(string)
+	if ok {
+		switch vals {
+		case "stack":
+			entry.Depth |= 0x200
+		case "enable":
+			entry.Depth |= 0x100
+		case "disable":
+			entry.Depth &^= 0x300
+		}
+		return entry
+	}
+	entry.Keys = append(entry.Keys, key)
+	entry.Vals = append(entry.Vals, value)
+	return entry
+}
+
+var (
+	loggerlevels = [][]byte{[]byte("DEBUG"), []byte("INFO"), []byte("WARIRNG"), []byte("ERROR"), []byte("FATAL")}
+	loggerpart1  = []byte(`{"time":"`)
+	loggerpart2  = []byte(`","level":"`)
+	loggerpart3  = []byte(`,"message":"`)
+	loggerpart4  = []byte("\"}\n")
+	loggerpart5  = []byte("}\n")
+	_hex         = "0123456789abcdef"
+)
 
 func loggerEntryStdFormat(entry *LoggerStd) {
 	t := entry.Time
@@ -581,7 +637,7 @@ func loggerEntryStdFormat(entry *LoggerStd) {
 
 // String 方法实现ftm.Stringer接口，格式化输出日志级别。
 func (l LoggerLevel) String() string {
-	return LogLevelString[l]
+	return DefaultLoggerLevelString[l]
 }
 
 // MarshalText 方法实现encoding.TextMarshaler接口，用于编码日志级别。
@@ -592,7 +648,7 @@ func (l LoggerLevel) MarshalText() ([]byte, error) {
 // UnmarshalText 方法实现encoding.TextUnmarshaler接口，用于解码日志级别。
 func (l *LoggerLevel) UnmarshalText(text []byte) error {
 	str := strings.ToUpper(string(text))
-	for i, s := range LogLevelString {
+	for i, s := range DefaultLoggerLevelString {
 		if s == str {
 			*l = LoggerLevel(i)
 			return nil
@@ -606,69 +662,31 @@ func (l *LoggerLevel) UnmarshalText(text []byte) error {
 	return ErrLoggerLevelUnmarshalText
 }
 
-// NewPrintFunc 函数使用Logger创建一个输出函数。
-//
-// 如果第一个参数Fields类型，则调用WithFields方法。
-//
-// 如果参数是一个error则输出error级别日志，否在输出info级别日志。
-func NewPrintFunc(log Logger) func(...interface{}) {
-	return func(args ...interface{}) {
-		log := log.WithField("depth", 2)
-		if len(args) > 2 {
-			keys, ok1 := args[0].([]string)
-			vals, ok2 := args[1].([]interface{})
-			if ok1 && ok2 {
-				printLogger(log.WithFields(keys, vals), args[2:])
-				return
-			}
-		}
-		printLogger(log, args)
-	}
-}
-
-func printLogger(log Logger, args []interface{}) {
-	if len(args) == 1 {
-		err, ok := args[0].(error)
-		if ok {
-			log.Error(err)
-			return
-		}
-	}
-	log.Info(args...)
-}
-
 // logFormatNameFileLine 函数获得调用的文件位置和函数名称。
 //
 // 文件位置会从第一个src后开始截取，处理gopath下文件位置。
 func logFormatNameFileLine(depth int) (string, string, int) {
-	var name string
 	ptr, file, line, ok := runtime.Caller(depth)
-	if !ok {
-		file = "???"
-		line = 1
-	} else {
-		// slash := strings.LastIndex(file, "/")
+	if ok {
 		slash := strings.Index(file, "src")
 		if slash >= 0 {
 			file = file[slash+4:]
 		}
-		name = runtime.FuncForPC(ptr).Name()
+		return runtime.FuncForPC(ptr).Name(), file, line
 	}
-	return name, file, line
+	return "", "???", 0
 }
 
 // GetPanicStack 函数返回panic栈信息。
 func GetPanicStack(depth int) []string {
-	pc := make([]uintptr, DefaultRecoverDepth)
+	pc := make([]uintptr, DefaultLoggerDepth)
 	n := runtime.Callers(depth, pc)
 	if n == 0 {
 		return nil
 	}
 
-	pc = pc[:n] // pass only valid pcs to runtime.CallersFrames
-	frames := runtime.CallersFrames(pc)
-	stack := make([]string, 0, DefaultRecoverDepth)
-
+	stack := make([]string, 0, n)
+	frames := runtime.CallersFrames(pc[:n])
 	frame, more := frames.Next()
 	for more {
 		pos := strings.Index(frame.File, "src")
@@ -684,10 +702,6 @@ func GetPanicStack(depth int) []string {
 		frame, more = frames.Next()
 	}
 	return stack
-}
-
-func printEmpty(...interface{}) {
-	// Do nothing because  not print message.
 }
 
 // WriteValue 方法写入值。
@@ -730,14 +744,7 @@ func loggerFormatWriteReflect(entry *LoggerStd, iValue reflect.Value) {
 		entry.Buffer = append(entry.Buffer, '0', 'x')
 		entry.Buffer = strconv.AppendUint(entry.Buffer, uint64(iValue.Pointer()), 16)
 	case reflect.Map:
-		entry.Buffer = append(entry.Buffer, '{')
-		for _, key := range iValue.MapKeys() {
-			loggerFormatWriteReflect(entry, key)
-			entry.Buffer = append(entry.Buffer, ':')
-			loggerFormatWriteReflect(entry, iValue.MapIndex(key))
-			entry.Buffer = append(entry.Buffer, ',')
-		}
-		entry.Buffer[len(entry.Buffer)-1] = '}'
+		loggerFormatWriteReflectMap(entry, iValue)
 	case reflect.Array, reflect.Slice:
 		loggerFormatWriteReflectSlice(entry, iValue)
 	case reflect.Struct:
@@ -746,8 +753,22 @@ func loggerFormatWriteReflect(entry *LoggerStd, iValue reflect.Value) {
 }
 
 func loggerFormatWriteReflectFace(entry *LoggerStd, iValue reflect.Value) bool {
-	if iValue.Kind() == reflect.Invalid {
-		entry.Buffer = append(entry.Buffer, []byte("<Invalid Value>")...)
+	switch iValue.Kind() {
+	case reflect.Map, reflect.Slice:
+		if iValue.IsNil() {
+			entry.Buffer = append(entry.Buffer, 'n', 'u', 'l', 'l')
+			return true
+		}
+	case reflect.Ptr, reflect.Func, reflect.Chan:
+		if iValue.IsNil() {
+			entry.Buffer = append(entry.Buffer, 'n', 'u', 'l', 'l')
+			return true
+		}
+	case reflect.Interface:
+		return false
+	case reflect.Invalid:
+		entry.Buffer = append(entry.Buffer, '"', '<', 'I', 'n', 'v', 'a', 'l', 'i', 'd',
+			' ', 'V', 'a', 'l', 'u', 'e', '>', '"')
 		return true
 	}
 	// 检查接口
@@ -774,6 +795,10 @@ func loggerFormatWriteReflectFace(entry *LoggerStd, iValue reflect.Value) bool {
 		entry.Buffer = append(entry.Buffer, '"')
 		loggerFormatWriteString(entry, val.String())
 		entry.Buffer = append(entry.Buffer, '"')
+	case error:
+		entry.Buffer = append(entry.Buffer, '"')
+		loggerFormatWriteString(entry, val.Error())
+		entry.Buffer = append(entry.Buffer, '"')
 	default:
 		return false
 	}
@@ -782,28 +807,58 @@ func loggerFormatWriteReflectFace(entry *LoggerStd, iValue reflect.Value) bool {
 
 func loggerFormatWriteReflectStruct(entry *LoggerStd, iValue reflect.Value) {
 	entry.Buffer = append(entry.Buffer, '{')
+	pos := len(entry.Buffer)
 	iType := iValue.Type()
 	for i := 0; i < iValue.NumField(); i++ {
 		if iValue.Field(i).CanInterface() {
-			loggerFormatWriteString(entry, iType.Field(i).Name)
-			entry.Buffer = append(entry.Buffer, ':')
+			name, omit := split2byte(iType.Field(i).Tag.Get("json"), ',')
+			if name == "-" || (omit == "omitempty" && iValue.Field(i).IsZero()) {
+				continue
+			}
+			if name == "" {
+				name = iType.Field(i).Name
+			}
+			entry.Buffer = append(entry.Buffer, '"')
+			loggerFormatWriteString(entry, name)
+			entry.Buffer = append(entry.Buffer, '"', ':')
 			loggerFormatWriteReflect(entry, iValue.Field(i))
 			entry.Buffer = append(entry.Buffer, ',')
 		}
 	}
-	entry.Buffer[len(entry.Buffer)-1] = '}'
+	if pos == len(entry.Buffer) {
+		entry.Buffer = append(entry.Buffer, '}')
+	} else {
+		entry.Buffer[len(entry.Buffer)-1] = '}'
+	}
 }
 
 func loggerFormatWriteReflectSlice(entry *LoggerStd, iValue reflect.Value) {
-	entry.Buffer = append(entry.Buffer, '[')
 	if iValue.Len() == 0 {
-		entry.Buffer = append(entry.Buffer, ',')
+		entry.Buffer = append(entry.Buffer, '[', ']')
+		return
 	}
+	entry.Buffer = append(entry.Buffer, '[')
 	for i := 0; i < iValue.Len(); i++ {
 		loggerFormatWriteReflect(entry, iValue.Index(i))
 		entry.Buffer = append(entry.Buffer, ',')
 	}
 	entry.Buffer[len(entry.Buffer)-1] = ']'
+}
+
+func loggerFormatWriteReflectMap(entry *LoggerStd, iValue reflect.Value) {
+	if iValue.Len() == 0 {
+		entry.Buffer = append(entry.Buffer, '{', '}')
+		return
+	}
+
+	entry.Buffer = append(entry.Buffer, '{')
+	for _, key := range iValue.MapKeys() {
+		loggerFormatWriteReflect(entry, key)
+		entry.Buffer = append(entry.Buffer, ':')
+		loggerFormatWriteReflect(entry, iValue.MapIndex(key))
+		entry.Buffer = append(entry.Buffer, ',')
+	}
+	entry.Buffer[len(entry.Buffer)-1] = '}'
 }
 
 // loggerFormatWriteString 方法安全写入字符串。
@@ -917,6 +972,7 @@ func NewLoggerWriterFile(name string, std bool) (LoggerWriter, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if std {
 		return &syncWriterFile{bufio.NewWriter(io.MultiWriter(os.Stdout, file)), file}, nil
 	}

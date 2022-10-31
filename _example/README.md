@@ -1,11 +1,13 @@
 # example
 
-本部分为演示例子目录功能导航,保存eudore、middleware、policy、component实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore),仅保证eudore和middleware两个库的稳定性，component系列库可能重构或移除,Alpha的演示库不稳定。
+本部分为演示例子目录功能导航,保存eudore、middleware、policy实现的功能演示，eudore只有没实现的功能，没有无法实现的功能，详细文档查看[wiki文档](https://github.com/eudore/eudore/wiki)或者[源码](https://github.com/eudore/eudore),仅保证eudore和middleware两个库的稳定性，Alpha的演示库不稳定。
 
 单元测试： `CGO_ENABLED=1 go test -v -timeout=2m -race -cover -coverpkg='github.com/eudore/eudore,github.com/eudore/eudore/middleware,github.com/eudore/eudore/policy' *_test.go
 `
 
-go version go1.18.1 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/policy
+go version go1.18.7 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/policy
+
+因版本变化未全部更新。
 
 - Application
 	- [New](appNew.go)
@@ -40,7 +42,6 @@ go version go1.18.1 linux/amd64 coverage: 100.0% of statements in github.com/eud
 	- [服务监听](serverListen.go)
 	- [使用https](serverHttps.go)
 	- [双向https](serverMutualTLS.go)
-	- [eudore server启动服务](serverEudore.go)
 	- [fastcgi启动服务](serverFcgi.go)
 - Router
 	- [组路由](routerGroup.go)
@@ -52,6 +53,7 @@ go version go1.18.1 linux/amd64 coverage: 100.0% of statements in github.com/eud
 	- [Host路由器](routerHost.go)
 	- [路由器注册调试](routerDebug.go)
 	- [路由器注册移除](routerDelete.go)
+	- [路由器核心简化](routerCore.go)
 	- [radix树](routerRadix.go)
 - Context
 	- [Request Info](contextRequestInfo.go)
@@ -83,7 +85,7 @@ go version go1.18.1 linux/amd64 coverage: 100.0% of statements in github.com/eud
 	- [路径匹配扩展](handlerTree.go)
 	- [分级匹配扩展](handlerWarp.go)
 	- [Rpc式请求](handlerRpc.go)
-	- [map Rpc式请求](handlerRpcMap.go)
+	- [Rpc式map请求](handlerRpcMap.go)
 	- [使用embed](handlerEmbed.go)
 	- [使用jwt](handlerJwt.go)
 - Controller
@@ -141,9 +143,7 @@ go version go1.18.1 linux/amd64 coverage: 100.0% of statements in github.com/eud
 - tool
 	- [转换对象成map](toolConvertMap.go)
 	- [对象转换](toolConvertTo.go)
-	- [解析sql rows绑定](toolConvertRows.go)
 	- [基于路径读写对象](toolGetSet.go)
-	- [结构体和变量校验](toolValidate.go)
 - net/http
 	- [中间件 黑名单](nethttpBlack.go)
 	- [中间件 路径重写](nethttpRewrite.go)
@@ -152,3 +152,8 @@ go version go1.18.1 linux/amd64 coverage: 100.0% of statements in github.com/eud
 - other
 	- [反向代理](otherProxy.go)
 	- [隧道代理](otherTunnel.go)
+	- [http客户端简化实现](otherHttpClient.go)
+	- [http服务端简化实现](otherHttpServer.go)
+	- [http服务端简化](otherHttpServer2.go)
+
+

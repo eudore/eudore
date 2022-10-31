@@ -1,4 +1,4 @@
-package simple
+package main
 
 import (
 	"bufio"
@@ -6,6 +6,10 @@ import (
 	"net"
 	"time"
 )
+
+func main() {
+	fmt.Println(NewRequest("GET", "localhost:80", "/"))
+}
 
 // Client 定义http客户端。
 type Client struct {

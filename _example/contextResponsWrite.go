@@ -14,7 +14,6 @@ type Context interface{
 	RenderWith(interface{}, Renderer) error
 	// render writer
 	WriteString(string) error
-	WriteJSON(interface{}) error
 	WriteFile(string) error
 	...
 }
