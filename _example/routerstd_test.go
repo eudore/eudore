@@ -54,17 +54,17 @@ func TestRouterStdAny(t *testing.T) {
 func TestRouterStdCheck(t *testing.T) {
 	app := eudore.NewApp()
 	app.SetValue(eudore.ContextKeyFuncCreator, eudore.NewFuncCreator())
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(nil))
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(nil))
 
-	app.AnyFunc("/1/:num|isnum version=1", eudore.HandlerEmpty)
+	app.AnyFunc("/1/:num|num version=1", eudore.HandlerEmpty)
 	app.AnyFunc("/1/222", eudore.HandlerEmpty)
 	app.AnyFunc("/2/:num|num", eudore.HandlerEmpty)
 	app.AnyFunc("/2/:num|", eudore.HandlerEmpty)
 	app.AnyFunc("/2/:", eudore.HandlerEmpty)
-	app.AnyFunc("/3/:num|isnum/22", eudore.HandlerEmpty)
-	app.AnyFunc("/3/:num|isnum/*", eudore.HandlerEmpty)
-	app.AnyFunc("/4/*num|isnum", eudore.HandlerEmpty)
-	app.AnyFunc("/4/*num|isnum", eudore.HandlerEmpty)
+	app.AnyFunc("/3/:num|num/22", eudore.HandlerEmpty)
+	app.AnyFunc("/3/:num|num/*", eudore.HandlerEmpty)
+	app.AnyFunc("/4/*num|num", eudore.HandlerEmpty)
+	app.AnyFunc("/4/*num|num", eudore.HandlerEmpty)
 	app.AnyFunc("/4/*", eudore.HandlerEmpty)
 	app.AnyFunc("/5/*num|num", eudore.HandlerEmpty)
 	app.AnyFunc("/api/v1/2", eudore.HandlerEmpty)
@@ -109,7 +109,7 @@ func TestRouterStdDelete(t *testing.T) {
 	}
 
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)))
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(eudore.NewRouterCoreLock(nil)))
 
 	register := app.Group(" register=off")
 	app.AnyFunc("/version", echoStringHandler("any version"))
@@ -140,7 +140,7 @@ func TestRouterStdDelete(t *testing.T) {
 	register.AddHandler("LOCK", "/api/v:v3/*", eudore.HandlerEmpty)
 
 	// ---------------- 测试 ----------------
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)))
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(eudore.NewRouterCoreLock(nil)))
 	register = app.Group(" register=off")
 	app.AnyFunc("/eudore/debug/look/*", middleware.NewLookFunc(app))
 	app.AnyFunc("/version", echoStringHandler("any version"))
@@ -168,10 +168,10 @@ func TestRouterStdDelete(t *testing.T) {
 
 	app.AnyFunc("/api/v1/user/id/:id", eudore.HandlerEmpty)
 	app.AnyFunc("/api/v1/user/name/*name", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v1/user/:id|isnum", eudore.HandlerEmpty)
+	app.AnyFunc("/api/v1/user/:id|num", eudore.HandlerEmpty)
 	app.AnyFunc("/api/v1/user/*name|nozero", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v1/user/:id|isnum/", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v1/user/:id|isnum", eudore.HandlerEmpty)
+	register.AnyFunc("/api/v1/user/:id|num/", eudore.HandlerEmpty)
+	register.AnyFunc("/api/v1/user/:id|num", eudore.HandlerEmpty)
 	register.AnyFunc("/api/v1/user/*name|nozero", eudore.HandlerEmpty)
 	register.AnyFunc("/api/v1/user/id/:id", eudore.HandlerEmpty)
 	register.AnyFunc("/api/v1/user/name/*name", eudore.HandlerEmpty)

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net/http"
 	"testing"
 	"time"
 
@@ -220,10 +221,10 @@ func TestProtoBufHandlerData(t *testing.T) {
 	})
 
 	app.NewRequest(nil, "PUT", "/",
-		eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationProtobuf),
-		eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationProtobuf),
-		eudore.NewClientBody(nil),
-		eudore.NewClientDumpHead(),
+		http.Header{
+			eudore.HeaderAccept:      []string{eudore.MimeApplicationProtobuf},
+			eudore.HeaderContentType: []string{eudore.MimeApplicationProtobuf},
+		},
 	)
 
 	app.CancelFunc()

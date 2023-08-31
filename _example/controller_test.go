@@ -159,3 +159,20 @@ func (ctl *tableController) Hello() interface{} {
 func (ctl *tableController) Any(ctx eudore.Context) {
 	ctx.Debug("tableController Any", ctl.Hello())
 }
+
+type typeController[T any] struct {
+	eudore.ControllerAutoRoute
+}
+
+func TestControllerTypeName(t *testing.T) {
+	app := eudore.NewApp()
+	app.AddController(&typeController[int]{})
+
+	app.CancelFunc()
+	app.Run()
+}
+
+func (ctl *typeController[T]) Any(ctx eudore.Context) {
+	var t T
+	ctx.Debugf("typeController is %T", t)
+}

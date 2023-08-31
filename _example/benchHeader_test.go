@@ -20,6 +20,7 @@ func BenchmarkHead1(b *testing.B) {
 		textproto.CanonicalMIMEHeaderKey("Content-Disposition")
 	}
 }
+
 func BenchmarkHead2(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {

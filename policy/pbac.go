@@ -34,8 +34,8 @@ type Policys struct {
 
 // Signaturer 定义Policys进行用户信息签名的对象。
 type Signaturer interface {
-	Signed(interface{}) string
-	Parse(string, interface{}) error
+	Signed(any) string
+	Parse(string, any) error
 }
 
 // Member 定义Policy授权对象。
@@ -48,7 +48,7 @@ type Member struct {
 	Policy      *Policy   `json:"-" alias:"-"`
 }
 
-// NewPolicys 函数创建默认策略访问控制器
+// NewPolicys 函数创建默认策略访问控制器。
 func NewPolicys() *Policys {
 	policys := &Policys{
 		Signaturer: NewSignaturerJwt([]byte("eudore")),
@@ -64,9 +64,12 @@ func NewPolicys() *Policys {
 	return policys
 }
 
-// HandleHTTP 方法实现eudore.handlerHTTP(handler.go#L49)接口，作为请求处理中间件的处理函数，实现访问控制鉴权。
+// HandleHTTP 方法实现eudore.handlerHTTP(handler.go#L49)接口，
+// 作为请求处理中间件的处理函数，实现访问控制鉴权。
 //
 // 请求的param action为空回跳过鉴权方法。
+//
+//nolint:cyclop,funlen,gocyclo
 func (ctl *Policys) HandleHTTP(ctx eudore.Context) {
 	action := ctl.ActionFunc(ctx)
 	if action == "" {
@@ -83,8 +86,8 @@ func (ctl *Policys) HandleHTTP(ctx eudore.Context) {
 	}
 	ctx.SetParam(eudore.ParamUserid, fmt.Sprint(userid))
 
-	var now = time.Now()
-	var datas map[string][]interface{}
+	now := time.Now()
+	var datas map[string][]any
 	var names []string
 
 	// 遍历用户的全部授权的全部stmt
@@ -107,7 +110,7 @@ matchPolicys:
 				}
 				names = append(names, p.PolicyName)
 				if datas == nil {
-					datas = make(map[string][]interface{})
+					datas = make(map[string][]any)
 				}
 				for key, val := range s.data {
 					datas[key] = append(datas[key], val...)
@@ -141,9 +144,9 @@ func (ctl *Policys) GetMember(userid int) []*Member {
 }
 
 // HandleRuntime 方法返回Policys运行时数据。
-func (ctl *Policys) HandleRuntime(ctx eudore.Context) interface{} {
+func (ctl *Policys) HandleRuntime(eudore.Context) any {
 	var policys []Policy
-	ctl.Policys.Range(func(key, val interface{}) bool {
+	ctl.Policys.Range(func(key, val any) bool {
 		policys = append(policys, *val.(*Policy))
 		return true
 	})
@@ -152,13 +155,13 @@ func (ctl *Policys) HandleRuntime(ctx eudore.Context) interface{} {
 	})
 
 	members := make(map[int][]*Member)
-	ctl.Members.Range(func(key, val interface{}) bool {
+	ctl.Members.Range(func(key, val any) bool {
 		members[key.(int)] = val.([]*Member)
 		return true
 	})
 	return struct {
-		Policys []Policy    `json:"policys"`
-		Members interface{} `json:"members"`
+		Policys []Policy `json:"policys"`
+		Members any      `json:"members"`
 	}{policys, members}
 }
 
@@ -179,7 +182,7 @@ type forbiddenMessage struct {
 
 func (ctl *Policys) handleForbidden(ctx eudore.Context, action, resource, err string) {
 	msg := forbiddenMessage{
-		Time:       time.Now().Format(eudore.DefaultLoggerTimeFormat),
+		Time:       time.Now().Format(eudore.DefaultLoggerFormatterFormatTime),
 		Host:       ctx.Host(),
 		Method:     ctx.Method(),
 		Path:       ctx.Path(),
@@ -194,6 +197,7 @@ func (ctl *Policys) handleForbidden(ctx eudore.Context, action, resource, err st
 	}
 	if ctx.GetParam(eudore.ParamUserid) == "0" {
 		msg.Status = 401
+		msg.Error = ""
 		msg.Message = "unauthorized"
 	}
 	ctx.WriteHeader(msg.Status)
@@ -206,33 +210,40 @@ const stringBearer = "Bearer "
 // SignatureUser 定义默认的用户信息，也可以组合该对象使用自定义签名对象。
 type SignatureUser struct {
 	// 唯一必要的属性，指定请求的userid
-	UserID int `json:"userid" alias:"userid"`
+	UserID   int    `alias:"user_id" json:"user_id" yaml:"user_id" protobuf:"name=user_id"`
+	UserName string `alias:"user_name" json:"user_name" yaml:"user_name" protobuf:"name=user_name"`
 	// 如果非空，则为base64([]Statement)
 	Policy     string `json:"policy,omitempty" alias:"policy"`
 	Expiration int64  `json:"expiration" alias:"expiration"`
 }
 
 // NewBearer 默认的Bearer签名方法。
-func (ctl *Policys) NewBearer(userid int, policy string, expires int64) string {
+func (ctl *Policys) NewBearer(userid int, username, policy string, expires int64) string {
 	return stringBearer + ctl.Signaturer.Signed(&SignatureUser{
 		UserID:     userid,
+		UserName:   username,
 		Policy:     base64.StdEncoding.EncodeToString([]byte(policy)),
 		Expiration: expires,
 	})
 }
 
-func (ctl *Policys) parseSignatureUser(ctx eudore.Context) (int, error) {
+func getBearer(ctx eudore.Context) string {
 	bearer := ctx.GetHeader(eudore.HeaderAuthorization)
-	if bearer == "" {
-		return 0, nil
+	if strings.HasPrefix(bearer, stringBearer) {
+		return strings.TrimPrefix(bearer, stringBearer)
 	}
-	if !strings.HasPrefix(bearer, stringBearer) {
+	return ctx.Request().URL.Query().Get("bearer")
+}
+
+func (ctl *Policys) parseSignatureUser(ctx eudore.Context) (int, error) {
+	bearer := getBearer(ctx)
+	if bearer == "" {
 		return 0, nil
 	}
 
 	// 验证bearer
 	var user SignatureUser
-	err := ctl.Signaturer.Parse(bearer[7:], &user)
+	err := ctl.Signaturer.Parse(bearer, &user)
 	if err != nil {
 		return 0, fmt.Errorf("bearer parse error: %s", err.Error())
 	}
@@ -258,6 +269,7 @@ func (ctl *Policys) parseSignatureUser(ctx eudore.Context) (int, error) {
 		for _, s := range statements {
 			if s.MatchAction(action) && s.MatchResource(resource) && s.MatchCondition(ctx) {
 				if s.Effect {
+					ctx.SetParam(eudore.ParamUsername, user.UserName)
 					return user.UserID, nil
 				}
 				return 0, nil
@@ -265,6 +277,7 @@ func (ctl *Policys) parseSignatureUser(ctx eudore.Context) (int, error) {
 		}
 		return 0, nil
 	}
+	ctx.SetParam(eudore.ParamUsername, user.UserName)
 	return user.UserID, nil
 }
 

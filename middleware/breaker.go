@@ -14,7 +14,7 @@ const (
 	BreakerStatueOpen
 )
 
-// BreakerStatues 定义熔断状态字符串
+// BreakerStatues 定义熔断状态字符串。
 var BreakerStatues = []string{"closed", "half-open", "open"}
 
 // BreakerState 是熔断器状态。
@@ -120,7 +120,7 @@ func (b *Breaker) data(ctx eudore.Context) {
 }
 
 func (b *Breaker) getRoute(ctx eudore.Context) {
-	id := eudore.GetStringInt(ctx.GetParam("id"), -1)
+	id := eudore.GetAnyByString(ctx.GetParam("id"), -1)
 	if id < 0 || id > b.Index {
 		ctx.Fatal("id is invalid")
 		return
@@ -132,8 +132,8 @@ func (b *Breaker) getRoute(ctx eudore.Context) {
 }
 
 func (b *Breaker) putRouteState(ctx eudore.Context) {
-	id := eudore.GetStringInt(ctx.GetParam("id"), -1)
-	state := eudore.GetStringInt(ctx.GetParam("state"))
+	id := eudore.GetAnyByString(ctx.GetParam("id"), -1)
+	state := eudore.GetAnyByString[int](ctx.GetParam("state"))
 	if id < 0 || id > b.Index {
 		ctx.Fatal("id is invalid")
 		return
@@ -158,14 +158,14 @@ func (c *breakRoute) Handle(ctx eudore.Context) {
 	isdeny := c.BreakerState == BreakerStatueOpen || (c.BreakerState == BreakerStatueHalfOpen && c.OnHalfOpen())
 	c.Unlock()
 	if isdeny {
-		ctx.WriteHeader(503)
+		ctx.WriteHeader(eudore.StatusServiceUnavailable)
 		ctx.Fatal("Breaker deny request: " + c.Name)
 		ctx.End()
 		return
 	}
 	ctx.Next()
 	c.Lock()
-	if ctx.Response().Status() < 500 {
+	if ctx.Response().Status() < eudore.StatusInternalServerError {
 		c.TotalSuccesses++
 		c.ConsecutiveSuccesses++
 		c.ConsecutiveFailures = 0
@@ -204,7 +204,7 @@ func (c *breakRoute) RetryClose() {
 	}
 }
 
-// String 方法实现string接口
+// String 方法实现string接口。
 func (state BreakerState) String() string {
 	return BreakerStatues[state]
 }

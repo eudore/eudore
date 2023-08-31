@@ -12,6 +12,7 @@ App是一个自定义的程序主体，可以额外组合需要的App对象和�
 
 import (
 	"database/sql"
+
 	"github.com/eudore/eudore"
 )
 
@@ -45,7 +46,7 @@ func NewApp() *App {
 		App:    eudore.NewApp(),
 		Config: conf,
 	}
-	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfigStd(conf))
+	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfig(conf))
 	return app
 }
 

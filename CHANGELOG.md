@@ -1,24 +1,44 @@
 # Change Log
 
-setIntField set Duration type
-middleware/cache 不同accept会导致数据格式不同
-
 Next
 - Database 实现
 
-[2022年10月31日]
-- App 优化运行输出日志
-- Client 完整重构
-- Logger 修复Sync方法，更新其他组件日志
-- Config 合并实现方法
-- Render/BindProtobuf   无需proto文件进行编码
-- NewContextMessage 新增函数返回请求上下文消息，复用message。
-- middleware/gzip   使用自定义压缩函数，可以使用br压缩。
-- middleware/look   使用自定义data获取函数。
+[2023年8月31日]
+- go.mod	go版本依赖从1.9升级为1.18，增加error embed 泛型等新版本特性支持。
+- github	使用action配置添加lint和codecov。
+- LoggerStd		修改为Hook结构增强扩展。
+- Client		添加ClietOption/ClintBody，修改请求构造方法。
+- RouterStd		使用Group时参数loggerkind时修改router日志输出级别，加入Metadata接口实现。
+- HandlerData	validate使用新fc实现避免反射，完成filter实现过滤或修改数据。
+- FuncCreator	使用泛型重构减少反射使用，额外扩展新函数规则，允许使用逻辑关系式。
+- Context		FormValues调用parseForm解析方法修改，不将PostForm和Form复制数据。
+- ConvertTo		移除To/ToMap等转换函数，Get/Set函数优化异常处理。
+- GetAny		修改GetAny相关函数使用泛型实现，重命名移除多余函数。
+- HandlerExtender	默认扩展函数重命名。
+- ResponseWriter	添加WriteString和Unwrap实现。
+- NewFileSystems	处理Dir和Embed的http混合文件对象。
+- NewConfigParseEnvFile	配置解析env文件。
+- NewConfigParseArgs	保存未处理的命令行参数。
+- LoggerStdDataJSON		具有环境变量EnvEudoreDaemonEnable时禁用标准输出。
+- ServerListenConfig	使用DefaultServerListen启动监听。
+- middleware/cache		添加对Accept/Accept-Encoding/304支持。
+- middleware/compress	添加选择压缩方法，忽略小Body和已压缩Mime。
+- middleware/bodylimit	忽略NoBody，使用http.MaxBytesReader限制body长度。
+- daemon				整理启动命令、后台启动、信号处理、热重启，不进行单位测试覆盖。
+
+[2022年10月31日](https://github.com/eudore/eudore/tree/de9fd1ea1b653ba6e4f9bb5c108733e3142cadf6)
+- App		优化运行输出日志
+- Client	完整重构
+- Logger	修复Sync方法，更新其他组件日志
+- Config	合并实现方法
+- Render/BindProtobuf	无需proto文件进行编码
+- NewContextMessage	新增函数返回请求上下文消息，复用message。
+- middleware/gzip	使用自定义压缩函数，可以使用br压缩。
+- middleware/look	使用自定义data获取函数。
 
 [2022年4月30日](https://github.com/eudore/eudore/tree/b80422e67f5c9907967e36e577d23220793a6c9c)
 - App和Context	生命周期管理
-- DataHandlerFunc   合并Bind Validate Filte Render
+- DataHandlerFunc	合并Bind Validate Filte Render
 - Client	移入App组合
 - Server	实现ServeConn方法
 - ConvertTo	重构实现
@@ -31,9 +51,9 @@ Next
 - middleware/look	解析Accept Header为format值，模板内容优化。
 - ConfigParseFunc	ConfigParseFunc重构
 - ResponseWriter	WriteHeader将延时写入
-- contextBase   细节调整
+- contextBase	细节调整
 - policy		增加401
-- httptest      修复响应对象并非读写
+- httptest		修复响应对象并非读写
 
 [2021年8月31日](https://github.com/eudore/eudore/commit/627e6de1fa64c45873c70f86637efa2decc5763f)
 - Controller	简化内容保留ControllerAutoRoute。

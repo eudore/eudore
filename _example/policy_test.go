@@ -3,6 +3,7 @@ package eudore_test
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -56,22 +57,22 @@ func TestPolicyPbacParse(t *testing.T) {
 
 	now := time.Now().Add(time.Hour).Unix()
 	app.NewRequest(nil, "GET", "/")
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, "000"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, "Bearer 000"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyaWQiOjEwLCJwb2xpY3kiOiJiYXNlNjQiLCJleHBpcmF0aW9uIjoxNjQ5MTQwMzkwfQ.2mqeTZZizrP"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.{"userid":10,"expiration":1649140575}.ffikvNJyZVA8u01PtZ_3fUwQJQ5aGjw_0uCKhoKDr9w`))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyaWQiOiIxMCIsImV4cGlyYXRpb24iOjE2NDkxNDA1NzV9.LgfnJJ-UknB1hOJIA1FrYbpeCNJ2cRuSj_r_bJo8vA8`))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, "000"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, "Bearer 000"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyaWQiOjEwLCJwb2xpY3kiOiJiYXNlNjQiLCJleHBpcmF0aW9uIjoxNjQ5MTQwMzkwfQ.2mqeTZZizrP"))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.{"userid":10,"expiration":1649140575}.ffikvNJyZVA8u01PtZ_3fUwQJQ5aGjw_0uCKhoKDr9w`))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyaWQiOiIxMCIsImV4cGlyYXRpb24iOjE2NDkxNDA1NzV9.LgfnJJ-UknB1hOJIA1FrYbpeCNJ2cRuSj_r_bJo8vA8`))
 
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, "", time.Now().Add(time.Hour*-1).Unix())))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, "", now)))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, "Bearer "+pbac.Signaturer.Signed(&policy.SignatureUser{UserID: 10, Policy: "base64", Expiration: now})))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, "base64", now)))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, `[{"effect":true,"action":["Home"]}]`, now)))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, `[{"effect":false,"action":["Home"]}]`, now)))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, `[{"effect":true,"action":["Index"]}]`, now)))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, "", "", time.Now().Add(time.Hour*-1).Unix())))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, "", "", now)))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, "Bearer "+pbac.Signaturer.Signed(&policy.SignatureUser{UserID: 10, Policy: "base64", Expiration: now})))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, "", "base64", now)))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, "", `[{"effect":true,"action":["Home"]}]`, now)))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, "", `[{"effect":false,"action":["Home"]}]`, now)))
+	app.NewRequest(nil, "GET", "/", eudore.NewClientOptionHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, "", `[{"effect":true,"action":["Index"]}]`, now)))
 
 	option := func(req *http.Request) {
-		req.Header.Set(eudore.HeaderAuthorization, pbac.NewBearer(10, "", now))
+		req.Header.Set(eudore.HeaderAuthorization, pbac.NewBearer(10, "", "", now))
 	}
 	app.NewRequest(nil, "GET", "/", option)
 	app.NewRequest(nil, "GET", "/static/1.js", option)
@@ -87,7 +88,7 @@ func TestPolicyPbacHandler(t *testing.T) {
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route", "action", "resource", "Userid"))
 	app.AddMiddleware(pbac)
 
-	for i := 1; i < 11; i++ {
+	for i := 1; i < 13; i++ {
 		app.AnyFunc(fmt.Sprintf("/%d action=Num:%d", i, i), eudore.HandlerEmpty)
 		pbac.AddMember(&policy.Member{UserID: 10, PolicyID: i})
 	}
@@ -122,7 +123,7 @@ func TestPolicyPbacHandler(t *testing.T) {
 			Statement   []Statement
 		}
 		var data Data
-		data.UserID = eudore.GetStringInt(ctx.GetParam(eudore.ParamUserid))
+		data.UserID = eudore.GetAnyByString[int](ctx.GetParam(eudore.ParamUserid))
 		err := ctx.Bind(&data)
 		if err != nil {
 			return nil, err
@@ -141,8 +142,8 @@ func TestPolicyPbacHandler(t *testing.T) {
 		}
 		return resps, nil
 	})
-	pbac.AddMember(&policy.Member{UserID: 10, PolicyID: 11, Expiration: time.Now().Add(time.Hour)})
-	pbac.AddMember(&policy.Member{UserID: 10, PolicyID: 11, Expiration: time.Now().Add(time.Hour * -1)})
+	pbac.AddMember(&policy.Member{UserID: 10, PolicyID: 13, Expiration: time.Now().Add(time.Hour)})
+	pbac.AddMember(&policy.Member{UserID: 10, PolicyID: 13, Expiration: time.Now().Add(time.Hour * -1)})
 
 	pbac.AddPolicyString(`{"policy_id":1,"statement":[{"effect":true,"action":["Num:1"],"conditions":{"and":{"method":["GET"],"sourceip":["127.0.0.1"]}}}]}`)
 	pbac.AddPolicyString(`{"policy_id":2,"statement":[{"effect":true,"action":["Num:2"],"conditions":{"or":{"method":["GET"],"sourceip":["127.0.0.1"]}}}]}`)
@@ -150,26 +151,28 @@ func TestPolicyPbacHandler(t *testing.T) {
 	pbac.AddPolicyString(`{"policy_id":4,"statement":[{"effect":true,"action":["Num:4"],"conditions":{"date":{"before":"2030-12-31"}}}]}`)
 	pbac.AddPolicyString(`{"policy_id":5,"statement":[{"effect":true,"action":["Num:5"],"conditions":{"time":{"before":"23:59:59"}}}]}`)
 	pbac.AddPolicyString(`{"policy_id":6,"statement":[{"effect":true,"action":["Num:6"],"conditions":{"method":["GET"]}}]}`)
-	pbac.AddPolicyString(`{"policy_id":7,"statement":[{"effect":true,"action":["Num:7"],"conditions":{"params":{"action":["Num:7"]}}}]}`)
-	pbac.AddPolicyString(`{"policy_id":8,"statement":[{"effect":false,"action":["Num:8"]}]}`)
-	pbac.AddPolicyString(`{"policy_id":9,"statement":[{"effect":true,"action":["Menu"],"data":{"menu":["Home"]}}]}`)
-	pbac.AddPolicyString(`{"policy_id":10,"statement":[{"effect":true,"action":["Menu"],"data":{"menu":["Index"]}}]}`)
-	pbac.AddPolicyString(`{"policy_id":12}`)
-	pbac.AddPolicyString(`{"policy_id":13,}`)
+	pbac.AddPolicyString(`{"policy_id":7,"statement":[{"effect":true,"action":["Num:7"],"conditions":{"path":["/"]}}]}`)
+	pbac.AddPolicyString(`{"policy_id":8,"statement":[{"effect":true,"action":["Num:8"],"conditions":{"path":["/8"]}}]}`)
+	pbac.AddPolicyString(`{"policy_id":9,"statement":[{"effect":true,"action":["Num:9"],"conditions":{"params":{"action":["Num:9"]}}}]}`)
+	pbac.AddPolicyString(`{"policy_id":10,"statement":[{"effect":false,"action":["Num:10"]}]}`)
+	pbac.AddPolicyString(`{"policy_id":11,"statement":[{"effect":true,"action":["Menu"],"data":{"menu":["Home"]}}]}`)
+	pbac.AddPolicyString(`{"policy_id":12,"statement":[{"effect":true,"action":["Menu"],"data":{"menu":["Index"]}}]}`)
+	pbac.AddPolicyString(`{"policy_id":13}`)
+	pbac.AddPolicyString(`{"policy_id":14,}`)
 
-	app.Client = app.WithClient(eudore.NewClientHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, "", time.Now().Add(time.Hour).Unix())))
+	app.Client = app.WithClient(eudore.NewClientOptionHeader(eudore.HeaderAuthorization, pbac.NewBearer(10, "", "", time.Now().Add(time.Hour).Unix())))
 	app.NewRequest(nil, "GET", "/1")
 	app.NewRequest(nil, "PUT", "/1")
 	app.NewRequest(nil, "GET", "/2")
 	app.NewRequest(nil, "PUT", "/2")
-	app.NewRequest(nil, "GET", "/3", eudore.NewClientHeader(eudore.HeaderXRealIP, "127.0.0.1"))
-	app.NewRequest(nil, "GET", "/3", eudore.NewClientHeader(eudore.HeaderXRealIP, "172.17.1.3"))
+	app.NewRequest(nil, "GET", "/3", eudore.NewClientOptionHeader(eudore.HeaderXRealIP, "127.0.0.1"))
+	app.NewRequest(nil, "GET", "/3", eudore.NewClientOptionHeader(eudore.HeaderXRealIP, "172.17.1.3"))
 	app.NewRequest(nil, "GET", "/4")
 	app.NewRequest(nil, "GET", "/5")
 	app.NewRequest(nil, "PUT", "/6")
-	app.NewRequest(nil, "GET", "/6")
 	app.NewRequest(nil, "GET", "/7")
 	app.NewRequest(nil, "GET", "/8")
+	app.NewRequest(nil, "GET", "/9")
 	app.NewRequest(nil, "GET", "/menu")
 	app.NewRequest(nil, "PUT", "/has", eudore.NewClientBodyJSON(map[string]interface{}{"action": "Menu", "resource": "/has"}))
 	app.NewRequest(nil, "GET", "/runtime")
@@ -187,6 +190,8 @@ func (*User023Controller) Get(eudore.Context)     {}
 func (*User023Controller) GetIcon(eudore.Context) {}
 
 func TestPolicyutil(t *testing.T) {
+	policy.NewSignaturerJwt(nil).Signed(make(chan int))
+
 	pbac := policy.NewPolicys()
 	pbac.ActionFunc = func(ctx eudore.Context) string { return ctx.GetQuery("action") }
 	pbac.AddPolicyString(`{
@@ -218,14 +223,14 @@ func TestPolicyutil(t *testing.T) {
 	app.AddController(&User023Controller{})
 	app.Info((User023Controller{}).ControllerParam("github.com/eudore/eudore", "User023Controller", "Get"))
 
-	app.NewRequest(nil, "GET", "/", eudore.NewClientQuery("action", "eudore:user:Get1"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientQuery("action", "eudore:user:Get2"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientQuery("action", "eudore:user:Get3"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientQuery("action", "eudore:group:22"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientQuery("action", "eudore:group:"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientQuery("action", "eudore"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientQuery("action", "eudore:ns:Get"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientQuery("action", "eudore:ns:Get2"))
+	app.NewRequest(nil, "GET", "/", url.Values{"action": {"eudore:user:Get1"}})
+	app.NewRequest(nil, "GET", "/", url.Values{"action": {"eudore:user:Get2"}})
+	app.NewRequest(nil, "GET", "/", url.Values{"action": {"eudore:user:Get3"}})
+	app.NewRequest(nil, "GET", "/", url.Values{"action": {"eudore:group:22"}})
+	app.NewRequest(nil, "GET", "/", url.Values{"action": {"eudore:group:"}})
+	app.NewRequest(nil, "GET", "/", url.Values{"action": {"eudore"}})
+	app.NewRequest(nil, "GET", "/", url.Values{"action": {"eudore:ns:Get"}})
+	app.NewRequest(nil, "GET", "/", url.Values{"action": {"eudore:ns:Get2"}})
 
 	app.CancelFunc()
 	app.Run()

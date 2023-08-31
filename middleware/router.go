@@ -11,11 +11,11 @@ import (
 // NewRouterFunc 函数创建一个路由器中间件，将根据路由路径匹配执行对应的多个处理函数。
 //
 // 如果key为"router"，val类型为eudore.Router，则使用改路由器处理请求。
-func NewRouterFunc(data map[string]interface{}) eudore.HandlerFunc {
+func NewRouterFunc(data map[string]any) eudore.HandlerFunc {
 	router, ok := data["router"].(eudore.Router)
 	delete(data, "router")
 	if !ok {
-		router = eudore.NewRouterStd(nil)
+		router = eudore.NewRouter(nil)
 		router.AddHandler("404", "", eudore.HandlerEmpty)
 		router.AddHandler("405", "", eudore.HandlerEmpty)
 	}
@@ -45,7 +45,7 @@ func NewRouterFunc(data map[string]interface{}) eudore.HandlerFunc {
 //
 // RouterRewrite中间件使用参数和Rewrite中间件完全相同。
 func NewRouterRewriteFunc(data map[string]string) eudore.HandlerFunc {
-	mapping := make(map[string]interface{}, len(data))
+	mapping := make(map[string]any, len(data))
 	for k, v := range data {
 		k = getRouterRewritePath(k)
 		mapping[k] = newRouterRewriteFunc(v)
@@ -67,7 +67,7 @@ func getRouterRewritePath(path string) string {
 			}
 			num++
 		} else {
-			str = str + string(path[i])
+			str += string(path[i])
 		}
 	}
 	return str

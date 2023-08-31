@@ -8,9 +8,6 @@ import (
 	"github.com/eudore/eudore"
 )
 
-// BlackInvalidAddress 定义解析无效地址时使用的默认地址，127.0.0.2。
-var BlackInvalidAddress uint64 = 2130706434
-
 // Black 定义黑名单中间件后台。
 type black struct {
 	White *BlackNode
@@ -51,17 +48,17 @@ func (b *black) InjectRoutes(router eudore.Router) {
 	router.DeleteFunc("/black/black/:ip black=black", b.DeleteAllIP)
 }
 
-func (b *black) data(ctx eudore.Context) interface{} {
-	ctx.SetHeader("X-Eudore-Admin", "black")
-	return map[string]interface{}{
+func (b *black) data(ctx eudore.Context) any {
+	ctx.SetHeader(eudore.HeaderXEudoreAdmin, "black")
+	return map[string]any{
 		"white": b.White.List(nil, 0, 32),
 		"black": b.Black.List(nil, 0, 32),
 	}
 }
 
 func (b *black) putIP(ctx eudore.Context) {
-	ip := fmt.Sprintf("%s/%s", ctx.GetParam("ip"), eudore.GetString(ctx.GetQuery("mask"), "32"))
-	ctx.Infof("%s insert %s ip: %s", ctx.RealIP(), eudore.GetString(ctx.GetQuery("black"), "white"), ip)
+	ip := fmt.Sprintf("%s/%s", ctx.GetParam("ip"), eudore.GetAnyByString(ctx.GetQuery("mask"), "32"))
+	ctx.Infof("%s insert %s ip: %s", ctx.RealIP(), eudore.GetAnyByString(ctx.GetQuery("black"), "white"), ip)
 	if ctx.GetParam("black") != "" {
 		b.InsertBlack(ip)
 	} else {
@@ -70,8 +67,8 @@ func (b *black) putIP(ctx eudore.Context) {
 }
 
 func (b *black) DeleteAllIP(ctx eudore.Context) {
-	ip := fmt.Sprintf("%s/%s", ctx.GetParam("ip"), eudore.GetString(ctx.GetQuery("mask"), "32"))
-	ctx.Infof("%s DeleteAll %s ip: %s", ctx.RealIP(), eudore.GetString(ctx.GetQuery("black"), "white"), ip)
+	ip := fmt.Sprintf("%s/%s", ctx.GetParam("ip"), eudore.GetAnyByString(ctx.GetQuery("mask"), "32"))
+	ctx.Infof("%s DeleteAll %s ip: %s", ctx.RealIP(), eudore.GetAnyByString(ctx.GetQuery("black"), "white"), ip)
 	if ctx.GetParam("black") != "" {
 		b.DeleteAllBlack(ip)
 	} else {
@@ -86,7 +83,7 @@ func (b *black) HandleHTTP(ctx eudore.Context) {
 		return
 	}
 	if b.Black.Look(ip) {
-		ctx.WriteHeader(403)
+		ctx.WriteHeader(eudore.StatusForbidden)
 		ctx.WriteString("black list deny your ip " + ctx.RealIP())
 		ctx.End()
 	}
@@ -212,7 +209,7 @@ func ip2intbit(ip string) (uint64, uint) {
 func ip2int(ip string) uint64 {
 	bits := strings.Split(ip, ".")
 	if len(bits) != 4 {
-		return BlackInvalidAddress
+		return DefaultBlackInvalidAddress
 	}
 	b0, _ := strconv.Atoi(bits[0])
 	b1, _ := strconv.Atoi(bits[1])

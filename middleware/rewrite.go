@@ -172,7 +172,7 @@ func (node *rewriteNode) matchNode(path string, result *matchResult) bool {
 	return false
 }
 
-// 获取两个字符串的最大公共前缀，返回最大公共前缀和是否拥有最大公共前缀
+// 获取两个字符串的最大公共前缀，返回最大公共前缀和是否拥有最大公共前缀。
 func getSubsetPrefix(str1, str2 string) (string, bool) {
 	findSubset := false
 	for i := 0; i < len(str1) && i < len(str2); i++ {
@@ -186,7 +186,7 @@ func getSubsetPrefix(str1, str2 string) (string, bool) {
 	if len(str1) > len(str2) {
 		return str2, findSubset
 	} else if len(str1) == len(str2) {
-		//fix "" not a subset of ""
+		// fix "" not a subset of ""
 		return str1, str1 == str2
 	}
 

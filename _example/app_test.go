@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	eudore.DefaultLoggerTimeFormat = "none"
+	eudore.DefaultLoggerFormatterFormatTime = "none"
 }
 
 func TestAppRun(*testing.T) {
@@ -22,16 +22,12 @@ func TestAppRun(*testing.T) {
 		ctx.WriteString("hello eudore")
 	})
 
-	app.NewRequest(nil, "GET", "/hello",
-		eudore.NewClientBodyString("trace"),
-		eudore.NewClientCheckStatus(200),
-	)
-
 	app.Value(eudore.ContextKeyLogger)
 	app.Value(eudore.ContextKeyConfig)
 	app.Value(eudore.ContextKeyDatabase)
 	app.Value(eudore.ContextKeyClient)
 	app.Value(eudore.ContextKeyRouter)
+	app.Value(eudore.ContextKeyAppKeys)
 
 	app.SetValue(eudore.ContextKeyError, "stop app")
 	app.CancelFunc()

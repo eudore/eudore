@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"html/template"
-	"reflect"
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -34,16 +35,21 @@ func TestHandlerDataBind(*testing.T) {
 		return &data, nil
 	})
 
-	app.NewRequest(nil, "GET", "/hello", eudore.NewClientBodyString("trace"), eudore.NewClientCheckStatus(200))
-	app.NewRequest(nil, "GET", "/data/header", eudore.NewClientHeader("name", "eudore"), eudore.NewClientCheckStatus(200))
-	app.NewRequest(nil, "GET", "/data/get-url", eudore.NewClientQuery("name", "eudore"), eudore.NewClientCheckStatus(200))
-	app.NewRequest(nil, "POST", "/data/post-url", eudore.NewClientQuery("name", "eudore"), eudore.NewClientCheckStatus(200))
-	app.NewRequest(nil, "POST", "/data/post-mime", eudore.NewClientQuery("name", "eudore"), eudore.NewClientHeader(eudore.HeaderContentType, "pb"), eudore.NewClientCheckStatus(200))
-	app.NewRequest(nil, "PATCH", "/data/patch-mime", eudore.NewClientQuery("name", "eudore"), eudore.NewClientHeader(eudore.HeaderContentType, "pb"), eudore.NewClientCheckStatus(200))
-	app.NewRequest(nil, "DELETE", "/data/detele-mime", eudore.NewClientQuery("name", "eudore"), eudore.NewClientHeader(eudore.HeaderContentType, "pb"), eudore.NewClientCheckStatus(200))
-	app.NewRequest(nil, "PUT", "/data/json", eudore.NewClientBodyJSONValue("name", "eudore"), eudore.NewClientCheckStatus(200))
-	app.NewRequest(nil, "PUT", "/data/json", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationXML), eudore.NewClientBodyString("<Data><name>eudore</name></Data>"), eudore.NewClientCheckStatus(200))
-	app.NewRequest(nil, "PUT", "/data/form", eudore.NewClientBodyFormValue("name", "eudore"), eudore.NewClientCheckStatus(200))
+	form := eudore.NewClientBodyForm(nil)
+	form.AddFile("file", "app", []byte("form body"))
+
+	app.NewRequest(nil, "GET", "/hello", strings.NewReader("trace"))
+	app.NewRequest(nil, "GET", "/data/header", http.Header{"X-Name": {"eudore"}})
+	app.NewRequest(nil, "GET", "/data/get-url", url.Values{"name": {"eudore"}})
+	app.NewRequest(nil, "POST", "/data/post-url", url.Values{"name": {"eudore"}})
+	app.NewRequest(nil, "POST", "/data/post-mime", url.Values{"name": {"eudore"}}, http.Header{eudore.HeaderContentType: {"pb"}})
+	app.NewRequest(nil, "PATCH", "/data/patch-mime", url.Values{"name": {"eudore"}}, http.Header{eudore.HeaderContentType: {"pb"}})
+	app.NewRequest(nil, "DELETE", "/data/detele-mime", url.Values{"name": {"eudore"}}, http.Header{eudore.HeaderContentType: {"pb"}})
+	app.NewRequest(nil, "PUT", "/data/json", eudore.NewClientBodyJSON(url.Values{"name": {"eudore"}}))
+	app.NewRequest(nil, "PUT", "/data/xml", eudore.NewClientBodyXML(&Data{"eudore"}))
+	app.NewRequest(nil, "PUT", "/data/url", eudore.NewClientBodyForm(url.Values{"name": {"eudore"}}))
+	app.NewRequest(nil, "PUT", "/data/form", form)
+	app.NewRequest(nil, "PUT", "/data/protobuf", http.Header{eudore.HeaderContentType: {eudore.MimeApplicationProtobuf}})
 
 	app.CancelFunc()
 	app.Run()
@@ -55,14 +61,20 @@ func TestHandlerDataRender(*testing.T) {
 	}
 
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyFilte, func(ctx eudore.Context, i interface{}) error {
+	app.SetValue(eudore.ContextKeyFilter, func(ctx eudore.Context, i interface{}) error {
 		if ctx.Path() == "/err" {
 			return fmt.Errorf("filte error")
 		}
 		return nil
 	})
 	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
-	app.AnyFunc("/data/* template=data", func(ctx eudore.Context) interface{} {
+	app.AnyFunc("/data/*", func(ctx eudore.Context) interface{} {
+		return &Data{"eudore"}
+	})
+	app.AnyFunc("/html/err", func(ctx eudore.Context) interface{} {
+		return &struct{ Name func() }{}
+	})
+	app.AnyFunc("/html/* template=data", func(ctx eudore.Context) interface{} {
 		return &Data{"eudore"}
 	})
 	app.AnyFunc("/text/stringer", func(ctx eudore.Context) interface{} {
@@ -72,213 +84,209 @@ func TestHandlerDataRender(*testing.T) {
 		return "text/string"
 	})
 
-	app.NewRequest(nil, "GET", "/err", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextPlain))
-	app.NewRequest(nil, "GET", "/data/text", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextPlain))
-	app.NewRequest(nil, "GET", "/data/json", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
-	app.NewRequest(nil, "GET", "/data/xml", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationXML))
-	app.NewRequest(nil, "GET", "/data/html", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
-	eudore.DefaultRenderHTMLTemplate = nil
-	app.NewRequest(nil, "GET", "/data/html", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
+	accept := func(val string) http.Header {
+		return http.Header{eudore.HeaderAccept: {val}}
+	}
+
+	app.NewRequest(nil, "GET", "/err", accept(eudore.MimeTextPlain))
+	app.NewRequest(nil, "GET", "/data/quality", accept(eudore.MimeTextPlain+";q=0"))
+	app.NewRequest(nil, "GET", "/data/text", accept(eudore.MimeTextPlain))
+	app.NewRequest(nil, "GET", "/data/json", accept(eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "GET", "/data/xml", accept(eudore.MimeApplicationXML))
+	app.NewRequest(nil, "GET", "/data/html", accept(eudore.MimeTextHTML))
+	app.NewRequest(nil, "GET", "/data/protobuf", accept(eudore.MimeApplicationProtobuf))
+	app.NewRequest(nil, "GET", "/html/err", accept(eudore.MimeTextHTML))
+	app.NewRequest(nil, "GET", "/html/html", accept(eudore.MimeTextHTML))
 	app.NewRequest(nil, "GET", "/data/accept")
-	app.NewRequest(nil, "GET", "/text/stringer", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextPlain))
-	app.NewRequest(nil, "GET", "/text/string", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextPlain))
-	app.NewRequest(nil, "GET", "/text/string", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
-	app.NewRequest(nil, "GET", "/text/string", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSONCharsetUtf8))
+
+	app.NewRequest(nil, "GET", "/text/stringer", accept(eudore.MimeTextPlain))
+	app.NewRequest(nil, "GET", "/text/string", accept(eudore.MimeTextPlain))
+	app.NewRequest(nil, "GET", "/text/string", accept(eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "GET", "/text/string", accept(eudore.MimeApplicationJSONCharsetUtf8))
 
 	temp, _ := template.New("").Parse(`{{- define "data" -}} Data Name is {{.Name}} {{- end -}}`)
 	app.SetValue(eudore.ContextKeyTemplate, temp)
+	app.NewRequest(nil, "GET", "/data/html", accept(eudore.MimeTextHTML))
+	app.NewRequest(nil, "GET", "/text/string", accept(eudore.MimeTextHTML))
+	app.NewRequest(nil, "GET", "/text/string", accept(eudore.MimeTextHTML))
 
-	app.NewRequest(nil, "GET", "/data/html", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
-	app.NewRequest(nil, "GET", "/text/string", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
-	app.NewRequest(nil, "GET", "/text/string", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeTextHTML))
+	app.SetValue(eudore.ContextKeyTemplate, nil)
+	app.NewRequest(nil, "GET", "/data/html", accept(eudore.MimeTextHTML))
 
 	app.CancelFunc()
 	app.Run()
 }
 
-func TestFuncCreator(*testing.T) {
-	type Data struct {
-		Name string `json:"name" xml:"name"`
-	}
+type dataValidate01 struct {
+	ID     *int   `json:"id" xml:"id" validate:"nozero,omitempty"`
+	Child  []int  `json:"child" xml:"child" validate:"nozero,omitempty"`
+	Name   string `json:"name" xml:"name" validate:"nozero,len>4"`
+	Level1 string `json:"level1" xml:"level1" validate:"-"`
+}
+type dataValidate02 struct {
+	ID     *int   `json:"id" xml:"id" validate:"nozero"`
+	Name   string `json:"name" xml:"name" validate:"len>4"`
+	Level1 string `json:"level1" xml:"level1"`
+}
+type dataValidate03 struct {
+	ID int `json:"id" xml:"id" validate:"(nozero),,"`
+}
+type dataValidate04 struct {
+	ID int `json:"id" xml:"id" validate:"not"`
+}
+type dataValidate05 struct {
+	dataValidate03
+	*dataValidate04
+}
 
-	app := eudore.NewApp()
-
-	fc := eudore.NewFuncCreator()
-	app.SetValue(eudore.ContextKeyFuncCreator, fc)
-	// register error
-	fc.Register("test", "not func", TestFuncCreator, func(string) func(string) {
-		return nil
-	}, func(string) func(string) bool {
-		return nil
-	}, func(string) func(string) string {
-		return nil
-	})
-
-	var fn interface{}
-	var err error
-	typeInt := reflect.TypeOf((*int)(nil)).Elem()
-	typeString := reflect.TypeOf((*string)(nil)).Elem()
-	typeInterface := reflect.TypeOf((*interface{})(nil)).Elem()
-
-	fc.Create(typeInt, "nozero")
-	fc.Create(typeInt, "nozero:")
-	{
-		// validateIntNozero
-		fn, _ = fc.Create(typeInt, "nozero")
-		app.Info(fn.(func(int) bool)(0))
-	}
-	{
-		// validateStringNozero
-		fn, _ = fc.Create(typeString, "nozero")
-		app.Info(fn.(func(string) bool)("123456"))
-	}
-	{
-		// validateInterfaceNozero
-		fn, _ = fc.Create(typeInterface, "nozero")
-		app.Info(fn.(func(interface{}) bool)("123456"))
-		app.Info(fn.(func(interface{}) bool)([]int{1, 2, 3, 4, 5, 6}))
-	}
-	{
-		// validateStringIsnum
-		fn, _ = fc.Create(typeString, "isnum")
-		app.Info(fn.(func(string) bool)("234"))
-		app.Info(fn.(func(string) bool)("xx2"))
-	}
-	{
-		// validateNewIntMin
-		fc.Create(typeInt, "min=xx")
-		fn, _ = fc.Create(typeInt, "min=033")
-		app.Info(fn.(func(int) bool)(12))
-		app.Info(fn.(func(int) bool)(644))
-	}
-	{
-		// validateNewIntMax
-		fc.Create(typeInt, "max")
-		fc.Create(typeInt, "max=xx")
-		fn, _ = fc.Create(typeInt, "max=033")
-		app.Info(fn.(func(int) bool)(12))
-		app.Info(fn.(func(int) bool)(644))
-	}
-	{
-		// validateNewStringMin
-		fc.Create(typeString, "min=xx")
-		fn, _ = fc.Create(typeString, "min=033")
-		app.Info(fn.(func(string) bool)("12"))
-		app.Info(fn.(func(string) bool)("644"))
-		app.Info(fn.(func(string) bool)("xx"))
-	}
-	{
-		// validateNewStringMax
-		fc.Create(typeString, "max=xx")
-		fn, _ = fc.Create(typeString, "max=033")
-		app.Info(fn.(func(string) bool)("12"))
-		app.Info(fn.(func(string) bool)("644"))
-		app.Info(fn.(func(string) bool)("xx"))
-	}
-	{
-		// validateNewStringLen
-		fc.Create(typeString, "len>x")
-		fn, _ = fc.Create(typeString, "len>5")
-		app.Info(fn.(func(string) bool)("8812988"))
-		app.Info(fn.(func(string) bool)("123"))
-		app.Info(fn.(func(string) bool)("123456"))
-		fn, _ = fc.Create(typeString, "len<5")
-		app.Info(fn.(func(string) bool)("8812988"))
-		app.Info(fn.(func(string) bool)("123"))
-		app.Info(fn.(func(string) bool)("123456"))
-		fn, _ = fc.Create(typeString, "len=5")
-		app.Info(fn.(func(string) bool)("8812988"))
-		app.Info(fn.(func(string) bool)("123"))
-		app.Info(fn.(func(string) bool)("123456"))
-	}
-	{
-		// validateNewInterfaceLen
-		fc.Create(typeInterface, "len=.")
-		fn, _ = fc.Create(typeInterface, "len>4")
-		app.Info(fn.(func(interface{}) bool)("123456"))
-		app.Info(fn.(func(interface{}) bool)([]int{1, 2, 3, 4}))
-		app.Info(fn.(func(interface{}) bool)(6))
-		fn, _ = fc.Create(typeInterface, "len<4")
-		app.Info(fn.(func(interface{}) bool)("123456"))
-		app.Info(fn.(func(interface{}) bool)([]int{1, 2, 3, 4}))
-		app.Info(fn.(func(interface{}) bool)(6))
-		fn, _ = fc.Create(typeInterface, "len=4")
-		app.Info(fn.(func(interface{}) bool)("123456"))
-		app.Info(fn.(func(interface{}) bool)([]int{1, 2, 3, 4}))
-		app.Info(fn.(func(interface{}) bool)(6))
-	}
-	{
-		// validateNewStringRegexp
-		_, err = fc.Create(typeString, "regexp^[($")
-		app.Info(err)
-		fn, _ = fc.Create(typeString, "regexp^\\d+$")
-		app.Info(fn.(func(string) bool)("123456"))
-	}
-
-	app.CancelFunc()
-	app.Run()
+func (dataValidate03) Validate(context.Context) error {
+	return fmt.Errorf("test error validate")
 }
 
 func TestHandlerDataValidateField(*testing.T) {
-	eudore.NewValidateField(context.Background())
-	type DataValidate01 struct {
-		Name   string `json:"name" xml:"name" validate:"len>4"`
-		Email  string `json:"email" xml:"email" validate:"email"`
-		Phone  string `json:"phone" xml:"phone" validate:"phone"`
-		Level1 string `json:"level1" xml:"level1" validate:""`
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyValidater, eudore.NewValidateField(app))
+	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
+
+	app.AddMiddleware(middleware.NewLoggerFunc(app))
+	app.AnyFunc("/data/struct1", func(ctx eudore.Context) {
+		var data dataValidate01
+		ctx.Bind(&data)
+	})
+	app.AnyFunc("/data/slice1", func(ctx eudore.Context) {
+		var data []dataValidate01
+		ctx.Bind(&data)
+	})
+	app.AnyFunc("/data/ptr1", func(ctx eudore.Context) {
+		var data []*dataValidate01
+		ctx.Bind(&data)
+	})
+	app.AnyFunc("/data/any1", func(ctx eudore.Context) {
+		var data []any = []any{new(dataValidate01)}
+		ctx.Bind(&data)
+	})
+	app.AnyFunc("/data/struct2", func(ctx eudore.Context) {
+		var data dataValidate02
+		ctx.Bind(&data)
+	})
+	app.AnyFunc("/data/struct3", func(ctx eudore.Context) {
+		var data dataValidate03
+		ctx.Bind(&data)
+	})
+	app.AnyFunc("/data/struct4", func(ctx eudore.Context) {
+		var data dataValidate04
+		ctx.Bind(&data)
+	})
+	app.AnyFunc("/data/struct5", func(ctx eudore.Context) {
+		var data dataValidate05
+		ctx.Bind(&data)
+	})
+
+	fn := func(name string, val any) {
+		app.NewRequest(nil, "POST", "/data/"+name, eudore.NewClientBodyJSON(val))
 	}
 
-	type DataValidate02 struct {
-		Name   string `json:"name" xml:"name" validate:"len>4"`
-		Email  string `json:"email" xml:"email" validate:"email"`
-		Level1 string `json:"level1" xml:"level1" validate:"is"`
+	id := 4
+	fn("struct1", dataValidate01{})
+	fn("struct1", dataValidate01{ID: &id})
+	fn("slice1", []dataValidate01{{Name: "A1"}})
+	fn("slice1", []dataValidate01{{Name: "eudore", Child: []int{0, 0, 0}}})
+	fn("slice1", []dataValidate01{{Name: "eudore", Child: []int{1, 2, 3}}})
+	fn("ptr1", []dataValidate01{{Name: "eudore"}})
+	fn("any1", []dataValidate01{{Name: "eudore"}})
+	fn("struct2", dataValidate02{})
+	fn("struct5", dataValidate03{ID: 32})
+	fn("struct4", dataValidate04{})
+	fn("struct4", dataValidate04{})
+	fn("struct3", dataValidate05{})
+
+	app.CancelFunc()
+	app.Run()
+}
+
+func TestHandlerDataFilterRule(*testing.T) {
+	type LoggerConfig struct {
+		Stdout   bool   `json:"stdout" xml:"stdout" alias:"stdout"`
+		Path     string `json:"path" xml:"path" alias:"path"`
+		Handlers []any  `json:"-" xml:"-" alias:"handlers"`
+		Chan     chan int
+	}
+	type FilterType struct {
+		String string  `alias:"string"`
+		Int    int     `alias:"int"`
+		Uint   uint    `alias:"uint"`
+		Float  float64 `alias:"float"`
+		Bool   bool    `alias:"bool"`
+		Any    any     `alias:"any"`
 	}
 
 	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyRender, eudore.HandlerDataFunc(func(ctx eudore.Context, i any) error {
+		ctx.Debugf("%#v", i)
+		return nil
+	}))
 	fc := eudore.NewFuncCreator()
 	app.SetValue(eudore.ContextKeyFuncCreator, fc)
-	app.SetValue(eudore.ContextKeyValidate, eudore.NewValidateField(app))
+	app.SetValue(eudore.ContextKeyFilter, eudore.NewFilterRules(app))
 	app.SetValue(eudore.ContextKeyContextPool, eudore.NewContextBasePool(app))
+	app.AddMiddleware(middleware.NewLoggerFunc(app))
 
-	fc.Register("email", func(email string) bool {
-		return strings.HasSuffix(email, "@eudore.cn")
-	})
-	fc.Register("phone", func(phone string) bool {
-		return len(phone) == 11
-	})
+	app.GetFunc("/data", func(ctx eudore.Context) {
+		data := []any{
+			[]string{"path=zero"},
+			&LoggerConfig{Stdout: true},
+			&eudore.FilterData{
+				Name:    "*",
+				Checks:  []string{"path=zero"},
+				Modifys: []string{"stdout=value:true"},
+			},
+			&LoggerConfig{},
+			&eudore.FilterData{Name: "LoggerConfig", Package: "eudore", Checks: []string{"path=zero"}},
+			&LoggerConfig{},
+			&eudore.FilterData{Name: "Logger*", Checks: []string{"path=zero"}},
+			&LoggerConfig{},
+			&eudore.FilterData{Name: "App", Checks: []string{"path=zero"}},
+			&LoggerConfig{},
+			&eudore.FilterData{Name: "App*", Checks: []string{"path=zero"}},
+			&LoggerConfig{},
+			&eudore.FilterData{Name: "Logger*1", Checks: []string{"path=zero"}},
+			&LoggerConfig{},
+			[]eudore.FilterData{{Checks: []string{"path=zero"}}},
+			&LoggerConfig{},
+			&eudore.FilterData{Checks: []string{"path=zero"}},
+			[]*LoggerConfig{{}, {Path: "app.log"}},
+			&eudore.FilterData{Checks: []string{"path=zero"}},
+			[]any{LoggerConfig{}, &LoggerConfig{Path: "app.log"}},
+			[]string{"link=zero"},
+			&LoggerConfig{},
+			[]string{"Chan=k"},
+			&LoggerConfig{},
+			[]string{"handlers=k"},
+			&LoggerConfig{},
+			&eudore.FilterData{
+				Checks:  []string{"string=zero", "int=zero", "uint=zero", "float=zero", "bool=zero", "any=zero"},
+				Modifys: []string{"string=now:20060102", "int=value:4", "uint=value:4", "float=value:4", "bool=value:true", "any=now"},
+			},
+			&FilterType{},
+			&eudore.FilterData{
+				Modifys: []string{"any=default"},
+			},
+			&FilterType{},
+		}
 
-	app.AnyFunc("/data/1", func(ctx eudore.Context) {
-		var data DataValidate01
-		ctx.Bind(&data)
+		for i := 0; i < len(data); i += 2 {
+			ctx.SetValue(eudore.ContextKeyFilterRules, data[i])
+			ctx.Render(data[i+1])
+		}
 	})
-	app.AnyFunc("/data/2", func(ctx eudore.Context) {
-		var data []DataValidate01
-		ctx.Bind(&data)
-	})
-	app.AnyFunc("/data/3", func(ctx eudore.Context) {
-		var data DataValidate02
-		ctx.Bind(&data)
-	})
-	app.AnyFunc("/data/4", func(ctx eudore.Context) {
-		var data []DataValidate02
-		ctx.Bind(&data)
-	})
-	app.AnyFunc("/data/5", func(ctx eudore.Context) {
-		var data []*DataValidate02
-		ctx.Bind(&data)
-	})
-	app.AnyFunc("/data/7", func(ctx eudore.Context) {
-		var data map[string]interface{}
-		ctx.Bind(&data)
-	})
+	app.NewRequest(nil, "GET", "/data")
 
-	app.NewRequest(nil, "POST", "/data/1", eudore.NewClientBodyJSON(&DataValidate01{Name: "eudore", Email: "postmaster@eudore.cn", Phone: "15512344321"}))
-	app.NewRequest(nil, "POST", "/data/2", eudore.NewClientBodyJSON([]DataValidate01{{Name: "eudore"}}))
-	app.NewRequest(nil, "POST", "/data/3", eudore.NewClientBodyJSON(&DataValidate02{Name: "eudore"}))
-	app.NewRequest(nil, "POST", "/data/4", eudore.NewClientBodyJSON([]*DataValidate02{{Name: "eudore"}}))
-	app.NewRequest(nil, "POST", "/data/5", eudore.NewClientBodyJSON([]*DataValidate02{{Name: "eudore"}, {Name: "eudore"}}))
-	app.NewRequest(nil, "POST", "/data/7", eudore.NewClientBodyJSON(&DataValidate02{Name: "eudore"}))
-
+	meta, ok := fc.(interface{ Metadata() any }).Metadata().(eudore.MetadataFuncCreator)
+	if ok {
+		for _, err := range meta.Errors {
+			app.Debug("err:", err)
+		}
+	}
 	app.CancelFunc()
 	app.Run()
 }

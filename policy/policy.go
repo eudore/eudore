@@ -2,6 +2,7 @@ package policy
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -12,6 +13,10 @@ import (
 )
 
 var (
+	BearerPrefix           = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.`
+	ErrVerifyTokenInvalid  = errors.New("error: incorrect of results from token parsing")
+	ErrVerifyResultInvalid = errors.New("error：jwt validation error")
+
 	// ErrFormatPolcyUnmarshalError 定义策略json解析错误。
 	ErrFormatPolcyUnmarshalError = "policy unmarshal json error: %v"
 	// ErrFormatDataParseError 定义策略数据解析错误。
@@ -24,9 +29,10 @@ var (
 	ErrFormatConditionParseError = "policy conditions %s parse %s error: %v"
 
 	conditionObjects = make(map[string]func() Condition)
-	dataObjects      = make(map[string]func() interface{})
+	dataObjects      = make(map[string]func() any)
 )
 
+//nolint:gochecknoinits
 func init() {
 	conditionObjects = map[string]func() Condition{
 		"and":      func() Condition { return &conditionAnd{} },
@@ -35,10 +41,11 @@ func init() {
 		"date":     func() Condition { return &conditionDate{} },
 		"time":     func() Condition { return &conditionTime{} },
 		"method":   func() Condition { return &conditionMethod{} },
+		"path":     func() Condition { return &conditionPath{} },
 		"params":   func() Condition { return &conditionParams{} },
 	}
-	dataObjects = map[string]func() interface{}{
-		"menu": func() interface{} { return new(string) },
+	dataObjects = map[string]func() any{
+		"menu": func() any { return new(string) },
 	}
 }
 
@@ -60,8 +67,8 @@ type Statement struct {
 	Data         map[string][]json.RawMessage `json:"data,omitempty"`
 	treeAction   *starTree
 	treeResource *starTree
-	conditions   Condition                `json:"-"`
-	data         map[string][]interface{} `json:"-"`
+	conditions   Condition        `json:"-"`
+	data         map[string][]any `json:"-"`
 }
 
 type _statement Statement
@@ -96,7 +103,7 @@ func (stmt Statement) MatchCondition(ctx eudore.Context) bool {
 }
 
 // MatchData 方法返回匹配时的权限数据。
-func (stmt Statement) MatchData() map[string][]interface{} {
+func (stmt Statement) MatchData() map[string][]any {
 	return stmt.data
 }
 
@@ -160,11 +167,16 @@ type conditionTime struct {
 type conditionMethod struct {
 	Methods []string `json:"methods"`
 }
+
+// conditionMethod 定义请求路径条件。
+type conditionPath struct {
+	Paths []string `json:"paths"`
+}
 type conditionParams map[string][]string
 
 // NewConditions 方法解析多个策略条件。
 func NewConditions(data map[string]json.RawMessage) ([]Condition, error) {
-	var conds []Condition
+	conds := make([]Condition, 0, len(data))
 	for key, val := range data {
 		fn, ok := conditionObjects[key]
 		if !ok {
@@ -181,8 +193,8 @@ func NewConditions(data map[string]json.RawMessage) ([]Condition, error) {
 	return conds, nil
 }
 
-func newDatas(body map[string][]json.RawMessage) (map[string][]interface{}, error) {
-	datas := make(map[string][]interface{})
+func newDatas(body map[string][]json.RawMessage) (map[string][]any, error) {
+	datas := make(map[string][]any)
 	for key, vals := range body {
 		for _, val := range vals {
 			fn, ok := dataObjects[key]
@@ -201,7 +213,7 @@ func newDatas(body map[string][]json.RawMessage) (map[string][]interface{}, erro
 	return datas, nil
 }
 
-// Match conditionAnd
+// Match conditionAnd。
 func (cond conditionAnd) Match(ctx eudore.Context) bool {
 	for _, i := range cond.Conditions {
 		if !i.Match(ctx) {
@@ -210,6 +222,7 @@ func (cond conditionAnd) Match(ctx eudore.Context) bool {
 	}
 	return true
 }
+
 func (cond *conditionAnd) UnmarshalJSON(body []byte) error {
 	err := json.Unmarshal(body, &cond.Data)
 	if err != nil {
@@ -229,6 +242,7 @@ func (cond conditionOr) Match(ctx eudore.Context) bool {
 	}
 	return false
 }
+
 func (cond *conditionOr) UnmarshalJSON(body []byte) error {
 	err := json.Unmarshal(body, &cond.Data)
 	if err != nil {
@@ -248,13 +262,15 @@ func (cond conditionSourceIP) Match(ctx eudore.Context) bool {
 	}
 	return false
 }
+
 func (cond *conditionSourceIP) UnmarshalJSON(body []byte) error {
 	var strs []string
 	err := json.Unmarshal(body, &strs)
 	if err != nil {
 		return fmt.Errorf(ErrFormatConditionsUnmarshalError, "sourceip", err)
 	}
-	var ipnets []*net.IPNet
+
+	ipnets := make([]*net.IPNet, 0, len(strs))
 	for _, i := range strs {
 		if strings.IndexByte(i, '/') == -1 {
 			i += "/32"
@@ -270,10 +286,11 @@ func (cond *conditionSourceIP) UnmarshalJSON(body []byte) error {
 }
 
 // Match 方法匹配当前时间范围。
-func (cond conditionDate) Match(ctx eudore.Context) bool {
+func (cond conditionDate) Match(eudore.Context) bool {
 	current := time.Now()
 	return current.Before(cond.Before) && current.After(cond.After)
 }
+
 func (cond *conditionDate) UnmarshalJSON(body []byte) error {
 	var date _conditionDate
 	err := json.Unmarshal(body, &date)
@@ -292,11 +309,12 @@ func (cond *conditionDate) UnmarshalJSON(body []byte) error {
 }
 
 // Match 方法匹配当前时间范围。
-func (cond conditionTime) Match(ctx eudore.Context) bool {
+func (cond conditionTime) Match(eudore.Context) bool {
 	current := time.Now()
 	current = time.Date(0, 0, 0, current.Hour(), current.Minute(), current.Second(), 0, current.Location())
 	return current.Before(cond.Before) && current.After(cond.After)
 }
+
 func (cond *conditionTime) UnmarshalJSON(body []byte) error {
 	var date _conditionDate
 	err := json.Unmarshal(body, &date)
@@ -324,8 +342,24 @@ func (cond conditionMethod) Match(ctx eudore.Context) bool {
 	}
 	return false
 }
+
 func (cond *conditionMethod) UnmarshalJSON(body []byte) error {
 	return json.Unmarshal(body, &cond.Methods)
+}
+
+// Match 方法匹配http请求路径。
+func (cond conditionPath) Match(ctx eudore.Context) bool {
+	path := ctx.Path()
+	for _, i := range cond.Paths {
+		if i == path {
+			return true
+		}
+	}
+	return false
+}
+
+func (cond *conditionPath) UnmarshalJSON(body []byte) error {
+	return json.Unmarshal(body, &cond.Paths)
 }
 
 // Match 方法匹配http请求方法。

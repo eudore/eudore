@@ -6,10 +6,12 @@ eudore.App对象的简单组装各类对象，实现Value/SetValue、Listen和Ru
 
 import (
 	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/middleware"
 )
 
 func main() {
 	app := eudore.NewApp()
+	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AnyFunc("/*", func(ctx eudore.Context) {
 		ctx.WriteString("hello eudore")
 	})

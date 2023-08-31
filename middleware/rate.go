@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"errors"
 	"io"
 	"sync"
 	"time"
@@ -20,8 +19,8 @@ import (
 //
 // time.Duration                 =>    基础时间周期单位，默认秒
 //
-// func(eudore.Context) string   =>    限流获取key的函数，默认Context.ReadIP
-func NewRateRequestFunc(speed, max int64, options ...interface{}) eudore.HandlerFunc {
+// func(eudore.Context) string   =>    限流获取key的函数，默认Context.ReadIP。
+func NewRateRequestFunc(speed, max int64, options ...any) eudore.HandlerFunc {
 	return newRate(speed, max, options...).HandlerRequest
 }
 
@@ -32,11 +31,11 @@ func NewRateRequestFunc(speed, max int64, options ...interface{}) eudore.Handler
 // speed速度不要小于通常Reader的缓冲区大小(最好大于4kB 4096)，否则无法请求到住够的令牌导致阻塞。
 //
 // Read时先请求缓冲区大小数量的令牌，然后返还未使用的令牌数量；Write时请求写入数据长度数量的令牌。
-func NewRateSpeedFunc(speed, max int64, options ...interface{}) eudore.HandlerFunc {
+func NewRateSpeedFunc(speed, max int64, options ...any) eudore.HandlerFunc {
 	return newRate(speed, max, options...).HandlerSpeed
 }
 
-func newRate(speed, max int64, options ...interface{}) *rate {
+func newRate(speed, max int64, options ...any) *rate {
 	r := &rate{
 		visitors: make(map[string]*rateBucket),
 		GetKeyFunc: func(ctx eudore.Context) string {
@@ -74,12 +73,12 @@ func (r *rate) HandlerRequest(ctx eudore.Context) {
 func (r *rate) HandlerSpeed(ctx eudore.Context) {
 	rate := r.GetVisitor(r.GetKeyFunc(ctx))
 	httpctx := ctx.GetContext()
-	ctx.Request().Body = &rateRequqest{
+	ctx.Request().Body = &requqestReaderRate{
 		ReadCloser: ctx.Request().Body,
 		Context:    httpctx,
 		rateBucket: rate,
 	}
-	ctx.SetResponse(&rateResponse{
+	ctx.SetResponse(&responseWriterRate{
 		ResponseWriter: ctx.Response(),
 		Context:        httpctx,
 		rateBucket:     rate,
@@ -125,22 +124,19 @@ func (r *rate) cleanupVisitors(ctx context.Context) {
 	}
 }
 
-var errRateReadWaitLong = errors.New("If the github.com/eudore/eudore/middleware speed limit waiting time is too long, it will time out")
-var errRateWriteWaitLong = errors.New("If the github.com/eudore/eudore/middleware speed limit waits for write time is too long, it will wait for timeout")
-
-type rateRequqest struct {
+type requqestReaderRate struct {
 	io.ReadCloser
 	context.Context
 	*rateBucket
 }
 
-type rateResponse struct {
+type responseWriterRate struct {
 	eudore.ResponseWriter
 	context.Context
 	*rateBucket
 }
 
-func (r *rateRequqest) Read(body []byte) (int, error) {
+func (r *requqestReaderRate) Read(body []byte) (int, error) {
 	length := len(body)
 	if r.Wait(r.Context, int64(length)) {
 		n, err := r.ReadCloser.Read(body)
@@ -151,23 +147,34 @@ func (r *rateRequqest) Read(body []byte) (int, error) {
 	}
 	err := r.Err()
 	if err == nil {
-		err = errRateReadWaitLong
+		err = ErrRateReadWaitLong
 	}
 	return 0, err
 }
 
-func (r *rateResponse) Write(body []byte) (int, error) {
-	if r.Wait(r.Context, int64(len(body))) {
-		return r.ResponseWriter.Write(body)
+func (r *responseWriterRate) Write(data []byte) (int, error) {
+	if r.Wait(r.Context, int64(len(data))) {
+		return r.ResponseWriter.Write(data)
 	}
 	err := r.Err()
 	if err == nil {
-		err = errRateWriteWaitLong
+		err = ErrRateWriteWaitLong
 	}
 	return 0, err
 }
 
-// rate 定义限流器
+func (r *responseWriterRate) WriteString(data string) (int, error) {
+	if r.Wait(r.Context, int64(len(data))) {
+		return r.ResponseWriter.WriteString(data)
+	}
+	err := r.Err()
+	if err == nil {
+		err = ErrRateWriteWaitLong
+	}
+	return 0, err
+}
+
+// rate 定义限流器。
 type rate struct {
 	mu         sync.RWMutex
 	visitors   map[string]*rateBucket
@@ -193,7 +200,7 @@ func newBucket(speed, max int64) *rateBucket {
 
 func (r *rateBucket) Put(n int64) {
 	r.Lock()
-	r.last = r.last - n*r.speed
+	r.last -= n * r.speed
 	r.Unlock()
 }
 
@@ -204,7 +211,7 @@ func (r *rateBucket) Allow(n int64) bool {
 	n = r.last + n*r.speed
 	if n < now {
 		r.last = n
-		now = now - r.max
+		now -= r.max
 		if r.last < now {
 			r.last = now
 		}
@@ -219,7 +226,7 @@ func (r *rateBucket) Wait(ctx context.Context, n int64) bool {
 	n = r.last + n*r.speed
 	if n < now {
 		r.last = n
-		now = now - r.max
+		now -= r.max
 		if r.last < now {
 			r.last = now
 		}

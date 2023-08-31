@@ -3,13 +3,9 @@ Package eudore golang http framework, less is more.
 
 source: https://github.com/eudore/eudore
 
-document: https://www.eudore.cn
-
-exapmle: https://github.com/eudore/eudore/tree/master/_example
-
 wiki: https://github.com/eudore/eudore/wiki
 
-godoc: https://godoc.org/github.com/eudore/eudore
+exapmle: https://github.com/eudore/eudore/tree/master/_example
 
 godev: https://pkg.go.dev/github.com/eudore/eudore
 */
@@ -19,32 +15,25 @@ package eudore // import "github.com/eudore/eudore"
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"html/template"
 	"net"
 	"net/http"
 	"sync"
 )
 
 /*
-App combines the main functional interfaces and only implements simple basic methods.
+The App struct is defined as the main object for the application,
+which combines various functional interfaces and implements basic methods.
+It provides additional features such as
 
-The following functions are realized in addition to the functions of the combined components:
 	Manage Object Lifecycle
 	Store global data
 	Register global middleware
 	Start port monitoring
 	Block running service
 	Get configuration value and convert type
-
-App 组合主要功能接口，本身仅实现简单的基本方法。
-
-组合各组件功能外实现下列功能：
-	管理对象生命周期
-	存储全局数据
-	注册全局中间件
-	启动端口监听
-	阻塞运行服务
-	获取配置值并转换类型
 */
 type App struct {
 	context.Context    `alias:"context"`
@@ -59,29 +48,30 @@ type App struct {
 	HandlerFuncs       HandlerFuncs `alias:"handlerfuncs"`
 	ContextPool        *sync.Pool   `alias:"contextpool"`
 	CancelError        error        `alias:"cancelerror"`
-	cancelMutex        sync.Mutex
-	Values             []interface{}
+	cancelMutex        sync.Mutex   `alias:"cancelmutex"`
+	Values             []any        `alias:"values"`
 }
 
-// NewApp function creates an App object.
-//
-// NewApp 函数创建一个App对象。
+// The NewApp() function creates an App object, initializes various components of the application, and returns the App object.
 func NewApp() *App {
 	app := &App{}
 	app.GetWarp = NewGetWarpWithApp(app)
 	app.HandlerFuncs = HandlerFuncs{app.serveContext}
 	app.Context, app.CancelFunc = context.WithCancel(context.Background())
-	app.SetValue(ContextKeyLogger, NewLoggerStd(nil))
-	app.SetValue(ContextKeyConfig, NewConfigStd(nil))
-	app.SetValue(ContextKeyDatabase, NewDatabaseStd(nil))
-	app.SetValue(ContextKeyClient, NewClientStd())
-	app.SetValue(ContextKeyServer, NewServerStd(nil))
-	app.SetValue(ContextKeyRouter, NewRouterStd(nil))
+	app.SetValue(ContextKeyLogger, NewLogger(nil))
+	app.SetValue(ContextKeyConfig, NewConfig(nil))
+	app.SetValue(ContextKeyDatabase, NewDatabase(nil))
+	app.SetValue(ContextKeyClient, NewClient())
+	app.SetValue(ContextKeyServer, NewServer(nil))
+	app.SetValue(ContextKeyRouter, NewRouter(nil))
+	app.SetValue(ContextKeyBind, NewBinds(nil))
+	app.SetValue(ContextKeyRender, NewRenders(nil))
+	app.SetValue(ContextKeyTemplate, template.Must(template.New("").Parse(DefaultTemplateInit)))
 	app.ContextPool = NewContextBasePool(app)
 	return app
 }
 
-// Run method starts the App to block and wait for the App to end.
+// The Run() method starts the application and blocks it until it is finished.
 //
 // Run 方法启动App阻塞等待App结束。
 func (app *App) Run() error {
@@ -95,10 +85,12 @@ func (app *App) Run() error {
 		for i := len(app.Values) - 2; i > -1; i -= 2 {
 			app.SetValue(app.Values[i], nil)
 		}
-		if app.Err() == context.Canceled {
-			app.Info("eudore app cannel context")
+
+		log := app.WithField(ParamDepth, 2)
+		if errors.Is(app.Err(), context.Canceled) {
+			log.Info("eudore app", app.Err())
 		} else {
-			app.Fatal("eudore app cannel context error:", app.Err())
+			log.Fatal("eudore app error:", app.Err())
 		}
 	}()
 	<-app.Done()
@@ -110,26 +102,26 @@ func (app *App) Run() error {
 // this method is automatically called when setting and unsetting.
 //
 // SetValue 方法从App设置指定键值，如果值实现Mount/Unmount方法在设置和取消设置时自动调用该方法。
-func (app *App) SetValue(key, val interface{}) {
-	withMount(app, val)
+func (app *App) SetValue(key, val any) {
+	anyMount(app, val)
 	switch key {
 	case ContextKeyLogger:
-		defer withUnmount(app, app.Logger)
+		defer anyUnmount(app, app.Logger)
 		app.Logger, _ = val.(Logger)
 	case ContextKeyConfig:
-		defer withUnmount(app, app.Config)
+		defer anyUnmount(app, app.Config)
 		app.Config, _ = val.(Config)
 	case ContextKeyDatabase:
-		defer withUnmount(app, app.Database)
+		defer anyUnmount(app, app.Database)
 		app.Database, _ = val.(Database)
 	case ContextKeyClient:
-		defer withUnmount(app, app.Client)
+		defer anyUnmount(app, app.Client)
 		app.Client, _ = val.(Client)
 	case ContextKeyServer:
-		defer withUnmount(app, app.Server)
+		defer anyUnmount(app, app.Server)
 		app.Server, _ = val.(Server)
 	case ContextKeyRouter:
-		defer withUnmount(app, app.Router)
+		defer anyUnmount(app, app.Router)
 		app.Router, _ = val.(Router)
 	case ContextKeyContextPool:
 		app.ContextPool, _ = val.(*sync.Pool)
@@ -147,7 +139,7 @@ func (app *App) SetValue(key, val interface{}) {
 	default:
 		for i := 0; i < len(app.Values); i += 2 {
 			if app.Values[i] == key {
-				defer withUnmount(app, app.Values[i+1])
+				defer anyUnmount(app, app.Values[i+1])
 				app.Values[i+1] = val
 				return
 			}
@@ -159,7 +151,7 @@ func (app *App) SetValue(key, val interface{}) {
 // Value method gets the specified key value from the App.
 //
 // Value 方法从App获取指定键值。
-func (app *App) Value(key interface{}) interface{} {
+func (app *App) Value(key any) any {
 	switch key {
 	case ContextKeyApp:
 		return app
@@ -175,6 +167,16 @@ func (app *App) Value(key interface{}) interface{} {
 		return app.Server
 	case ContextKeyRouter:
 		return app.Router
+	case ContextKeyAppKeys:
+		keys := make([]any, 0, 6+len(app.Values)/2)
+		keys = append(keys,
+			ContextKeyLogger, ContextKeyConfig, ContextKeyDatabase,
+			ContextKeyClient, ContextKeyServer, ContextKeyRouter,
+		)
+		for i := 0; i < len(app.Values); i += 2 {
+			keys = append(keys, app.Values[i])
+		}
+		return keys
 	}
 	for i := 0; i < len(app.Values); i += 2 {
 		if app.Values[i] == key {
@@ -196,22 +198,22 @@ func (app *App) Err() error {
 	return app.Context.Err()
 }
 
-func withMount(ctx context.Context, i interface{}) {
+func anyMount(ctx context.Context, i any) {
 	loader, ok := i.(interface{ Mount(context.Context) })
 	if ok {
 		loader.Mount(ctx)
 	}
 }
 
-func withUnmount(ctx context.Context, i interface{}) {
+func anyUnmount(ctx context.Context, i any) {
 	closer, ok := i.(interface{ Unmount(context.Context) })
 	if ok {
 		closer.Unmount(ctx)
 	}
 }
 
-func withMetadata(i interface{}) interface{} {
-	metaer, ok := i.(interface{ Metadata() interface{} })
+func anyMetadata(i any) any {
+	metaer, ok := i.(interface{ Metadata() any })
 	if ok {
 		return metaer.Metadata()
 	}
@@ -248,18 +250,19 @@ func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // AddMiddleware If the first parameter of the AddMiddleware method is the string "global",
 // it will be added to the App as a global request middleware,
-// using DefaultHandlerExtend to create a request processing function,
+// using NewHandlerExtenderWithContext to create a request processing function,
 // otherwise it is equivalent to calling the app.Rputer.AddMiddleware method.
 //
 // AddMiddleware 方法如果第一个参数为字符串"global",
-// 为全局请求中间件添加给App(使用DefaultHandlerExtend创建请求处理函数),
+// 为全局请求中间件添加给App(使用NewHandlerExtenderWithContext创建请求处理函数),
 // 否则等同于调用app.Rputer.AddMiddleware方法。
-func (app *App) AddMiddleware(hs ...interface{}) error {
+func (app *App) AddMiddleware(hs ...any) error {
 	if len(hs) > 1 {
 		name, ok := hs[0].(string)
 		if ok && name == "global" {
-			handler := DefaultHandlerExtend.NewHandlerFuncs("", hs[1:])
-			app.WithField("depth", 1).Info("Register app global middleware:", handler)
+			handler := NewHandlerExtenderWithContext(app).CreateHandler("", hs[1:])
+			app.WithField(ParamDepth, 1).
+				Info("Register app global middleware:", handler)
 			last := app.HandlerFuncs[len(app.HandlerFuncs)-1]
 			app.HandlerFuncs = NewHandlerFuncsCombine(app.HandlerFuncs[0:len(app.HandlerFuncs)-1], handler)
 			app.HandlerFuncs = NewHandlerFuncsCombine(app.HandlerFuncs, HandlerFuncs{last})
@@ -281,7 +284,8 @@ func (app *App) Listen(addr string) error {
 		app.Error(err)
 		return err
 	}
-	app.Logger.WithField("depth", 1).Infof("listen http in %s %s", ln.Addr().Network(), ln.Addr().String())
+	app.WithField(ParamDepth, 1).Infof("listen http in %s %s",
+		ln.Addr().Network(), ln.Addr().String())
 	app.Serve(ln)
 	return nil
 }
@@ -302,7 +306,7 @@ func (app *App) ListenTLS(addr, key, cert string) error {
 		app.Error(err)
 		return err
 	}
-	app.Logger.WithField("depth", 1).Infof("listen https in %s %s,host name: %v",
+	app.WithField(ParamDepth, 1).Infof("listen https in %s %s, host name: %v",
 		ln.Addr().Network(), ln.Addr().String(), conf.Certificate.DNSNames)
 	app.Serve(ln)
 	return nil
@@ -316,4 +320,12 @@ func (app *App) Serve(ln net.Listener) {
 	go func() {
 		app.SetValue(ContextKeyError, srv.Serve(ln))
 	}()
+}
+
+func (app *App) Parse() error {
+	err := app.Config.Parse(app)
+	if err != nil {
+		app.SetValue(ContextKeyError, err)
+	}
+	return err
 }

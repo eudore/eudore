@@ -118,15 +118,16 @@ example:
 创建响应压缩中间件，默认提供gzip和deflate压缩
 参数:
 - string	压缩名称
-- func() interface{} 压缩器创建函数
+- func() any 压缩器创建函数
 -	int	压缩级别
 
 example:
 ```golang
 import: "github.com/andybalholm/brotli"
-app.AddMiddleware(middleware.NewCompressFunc("br", func() interface{} { return brotli.NewWriter(ioutil.Discard) }))
-app.AddMiddleware(middleware.NewCompressGzipFunc(5))
-app.AddMiddleware(middleware.NewCompressDeflateFunc(5))
+app.AddMiddleware(middleware.NewCompressMixinsFunc(nil))
+app.AddMiddleware(middleware.NewCompressFunc("br", func() any { return brotli.NewWriter(ioutil.Discard) }))
+app.AddMiddleware(middleware.NewCompressGzipFunc())
+app.AddMiddleware(middleware.NewCompressDeflateFunc())
 ```
 
 ## ContextWarp
@@ -171,14 +172,14 @@ Cors中间件注册不是全局中间件时，需要最后注册一次Options /\
 校验设置CSRF token
 
 参数:
-- interface{}    指明获取csrf token的方法，下列是允许使用的值
+- any    指明获取csrf token的方法，下列是允许使用的值
 	- "csrf"
 	- "query: csrf"
 	- "header: X-CSRF-Token"
 	- "form: csrf"
 	- func(ctx eudore.Context) string {return ctx.Query("csrf")}
 	- nil
-- interface{}    指明设置Cookie的基础信息，下列是允许使用的值
+- any    指明设置Cookie的基础信息，下列是允许使用的值
 	- "csrf"
 	- http.Cookie{Name: "csrf"}
 	- nil
@@ -256,9 +257,9 @@ example:
 实现请求令牌桶限流/限速
 
 参数:
-- int               每周期(默认秒)增加speed个令牌
-- int               最多拥有的令牌数量
-- ...interface{}    额外使用的Options,根据类型来断言设置选项
+- int       每周期(默认秒)增加speed个令牌
+- int       最多拥有的令牌数量
+- ...any    额外使用的Options,根据类型来断言设置选项
 	context.Context               =>    控制cleanupVisitors退出的生命周期
 	time.Duration                 =>    基础时间周期单位，默认秒
 	func(eudore.Context) string   =>    限流获取key的函数，默认Context.ReadIP
@@ -340,10 +341,10 @@ app.AddMiddleware("global", middleware.NewRewriteFunc(map[string]string{
 用于执行额外的路由匹配行为
 
 参数:
-- map[string]interface{}    请求路径对应的执行函数，路径前缀不指定方法则为Any方法
+- map[string]any    请求路径对应的执行函数，路径前缀不指定方法则为Any方法
 example:
 ```
-app.AddMiddleware(middleware.NewRouterFunc(map[string]interface{}{
+app.AddMiddleware(middleware.NewRouterFunc(map[string]any{
 	"/api/:v/*": func(ctx eudore.Context) {
 		ctx.Request().URL.Path = "/api/v3/" + ctx.GetParam("*")
 	},

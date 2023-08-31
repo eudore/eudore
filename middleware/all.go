@@ -12,26 +12,14 @@ import (
 	"github.com/eudore/eudore"
 )
 
-type responseMessage struct {
-	Time       string   `json:"time"`
-	Host       string   `json:"host"`
-	Method     string   `json:"method"`
-	Path       string   `json:"path"`
-	Route      string   `json:"route"`
-	Status     int      `json:"status"`
-	Message    string   `json:"message,omitempty"`
-	Error      string   `json:"error,omitempty"`
-	Stack      []string `json:"stack,omitempty"`
-	Size       int64    `json:"size,omitempty"`
-	XRequestID string   `json:"x-request-id,omitempty"`
-	XTraceID   string   `json:"x-trace-id,omitempty"`
-}
-
 // HandlerAdmin 函数返回Admin UI界面。
 func HandlerAdmin(ctx eudore.Context) {
-	ctx.SetHeader("X-Eudore-Admin", "ui")
+	ctx.SetHeader(eudore.HeaderXEudoreAdmin, "ui")
 	ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
-	http.ServeContent(ctx.Response(), ctx.Request(), "admin.html", now, strings.NewReader(AdminStatic))
+	http.ServeContent(
+		ctx.Response(), ctx.Request(), "admin.html",
+		now, strings.NewReader(AdminStatic),
+	)
 }
 
 // NewBasicAuthFunc 创建一个Basic auth认证中间件。
@@ -63,37 +51,31 @@ func NewBasicAuthFunc(names map[string]string) eudore.HandlerFunc {
 func NewBodyLimitFunc(size int64) eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
 		req := ctx.Request()
-		if req.ContentLength > size {
+		switch {
+		case req.Body == http.NoBody:
+		case req.ContentLength > size:
+			ctx.SetHeader(eudore.HeaderConnection, "close")
 			ctx.WriteHeader(http.StatusRequestEntityTooLarge)
-			ctx.Render(eudore.NewContextMessgae(ctx, nil, fmt.Sprintf(eudore.ErrFormatMiddlewareRequestEntityTooLargeSzie, req.ContentLength)))
+			_ = ctx.Render(eudore.NewContextMessgae(ctx, nil, &http.MaxBytesError{Limit: size}))
 			ctx.End()
-			return
+		default:
+			var w http.ResponseWriter = ctx.Response()
+			for {
+				unwraper, ok := w.(interface{ Unwrap() http.ResponseWriter })
+				if !ok {
+					break
+				}
+				w = unwraper.Unwrap()
+			}
+			req.Body = http.MaxBytesReader(w, req.Body, size)
 		}
-
-		req.Body = &limitedReader{req.Body, size}
 	}
-}
-
-type limitedReader struct {
-	io.ReadCloser       // underlying reader
-	N             int64 // max bytes remaining
-}
-
-func (l *limitedReader) Read(p []byte) (n int, err error) {
-	if l.N <= 0 {
-		return 0, eudore.ErrMiddlewareRequestEntityTooLarge
-	}
-	if int64(len(p)) > l.N {
-		p = p[0:l.N]
-	}
-	n, err = l.ReadCloser.Read(p)
-	l.N -= int64(n)
-	return
 }
 
 // NewContextWarpFunc 函数中间件使之后的处理函数使用的eudore.Context对象为新的Context。
 //
-// 装饰器下可以直接对Context进行包装，而责任链下无法修改Context主体故设计该中间件作为中间件执行机制补充。
+// 装饰器下可以直接对Context进行包装，
+// 而责任链下无法修改Context主体故设计该中间件作为中间件执行机制补充。
 func NewContextWarpFunc(fn func(eudore.Context) eudore.Context) eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
 		index, handler := ctx.GetHandler()
@@ -167,10 +149,17 @@ func NewHeaderWithSecureFunc(h http.Header) eudore.HandlerFunc {
 // NewHeaderFilteFunc 函数创建请求header过滤中间件，对来源于外部ip请求，过滤指定header。
 func NewHeaderFilteFunc(iplist, names []string) eudore.HandlerFunc {
 	if iplist == nil {
-		iplist = []string{"10.0.0.0/8", "172.16.0.0/12", "192.0.0.0/24", "127.0.0.1", "127.0.0.10"}
+		iplist = []string{
+			"10.0.0.0/8", "172.16.0.0/12", "192.0.0.0/24",
+			"127.0.0.1", "127.0.0.10",
+		}
 	}
 	if names == nil {
-		names = []string{eudore.HeaderXRealIP, eudore.HeaderXForwardedFor, eudore.HeaderXForwardedHost, eudore.HeaderXForwardedProto, eudore.HeaderXRequestID, eudore.HeaderXTraceID}
+		names = []string{
+			eudore.HeaderXRealIP, eudore.HeaderXForwardedFor,
+			eudore.HeaderXForwardedHost, eudore.HeaderXForwardedProto,
+			eudore.HeaderXRequestID, eudore.HeaderXTraceID,
+		}
 	}
 	var list BlackNode
 	for _, ip := range iplist {
@@ -194,22 +183,29 @@ func NewHeaderFilteFunc(iplist, names []string) eudore.HandlerFunc {
 
 // NewLoggerFunc 函数创建一个请求日志记录中间件。
 //
-// app参数传入*eudore.App需要使用其Logger输出日志，paramsh获取Context.Params如果不为空则添加到输出日志条目中
+// log参数设置用于输出eudore.Logger，
+// params获取Context.Params如果不为空则添加到输出日志条目中
 //
-// 状态码如果为40x、50x输出日志级别为Error。
+// 状态码如果为50x输出日志级别为Error。
 func NewLoggerFunc(log eudore.Logger, params ...string) eudore.HandlerFunc {
 	log = log.WithField("depth", "disable").WithField("logger", true)
-	keys := []string{"method", "path", "realip", "proto", "host", "status", "request-time", "size"}
-	headerkeys := [...]string{eudore.HeaderXRequestID, eudore.HeaderXTraceID, eudore.HeaderLocation}
+	keys := [...]string{
+		"method", "path", "realip", "proto", "host", "status", "request-time", "size",
+	}
+	headerkeys := [...]string{
+		eudore.HeaderXRequestID,
+		eudore.HeaderXTraceID,
+		eudore.HeaderLocation,
+	}
 	headernames := [...]string{"x-request-id", "x-trace-id", "location"}
 	return func(ctx eudore.Context) {
 		now := time.Now()
 		ctx.Next()
 		status := ctx.Response().Status()
 		// 连续WithField保证field顺序
-		out := log.WithFields(keys, []interface{}{
+		out := log.WithFields(keys[:], []any{
 			ctx.Method(), ctx.Path(), ctx.RealIP(), ctx.Request().Proto,
-			ctx.Host(), status, time.Now().Sub(now).String(), ctx.Response().Size(),
+			ctx.Host(), status, time.Since(now).String(), ctx.Response().Size(),
 		})
 
 		for _, param := range params {
@@ -249,7 +245,7 @@ func NewLoggerLevelFunc(fn func(ctx eudore.Context) int) eudore.HandlerFunc {
 		fn = func(ctx eudore.Context) int {
 			level := ctx.GetQuery("eudore_debug")
 			if level != "" {
-				return eudore.GetStringInt(level)
+				return eudore.GetAnyByString[int](level)
 			}
 			return -1
 		}
@@ -277,25 +273,25 @@ func NewRecoverFunc() eudore.HandlerFunc {
 			if !ok {
 				err = fmt.Errorf("%v", r)
 			}
-			stack := eudore.GetPanicStack(3)
+			stack := eudore.GetCallerStacks(3)
 			ctx.WithField("stack", stack).Error(err)
 			if ctx.Response().Size() == 0 {
 				ctx.WriteHeader(eudore.StatusInternalServerError)
-				ctx.Render(eudore.NewContextMessgae(ctx, err, stack))
+				_ = ctx.Render(eudore.NewContextMessgae(ctx, err, stack))
 			}
 		}()
 		ctx.Next()
 	}
 }
 
-// NewRequestIDFunc 函数创建一个请求ID注入处理函数，不给定请求ID创建函数，默认使用时间戳和随机数,会将request-id写入协议和附加到日志field。
+// NewRequestIDFunc 函数创建一个请求ID注入处理函数，不给定请求ID创建函数，
+// 默认使用时间戳和随机数,会将request-id写入协议和附加到日志field。
 func NewRequestIDFunc(fn func(eudore.Context) string) eudore.HandlerFunc {
 	if fn == nil {
 		fn = func(eudore.Context) string {
 			randkey := make([]byte, 3)
-			io.ReadFull(rand.Reader, randkey)
+			_, _ = io.ReadFull(rand.Reader, randkey)
 			return fmt.Sprintf("%d-%x", time.Now().UnixNano(), randkey)
-
 		}
 	}
 	return func(ctx eudore.Context) {
@@ -304,6 +300,9 @@ func NewRequestIDFunc(fn func(eudore.Context) string) eudore.HandlerFunc {
 			requestID = fn(ctx)
 		}
 		ctx.SetHeader(eudore.HeaderXRequestID, requestID)
-		ctx.SetValue(eudore.ContextKeyLogger, ctx.Value(eudore.ContextKeyLogger).(eudore.Logger).WithField("x-request-id", requestID).WithField("logger", true))
+
+		log := ctx.Value(eudore.ContextKeyLogger).(eudore.Logger)
+		log = log.WithField("x-request-id", requestID).WithField("logger", true)
+		ctx.SetValue(eudore.ContextKeyLogger, log)
 	}
 }

@@ -19,7 +19,7 @@ func NewNetHTTPBasicAuthFunc(next http.Handler, names map[string]string) http.Ha
 		checks[base64.StdEncoding.EncodeToString([]byte(name+":"+pass))] = name
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		auth := r.Header.Get("Authorization")
+		auth := r.Header.Get(eudore.HeaderAuthorization)
 		if len(auth) > 5 && auth[:6] == "Basic " {
 			name, ok := checks[auth[6:]]
 			if ok {
@@ -28,8 +28,25 @@ func NewNetHTTPBasicAuthFunc(next http.Handler, names map[string]string) http.Ha
 				return
 			}
 		}
-		w.Header().Set("WWW-Authenticate", "Basic")
-		w.WriteHeader(401)
+		w.Header().Set(eudore.HeaderWWWAuthenticate, "Basic")
+		w.WriteHeader(http.StatusUnauthorized)
+	}
+}
+
+// NewNetHTTPBodyLimitFunc 函数创建一个net/http BodyLimt中间件处理函数，优化NoBody和Size。
+func NewNetHTTPBodyLimitFunc(next http.Handler, size int64) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Body == http.NoBody:
+		case r.ContentLength > size:
+			w.Header().Set(eudore.HeaderConnection, "close")
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			w.Write([]byte(http.StatusText(http.StatusRequestEntityTooLarge)))
+			return
+		default:
+			r.Body = http.MaxBytesReader(w, r.Body, size)
+		}
+		next.ServeHTTP(w, r)
 	}
 }
 
@@ -50,8 +67,8 @@ func NewNetHTTPBlackFunc(next http.Handler, data map[string]bool) http.HandlerFu
 			return
 		}
 		if b.Black.Look(ip) {
-			w.WriteHeader(403)
-			w.Write([]byte("black list deny your ip " + getRealClientIP(r)))
+			w.WriteHeader(eudore.StatusForbidden)
+			_, _ = w.Write([]byte("black list deny your ip " + getRealClientIP(r)))
 		} else {
 			next.ServeHTTP(w, r)
 		}
@@ -71,7 +88,7 @@ func NewNetHTTPRewriteFunc(next http.Handler, data map[string]string) http.Handl
 }
 
 // NewNetHTTPRateRequestFunc 函数创建一个net/http限流中间件处理函数，文档见NewRateFunc函数。
-func NewNetHTTPRateRequestFunc(next http.Handler, speed, max int64, options ...interface{}) http.HandlerFunc {
+func NewNetHTTPRateRequestFunc(next http.Handler, speed, max int64, options ...any) http.HandlerFunc {
 	getKeyFunc := getRealClientIP
 	for _, i := range options {
 		if fn, ok := i.(func(*http.Request) string); ok {
@@ -87,17 +104,17 @@ func NewNetHTTPRateRequestFunc(next http.Handler, speed, max int64, options ...i
 			return
 		}
 		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte("deny request of rate request: " + key))
+		_, _ = w.Write([]byte("deny request of rate request: " + key))
 	}
 }
 
-// getRealClientIP 函数获取http请求的真实ip
+// getRealClientIP 函数获取http请求的真实ip。
 func getRealClientIP(r *http.Request) string {
 	if realip := r.Header.Get(eudore.HeaderXRealIP); realip != "" {
 		return realip
 	}
 	if xforward := r.Header.Get(eudore.HeaderXForwardedFor); xforward != "" {
-		return strings.SplitN(string(xforward), ",", 2)[0]
+		return strings.SplitN(xforward, ",", 2)[0]
 	}
 	return strings.SplitN(r.RemoteAddr, ":", 2)[0]
 }

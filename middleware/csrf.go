@@ -12,30 +12,25 @@ import (
 	"github.com/eudore/eudore"
 )
 
-// NewCsrfFunc 函数创建一个Csrf处理函数，key指定请求带有crsf参数的关键字，cookie是csrf设置cookie的基本详细。
-//
-// key value:
-//
-// - "csrf"
-//
-// - "query: csrf"
-//
-// - "header: X-CSRF-Token"
-//
-// - "form: csrf"
-//
-// - func(ctx eudore.Context) string {return ctx.Query("csrf")}
-//
-// - nil
-//
-// cookie value:
-//
-// - "csrf"
-//
-// - http.Cookie{Name: "csrf"}
-//
-// - nil
-func NewCsrfFunc(key, cookie interface{}) eudore.HandlerFunc {
+/*
+NewCsrfFunc 函数创建一个Csrf处理函数，key指定请求带有crsf参数的关键字，cookie是csrf设置cookie的基本详细。
+
+key value:
+
+	"csrf"
+	"query: csrf"
+	"header: X-CSRF-Token"
+	"form: csrf"
+	func(ctx eudore.Context) string {return ctx.Query("csrf")}
+	nil
+
+cookie value:
+
+	"csrf"
+	http.Cookie{Name: "csrf"}
+	nil
+*/
+func NewCsrfFunc(key, cookie any) eudore.HandlerFunc {
 	keyfunc := getCsrfTokenFunc(key)
 	basecookie := getCsrfBaseCookie(cookie)
 	return func(ctx eudore.Context) {
@@ -60,7 +55,7 @@ func NewCsrfFunc(key, cookie interface{}) eudore.HandlerFunc {
 }
 
 // getCsrfBaseCookie 函数创建应该CSRF基础Cookie。
-func getCsrfBaseCookie(cookie interface{}) http.Cookie {
+func getCsrfBaseCookie(cookie any) http.Cookie {
 	switch val := cookie.(type) {
 	case http.Cookie:
 		return val
@@ -76,7 +71,7 @@ func getCsrfBaseCookie(cookie interface{}) http.Cookie {
 // getCsrfTokenFunc 函数根据key一个csrf token获取函数。
 //
 // 如果key是字符串类型通过query、header、form前缀返回对应获得token方法；如果key为func(eudore.Context) string类型直接返回；否在返回默认函数。
-func getCsrfTokenFunc(key interface{}) func(eudore.Context) string {
+func getCsrfTokenFunc(key any) func(eudore.Context) string {
 	switch val := key.(type) {
 	case string:
 		switch {
@@ -93,10 +88,13 @@ func getCsrfTokenFunc(key interface{}) func(eudore.Context) string {
 		case strings.HasPrefix(val, "form:"):
 			val = strings.TrimSpace(val[5:])
 			return func(ctx eudore.Context) string {
-				if strings.Index(ctx.GetHeader(eudore.HeaderContentType), eudore.MimeMultipartForm) == -1 {
-					return ""
+				contenttype := ctx.GetHeader(eudore.HeaderContentType)
+				if ctx.Request().Body == http.NoBody ||
+					strings.Contains(contenttype, eudore.MimeApplicationForm) ||
+					strings.Contains(contenttype, eudore.MimeMultipartForm) {
+					return ctx.FormValue(val)
 				}
-				return ctx.FormValue(val)
+				return ""
 			}
 		}
 	case func(eudore.Context) string:

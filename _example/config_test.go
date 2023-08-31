@@ -14,11 +14,12 @@ import (
 
 func TestConfigStdGetSet(t *testing.T) {
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfigStd(map[string]interface{}{
+	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfig(map[string]interface{}{
 		"name":   "eudore",
 		"type":   "ConfigMap",
 		"number": 3,
 	}))
+	app.Parse()
 	app.Set("auth.secret", "secret")
 	app.Infof("data: %# v", app.Get(""))
 	app.Infof("data name: %v", app.Get("name"))
@@ -30,6 +31,7 @@ func TestConfigStdGetSet(t *testing.T) {
 	app.Set("", &Config{Name: "eudore"})
 	app.Set("type", "config")
 	app.Infof("data name: %v", app.Get("name"))
+	app.Config.(interface{ Metadata() any }).Metadata()
 
 	app.CancelFunc()
 	app.Run()
@@ -37,17 +39,18 @@ func TestConfigStdGetSet(t *testing.T) {
 
 func TestConfigStdpParse(t *testing.T) {
 	app := eudore.NewApp()
-	app.ParseOption([]eudore.ConfigParseFunc{func(ctx context.Context, config eudore.Config) error {
+	app.ParseOption(func(ctx context.Context, config eudore.Config) error {
 		config.Set("parse", true)
 		return nil
-	}})
+	})
 	app.Infof("parse eror: %v", app.Parse())
 	app.Infof("data: %# v", app.Get(""))
 
-	app.ParseOption([]eudore.ConfigParseFunc{func(ctx context.Context, config eudore.Config) error {
+	app.ParseOption()
+	app.ParseOption(func(ctx context.Context, config eudore.Config) error {
 		config.Set("error", true)
 		return errors.New("parse test error")
-	}})
+	})
 	app.Infof("parse eror: %v", app.Parse())
 	app.Infof("parse eror: %v", app.Parse())
 	app.Infof("data: %# v", app.Get(""))
@@ -58,9 +61,9 @@ func TestConfigStdpParse(t *testing.T) {
 
 func TestConfigStdJSON(t *testing.T) {
 	app := eudore.NewApp()
-	app.ParseOption([]eudore.ConfigParseFunc{func(ctx context.Context, config eudore.Config) error {
+	app.ParseOption(func(ctx context.Context, config eudore.Config) error {
 		return json.Unmarshal([]byte(`{"name":"eudore"}`), config)
-	}})
+	})
 	app.Infof("ConfigMap parse eror: %v", app.Parse())
 	app.Infof("ConfigMap data: %# v", app.Get(""))
 
@@ -78,7 +81,8 @@ func TestConfigParseJSON(t *testing.T) {
 	defer tempConfigFile(filepath2, `name:eudore`)()
 
 	app := eudore.NewApp()
-	app.ParseOption([]eudore.ConfigParseFunc{eudore.NewConfigParseJSON("config")})
+	app.ParseOption()
+	app.ParseOption(eudore.NewConfigParseJSON("config"))
 
 	app.Infof("NewConfigParseJSON parse empty error %v:", app.Parse())
 
@@ -113,9 +117,10 @@ func tempConfigFile(path, content string) func() {
 }
 
 func TestConfigParseArgs(t *testing.T) {
-	os.Args = append(os.Args, "--name=eudore")
+	os.Args = append(os.Args, "start", "--name=eudore")
 	app := eudore.NewApp()
-	app.ParseOption([]eudore.ConfigParseFunc{eudore.NewConfigParseArgs(nil)})
+	app.ParseOption()
+	app.ParseOption(eudore.NewConfigParseArgs(nil))
 
 	app.Infof("NewConfigParseArgs parse error: %v", app.Parse())
 	app.Infof("Config data: %# v", app.Get(""))
@@ -136,8 +141,9 @@ func TestConfigParseArgsShort(t *testing.T) {
 	os.Args = append(os.Args, "--name=eudore", "-f=config.json", "-h", "--help")
 
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfigStd(&configShort{false, "eudore", "msg"}))
-	app.ParseOption([]eudore.ConfigParseFunc{eudore.NewConfigParseArgs(shortMapping)})
+	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfig(&configShort{false, "eudore", "msg"}))
+	app.ParseOption()
+	app.ParseOption(eudore.NewConfigParseArgs(shortMapping))
 
 	app.Infof("NewConfigParseArgs parse error: %v", app.Parse())
 	app.Infof("Config data: %# v", app.Get(""))
@@ -151,7 +157,8 @@ func TestConfigParseEnvs(t *testing.T) {
 	defer os.Unsetenv("ENV_NAME")
 	// init envs by cmd
 	app := eudore.NewApp()
-	app.ParseOption([]eudore.ConfigParseFunc{eudore.NewConfigParseEnvs("ENV_")})
+	app.ParseOption()
+	app.ParseOption(eudore.NewConfigParseEnvs("ENV_"))
 
 	app.Infof("NewConfigParseEnvs parse error: %v", app.Parse())
 	app.Infof("Config data: %# v", app.Get(""))
@@ -160,9 +167,31 @@ func TestConfigParseEnvs(t *testing.T) {
 	app.Run()
 }
 
+func TestConfigParseEnvsFile(t *testing.T) {
+	defer tempConfigFile(".env", "A=2\r\nB=\r\nC='2\r\n2\r\n2'\r\nD='2\r\n2\r\n2'2\r\n")()
+	defer os.Unsetenv("ENV_NAME")
+	// init envs by cmd
+
+	p := "out----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------1.log"
+	app := eudore.NewApp()
+	app.ParseOption()
+	app.ParseOption(eudore.NewConfigParseEnvFile(".env", p))
+
+	app.Infof("NewConfigParseEnvFile parse error: %v", app.Parse())
+	app.Infof("Config data: %# v", app.Get(""))
+
+	app.ParseOption()
+	app.ParseOption(eudore.NewConfigParseEnvFile())
+	app.Parse()
+
+	app.CancelFunc()
+	app.Run()
+}
+
 func TestConfigParseWorkdir(t *testing.T) {
 	app := eudore.NewApp()
-	app.ParseOption([]eudore.ConfigParseFunc{eudore.NewConfigParseWorkdir("workdir")})
+	app.ParseOption()
+	app.ParseOption(eudore.NewConfigParseWorkdir("workdir"))
 
 	app.Infof("NewConfigParseWorkdir parse empty dir error: %v", app.Parse())
 
@@ -179,8 +208,9 @@ func TestConfigParseHelp(t *testing.T) {
 	conf.Link = conf
 
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfigStd(conf))
-	app.ParseOption([]eudore.ConfigParseFunc{eudore.NewConfigParseHelp("help")})
+	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfig(conf))
+	app.ParseOption()
+	app.ParseOption(eudore.NewConfigParseHelp("help"))
 
 	app.Infof("NewConfigParseHelp parse not help error: %v", app.Parse())
 	app.Set("help", true)
@@ -221,12 +251,12 @@ type Node struct {
 
 // ComponentConfig 定义website使用的组件的配置。
 type helpComponentConfig struct {
-	DB     helpDBConfig            `json:"db" alias:"db"`
-	Logger *eudore.LoggerStdConfig `json:"logger" alias:"logger"`
-	Server *eudore.ServerStdConfig `json:"server" alias:"server"`
-	Notify map[string]string       `json:"notify" alias:"notify"`
-	Pprof  *helpPprofConfig        `json:"pprof" alias:"pprof"`
-	Black  map[string]bool         `json:"black" alias:"black"`
+	DB     helpDBConfig         `json:"db" alias:"db"`
+	Logger *eudore.LoggerConfig `json:"logger" alias:"logger"`
+	Server *eudore.ServerConfig `json:"server" alias:"server"`
+	Notify map[string]string    `json:"notify" alias:"notify"`
+	Pprof  *helpPprofConfig     `json:"pprof" alias:"pprof"`
+	Black  map[string]bool      `json:"black" alias:"black"`
 }
 type helpDBConfig struct {
 	Driver string `json:"driver" alias:"driver" description:"database driver type"`

@@ -1,120 +1,26 @@
 package eudore_test
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/eudore/eudore"
 )
 
-func TestUtilContextKey(*testing.T) {
-	app := eudore.NewApp()
-	app.Info(eudore.NewContextKey("debug-key"))
-
-	app.CancelFunc()
-	app.Run()
+func TestUtilContextKey(t *testing.T) {
+	t.Log(eudore.NewContextKey("debug-key"))
 }
 
-func TestUtilTimeDuration(*testing.T) {
-	type Data struct {
-		Time eudore.TimeDuration `json:"time"`
-	}
-
-	app := eudore.NewApp()
-	app.AnyFunc("/time/*", func(ctx eudore.Context) interface{} {
-		return eudore.TimeDuration(12000000000)
-	})
-	app.AnyFunc("/time/bind", func(ctx eudore.Context) error {
-		var data Data
-		ctx.Debug(string(ctx.Body()))
-		err := ctx.Bind(&data)
-		ctx.Info(err, data)
-		return err
-	})
-
-	app.NewRequest(nil, "GET", "/time/text", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeText))
-	app.NewRequest(nil, "GET", "/time/json", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
-	app.NewRequest(nil, "PUT", "/time/bind", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON), eudore.NewClientBodyString(`{"time":"12s"}`))
-	app.NewRequest(nil, "PUT", "/time/bind", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON), eudore.NewClientBodyString(`{"time":12000000000}`))
-	app.NewRequest(nil, "PUT", "/time/bind", eudore.NewClientHeader(eudore.HeaderContentType, eudore.MimeApplicationJSON), eudore.NewClientBodyString(`{"time":"x"}`))
-
-	app.CancelFunc()
-	app.Run()
-}
-
-func TestUtilGetCast(t *testing.T) {
-	app := eudore.NewApp()
-
-	app.Debug(eudore.GetBool(int(1)))
-	app.Debug(eudore.GetBool(uint(1)))
-	app.Debug(eudore.GetBool(float32(1.0)))
-	app.Debug(eudore.GetBool("true"))
-	app.Debug(eudore.GetInt(int(123)))
-	app.Debug(eudore.GetInt(uint(234)))
-	app.Debug(eudore.GetInt(float64(345)))
-	app.Debug(eudore.GetInt("456"))
-	app.Debug(eudore.GetInt64(int(123)))
-	app.Debug(eudore.GetInt64(uint(234)))
-	app.Debug(eudore.GetInt64(float64(345)))
-	app.Debug(eudore.GetInt64("456"))
-	app.Debug(eudore.GetUint(int(123)))
-	app.Debug(eudore.GetUint(uint(234)))
-	app.Debug(eudore.GetUint(float64(345)))
-	app.Debug(eudore.GetUint("456"))
-	app.Debug(eudore.GetUint64(int(123)))
-	app.Debug(eudore.GetUint64(uint(234)))
-	app.Debug(eudore.GetUint64(float64(345)))
-	app.Debug(eudore.GetUint64("456"))
-	app.Debug(eudore.GetFloat32(int(123)))
-	app.Debug(eudore.GetFloat32(uint(234)))
-	app.Debug(eudore.GetFloat32(float64(345)))
-	app.Debug(eudore.GetFloat32("456"))
-	app.Debug(eudore.GetFloat64(int(123)))
-	app.Debug(eudore.GetFloat64(uint(234)))
-	app.Debug(eudore.GetFloat64(float64(345)))
-	app.Debug(eudore.GetFloat64("456"))
-	app.Debug(eudore.GetString(int(123)))
-	app.Debug(eudore.GetString(uint(234)))
-	app.Debug(eudore.GetString(float64(345)))
-	app.Debug(eudore.GetString("456"))
-	app.Debug(eudore.GetString([]byte("456")))
-	app.Debug(eudore.GetString(true))
-	app.Debug(eudore.GetString(eudore.NewContextKey("string")))
-	app.Debug(eudore.GetBytes("strings"))
-	app.Debug(eudore.GetStrings("strings"))
-	app.Debug(eudore.GetStrings([]interface{}{"1", "2", "3"}))
-
-	app.CancelFunc()
-	app.Run()
-
-}
-
-func TestUtilGetCastString(t *testing.T) {
-	app := eudore.NewApp()
-
-	app.Debug(eudore.GetStringBool("true"))
-	app.Debug(eudore.GetStringBool("1"))
-	app.Debug(eudore.GetStringBool("bool"))
-	app.Debug(eudore.GetStringInt("1"))
-	app.Debug(eudore.GetStringInt("0", 1))
-	app.Debug(eudore.GetStringInt("0", 0))
-	app.Debug(eudore.GetStringInt64("1"))
-	app.Debug(eudore.GetStringInt64("0", 1))
-	app.Debug(eudore.GetStringInt64("0", 0))
-	app.Debug(eudore.GetStringUint("1"))
-	app.Debug(eudore.GetStringUint("0", 1))
-	app.Debug(eudore.GetStringUint("0", 0))
-	app.Debug(eudore.GetStringUint64("1"))
-	app.Debug(eudore.GetStringUint64("0", 1))
-	app.Debug(eudore.GetStringUint64("0", 0))
-	app.Debug(eudore.GetStringFloat32("1"))
-	app.Debug(eudore.GetStringFloat32("0", 1))
-	app.Debug(eudore.GetStringFloat32("0", 0))
-	app.Debug(eudore.GetStringFloat64("1"))
-	app.Debug(eudore.GetStringFloat64("0", 1))
-	app.Debug(eudore.GetStringFloat64("0", 0))
-
-	app.CancelFunc()
-	app.Run()
+func TestUtilTimeDuration(t *testing.T) {
+	var data eudore.TimeDuration
+	t.Log(json.Unmarshal([]byte(`"12s"`), &data), data)
+	t.Log(json.Unmarshal([]byte(`12000000000`), &data), data)
+	t.Log(json.Unmarshal([]byte(`"x"`), &data), data)
+	b, _ := json.Marshal(data)
+	t.Log(string(b))
+	t.Log(data)
 }
 
 func TestUtilGetWarp(t *testing.T) {
@@ -141,50 +47,220 @@ func TestUtilGetWarp(t *testing.T) {
 	}
 
 	warp := eudore.NewGetWarpWithObject(data)
-	app.Info("%#v", warp.GetInterface(""))
+	t.Logf("%#v", warp.GetAny(""))
+	t.Log(warp.GetInt("int"))
+	t.Log(warp.GetInt64("int"))
+	t.Log(warp.GetUint("int"))
+	t.Log(warp.GetUint64("int"))
+	t.Log(warp.GetFloat32("int"))
+	t.Log(warp.GetFloat64("int"))
+	t.Log(warp.GetString("int"))
+}
 
-	app.Info(warp.GetInt("int"))
-	app.Info(warp.GetInt64("int"))
-	app.Info(warp.GetUint("int"))
-	app.Info(warp.GetUint64("int"))
-	app.Info(warp.GetFloat32("int"))
-	app.Info(warp.GetFloat64("int"))
-	app.Info(warp.GetInt("int8"))
-	app.Info(warp.GetInt64("int8"))
-	app.Info(warp.GetUint("int8"))
-	app.Info(warp.GetUint64("int8"))
-	app.Info(warp.GetFloat32("int8"))
-	app.Info(warp.GetFloat64("int8"))
+func TestUtilGetAnyValue(t *testing.T) {
+	t.Log(eudore.GetAnyDefault("default", ""))
+	t.Log(eudore.GetAnyDefault("", ""))
+	t.Log(eudore.GetAnyDefault("", "default string"))
+	t.Log(eudore.GetAnyDefaults("default", ""))
+	t.Log(eudore.GetAnyDefaults("", ""))
+	t.Log(eudore.GetAnyDefaults("", "default string"))
 
-	app.Info(warp.GetInt("int1"))
-	app.Info(warp.GetInt64("int1"))
-	app.Info(warp.GetUint("int1"))
-	app.Info(warp.GetUint64("int1"))
-	app.Info(warp.GetFloat32("int1"))
-	app.Info(warp.GetFloat64("int1"))
-	app.Info(warp.GetInt("int1", 3))
-	app.Info(warp.GetInt64("int1", 3))
-	app.Info(warp.GetUint("int1", 3))
-	app.Info(warp.GetUint64("int1", 3))
-	app.Info(warp.GetFloat32("int1", 3))
-	app.Info(warp.GetFloat64("int1", 3))
+	t.Log(eudore.GetAny("", "default string"))
+	t.Log(eudore.GetAny[int](nil))
+	t.Log(eudore.GetAny[int](12))
+	t.Log(eudore.GetAny[int](uint(12)))
+	t.Log(eudore.GetAny[int]("12"))
+	t.Log(eudore.GetAny[string](12))
+	t.Log(eudore.GetAny[int64](time.Second))
 
-	app.Info(warp.GetString("int"))
-	app.Info(warp.GetString("string"))
-	app.Info(warp.GetString("nil"))
-	app.Info(warp.GetString("bytes"))
-	app.Info(warp.GetString("int", "default"))
-	app.Info(warp.GetString("string", "default"))
-	app.Info(warp.GetString("nil", "default"))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[string]("string")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[bool]("true")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[bool]("false")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[time.Time]("20180801")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[time.Duration]("200h")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[int]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[int8]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[int16]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[int32]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[int64]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[uint]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[uint8]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[uint16]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[uint32]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[uint64]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[float32]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[float64]("12")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[complex64]("1+2i")))
+	t.Log(eudore.GetStringByAny(eudore.GetAnyByString[complex128]("1+2i")))
+	t.Log(eudore.GetStringByAny([]byte("bytes")))
+	t.Log(eudore.GetStringByAny(eudore.GetStringByAny))
+	t.Log(eudore.GetStringByAny(""))
+	t.Log(eudore.GetStringByAny("", "0"))
+}
 
-	app.Info(warp.GetBytes("int"))
-	app.Info(warp.GetBytes("string"))
-	app.Info(warp.GetBytes("nil"))
-	app.Info(warp.GetBytes("bytes"))
+func TestUtilGetSetValue(t *testing.T) {
+	type Field struct {
+		Index int    `alias:"index"`
+		Name  string `alias:"name"`
+	}
+	type config struct {
+		Name    string `alias:"name"`
+		int     int    `alias:"int`
+		ano     string
+		Ptr     *Field          `alias:"ptr"`
+		Array   [4]Field        `alias:"array"`
+		Slice   []Field         `alias:"slice"`
+		Map     map[int]string  `alias:"map"`
+		Any     any             `alias:"any"`
+		Context context.Context `alias:"context"`
+		*Field
+	}
 
-	app.Info(warp.GetStrings("nil"))
-	app.Info(warp.GetStrings("string"))
-	app.Info(warp.GetStrings("arrayint"))
-	app.Info(warp.GetStrings("arraystr"))
-	app.Info(warp.GetStrings("arraybyte"))
+	get := func(i any, key string) any {
+		val, err := eudore.GetAnyByPathWithTag(i, key, nil, false)
+		if err != nil {
+			return err
+		}
+		return val
+	}
+	set := func(i any, key string, val any) error {
+		return eudore.SetAnyByPath(i, key, val)
+	}
+	data := new(config)
+
+	t.Log(eudore.SetAnyByPathWithTag(data, "ano", "ano field", nil, true))
+	t.Log(eudore.GetAnyByPathWithTag(data, "ano", nil, true))
+	t.Log(eudore.GetAnyByPathWithTag(data, "int", nil, true))
+	t.Log(eudore.GetAnyByPathWithValue(data, "int", nil, true))
+	t.Log(eudore.GetAnyByPath(data, "int"))
+	// t.Log(eudore.GetAnyByPath(data, "ptr"))
+
+	get(nil, "")
+	t.Logf("%#v", get(data, ""))
+	t.Log(get(data, "ptr.key"))
+	t.Log(get(data, "name.num"))
+	t.Log(get(data, "null"))
+	t.Log(get(data, "int"))
+	t.Log(get(data, "map.0"))
+	t.Log(get(data, "slice.0"))
+	t.Log(get(data, "index"))
+
+	t.Log(set(data, "", 0))
+	t.Log(set(*data, "name", 0))
+	t.Log(set(data, "name.null", 0))
+	t.Log(set(data, "ptr.null", 0))
+	t.Log(set(data, "int", 0))
+	t.Log(set(data, "context.4", 0))
+	t.Log(set(data, "array.x", 0))
+	t.Log(set(data, "slice.x", 0))
+	t.Log(set(data, "map.xs", 0))
+	t.Log(set(data, "index", "x"))
+	t.Log(set(data, "index", 11))
+
+	t.Log(set(data, "ptr.index", 12))
+	t.Log(set(data, "array.0.index", 13))
+	t.Log(set(data, "array.-1.index", 14))
+	t.Log(set(data, "slice.5.index", 15))
+	t.Log(set(data, "slice.[].index", 16))
+	t.Log(set(data, "slice.-1.index", 17))
+	t.Log(set(data, "any.8", 18))
+	t.Log(set(data, "any.9", 19))
+	t.Log(set(data, "map.9", "map9 hello"))
+	t.Log(set(data, "map.9", "map9 hello"))
+
+	t.Log(get(data, "map.xs"))
+	t.Log(get(data, "map.0"))
+	t.Log(get(data, "map.9"))
+	t.Log(get(data, "array.x.index"))
+	t.Log(get(data, "array.-1.index"))
+	t.Log(get(data, "array.0.index"))
+	t.Log(get(data, "index"))
+	t.Logf("%#v", get(data, ""))
+}
+
+func TestUtilSetWithValue(t *testing.T) {
+	type time2 time.Time
+	type config struct {
+		Ptr     *time.Duration `alias:"ptr"`
+		Slice   []int          `alias:"slice"`
+		Int     int            `alias:"int"`
+		Uint    uint           `alias:"uint"`
+		Bool    bool           `alias:"bool"`
+		Float   float64        `alias:"float"`
+		Complex complex64      `alias:"complex"`
+		Time    time.Time      `alias:"time"`
+		Time2   time2          `alias:"time2"`
+		Struct  struct{}       `alias:"struct"`
+		Bytes   []byte         `alias:"bytes"`
+		Runes   []rune         `alias:"runes"`
+		Any     any            `alias:"any"`
+		Face    json.Marshaler `alias:"face"`
+		Chan    chan int       `alias:"chan"`
+		ano     string
+	}
+
+	data := new(config)
+	eudore.SetAnyByPath(data, "ptr", t)
+	eudore.SetAnyByPath(data, "ptr", time.Second)
+	t.Logf("%p", data.Ptr)
+	d := eudore.TimeDuration(time.Second)
+	eudore.SetAnyByPath(data, "ptr", &d)
+	t.Logf("%p %s", data.Ptr, d)
+	eudore.SetAnyByPath(data, "ptr", "12x")
+	eudore.SetAnyByPath(data, "ptr", "12s")
+	t.Logf("%p %s", data.Ptr, d)
+
+	eudore.SetAnyByPath(data, "slice", "12s")
+	eudore.SetAnyByPath(data, "slice", "12")
+	eudore.SetAnyByPath(data, "slice", []string{"1", "2", "3"})
+	eudore.SetAnyByPath(data, "slice", []string{"a", "x", "c"})
+
+	eudore.SetAnyByPath(data, "int", "")
+	eudore.SetAnyByPath(data, "uint", "")
+	eudore.SetAnyByPath(data, "bool", "")
+	eudore.SetAnyByPath(data, "float", "")
+	eudore.SetAnyByPath(data, "complex", "")
+	eudore.SetAnyByPath(data, "complex", "0+x")
+	eudore.SetAnyByPath(data, "complex", "0i+x")
+	t.Log(eudore.SetAnyByPath(data, "time", "2018"))
+	t.Log(eudore.SetAnyByPath(data, "chan", "2018"))
+
+	t.Log(eudore.SetAnyByPath(data, "int", "1"))
+	t.Log(eudore.SetAnyByPath(data, "uint", "1"))
+	t.Log(eudore.SetAnyByPath(data, "bool", "1"))
+	t.Log(eudore.SetAnyByPath(data, "float", "1"))
+	t.Log(eudore.SetAnyByPath(data, "complex", "1i"))
+	t.Log(eudore.SetAnyByPath(data, "time", "20180801"))
+	t.Log(eudore.SetAnyByPath(data, "time2", "20180801"))
+	t.Log(eudore.SetAnyByPath(data, "bytes", "bytes"))
+	t.Log(eudore.SetAnyByPath(data, "runes", "runes"))
+	t.Log(eudore.SetAnyByPath(data, "any", "any"))
+	t.Log(eudore.SetAnyByPath(data, "face", "any"))
+	t.Log(eudore.SetAnyByPath(data, "struct", "struct"))
+	t.Log(eudore.SetAnyByPathWithTag(data, "ano", time.Now(), nil, true))
+	t.Logf("%#v", eudore.GetAnyByPath(data, ""))
+
+	type M struct {
+		M1 map[string]any              `alias:"m1"`
+		M2 map[*string]any             `alias:"m2"`
+		M3 map[eudore.LoggerLevel]any  `alias:"m3"`
+		M4 map[eudore.TimeDuration]any `alias:"m4"`
+		M5 map[any]any                 `alias:"m5"`
+	}
+
+	m := &M{}
+	t.Log(eudore.SetAnyByPath(m, "m1.1", "1"))
+	t.Log(eudore.SetAnyByPath(m, "m2.3", "1"))
+	t.Log(eudore.SetAnyByPath(m, "m3.ERROR", "1"))
+	t.Log(eudore.SetAnyByPath(m, "m4.4s", "1"))
+	t.Log(eudore.SetAnyByPath(m, "m5.5", "1"))
+	t.Logf("%#v", m)
+
+	type Cycle struct {
+		*Cycle
+	}
+	c := &Cycle{}
+	c.Cycle = c
+	t.Log(eudore.SetAnyByPathWithTag(c, "name", "eudore", nil, false))
+	t.Log(eudore.GetAnyByPathWithTag(c, "name", nil, false))
 }

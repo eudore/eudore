@@ -22,13 +22,15 @@ func TestRouterStdAdd(t *testing.T) {
 	}
 
 	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyHandlerExtender, eudore.NewHandlerExtender())
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(nil))
 	app.AddHandlerExtend(func(str String) eudore.HandlerFunc {
 		return func(ctx eudore.Context) {
 			ctx.WriteString(str.Data)
 		}
 	})
 	app.AddMiddleware(middleware.NewRecoverFunc())
-	app.AddController(&Test014Controller{})
+	app.Group(" loggerkind=middleware").AddController(&Test014Controller{})
 
 	api := app.Group("/method")
 	api.AddHandler("TEST", "/*", String{"test"})
@@ -107,33 +109,12 @@ func TestRouterMiddleware2(t *testing.T) {
 
 func TestRouterCoreLock(t *testing.T) {
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)))
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(eudore.NewRouterCoreLock(nil)))
 	app.Info(app.Router.(interface{ Metadata() interface{} }).Metadata())
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.GetFunc("/", eudore.HandlerEmpty)
 
 	app.NewRequest(nil, "GET", "/", eudore.NewClientCheckStatus(200))
-	app.CancelFunc()
-	app.Run()
-}
-
-func TestRouterCoreDebug(t *testing.T) {
-	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreDebug(nil)))
-	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
-	app.GetFunc("/", eudore.HandlerEmpty)
-	app.GetFunc("/index", eudore.HandlerEmpty)
-	app.GetFunc("/health", func(ctx eudore.Context) interface{} {
-		return app.Router.(interface{ Metadata() interface{} }).Metadata()
-	})
-	app.GetFunc("/delete", eudore.HandlerEmpty)
-	app.GetFunc("/delete")
-
-	app.NewRequest(nil, "GET", "/eudore/debug/router/data",
-		eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON),
-		eudore.NewClientCheckStatus(200),
-	)
-	app.NewRequest(nil, "GET", "/health")
 	app.CancelFunc()
 	app.Run()
 }
@@ -144,7 +125,7 @@ func TestRouterCoreHost(t *testing.T) {
 	}
 
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreHost(nil)))
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(eudore.NewRouterCoreHost(nil)))
 	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
 	app.AnyFunc("/* host=eudore.com", echoHandleHost)
 	app.AnyFunc("/* host=eudore.com:8088", echoHandleHost)
@@ -156,17 +137,20 @@ func TestRouterCoreHost(t *testing.T) {
 	app.AnyFunc("/api/* host=eudore.com,eudore.cn", echoHandleHost)
 	app.AnyFunc("/*", echoHandleHost)
 
+	host := func(h string) any {
+		return eudore.NewClientOptionHost(h)
+	}
 	app.NewRequest(nil, "GET", "/", eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody(""))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHost("eudore.cn"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.cn"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHost("eudore.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHost("eudore.com:8088"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHost("eudore.com:8089"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHost("eudore.net"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.*"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHost("www.eudore.cn"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("www.*.cn"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHost("example.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("example.com"))
-	app.NewRequest(nil, "GET", "/", eudore.NewClientHost("www.example"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody(""))
-	app.NewRequest(nil, "GET", "/api/v1", eudore.NewClientHost("example.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("*"))
-	app.NewRequest(nil, "GET", "/api/v1", eudore.NewClientHost("eudore.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com,eudore.cn"))
+	app.NewRequest(nil, "GET", "/", host("eudore.cn"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.cn"))
+	app.NewRequest(nil, "GET", "/", host("eudore.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com"))
+	app.NewRequest(nil, "GET", "/", host("eudore.com:8088"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com"))
+	app.NewRequest(nil, "GET", "/", host("eudore.com:8089"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com"))
+	app.NewRequest(nil, "GET", "/", host("eudore.net"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.*"))
+	app.NewRequest(nil, "GET", "/", host("www.eudore.cn"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("www.*.cn"))
+	app.NewRequest(nil, "GET", "/", host("example.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("example.com"))
+	app.NewRequest(nil, "GET", "/", host("www.example"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody(""))
+	app.NewRequest(nil, "GET", "/api/v1", host("example.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("*"))
+	app.NewRequest(nil, "GET", "/api/v1", host("eudore.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com,eudore.cn"))
 
 	app.CancelFunc()
 	app.Run()

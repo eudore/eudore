@@ -1,14 +1,103 @@
 package eudore_test
 
 import (
+	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/middleware"
 )
+
+//go:embed *.go
+var root embed.FS
+
+type fsPermission struct{}
+
+func (fsPermission) Open(name string) (http.File, error) {
+	return nil, os.ErrPermission
+}
+
+type fsHTTPDir struct{}
+
+func (fsHTTPDir) Open(name string) (http.File, error) {
+	return fsHTTPFile{}, nil
+}
+
+type fsHTTPFile struct {
+	http.File
+}
+
+func (fsHTTPFile) Readdir(count int) ([]fs.FileInfo, error) {
+	return nil, fmt.Errorf("test error, not dir")
+}
+
+func (fsHTTPFile) Stat() (fs.FileInfo, error) {
+	return os.Stat(".")
+}
+
+func (fsHTTPFile) Close() error {
+	return nil
+}
+
+func TestHandlerRoute(t *testing.T) {
+	os.Mkdir("static/", 0o755)
+	defer os.RemoveAll("static/")
+	os.WriteFile("static/403.js", []byte("1234567890abcdef"), 0o000)
+	file, _ := os.OpenFile("static/index.js", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	for i := 0; i < 10000; i++ {
+		file.Write([]byte("1234567890abcdef"))
+	}
+
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyHandlerExtender, eudore.NewHandlerExtender())
+	app.AddMiddleware("global", middleware.NewLoggerFunc(app, "route"))
+	app.AddHandler("404", "", eudore.HandlerRouter404)
+	app.AddHandler("405", "", eudore.HandlerRouter405)
+	app.GetFunc("/403", eudore.HandlerRouter403)
+	app.GetFunc("/index", eudore.HandlerEmpty)
+	app.GetFunc("/meta/*", eudore.HandlerMetadata)
+	app.GetFunc("/static/dir/*", eudore.NewHandlerStatic(".", "."))
+	app.GetFunc("/static/index/* autoindex=true", eudore.NewHandlerStatic(".", "."))
+	app.GetFunc("/static/embed/*", root)
+	app.GetFunc("/static/fs1/* autoindex=true", fsPermission{})
+	app.GetFunc("/static/fs2/* autoindex=true", fsHTTPDir{})
+
+	app.NewRequest(nil, "GET", "/index")
+	app.NewRequest(nil, "POST", "/index")
+	app.NewRequest(nil, "GET", "/403")
+	app.NewRequest(nil, "GET", "/404")
+	app.NewRequest(nil, "GET", "/meta/")
+	app.NewRequest(nil, "GET", "/meta/app")
+	app.NewRequest(nil, "GET", "/meta/router")
+	app.NewRequest(nil, "GET", "/static/dir/app_test.go")
+	app.NewRequest(nil, "GET", "/static/embed/")
+	app.NewRequest(nil, "GET", "/static/embed/app_test.go")
+	app.NewRequest(nil, "GET", "/static/index/")
+	app.NewRequest(nil, "GET", "/static/index/static/")
+	app.NewRequest(nil, "GET", "/static/index/403.js")
+	app.NewRequest(nil, "GET", "/static/fs1/")
+	app.NewRequest(nil, "GET", "/static/fs2/")
+
+	eudore.NewFileSystems(".", http.Dir("."), eudore.NewFileSystems(".", "."))
+
+	app.SetValue(eudore.ContextKeyHandlerExtender, eudore.NewHandlerExtenderTree())
+	app.NewRequest(nil, "GET", "/meta/")
+	app.SetValue(eudore.ContextKeyHandlerExtender, eudore.NewHandlerExtenderWarp(
+		eudore.NewHandlerExtender(),
+		eudore.NewHandlerExtenderTree(),
+	))
+	app.NewRequest(nil, "GET", "/meta/")
+
+	app.CancelFunc()
+	app.Run()
+}
 
 func BindTestErr(ctx eudore.Context, i interface{}) error {
 	if ctx.GetQuery("binderr") != "" {
@@ -24,10 +113,12 @@ func RenderTestErr(ctx eudore.Context, i interface{}) error {
 	return eudore.RenderJSON(ctx, i)
 }
 
-type handlerHttp1 struct{}
-type handlerHttp2 struct{}
-type handlerHttp3 struct{}
-type handlerControler4 struct{ eudore.ControllerAutoRoute }
+type (
+	handlerHttp1      struct{}
+	handlerHttp2      struct{}
+	handlerHttp3      struct{}
+	handlerControler4 struct{ eudore.ControllerAutoRoute }
+)
 
 func (handlerHttp1) HandleHTTP(eudore.Context)                      {}
 func (h handlerHttp2) CloneHandler() http.Handler                   { return h }
@@ -118,10 +209,10 @@ func TestHandlerReister(t *testing.T) {
 	}
 
 	for i := 1; i < 14; i++ {
-		app.NewRequest(nil, "GET", fmt.Sprintf("/2/%d", i), eudore.NewClientQuery("binderr", "1"))
+		app.NewRequest(nil, "GET", fmt.Sprintf("/2/%d", i), url.Values{"binderr": {"1"}})
 	}
 	for i := 1; i < 14; i++ {
-		app.NewRequest(nil, "GET", fmt.Sprintf("/2/%d", i), eudore.NewClientQuery("rendererr", "1"))
+		app.NewRequest(nil, "GET", fmt.Sprintf("/2/%d", i), url.Values{"rendererr": {"1"}})
 	}
 
 	app.CancelFunc()
@@ -141,7 +232,7 @@ func TestHandlerList(t *testing.T) {
 		return nil
 	})
 	api.AnyFunc("/user/info", "hello")
-	t.Log(strings.Join(api.(eudore.HandlerExtender).ListExtendHandlerNames(), "\n"))
+	t.Log(strings.Join(api.(eudore.HandlerExtender).List(), "\n"))
 
 	app.CancelFunc()
 	app.Run()
@@ -170,12 +261,12 @@ func TestHandlerRPC(t *testing.T) {
 	})
 
 	app.NewRequest(nil, "PUT", "/1/1")
-	app.NewRequest(nil, "PUT", "/1/2", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "PUT", "/1/2", http.Header{eudore.HeaderAccept: {eudore.MimeApplicationJSON}})
 	app.NewRequest(nil, "PUT", "/1/2", eudore.NewClientBodyJSON(map[string]interface{}{
 		"name": "eudore",
 	}))
-	app.NewRequest(nil, "GET", "/1/1", eudore.NewClientQuery("binderr", "1"))
-	app.NewRequest(nil, "GET", "/1/1", eudore.NewClientQuery("rendererr", "1"))
+	app.NewRequest(nil, "GET", "/1/1", url.Values{"binderr": {"1"}})
+	app.NewRequest(nil, "GET", "/1/1", url.Values{"rendererr": {"1"}})
 
 	app.CancelFunc()
 	app.Run()
@@ -194,13 +285,4 @@ func TestHandlerFunc(t *testing.T) {
 		hs = eudore.NewHandlerFuncsCombine(hs, hs)
 	}
 	t.Log(len(hs))
-}
-
-func TestHandlerStatic(t *testing.T) {
-	app := eudore.NewApp()
-	app.AnyFunc("/static/*", eudore.NewStaticHandler("", ""))
-
-	app.NewRequest(nil, "GET", "/static/index.html")
-	app.CancelFunc()
-	app.Run()
 }

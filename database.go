@@ -5,7 +5,7 @@ import (
 	"database/sql"
 )
 
-// Database 定义数据库操作方法
+// Database 定义数据库操作方法。
 type Database interface {
 	AutoMigrate(interface{}) error
 	Metadata(interface{}) interface{}
@@ -25,11 +25,34 @@ type DatabaseStmt interface {
 type DatabaseBuilder interface {
 	Context() context.Context
 	DriverName() string
+	Metadata(interface{}) interface{}
 	WriteStmts(...interface{})
 	Result() (string, []interface{}, error)
 }
 
-// NewDatabaseStd 方法创建一个空Database。
-func NewDatabaseStd(config interface{}) Database {
+// NewDatabase 方法创建一个空Database。
+func NewDatabase(interface{}) Database {
 	return nil
+}
+
+type stmtContextRuntime struct {
+	Context Context
+	Stmt    DatabaseStmt
+}
+
+func NewDatabaseRuntime(ctx Context, stmt DatabaseStmt) DatabaseStmt {
+	return stmtContextRuntime{ctx, stmt}
+}
+
+var conetxtIDKeys = [...]string{HeaderXTraceID, HeaderXRequestID}
+
+func (stmt stmtContextRuntime) Build(builder DatabaseBuilder) {
+	h := stmt.Context.Response().Header()
+	for _, key := range conetxtIDKeys {
+		id := h.Get(key)
+		if id != "" {
+			builder.WriteStmts("-- "+id+"\r\n", stmt.Stmt)
+			return
+		}
+	}
 }

@@ -1,25 +1,24 @@
 package middleware
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/eudore/eudore"
 )
 
-// NewRefererFunc 函数创建Referer header检查中间件。
+// NewRefererFunc 函数创建Referer header检查中间件，如果不指定协议匹配http和https，默认拒绝。
 //
-// ""                         =>    其他值未匹配时使用的默认值。
+// 阅览器发送Referer值受html meta name referrer和Response Header Referrer-Policy影响。
 //
 // "origin"                   =>    请求Referer和Host同源情况下，检查host为referer前缀，origin检查在其他值检查之前。
 //
-// "*"                        =>    任意域名端口
+// "*"                        =>    任意域名端口，包含无Referer值。
 //
-// "www.eudore.cn/*"          =>    www.eudore.cn域名全部请求，不指明http或https时为同时包含http和https
+// "www.eudore.cn/*"          =>    www.eudore.cn域名全部请求，不指明http或https时为同时包含http和https。
 //
 // "www.eudore.cn:*/*"        =>    www.eudore.cn任意端口的全部请求，不包含没有指明端口的情况。
 //
-// "www.eudore.cn/api/*"      =>    www.eudore.cn域名全部/api/前缀的请求
+// "www.eudore.cn/api/*"      =>    www.eudore.cn域名全部/api/前缀的请求。
 //
 // "https://www.eudore.cn/*"  =>    www.eudore.cn仅匹配https。
 func NewRefererFunc(data map[string]bool) eudore.HandlerFunc {
@@ -28,48 +27,53 @@ func NewRefererFunc(data map[string]bool) eudore.HandlerFunc {
 
 	tree := new(refererNode)
 	for k, v := range data {
-		if strings.HasPrefix(k, "http://") || strings.HasPrefix(k, "https://") || k == "" {
-			tree.insert(k).data = fmt.Sprint(v)
+		if strings.HasPrefix(k, "http://") || strings.HasPrefix(k, "https://") || k == "" || k == "*" {
+			tree.insert(k, v)
 		} else {
-			tree.insert("http://" + k).data = fmt.Sprint(v)
-			tree.insert("https://" + k).data = fmt.Sprint(v)
+			tree.insert("http://"+k, v)
+			tree.insert("https://"+k, v)
 		}
 	}
 
 	return func(ctx eudore.Context) {
 		referer := ctx.GetHeader(eudore.HeaderReferer)
 		if origin && checkRefererOrigin(ctx, referer) {
-			if !originvalue {
-				ctx.WriteHeader(eudore.StatusForbidden)
-				ctx.WriteString("invalid Referer header " + referer)
-				ctx.End()
+			if originvalue {
+				return
 			}
-			return
+		} else {
+			node := tree.matchNode(referer)
+			if node != nil && node.data {
+				return
+			}
 		}
-		node := tree.matchNode(referer)
-		if node != nil && node.data == "false" {
-			ctx.WriteHeader(eudore.StatusForbidden)
-			ctx.WriteString("invalid Referer header " + referer)
-			ctx.End()
-		}
+		ctx.WriteHeader(eudore.StatusForbidden)
+		ctx.WriteString("invalid Referer header " + referer)
+		ctx.End()
 	}
 }
 
 func checkRefererOrigin(ctx eudore.Context, referer string) bool {
-	if referer == "" || len(referer) < 8 {
+	if len(referer) < 8 {
 		return false
 	}
-	return strings.HasPrefix(referer[7:], ctx.Host()) || strings.HasPrefix(referer[8:], ctx.Host())
+
+	pos := strings.Index(referer, "://")
+	if pos != -1 {
+		referer = referer[pos+3:]
+	}
+	return strings.HasPrefix(referer, ctx.Host())
 }
 
 type refererNode struct {
 	path     string
+	has      bool
+	data     bool
 	wildcard *refererNode
 	children []*refererNode
-	data     string
 }
 
-func (node *refererNode) insert(path string) *refererNode {
+func (node *refererNode) insert(path string, data bool) {
 	paths := strings.Split(path, "*")
 	newpaths := make([]string, 1, len(paths)*2-1)
 	newpaths[0] = paths[0]
@@ -82,7 +86,8 @@ func (node *refererNode) insert(path string) *refererNode {
 	for _, p := range newpaths {
 		node = node.insertNode(p)
 	}
-	return node
+	node.has = true
+	node.data = data
 }
 
 func (node *refererNode) insertNode(path string) *refererNode {
@@ -122,7 +127,7 @@ func (node *refererNode) insertNode(path string) *refererNode {
 }
 
 func (node *refererNode) matchNode(path string) *refererNode {
-	if path == "" && node.data != "" {
+	if path == "" && node.has {
 		return node
 	}
 	for _, current := range node.children {
@@ -133,16 +138,7 @@ func (node *refererNode) matchNode(path string) *refererNode {
 		}
 	}
 	if node.wildcard != nil {
-		if node.wildcard.children != nil {
-			pos := strings.IndexByte(path, '/')
-			if pos == -1 {
-				pos = len(path)
-			}
-			if result := node.wildcard.matchNode(path[pos:]); result != nil {
-				return result
-			}
-		}
-		if node.wildcard.data != "" {
+		if node.wildcard.has {
 			return node.wildcard
 		}
 	}

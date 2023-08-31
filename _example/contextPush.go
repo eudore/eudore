@@ -3,57 +3,50 @@ package main
 import (
 	"crypto/tls"
 	"net"
+	"net/http"
 
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
+	"github.com/eudore/eudore/middleware"
 	"golang.org/x/net/http2"
 )
 
 func main() {
 	app := eudore.NewApp()
+	app.AddMiddleware(
+		middleware.NewLoggerFunc(app),
+		middleware.NewCompressMixinsFunc(nil),
+	)
 	app.GetFunc("/", func(ctx eudore.Context) {
-		ctx.Debug(ctx.Request().Proto)
-		ctx.Push("/css/1.css", nil)
-		ctx.Push("/css/2.css", nil)
-		ctx.Push("/css/3.css", nil)
-		ctx.Push("/favicon.ico", nil)
+		ctx.Push("/css/app.css", &http.PushOptions{
+			Header: http.Header{eudore.HeaderAuthorization: {"00"}},
+		})
+		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
 		ctx.WriteString(`<!DOCTYPE html>
 <html>
-<head>
-	<title>push</title>
-	<link href='/css/1.css' rel="stylesheet">
-	<link href='/css/2.css' rel="stylesheet">
-	<link href='/css/3.css' rel="stylesheet">
-</head>
-<body>
-push test
-</body>
+<head><title>push</title><link href='/css/app.css' rel="stylesheet"></head>
+<body>push test, push css is red font.</body>
 </html>`)
 	})
-	app.GetFunc("/hijack", func(ctx eudore.Context) {
-		conn, _, err := ctx.Response().Hijack()
-		if err == nil {
-			conn.Close()
-		}
-	})
 	app.GetFunc("/css/*", func(ctx eudore.Context) {
-		ctx.WriteString("*{}")
+		if ctx.GetHeader(eudore.HeaderAuthorization) == "" {
+			ctx.WriteHeader(eudore.StatusUnauthorized)
+			return
+		}
+		ctx.WithField("header", ctx.Request().Header).Debug()
+		ctx.SetHeader(eudore.HeaderContentType, "text/css")
+		ctx.WriteString("*{color: red;}")
 	})
-	app.ListenTLS(":8088", "", "")
+	app.Listen(":8088")
+	app.ListenTLS(":8089", "", "")
 
-	client := httptest.NewClient(app)
-	client.Client.Transport = &http2.Transport{
+	client := app.WithClient(&http2.Transport{
 		AllowHTTP: true,
 		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
 			return tls.Dial(network, addr, cfg)
 		},
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client.NewRequest("GET", "/").Do().CheckStatus(200).Out()
-	client.NewRequest("GET", "https://localhost:8088/").Do().CheckStatus(200).Out()
-	client.NewRequest("GET", "https://localhost:8088/hijack").Do().CheckStatus(200).Out()
+	})
+	client.NewRequest(nil, "GET", "https://localhost:8089/", eudore.NewClientCheckStatus(200))
 
-	app.Listen(":8088")
-	// app.CancelFunc()
 	app.Run()
 }

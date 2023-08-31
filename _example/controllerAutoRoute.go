@@ -32,21 +32,13 @@ ControllerRoute返回路径为'-'则忽略方法，第一个字符为' '表示�
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 )
 
 func main() {
 	app := eudore.NewApp()
 	app.AddController(new(autoController))
 
-	client := httptest.NewClient(app)
-	client.NewRequest("GET", "/auto/index").Do().Out()
-	client.NewRequest("GET", "/auto/info/22").Do().Out()
-	client.NewRequest("POST", "/auto").Do().Out()
-	client.NewRequest("POST", "/auto/").Do().Out()
-
 	app.Listen(":8088")
-	// app.CancelFunc()
 	app.Run()
 }
 
@@ -68,11 +60,6 @@ func (*autoController) GetBy(ctx eudore.Context) interface{} {
 // GetInfoById 方法注册GET /info/:id 路由路径。
 func (*autoController) GetInfoById(ctx eudore.Context) interface{} {
 	return ctx.GetParam("id")
-}
-
-// String 方法返回控制器名称，响应Router.AddController输出的名称。
-func (*autoController) String() string {
-	return "hello.autoController"
 }
 
 // Help 方法定义一个控制器本身的方法。

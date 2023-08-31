@@ -82,7 +82,7 @@ func (r *routerCoreStd) Mount(ctx context.Context) {
 // The router matches the handlers available to the current path from
 // the middleware tree and adds them to the front of the handler.
 //
-// HandleFunc 给路由器注册一个新的方法请求路径
+// HandleFunc 给路由器注册一个新的方法请求路径。
 //
 // 路由器会从中间件树中匹配当前路径可使用的处理者，并添加到处理者前方。
 func (r *routerCoreStd) HandleFunc(method string, path string, handler HandlerFuncs) {
@@ -116,7 +116,7 @@ func (r *routerCoreStd) Match(method, path string, params *Params) HandlerFuncs 
 		return r.handler404
 	}
 	// default method
-	for i, m := range defaultRouterAnyMethod {
+	for i, m := range DefaultRouterCoreMethod {
 		if m == method {
 			if node.handlers[i] != nil {
 				*params = params.Set(ParamRoute, node.params[i][1]).Add(node.params[i][2:]...)
@@ -141,7 +141,7 @@ func (r *routerCoreStd) Match(method, path string, params *Params) HandlerFuncs 
 //
 // 添加一个新的路由Node。
 func (r *routerCoreStd) insertRoute(method, path string, val HandlerFuncs) {
-	var currentNode = r.root
+	currentNode := r.root
 
 	params := NewParamsRoute(path)
 	if params.Get(ParamRegister) == "off" || val == nil {
@@ -196,7 +196,7 @@ func (r *routerCoreStd) newStdNode(path string) *stdNode {
 func (r *routerCoreStd) loadCheckFunc(path string) (string, func(string) bool) {
 	path = path[1:]
 	// 截取参数名称和校验函数名称
-	name, fname := split2byte(path, '|')
+	name, fname, _ := strings.Cut(path, "|")
 	if name == "" || fname == "" {
 		return "", nil
 	}
@@ -206,11 +206,11 @@ func (r *routerCoreStd) loadCheckFunc(path string) (string, func(string) bool) {
 	}
 
 	// 调用FuncCreator创建check函数
-	fn, err := r.FuncCreator.Create(typeString, fname)
+	fn, err := r.FuncCreator.CreateFunc(FuncCreateString, fname)
 	if err == nil {
 		return name, fn.(func(string) bool)
 	}
-	// 无法获得校验函数抛出错误
+	// 无法获得校验函数抛出错误，由RouterStd recover。
 	panic(fmt.Errorf(ErrFormarRouterStdLoadInvalidFunc, path, err))
 }
 
@@ -221,7 +221,7 @@ func (r *stdNode) setHandler(method string, params Params, handler HandlerFuncs)
 	}
 
 	for i := uint(0); i < 6; i++ {
-		if defaultRouterAnyMethod[i] == method {
+		if DefaultRouterCoreMethod[i] == method {
 			r.params[i] = params
 			r.handlers[i] = handler
 			r.isany &^= 1 << i
@@ -235,22 +235,19 @@ func (r *stdNode) setHandler(method string, params Params, handler HandlerFuncs)
 }
 
 func (r *stdNode) setHandlerAny(params Params, handler HandlerFuncs) {
-	// 设置标准Any
-	for i := uint(0); i < 6; i++ {
-		if r.isany>>i&0x1 == 0x1 || r.handlers[i] == nil {
-			r.params[i] = params
-			r.handlers[i] = handler
-			r.isany |= 1 << i
-		}
-	}
-	// 设置others any
 	for _, method := range DefaultRouterAnyMethod {
-		i := getStringInIndex(method, defaultRouterAnyMethod)
+		i := getStringInIndex(method, DefaultRouterCoreMethod)
 		if i == -1 {
+			// 设置others any
 			if r.others == nil {
 				r.others = make(map[string]stdOtherHandler)
 			}
 			r.others[method] = stdOtherHandler{any: true, params: params, handler: handler}
+		} else if r.isany>>i&0x1 == 0x1 || r.handlers[i] == nil {
+			// 设置标准Any
+			r.params[i] = params
+			r.handlers[i] = handler
+			r.isany |= 1 << i
 		}
 	}
 	r.isany |= 0x40
@@ -371,16 +368,15 @@ func (r *stdNode) insertNodeConst(path string, nextNode *stdNode) *stdNode {
 	return nextNode
 }
 
+//nolint:cyclop,gocyclo
 func (r *stdNode) lookNode(searchKey string, params *Params) *stdNode {
 	// constant match, return data
-	// 常量匹配，返回数据
 	if len(searchKey) == 0 && r.route != "" {
 		return r
 	}
 
 	if len(searchKey) > 0 {
 		// Traverse constant Node match
-		// 遍历常量Node匹配，数据量少使用二分查找无效
 		for _, child := range r.Cchildren {
 			if child.path[0] >= searchKey[0] {
 				length := len(child.path)
@@ -394,7 +390,6 @@ func (r *stdNode) lookNode(searchKey string, params *Params) *stdNode {
 		}
 
 		// parameter matching, Check if there is a parameter match
-		// 参数匹配 检测是否存在参数匹配
 		if r.pnum != 0 {
 			pos := strings.IndexByte(searchKey, '/')
 			if pos == -1 {
@@ -403,7 +398,6 @@ func (r *stdNode) lookNode(searchKey string, params *Params) *stdNode {
 			currentKey, nextSearchKey := searchKey[:pos], searchKey[pos:]
 
 			// check parameter matching
-			// 校验参数匹配
 			for _, child := range r.PVchildren {
 				if child.check(currentKey) {
 					if n := child.lookNode(nextSearchKey, params); n != nil {
@@ -412,9 +406,6 @@ func (r *stdNode) lookNode(searchKey string, params *Params) *stdNode {
 					}
 				}
 			}
-
-			// 参数匹配
-			// 变量Node依次匹配是否满足
 			for _, child := range r.Pchildren {
 				if n := child.lookNode(nextSearchKey, params); n != nil {
 					*params = params.Add(child.name, currentKey)
@@ -423,27 +414,19 @@ func (r *stdNode) lookNode(searchKey string, params *Params) *stdNode {
 			}
 		}
 	}
-
-	// wildcard verification match
-	// If the current Node has a wildcard processing method that directly matches, the result is returned.
-	// 通配符校验匹配
-	// 若当前Node有通配符处理方法直接匹配，返回结果。
+	// If the current Node has a wildcard processing method that directly matches
 	for _, child := range r.WVchildren {
 		if child.check(searchKey) {
 			*params = params.Add(child.name, searchKey)
 			return child
 		}
 	}
-
-	// If the current Node has a wildcard processing method that directly matches, the result is returned.
-	// 若当前Node有通配符处理方法直接匹配，返回结果。
+	// If the current Node has a wildcard processing method that directly matches
 	if r.Wchildren != nil {
 		*params = params.Add(r.Wchildren.name, searchKey)
 		return r.Wchildren
 	}
-
 	// can't match, return nil
-	// 无法匹配，返回空
 	return nil
 }
 
@@ -639,22 +622,21 @@ func stdRemoveNode(nodes []*stdNode, node *stdNode) []*stdNode {
 }
 
 /*
-The string is cut according to the Node type.
-将字符串按Node类型切割
-String path cutting example:
-字符串路径切割例子：
-/				[/]
-/api/note/		[/api/note/]
-//api/*			[/api/ *]
-//api/*name		[/api/ *name]
-/api/get/		[/api/get/]
-/api/get		[/api/get]
-/api/:get		[/api/ :get]
-/api/:get/*		[/api/ :get / *]
-/api/:name/info/*		[/api/ :name /info/ *]
-/api/:name|^\\d+$/info	[/api/ :name|^\d+$ /info]
-/api/*|{^0/api\\S+$}	[/api/ *|{^0/api\S+$}]
-/api/*|^\\$\\d+$		[/api/ *|^\$\d+$]
+The string is cut according to the Node type, String path cutting example:
+将字符串按Node类型切割，字符串路径切割例子：
+
+	/				[/]
+	/api/note/		[/api/note/]
+	//api/*			[//api/ *]
+	//api/*name		[//api/ *name]
+	/api/get/		[/api/get/]
+	/api/get		[/api/get]
+	/api/:get		[/api/ :get]
+	/api/:get/*		[/api/ :get / *]
+	/api/:name/info/*		[/api/ :name /info/ *]
+	/api/:name|^\\d+$/info	[/api/ :name|^\d+$ /info]
+	/api/*|{^0/api\\S+$}	[/api/ *|^0/api\S+$]
+	/api/*|^\\$\\d+$		[/api/ *|^\$\d+$]
 */
 func getSplitPath(key string) []string {
 	if len(key) < 2 {
@@ -664,9 +646,9 @@ func getSplitPath(key string) []string {
 		key = "/" + key
 	}
 	var strs []string
-	var length = -1
-	var isblock = 0
-	var isconst = false
+	length := -1
+	isblock := 0
+	isconst := false
 	for i := range key {
 		// 块模式匹配
 		if isblock > 0 {
@@ -677,7 +659,7 @@ func getSplitPath(key string) []string {
 				isblock--
 			}
 			if isblock > 0 {
-				strs[length] = strs[length] + key[i:i+1]
+				strs[length] += key[i : i+1]
 			}
 			continue
 		}
@@ -689,22 +671,16 @@ func getSplitPath(key string) []string {
 				strs = append(strs, "")
 				isconst = true
 			}
-		case ':':
-			// 变量模式
+		case ':', '*':
+			// 变量模式，通配符模式
 			isconst = false
 			length++
 			strs = append(strs, "")
-		case '*':
-			// 通配符模式
-			isconst = false
-			length++
-			strs = append(strs, key[i:])
-			return strs
 		case '{':
 			isblock++
 			continue
 		}
-		strs[length] = strs[length] + key[i:i+1]
+		strs[length] += key[i : i+1]
 	}
 	return strs
 }

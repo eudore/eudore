@@ -15,229 +15,110 @@ import (
 	"github.com/eudore/eudore"
 )
 
-func TestLogger(t *testing.T) {
-	log := eudore.NewApp()
-	log.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerInit())
+func TestLoggerStd(t *testing.T) {
+	app := eudore.NewApp()
 
-	log.SetLevel(eudore.LoggerFatal)
-	log.Debug("0")
-	log.Debugf("0")
-	log.Info("1")
-	log.Infof("1")
-	log.Warning("2")
-	log.Warningf("2")
-	log.Error("3")
-	log.Errorf("3")
-	log.Fatal("4")
-	log.Fatalf("4")
+	app.GetLevel()
+	app.SetLevel(eudore.LoggerFatal)
+	app.Debug("0")
+	app.Debugf("0")
+	app.Info("1")
+	app.Infof("1")
+	app.Warning("2")
+	app.Warningf("2")
+	app.Error("3")
+	app.Errorf("3")
+	app.Fatal("4")
+	app.Fatalf("4")
 
-	log.SetLevel(eudore.LoggerDebug)
-	log.Debug("0")
-	log.Debugf("0")
-	log.Info("1")
-	log.Infof("1")
-	log.Warning("2")
-	log.Warningf("2")
-	log.Error("3")
-	log.Errorf("3")
-	log.Fatal("4")
-	log.Fatalf("4")
+	app.SetLevel(eudore.LoggerDebug)
+	app.Debug("0")
+	app.Debugf("0")
+	app.Info("1")
+	app.Infof("1")
+	app.Warning("2")
+	app.Warningf("2")
+	app.Error("3")
+	app.Errorf("3")
+	app.Fatal("4")
+	app.Fatalf("4")
 
-	log.WithField("key", "field").Debug("0")
-	log.WithField("key", "field").Debugf("0")
-	log.WithField("key", "field").Info("1")
-	log.WithField("key", "field").Infof("1")
-	log.WithField("key", "field").Warning("2")
-	log.WithField("key", "field").Warningf("2")
-	log.WithField("key", "field").Error("3")
-	log.WithField("key", "field").Errorf("3")
-	log.WithField("key", "field").Fatal("4")
-	log.WithField("key", "field").Fatalf("4")
+	app.WithField("depth", "enable").Info("1")
+	app.WithField("depth", "stack").Info("1")
+	app.WithField("depth", "disable").Info("1")
+	app.WithField("depth", -2).WithField("depth", "enable").Info("1")
+	app.WithField("depth", true).Info("1")
+	app.WithField("context", app).WithField("context", app.Context).Info("1")
+	app.WithField("caller", "logger").WithField("logger", true).Info("1")
+	app.WithFields([]string{"key"}, []any{}).Info("1")
 
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Debug("0")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Debugf("0")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Info("1")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Infof("1")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Warning("2")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Warningf("2")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Error("3")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Errorf("3")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Fatal("4")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Fatalf("4")
+	app.Logger.(interface{ Metadata() any }).Metadata()
+	eudore.NewLoggerWithContext(app)
+	eudore.NewLoggerWithContext(context.Background())
 
-	log.Sync()
-	// 设置logger
-	log.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(nil))
-
-	log.SetLevel(eudore.LoggerDebug)
-	log.Debug("0")
-	log.Debugf("0")
-	log.Info("1")
-	log.Infof("1")
-	log.Warning("2")
-	log.Warningf("2")
-	log.Error("3")
-	log.Errorf("3")
-	log.Fatal("4")
-	log.Fatalf("4")
-
-	log.WithField("key", "field").Debug("0")
-	log.WithField("key", "field").Debugf("0")
-	log.WithField("key", "field").Info("1")
-	log.WithField("key", "field").Infof("1")
-	log.WithField("key", "field").Warning("2")
-	log.WithField("key", "field").Warningf("2")
-	log.WithField("key", "field").Error("3")
-	log.WithField("key", "field").Errorf("3")
-	log.WithField("key", "field").Fatal("4")
-	log.WithField("key", "field").Fatalf("4")
-
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Debug("0")
-	log.WithFields([]string{"key", "k2"}, []interface{}{"Fields"}).Debug("0")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Debugf("0")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Info("1")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Infof("1")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Warning("2")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Warningf("2")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Error("3")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Errorf("3")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Fatal("4")
-	log.WithFields([]string{"key"}, []interface{}{"Fields"}).Fatalf("4")
-
-	log.WithField("depth", "stack").Info("1")
-
-	log.Sync()
-	eudore.DefaultLoggerNull.Sync()
-
-	log.CancelFunc()
-	log.Run()
+	app.CancelFunc()
+	app.Run()
 }
 
-func TestLoggerInit(t *testing.T) {
-	log := eudore.NewApp()
-	log.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerInit())
-	log.Info("loggerInit to end")
-	log.CancelFunc()
-	log.Run()
+func TestLoggerInit1(t *testing.T) {
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerInit())
+
+	app.Debug("0")
+	app.Infof("1")
+	app.Warning("2")
+	app.Error("3")
+	app.Fatal("4")
+	app.Logger.(interface{ Metadata() any }).Metadata()
+
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLogger(nil))
+	app.CancelFunc()
+	app.Run()
 }
 
-func TestLoggerOption(t *testing.T) {
-	log := eudore.NewLoggerStd(nil)
-
-	// logger depth
-	log = log.WithField("depth", "enable").WithField("context", context.Background()).WithField("caller", "log depth").WithField("logger", true)
-	log.Info("file line")
-	log.WithField("depth", "disable").Info("file line")
-	log.WithField("depth", []string{"disable"}).Info("file line")
-
-	log.WithField("context", context.TODO()).Info("logger context")
+func TestLoggerInit2(t *testing.T) {
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerInit())
+	app.Info("loggerInit to end")
+	app.CancelFunc()
+	app.Run()
 }
 
-func TestLoggerWriterFile(t *testing.T) {
-	defer func() {
-		t.Logf("NewLoggerWriterFile recover %v", recover())
-	}()
+func TestLoggerFormatterText(t *testing.T) {
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLogger(&eudore.LoggerConfig{
+		Caller:    true,
+		Stdout:    true,
+		Formatter: "text",
+	}))
+	loggerWriteData(app)
 
-	// file
-	logfile := "tmp-loggerStd.log"
-	log := eudore.NewLoggerStd(&eudore.LoggerStdConfig{
-		Path: logfile,
-	})
-	defer os.Remove(logfile)
-
-	log.Info("hello")
-	log.Sync()
-	os.Remove(logfile)
-
-	// file and std
-	log = eudore.NewLoggerStd(&eudore.LoggerStdConfig{
-		Std:  true,
-		Path: logfile,
-	})
-	log.Info("hello")
-	log.Sync()
-	os.Remove(logfile)
-
-	// create error
-	func() {
-		defer func() {
-			t.Logf("NewLoggerWriterFile recover %v", recover())
-		}()
-		log = eudore.NewLoggerStd(&eudore.LoggerStdConfig{
-			Path: "out-yyyy-MM-dd-HH-index---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------.log",
-		})
-	}()
-	func() {
-		defer func() {
-			t.Logf("NewLoggerWriterFile recover %v", recover())
-		}()
-		log = eudore.NewLoggerStd(&eudore.LoggerStdConfig{
-			Path: "out----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------.log",
-		})
-	}()
-	log.Info("hello")
-	log.Sync()
+	app.CancelFunc()
+	app.Run()
 }
 
-func TestNewLoggerWriterRotate(t *testing.T) {
-	defer os.RemoveAll("logger")
-	{
-		// 占用一个索引文件 rotate跳过
-		os.Mkdir("logger", 0644)
-		file, err := os.OpenFile("logger/logger-out-2.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-		if err == nil {
-			str := []byte("eudore logger Writer test.")
-			for i := 0; i < 1024; i++ {
-				file.Write(str)
-			}
-			file.Sync()
-			file.Close()
-		}
-	}
-
-	// date
-	log := eudore.NewLoggerStd(&eudore.LoggerStdConfig{
-		Std:  true,
-		Path: "logger/logger-yyyy-MM-dd-HH-index.log",
-	})
-	log.Info("hello")
-
-	// no link
-	log = eudore.NewLoggerStd(&eudore.LoggerStdConfig{
-		Std:     true,
-		Path:    "logger/logger-out-index.log",
-		MaxSize: 16 << 10,
-	})
-	log.Info("hello")
-
-	// rotate file
-	log = eudore.NewLoggerStd(&eudore.LoggerStdConfig{
-		Path:    "logger/logger-out-index.log",
-		MaxSize: 16 << 10,
-		Link:    "logger/app.log",
-	})
-	log.Info("hello")
-
-	log = log.WithFields([]string{"name", "type"}, []interface{}{"eudore", "logger"}).WithField("logger", true)
-	for i := 0; i < 1000; i++ {
-		log.Info("test rotate")
-	}
-	log.Sync()
+func TestLoggerFormatterJSON(t *testing.T) {
+	app := eudore.NewApp()
+	loggerWriteData(app)
+	app.WithField("utf8", "世界\\ \n \r \t \002 \321 \u2028").Debug()
+	app.WithField("field", new(marsha1)).Debug("marsha1")
+	app.WithField("field", new(marsha2)).Debug("marsha2")
+	app.WithField("field", new(marsha3)).Debug("marsha3")
+	app.WithField("field", new(marsha4)).Debug("marsha4")
+	app.WithField("field", new(marsha5)).Debug("marsha5")
 }
 
-type (
-	marsha1 struct{}
-	marsha2 struct{}
-	marsha3 struct{}
-	marsha4 struct{}
-	marsha5 struct{ Num []int }
-)
+type marsha1 struct{}
+type marsha2 struct{}
+type marsha3 struct{}
+type marsha4 struct{}
+type marsha5 bool
 
 func (marsha1) MarshalJSON() ([]byte, error) {
-	return []byte("marsha1"), nil
+	return []byte("\"marsha1\""), nil
 }
 func (marsha2) MarshalJSON() ([]byte, error) {
-	return []byte("marsha2"), errors.New("test marshal error")
+	return []byte("\"marsha2\""), errors.New("test marshal error")
 }
 func (marsha3) MarshalText() ([]byte, error) {
 	return []byte("\\ \n \r \t \002 \321 世界"), nil
@@ -245,44 +126,66 @@ func (marsha3) MarshalText() ([]byte, error) {
 func (marsha4) MarshalText() ([]byte, error) {
 	return []byte("\\ \n \r \t \002 \321 世界"), errors.New("\\ \n \r \t \002 \321 世界")
 }
+func (marsha5) Method() {}
 
-func TestLoggerStdJSON(t *testing.T) {
-	var ptr *time.Time
-	var slice = []int{1}
-	log := eudore.NewLoggerStd(nil)
-	log.Debug("debug")
-	log.Info("info")
+type StructCycle struct {
+	Name string `json:"name,omitempty"`
+	Err  error
+	*StructCycle
+}
+
+type StructAnon struct {
+	Duration *eudore.TimeDuration
+	Now      *time.Time
+	*eudore.LoggerConfig
+	eudore.ServerConfig
+}
+
+func loggerWriteData(log eudore.Logger) {
+	type M map[string]any
+	var eptr *time.Time
+	var eany any
+	var cslice []any
+	var cmap = make(map[string]any)
+	var cycle = &StructCycle{}
+	var echan chan int
+	var dura eudore.TimeDuration
+	cslice = append(cslice, "slice", 0, cslice)
+	cmap["data"] = "map data"
+	cmap["this"] = cmap
+	cycle.StructCycle = cycle
+
+	log = log.WithField("depth", "disable").WithField("logger", true)
 	log.WithField("json", eudore.LoggerDebug).Debug()
-	log.WithField("stringer", eudore.HandlerFunc(eudore.HandlerEmpty)).Debug("2")
+	log.WithField("fmt.Stringer", eudore.HandlerFunc(eudore.HandlerEmpty)).Debug()
+	log.WithField("fmt.Stringer", &dura).Debug()
 	log.WithField("error", fmt.Errorf("logger wirte error")).Debug()
-	log.WithField("bool", true).Debug("2")
-	log.WithField("int", 1).Debug("2")
-	log.WithField("uint", uint(2)).Debug("2")
-	log.WithField("float", 3.3).Debug("2")
-	log.WithField("complex", complex(4.1, 4.2)).Debug("2")
-	log.WithField("array", []int{1, 2, 3}).Debug("2")
-	log.WithField("map", map[string]int{"a": 1, "b": 2}).Debug("2")
-	log.WithField("struct", struct{ Name string }{"name"}).Debug("2")
-	log.WithField("struct", struct{}{}).Debug("2")
-	log.WithField("ptr", &struct{ Name string }{"name"}).Debug("2")
-	log.WithField("ptr", ptr).Debug("2")
-	log.WithField("slice", slice[0:0]).Debug("2")
-	log.WithField("emptry face", []interface{}{ptr}).Debug("2")
-	log.WithField("func", TestLoggerStdJSON).Debug("2")
-	log.WithField("bytes", []byte("bytes")).Debug("2")
-	var i interface{}
-	log.WithField("nil", i).Debug("2")
-
-	log.WithField("utf8 string", "\\ \n \r \t \002 \321 世界").Debug("2")
-	log.WithField("utf8 bytes", []byte("\\ \n \r \t \002 \321 世界")).Debug("2")
-
-	log.WithField("nil", new(marsha1)).Debug("marsha1")
-	log.WithField("nil", new(marsha2)).Debug("marsha2")
-	log.WithField("nil", new(marsha3)).Debug("marsha3")
-	log.WithField("nil", new(marsha4)).Debug("marsha4")
-	log.WithField("nil", new(marsha5)).Debug("marsha5")
-
-	log.Sync()
+	log.WithField("bool", true).Debug()
+	log.WithField("int", 1).Debug()
+	log.WithField("uint", uint(2)).Debug()
+	log.WithField("float", 3.3).Debug()
+	log.WithField("complex", complex(4.1, 4.2)).Debug()
+	log.WithField("map", map[string]int{"a": 1, "b": 2}).Debug()
+	log.WithField("map alias", M{"a": 1, "b": 2}).Debug()
+	log.WithField("map empty", map[string]int{}).Debug()
+	log.WithField("map cycle", cmap).Debug()
+	log.WithField("struct", struct{ Name string }{"name"}).Debug()
+	log.WithField("struct empty", struct{}{}).Debug()
+	log.WithField("struct cycle", cycle).Debug()
+	log.WithField("struct anonymous", &StructAnon{}).Debug()
+	log.WithField("ptr", &struct{ Name string }{"name"}).Debug()
+	log.WithField("ptr empty", eptr).Debug()
+	log.WithField("slice empty", cslice[0:0]).Debug()
+	log.WithField("slice cycle", cslice).Debug()
+	log.WithField("array", []int{1, 2, 3}).Debug()
+	log.WithField("func", eudore.NewApp).Debug()
+	log.WithField("bytes", []byte("bytes")).Debug()
+	log.WithField("any empty", eany).Debug()
+	log.WithField("any empty", []any{eany}).Debug()
+	log.WithField("chan empty", echan).Debug()
+	log.WithField("depth", "disable").Info("depth")
+	log.WithField("depth", "enable").Info("depth")
+	log.WithField("depth", "stack").Info("depth")
 }
 
 type logConfig struct {
@@ -293,97 +196,192 @@ type logConfig struct {
 
 func TestLoggerLevel(t *testing.T) {
 	conf := &logConfig{}
-	var jsonBlob = []byte(`{"level1":"1","level2":"info","level3":"3"}`)
+	jsonBlob := []byte(`{"level1":"1","level2":"info","level3":"3"}`)
 	err := json.Unmarshal(jsonBlob, conf)
 	t.Logf("%v\t%#v\n", err, conf)
 	jsonBlob = []byte(`{"level3": "33"}`)
 	err = json.Unmarshal(jsonBlob, conf)
 	t.Logf("%v\t%#v\n", err, conf)
+	json.Marshal(conf)
+	t.Log(conf.Level1)
 }
 
-type loggerStdData016 struct {
-	eudore.LoggerStdData
-	meta *loggerStdData016Meta
-}
+func TestLoggerHookFatal(t *testing.T) {
+	defer func() {
+		t.Logf("LoggerHookFatal recover %v", recover())
+	}()
 
-type loggerStdData016Meta struct {
-	debug   int64
-	info    int64
-	warning int64
-	error   int64
-	fatal   int64
-}
-
-func (log loggerStdData016) GetLogger() *eudore.LoggerStd {
-	entry := log.LoggerStdData.GetLogger()
-	_, ok := entry.LoggerStdData.(loggerStdData016)
-	if !ok {
-		entry.LoggerStdData = loggerStdData016{entry.LoggerStdData, log.meta}
-	}
-	return entry
-}
-
-func (log loggerStdData016) PutLogger(entry *eudore.LoggerStd) {
-	switch entry.Level {
-	case eudore.LoggerDebug:
-		log.meta.debug++
-	case eudore.LoggerInfo:
-		log.meta.info++
-	case eudore.LoggerWarning:
-		log.meta.warning++
-	case eudore.LoggerError:
-		log.meta.error++
-	case eudore.LoggerFatal:
-		log.meta.fatal++
-	}
-	log.LoggerStdData.PutLogger(entry)
-}
-
-func (log loggerStdData016) Metadata() interface{} {
-	return map[string]interface{}{
-		"name":    "loggerStdData016",
-		"debug":   log.meta.debug,
-		"info":    log.meta.info,
-		"warning": log.meta.warning,
-		"ererror": log.meta.error,
-		"fatal":   log.meta.fatal,
-	}
-}
-
-func TestMetadata(t *testing.T) {
 	app := eudore.NewApp()
-	meta, ok := app.Logger.(interface{ Metadata() interface{} })
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLogger(&eudore.LoggerConfig{
+		Stdout:    true,
+		HookFatal: true,
+	}))
+
+	app.Fatal("stop app")
+	app.Run()
+
+	log := eudore.NewLogger(&eudore.LoggerConfig{
+		Stdout:    true,
+		HookFatal: true,
+	})
+	log.Fatal("stop logger")
+}
+
+func TestLoggerHookFilter(t *testing.T) {
+	app := eudore.NewApp()
+	fc := eudore.NewFuncCreator()
+	app.SetValue(eudore.ContextKeyFuncCreator, fc)
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLogger(&eudore.LoggerConfig{
+		Stdout: true,
+		HookFilter: [][]string{
+			{"path string prefix=/static/", "status int equal:200"},
+			{"mail setstring hidemail", "password setstring hide"},
+			{"ti setint default", "tu setuint default", "tf setfloat default", "tb setbool default", "ta setany default"},
+			{"1 1 1"},
+			{"strs setstring default", "t setany add=240h"},
+		},
+	}))
+
+	app.WithFields([]string{"path", "status"}, []any{"/index", 200}).Info()
+	app.WithFields([]string{"path", "status"}, []any{"/static/index", 200}).Info()
+	app.WithFields([]string{"path"}, []any{true}).Info()
+	app.WithField("mail", "postmaster@eudore.cn").WithField("password", "123456").Info()
+	app.WithFields([]string{"ti", "tu", "tf", "tb", "ta"}, []any{1, uint(1), 1.0, true, time.Now()}).Info()
+	app.WithFields([]string{"path"}, []any{nil}).Info()
+	app.WithFields([]string{"strs", "t"}, []any{[]string{"", "2"}, time.Now()}).Debug()
+
+	meta, ok := fc.(interface{ Metadata() any }).Metadata().(eudore.MetadataFuncCreator)
 	if ok {
-		app.Infof("%#v", meta.Metadata())
+		for _, err := range meta.Errors {
+			app.Debug("err:", err)
+		}
 	}
 
-	app.SetValue(eudore.ContextKeyLogger, eudore.NewLoggerStd(&loggerStdData016{eudore.NewLoggerStdDataJSON(nil), &loggerStdData016Meta{}}))
-	meta, ok = app.Logger.(interface{ Metadata() interface{} })
-	if ok {
-		app.Infof("%#v", meta.Metadata())
-	}
+	time.Sleep(1000 * time.Millisecond)
+	app.CancelFunc()
+	app.Run()
+}
+
+func TestLoggerWriterStdout(t *testing.T) {
+	app := eudore.NewApp()
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLogger(&eudore.LoggerConfig{
+		Stdout:   true,
+		StdColor: true,
+	}))
+	app.Info("color")
+
+	eudore.NewLogger(&eudore.LoggerConfig{
+		Stdout:     true,
+		StdColor:   true,
+		TimeFormat: time.RFC3339Nano + " " + time.RFC3339Nano,
+	}).Debug("disable color")
 
 	app.CancelFunc()
 	app.Run()
 }
 
-func TestLoggerMonkey(t *testing.T) {
-	patch1 := monkey.Patch(runtime.Caller, func(int) (uintptr, string, int, bool) { return 0, "", 0, false })
-	patch2 := monkey.Patch(runtime.Callers, func(int, []uintptr) int { return 0 })
-	defer patch1.Unpatch()
-	defer patch2.Unpatch()
+func TestLoggerWriterFile(t *testing.T) {
+	defer func() {
+		t.Logf("NewLoggerWriterFile recover %v", recover())
+	}()
 
-	log := eudore.NewLoggerStd(nil)
-	log.WithField("depth", "enable").Error(eudore.GetPanicStack(0))
+	// file
+	logfile := "tmp-loggerStd.log"
+	log := eudore.NewLogger(&eudore.LoggerConfig{
+		Path: logfile,
+	})
+	defer os.Remove(logfile)
+	log.Info("hello")
 
+	// create error
+	func() {
+		defer func() {
+			t.Logf("NewLoggerWriterFile recover %v", recover())
+		}()
+		log = eudore.NewLogger(&eudore.LoggerConfig{
+			Path: "out----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------/1.log",
+		})
+	}()
+	func() {
+		defer func() {
+			t.Logf("NewLoggerWriterFile recover %v", recover())
+		}()
+		log = eudore.NewLogger(&eudore.LoggerConfig{
+			Path: "out----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------.log",
+		})
+	}()
+}
+
+func TestNewLoggerWriterRotate(t *testing.T) {
 	defer os.RemoveAll("logger")
-	log = eudore.NewLoggerStd(&eudore.LoggerStdConfig{
-		Path:       "logger/logger-yyyy-MM-dd-HH-index.log",
-		Link:       "logger/logger.log",
-		MaxSize:    1 << 10, // 1k
-		Std:        false,
-		Level:      eudore.LoggerDebug,
-		TimeFormat: "Mon Jan 2 15:04:05 -0700 MST 2006",
+	{
+		// 占用一个索引文件 rotate跳过
+		os.Mkdir("logger", 0o755)
+		file, err := os.OpenFile("logger/app-2.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err == nil {
+			str := []byte("eudore logger Writer test.")
+			for i := 0; i < 1024; i++ {
+				file.Write(str)
+			}
+			file.Close()
+		}
+	}
+
+	// date
+	log := eudore.NewLogger(&eudore.LoggerConfig{
+		Stdout: true,
+		Path:   "logger/app-yyyy-mm-dd-hh.log",
+	})
+	log.Info("hello")
+
+	// size
+	log = eudore.NewLogger(&eudore.LoggerConfig{
+		Stdout:  true,
+		Path:    "logger/app-size.log",
+		MaxSize: 16 << 10,
+	})
+	log.Info("hello")
+
+	// link
+	log = eudore.NewLogger(&eudore.LoggerConfig{
+		Path:     "logger/app.log",
+		Link:     "logger/app.log",
+		MaxSize:  16 << 10,
+		MaxCount: 3,
+	})
+	log.Info("hello")
+
+	log = log.WithFields([]string{"name", "type"}, []any{"eudore", "logger"}).WithField("logger", true)
+	for i := 0; i < 1000; i++ {
+		log.Info("test rotate")
+	}
+}
+
+func TestLoggerMonkeyErr(t *testing.T) {
+	defer func() {
+		t.Logf("MonkeyErr recover %v", recover())
+	}()
+
+	patchCallers := monkey.Patch(runtime.Callers, func(int, []uintptr) int { return 0 })
+	defer patchCallers.Unpatch()
+	patchOpen := monkey.Patch(os.OpenFile, func(name string, flag int, perm os.FileMode) (*os.File, error) {
+		return nil, fmt.Errorf("monkey no open")
+	})
+	defer patchOpen.Unpatch()
+
+	eudore.GetCallerStacks(0)
+	eudore.NewLogger(&eudore.LoggerConfig{
+		Path: "app-yyyy-mm-dd.log",
+	})
+}
+
+func TestLoggerMonkeyTime(t *testing.T) {
+	defer os.RemoveAll("logger")
+	log := eudore.NewLogger(&eudore.LoggerConfig{
+		Path:     "logger/app-yyyy-mm-dd-hh.log",
+		Link:     "logger/app.log",
+		MaxSize:  1 << 10, // 1k
+		MaxCount: 10,
 	})
 
 	// This is as unsafe as it sounds and I don't recommend anyone do it outside of a testing environment.
@@ -407,18 +405,17 @@ func TestLoggerMonkey(t *testing.T) {
 }
 
 func BenchmarkLoggerStd(b *testing.B) {
-	data := map[string]interface{}{
+	data := map[string]any{
 		"a": 1,
 		"b": 2,
 	}
-	log := eudore.NewLoggerStd(&eudore.LoggerStdConfig{
+	log := eudore.NewLogger(&eudore.LoggerConfig{
 		Path: "t2.log",
 	})
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		log.WithFields([]string{"animal", "number", "size"}, []interface{}{"walrus", 1, 10}).Info("A walrus appears")
+		log.WithFields([]string{"animal", "number", "size"}, []any{"walrus", 1, 10}).Info("A walrus appears")
 		log.WithField("a", 1).WithField("b", true).Info(data)
 	}
-	log.Sync()
 	os.Remove("t2.log")
 }

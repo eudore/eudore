@@ -5,10 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
-	// "github.com/kr/pretty"
 )
 
 func stringSliceNotIn(strs []string, str string) bool {
@@ -20,7 +18,7 @@ func stringSliceNotIn(strs []string, str string) bool {
 	return true
 }
 
-// ControllerAction 定义生成action参考控制器
+// ControllerAction 定义生成action参考控制器。
 type ControllerAction struct{}
 
 // ControllerParam 方法定义ControllerAction生成action参数。
@@ -29,14 +27,12 @@ func (ControllerAction) ControllerParam(pkg, name, method string) string {
 	if pos != 0 {
 		pkg = pkg[pos:]
 	}
-	if strings.HasSuffix(name, "Controller") {
-		name = name[:len(name)-len("Controller")]
-	}
 
+	name = strings.TrimSuffix(name, "Controller")
 	return fmt.Sprintf("action=%s:%s:%s", pkg, name, method)
 }
 
-// NewSignaturerJwt 函数创建一个Jwt Signaturer
+// NewSignaturerJwt 函数创建一个Jwt Signaturer。
 func NewSignaturerJwt(secret []byte) Signaturer {
 	return verifyFunc(func(b []byte) string {
 		h := hmac.New(sha256.New, secret)
@@ -47,20 +43,24 @@ func NewSignaturerJwt(secret []byte) Signaturer {
 
 type verifyFunc func([]byte) string
 
-func (fn verifyFunc) Signed(claims interface{}) string {
-	payload, _ := json.Marshal(claims)
-	var unsigned string = `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.` + base64.RawURLEncoding.EncodeToString(payload)
+func (fn verifyFunc) Signed(claims any) string {
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return err.Error()
+	}
+
+	unsigned := BearerPrefix + base64.RawURLEncoding.EncodeToString(payload)
 	return fmt.Sprintf("%s.%s", unsigned, fn([]byte(unsigned)))
 }
 
-func (fn verifyFunc) Parse(token string, dst interface{}) error {
+func (fn verifyFunc) Parse(token string, dst any) error {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		return errors.New("Error: incorrect # of results from string parsing.")
+		return ErrVerifyTokenInvalid
 	}
 
 	if fn([]byte(parts[0]+"."+parts[1])) != parts[2] {
-		return errors.New("Error：jwt validation error.")
+		return ErrVerifyResultInvalid
 	}
 
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
@@ -68,18 +68,12 @@ func (fn verifyFunc) Parse(token string, dst interface{}) error {
 		return err
 	}
 
-	err = json.Unmarshal(payload, dst)
-	if err != nil {
-		return err
-	}
-	return nil
+	return json.Unmarshal(payload, dst)
 }
 
 type starTree struct {
-	// Index int
-	Name string
-	Path string
-	// Const   string
+	Name     string
+	Path     string
 	children []*starTree
 	wildcard *starTree
 }
@@ -98,7 +92,7 @@ func (tree *starTree) Insert(path string) {
 		if pos == -1 {
 			break
 		}
-		path = strings.Replace(path, "**", "*", -1)
+		path = strings.ReplaceAll(path, "**", "*")
 	}
 	for i, s := range strings.Split(path, "*") {
 		if i != 0 {
@@ -158,10 +152,8 @@ func (tree *starTree) Match(path string) string {
 				break
 			}
 		}
-	} else {
-		if tree.Name != "" {
-			return tree.Name
-		}
+	} else if tree.Name != "" {
+		return tree.Name
 	}
 
 	if tree.wildcard == nil {

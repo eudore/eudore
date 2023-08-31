@@ -19,8 +19,8 @@ func (stmt *StmtSelect) Init(DatabaseContext) error {
 	_ = stmt.Name
 	return nil
 }
-func (stmt *StmtSelect) Build(DatabaseContext) {
 
+func (stmt *StmtSelect) Build(DatabaseContext) {
 }
 
 func BenchmarkFuncReflect(b *testing.B) {
@@ -29,7 +29,7 @@ func BenchmarkFuncReflect(b *testing.B) {
 		stmt.Build(ctx)
 	})
 	var ctx DatabaseContext = 0
-	var stmt = &StmtSelect{"eudore"}
+	stmt := &StmtSelect{"eudore"}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		reflect.TypeOf(stmt)
@@ -44,7 +44,7 @@ func BenchmarkFuncAassertions(b *testing.B) {
 		stmtSelect.Build(ctx)
 	}
 	var ctx DatabaseContext = 0
-	var stmt = &StmtSelect{"eudore"}
+	stmt := &StmtSelect{"eudore"}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		reflect.TypeOf(stmt)

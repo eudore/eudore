@@ -4,7 +4,6 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
@@ -12,67 +11,118 @@ import (
 	"github.com/eudore/eudore"
 )
 
-// NewCompressFunc 函数创建一个压缩响应处理函数，需要指定压缩算法和压缩对象构造函数。
-//
-// import: "github.com/andybalholm/brotli"
-//
-// br: middleware.NewCompressFunc("br", func() interface{} { return brotli.NewWriter(ioutil.Discard) }),
-//
-// gzip: middleware.NewCompressGzipFunc(5)
-//
-// deflate: middleware.NewCompressDeflateFunc(5)
-func NewCompressFunc(name string, fn func() interface{}) eudore.HandlerFunc {
-	pool := sync.Pool{New: fn}
+// NewCompressGzipFunc 函数创建一个gzip压缩处理函数。
+func NewCompressGzipFunc() eudore.HandlerFunc {
+	return NewCompressFunc(CompressNameGzip, func() any {
+		return gzip.NewWriter(io.Discard)
+	})
+}
+
+// NewCompressDeflateFunc 函数创建一个deflate压缩处理函数。
+func NewCompressDeflateFunc() eudore.HandlerFunc {
+	return NewCompressFunc(CompressNameDeflate, func() any {
+		w, _ := flate.NewWriter(io.Discard, flate.DefaultCompression)
+		return w
+	})
+}
+
+func newResponseWriterCompressPool(name string, fn func() any) *sync.Pool {
+	return &sync.Pool{
+		New: func() any {
+			return &responseWriterCompress{
+				Name:   name,
+				Writer: fn().(compressor),
+				Buffer: make([]byte, CompressBufferLength),
+			}
+		},
+	}
+}
+
+// NewCompressFunc 函数创建一个压缩处理函数，需要指定压缩算法和压缩对象构造函数。
+func NewCompressFunc(name string, fn func() any) eudore.HandlerFunc {
+	pool := newResponseWriterCompressPool(name, fn)
 	return func(ctx eudore.Context) {
-		// 检查是否使用name压缩
-		if shouldNotCompress(ctx, name) {
-			ctx.Next()
+		// 检查是否使用压缩
+		if !strings.Contains(ctx.GetHeader(eudore.HeaderAcceptEncoding), name) ||
+			ctx.Response().Header().Get(eudore.HeaderContentEncoding) != "" ||
+			strings.Contains(ctx.GetHeader(eudore.HeaderConnection), "Upgrade") ||
+			strings.Contains(ctx.GetHeader(eudore.HeaderContentType), "text/event-stream") {
 			return
 		}
-		// 初始化ResponseWriter
-		w := &responseCompress{
-			ResponseWriter: ctx.Response(),
-			Writer:         pool.Get().(compressor),
-			Name:           name,
+
+		handlerCompress(ctx, pool)
+	}
+}
+
+// NewCompressMixinsFunc 函数创建一个混合压缩处理函数，默认具有gzip、defalte。
+//
+// 如果压缩ResponseWriter.Size()值为压缩后size。
+//
+// 如果设置middleware.DefaultComoressBrotliFunc指定brotli压缩函数，追加br压缩。
+//
+// HeaderAcceptEncoding值忽略非零权重值，顺序优先。
+func NewCompressMixinsFunc(compresss map[string]func() any) eudore.HandlerFunc {
+	if compresss == nil {
+		compresss = make(map[string]func() any)
+		compresss[CompressNameGzip] = func() any {
+			return gzip.NewWriter(io.Discard)
 		}
-		w.Writer.Reset(ctx.Response())
+		compresss[CompressNameDeflate] = func() any {
+			w, _ := flate.NewWriter(io.Discard, flate.DefaultCompression)
+			return w
+		}
+		if DefaultComoressBrotliFunc != nil {
+			compresss[CompressNameBrotli] = DefaultComoressBrotliFunc
+		}
+	}
+	names := make([]string, 0, len(compresss))
+	pools := make([]*sync.Pool, 0, len(compresss))
+	for name := range compresss {
+		names = append(names, name)
+		pools = append(pools, newResponseWriterCompressPool(name, compresss[name]))
+	}
 
-		ctx.SetResponse(w)
-		ctx.SetHeader(eudore.HeaderContentEncoding, name)
-		ctx.SetHeader(eudore.HeaderVary, eudore.HeaderAcceptEncoding)
-		ctx.Next()
+	return func(ctx eudore.Context) {
+		encoding := ctx.GetHeader(eudore.HeaderAcceptEncoding)
+		if encoding == "" || encoding == CompressNameIdentity ||
+			ctx.Response().Header().Get(eudore.HeaderContentEncoding) != "" ||
+			strings.Contains(ctx.GetHeader(eudore.HeaderConnection), "Upgrade") ||
+			strings.Contains(ctx.GetHeader(eudore.HeaderContentType), "text/event-stream") {
+			return
+		}
 
-		w.Writer.Close()
-		pool.Put(w.Writer)
+		for _, encoding := range strings.Split(encoding, ",") {
+			name, quality, ok := strings.Cut(strings.TrimSpace(encoding), ";")
+			if ok && quality == "q=0" {
+				continue
+			}
+			for i := range names {
+				if names[i] == name {
+					handlerCompress(ctx, pools[i])
+				}
+			}
+		}
 	}
 }
 
-// NewCompressGzipFunc 函数创建一个gzip压缩响应处理函数,如果压缩级别超出gzip范围默认使用5。
-func NewCompressGzipFunc(level int) eudore.HandlerFunc {
-	if level < gzip.HuffmanOnly || level > gzip.BestCompression {
-		level = 5
-	}
-	return NewCompressFunc("gzip", func() interface{} {
-		gz, _ := gzip.NewWriterLevel(ioutil.Discard, level)
-		return gz
-	})
+func handlerCompress(ctx eudore.Context, pool *sync.Pool) {
+	// 初始化ResponseWriter
+	w := pool.Get().(*responseWriterCompress)
+	w.ResponseWriter = ctx.Response()
+	w.Buffer = w.Buffer[0:0]
+	w.State = CompressStateUnknown
+	defer w.Close(pool)
+
+	ctx.SetResponse(w)
+	ctx.Next()
 }
 
-// NewCompressDeflateFunc 函数创建一个deflate压缩响应处理函数,如果压缩级别超出deflate范围默认使用5。
-func NewCompressDeflateFunc(level int) eudore.HandlerFunc {
-	if level < flate.HuffmanOnly || level > flate.BestCompression {
-		level = 5
-	}
-	return NewCompressFunc("deflate", func() interface{} {
-		gz, _ := flate.NewWriter(ioutil.Discard, level)
-		return gz
-	})
-}
-
-// responseCompress 定义Gzip响应，实现ResponseWriter接口
-type responseCompress struct {
+// responseWriterCompress 定义压缩响应，实现ResponseWriter接口。
+type responseWriterCompress struct {
 	eudore.ResponseWriter
 	Writer compressor
+	State  int
+	Buffer []byte
 	Name   string
 }
 
@@ -83,58 +133,116 @@ type compressor interface {
 	Close() error
 }
 
+// Unwrap 方法返回原始http.ResponseWrite对象。
+func (w *responseWriterCompress) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
 // Write 实现ResponseWriter中的Write方法。
-func (w responseCompress) Write(data []byte) (int, error) {
-	return w.Writer.Write(data)
+func (w *responseWriterCompress) Write(data []byte) (int, error) {
+	switch w.State {
+	case CompressStateEnable:
+		return w.Writer.Write(data)
+	case CompressStateDisable:
+		return w.ResponseWriter.Write(data)
+	default:
+		if len(data)+len(w.Buffer) <= CompressBufferLength {
+			w.State = CompressStateBuffer
+			w.Buffer = append(w.Buffer, data...)
+			return len(data), nil
+		}
+
+		w.init()
+		return w.Write(data)
+	}
+}
+
+func (w *responseWriterCompress) WriteString(data string) (int, error) {
+	switch w.State {
+	case CompressStateEnable:
+		// WriteString only gzip
+		return io.WriteString(w.Writer, data)
+	case CompressStateDisable:
+		return w.ResponseWriter.WriteString(data)
+	default:
+		if len(data)+len(w.Buffer) <= CompressBufferLength {
+			w.State = CompressStateBuffer
+			w.Buffer = append(w.Buffer, data...)
+			return len(data), nil
+		}
+
+		w.init()
+		return w.WriteString(data)
+	}
+}
+
+func (w *responseWriterCompress) WriteHeader(code int) {
+	if code == 200 {
+		return
+	}
+	if w.State < CompressStateEnable {
+		contentlength := w.ResponseWriter.Header().Get(eudore.HeaderContentLength)
+		if contentlength == "" || len(contentlength) > 3 {
+			w.init()
+		}
+		w.ResponseWriter.WriteHeader(code)
+	}
 }
 
 // Flush 实现ResponseWriter中的Flush方法。
-func (w responseCompress) Flush() {
-	w.Writer.Flush()
+func (w *responseWriterCompress) Flush() {
+	switch w.State {
+	case CompressStateEnable:
+		w.Writer.Flush()
+	case CompressStateBuffer:
+		w.init()
+		w.Writer.Flush()
+	}
 	w.ResponseWriter.Flush()
 }
 
-func shouldNotCompress(ctx eudore.Context, name string) bool {
-	h := ctx.Request().Header
-	if !strings.Contains(h.Get(eudore.HeaderAcceptEncoding), name) ||
-		strings.Contains(h.Get(eudore.HeaderConnection), "Upgrade") ||
-		strings.Contains(h.Get(eudore.HeaderContentType), "text/event-stream") {
-
-		return true
+func (w *responseWriterCompress) Close(pool *sync.Pool) {
+	switch w.State {
+	case CompressStateEnable:
+		w.Writer.Close()
+		w.Writer.Reset(io.Discard)
+	case CompressStateBuffer:
+		w.ResponseWriter.Write(w.Buffer)
 	}
-
-	return ctx.Response().Header().Get(eudore.HeaderContentEncoding) != ""
+	pool.Put(w)
 }
 
-// Push initiates an HTTP/2 server push.
-// Push returns ErrNotSupported if the client has disabled push or if push
-// is not supported on the underlying connection.
-func (w *responseCompress) Push(target string, opts *http.PushOptions) error {
-	return w.ResponseWriter.Push(target, w.setAcceptEncodingForPushOptions(opts))
+func (w *responseWriterCompress) init() {
+	h := w.ResponseWriter.Header()
+	contenttype := h.Get(eudore.HeaderContentType)
+	pos := strings.IndexByte(contenttype, ';')
+	if pos != -1 {
+		contenttype = contenttype[:pos]
+	}
+
+	if DefaultComoressDisableMime[contenttype] || h.Get(eudore.HeaderContentEncoding) != "" {
+		w.State = CompressStateDisable
+	} else {
+		w.State = CompressStateEnable
+		w.Writer.Reset(w.ResponseWriter)
+		h.Del(eudore.HeaderContentLength)
+		h.Set(eudore.HeaderContentEncoding, w.Name)
+		h.Set(eudore.HeaderVary, strings.Join(append(h.Values(eudore.HeaderVary), eudore.HeaderAcceptEncoding), ", "))
+	}
+	if len(w.Buffer) > 0 {
+		w.Write(w.Buffer)
+	}
 }
 
-// setAcceptEncodingForPushOptions sets "Accept-Encoding" : "gzip" for PushOptions without overriding existing headers.
-func (w *responseCompress) setAcceptEncodingForPushOptions(opts *http.PushOptions) *http.PushOptions {
-	if opts == nil {
-		opts = &http.PushOptions{
-			Header: http.Header{
-				eudore.HeaderAcceptEncoding: []string{w.Name},
-			},
-		}
-		return opts
-	}
-
-	if opts.Header == nil {
-		opts.Header = http.Header{
-			eudore.HeaderAcceptEncoding: []string{w.Name},
-		}
-		return opts
-	}
-
-	if encoding := opts.Header.Get(eudore.HeaderAcceptEncoding); encoding == "" {
+// Push 方法给Push Header设置HeaderAcceptEncoding。
+func (w *responseWriterCompress) Push(target string, opts *http.PushOptions) error {
+	switch {
+	case opts == nil:
+		opts = &http.PushOptions{Header: http.Header{eudore.HeaderAcceptEncoding: {w.Name}}}
+	case opts.Header == nil:
+		opts.Header = http.Header{eudore.HeaderAcceptEncoding: {w.Name}}
+	case opts.Header.Get(eudore.HeaderAcceptEncoding) == "":
 		opts.Header.Add(eudore.HeaderAcceptEncoding, w.Name)
-		return opts
 	}
-
-	return opts
+	return w.ResponseWriter.Push(target, opts)
 }

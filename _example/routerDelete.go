@@ -8,15 +8,13 @@ package main
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 	"github.com/eudore/eudore/middleware"
 )
 
 func main() {
 	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)))
-
-	client := httptest.NewClient(app)
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(eudore.NewRouterCoreLock(nil)))
+	client := app.WithClient(eudore.NewClientCheckStatus(200))
 
 	register := app.Group(" register=off")
 	app.AnyFunc("/version", echoStringHandler("any version"))
@@ -24,11 +22,11 @@ func main() {
 
 	app.AnyFunc("/version", echoStringHandler("any version"))
 	app.AnyFunc("/version1", echoStringHandler("any version"))
-	client.NewRequest("GET", "/version").Do().CheckStatus(200).CheckBodyString("any version")
+	client.NewRequest(nil, "GET", "/version", eudore.NewClientCheckBody("any version"))
 	app.GetFunc("/version", echoStringHandler("get version"))
-	client.NewRequest("GET", "/version").Do().CheckStatus(200).CheckBodyString("get version")
+	client.NewRequest(nil, "GET", "/version", eudore.NewClientCheckBody("get version"))
 	register.AddHandler("GET,POST", "/version", echoStringHandler("get version"))
-	client.NewRequest("GET", "/version").Do().CheckStatus(200).CheckBodyString("any version")
+	client.NewRequest(nil, "GET", "/version", eudore.NewClientCheckBody("any version"))
 	register.AnyFunc("/version*", echoStringHandler("any version"))
 	register.AnyFunc("/version0", echoStringHandler("any version"))
 	register.AnyFunc("/version2", echoStringHandler("any version"))
@@ -43,17 +41,17 @@ func main() {
 
 	// ---------------- 测试 ----------------
 
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouterStd(eudore.NewRouterCoreLock(nil)))
+	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(eudore.NewRouterCoreLock(nil)))
 	register = app.Group(" register=off")
 	app.AnyFunc("/eudore/debug/look/*", middleware.NewLookFunc(app))
 	app.AnyFunc("/version", echoStringHandler("any version"))
 	app.AnyFunc("/version1", echoStringHandler("any version"))
 	app.AnyFunc("/version2", echoStringHandler("any version"))
-	client.NewRequest("GET", "/version").Do().CheckStatus(200).CheckBodyString("any version")
+	client.NewRequest(nil, "GET", "/version", eudore.NewClientCheckBody("any version"))
 	app.GetFunc("/version", echoStringHandler("get version"))
-	client.NewRequest("GET", "/version").Do().CheckStatus(200).CheckBodyString("get version")
+	client.NewRequest(nil, "GET", "/version", eudore.NewClientCheckBody("get version"))
 	register.AddHandler("GET,POST", "/version", echoStringHandler("get version"))
-	client.NewRequest("GET", "/version").Do().CheckStatus(200).CheckBodyString("any version")
+	client.NewRequest(nil, "GET", "/version", eudore.NewClientCheckBody("any version"))
 	register.GetFunc("/version", echoStringHandler("get version"))
 	register.AnyFunc("/version*", echoStringHandler("any version"))
 	register.AnyFunc("/version0", echoStringHandler("any version"))
@@ -71,10 +69,10 @@ func main() {
 
 	app.AnyFunc("/api/v1/user/id/:id", eudore.HandlerEmpty)
 	app.AnyFunc("/api/v1/user/name/*name", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v1/user/:id|isnum", eudore.HandlerEmpty)
+	app.AnyFunc("/api/v1/user/:id|num", eudore.HandlerEmpty)
 	app.AnyFunc("/api/v1/user/*name|nozero", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v1/user/:id|isnum/", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v1/user/:id|isnum", eudore.HandlerEmpty)
+	register.AnyFunc("/api/v1/user/:id|num/", eudore.HandlerEmpty)
+	register.AnyFunc("/api/v1/user/:id|num", eudore.HandlerEmpty)
 	register.AnyFunc("/api/v1/user/*name|nozero", eudore.HandlerEmpty)
 	register.AnyFunc("/api/v1/user/id/:id", eudore.HandlerEmpty)
 	register.AnyFunc("/api/v1/user/name/*name", eudore.HandlerEmpty)

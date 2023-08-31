@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -16,28 +17,28 @@ type cache struct {
 	context    context.Context
 	getKeyFunc func(eudore.Context) string
 	waits      map[string]*sync.WaitGroup
-	cacheStore
+	CacheStore
 }
 
-type cacheStore interface {
+type CacheStore interface {
 	Load(string) *CacheData
 	Store(string, *CacheData)
 }
 
-// NewCacheFunc 函数创建一个缓存中间件，对Get请求具有缓存和SingleFlight双重效果，无法获得中间件之前的响应header数据。
-//
-// options:
-//
-// context.Context               =>    控制默认cacheMap清理过期数据的生命周期
-//
-// time.Duration                 =>    请求数据缓存时间，默认秒
-//
-// func(eudore.Context) string   =>    自定义缓存key，为空则跳过缓存
-//
-// cacheStore			         =>    缓存存储对象
-func NewCacheFunc(args ...interface{}) eudore.HandlerFunc {
+/*
+NewCacheFunc 函数创建一个缓存中间件，对Get请求具有缓存和SingleFlight双重效果，
+无法获得中间件之前的响应header数据。
+
+options:
+
+	context.Context               =>    控制默认cacheMap清理过期数据的生命周期。
+	time.Duration                 =>    请求数据缓存时间，默认秒。
+	func(eudore.Context) string   =>    自定义缓存key，为空则跳过缓存。
+	CacheStore			          =>    缓存存储对象。
+*/
+func NewCacheFunc(args ...any) eudore.HandlerFunc {
 	c := &cache{
-		dura:    time.Second,
+		dura:    DefaultCacheSaveTime,
 		context: context.Background(),
 		getKeyFunc: func(ctx eudore.Context) string {
 			if ctx.Method() != eudore.MethodGet || ctx.GetHeader(eudore.HeaderUpgrade) != "" {
@@ -55,29 +56,34 @@ func NewCacheFunc(args ...interface{}) eudore.HandlerFunc {
 			c.context = val
 		case func(eudore.Context) string:
 			c.getKeyFunc = val
-		case cacheStore:
-			c.cacheStore = val
+		case CacheStore:
+			c.CacheStore = val
 		}
 	}
-	if c.cacheStore == nil {
-		c.cacheStore = newCacheMap(c.context, c.dura)
+	if c.CacheStore == nil {
+		c.CacheStore = newCacheMap(c.context, c.dura)
 	}
 	return c.Handle
 }
 
 func (cache *cache) Handle(ctx eudore.Context) {
 	key := cache.getKeyFunc(ctx)
-	if key == "" {
+	if key == "" || ctx.GetHeader(eudore.HeaderConnection) == "Upgrade" {
 		return
 	}
+
+	fullkey := fmt.Sprintf("%s:%s:%s", key,
+		ctx.GetHeader(eudore.HeaderAccept),
+		ctx.GetHeader(eudore.HeaderAcceptEncoding),
+	)
 
 	var wait *sync.WaitGroup
 	var ok bool
 	for {
 		// load cache
-		data := cache.Load(key)
+		data := cache.Load(fullkey)
 		if data != nil {
-			data.writeData(ctx.Response())
+			data.writeData(ctx)
 			ctx.SetParam("cache", key)
 			ctx.End()
 			return
@@ -85,11 +91,11 @@ func (cache *cache) Handle(ctx eudore.Context) {
 
 		// cas
 		cache.Lock()
-		wait, ok = cache.waits[key]
+		wait, ok = cache.waits[fullkey]
 		if !ok {
 			wait = new(sync.WaitGroup)
 			wait.Add(1)
-			cache.waits[key] = wait
+			cache.waits[fullkey] = wait
 			cache.Unlock()
 			break
 		}
@@ -97,23 +103,26 @@ func (cache *cache) Handle(ctx eudore.Context) {
 		wait.Wait()
 	}
 
-	w := ctx.Response()
-	resp := &cacheResponset{
-		ResponseWriter: w,
-		header:         make(http.Header),
+	now := time.Now()
+	w := &responseWriterCache{
+		ResponseWriter: ctx.Response(),
+		CacheHeader: http.Header{
+			eudore.HeaderLastModified: {now.UTC().Format(http.TimeFormat)},
+		},
 	}
-	ctx.SetResponse(resp)
-	ctx.Next()
 	ctx.SetResponse(w)
-	cache.Store(key, &CacheData{
-		Expired: time.Now().Add(cache.dura),
-		Status:  w.Status(),
-		Header:  w.Header(),
-		Body:    resp.Buffer.Bytes(),
+	ctx.Next()
+	ctx.SetResponse(w.ResponseWriter)
+	cache.Store(fullkey, &CacheData{
+		Expired:      now.Add(cache.dura),
+		ModifiedTime: w.CacheHeader.Get(eudore.HeaderLastModified),
+		Status:       w.Status(),
+		Header:       w.CacheHeader,
+		Body:         w.CacheData.Bytes(),
 	})
 
 	cache.Lock()
-	delete(cache.waits, key)
+	delete(cache.waits, fullkey)
 	wait.Done()
 	cache.Unlock()
 }
@@ -149,7 +158,7 @@ func (m *cacheMap) Run(ctx context.Context, t time.Duration) {
 	for {
 		select {
 		case now := <-time.After(t):
-			m.Map.Range(func(key, value interface{}) bool {
+			m.Map.Range(func(key, value any) bool {
 				item := value.(*CacheData)
 				if now.After(item.Expired) {
 					m.Map.Delete(key)
@@ -162,46 +171,67 @@ func (m *cacheMap) Run(ctx context.Context, t time.Duration) {
 	}
 }
 
-// cacheResponset 对象记录返回的响应数据
+// responseWriterCache 对象记录返回的响应数据
 //
 // Upgrade请求不会进入cache处理，push处理仅push主请求，缓存请求不push无明显影响。
-type cacheResponset struct {
+type responseWriterCache struct {
 	eudore.ResponseWriter
-	header http.Header
-	bytes.Buffer
+	CacheData    bytes.Buffer
+	CacheHeader  http.Header
+	ModifiedTime string
 }
 
 // Write 方法实现ResponseWriter中的Write方法。
-func (w *cacheResponset) Write(data []byte) (int, error) {
+func (w *responseWriterCache) Write(data []byte) (int, error) {
 	if w.Size() == 0 {
 		h := w.ResponseWriter.Header()
-		for k, v := range w.header {
+		h.Add(eudore.HeaderLastModified, w.ModifiedTime)
+		for k, v := range w.CacheHeader {
 			h[k] = v
 		}
 	}
-	w.Buffer.Write(data)
+	w.CacheData.Write(data)
 	return w.ResponseWriter.Write(data)
 }
 
+func (w *responseWriterCache) WriteString(data string) (int, error) {
+	if w.Size() == 0 {
+		h := w.ResponseWriter.Header()
+		h.Add(eudore.HeaderLastModified, w.ModifiedTime)
+		for k, v := range w.CacheHeader {
+			h[k] = v
+		}
+	}
+	w.CacheData.WriteString(data)
+	return w.ResponseWriter.WriteString(data)
+}
+
 // Header 方法返回响应设置的header。
-func (w *cacheResponset) Header() http.Header {
-	return w.header
+func (w *responseWriterCache) Header() http.Header {
+	return w.CacheHeader
 }
 
 // CacheData 定义缓存的数据类型。
 type CacheData struct {
-	Expired time.Time
-	Status  int
-	Header  http.Header
-	Body    []byte
+	Expired      time.Time
+	ModifiedTime string
+	Status       int
+	Header       http.Header
+	Body         []byte
 }
 
 // writeData 方法将cache响应数据写入到请求响应。
-func (w *CacheData) writeData(resp eudore.ResponseWriter) {
-	resp.WriteHeader(w.Status)
-	h := resp.Header()
+func (w *CacheData) writeData(ctx eudore.Context) {
+	ctx.SetHeader(eudore.HeaderXEudoreCache, "true")
+	if ctx.GetHeader(eudore.HeaderIfModifiedSince) == w.ModifiedTime {
+		ctx.SetHeader(eudore.HeaderLastModified, w.ModifiedTime)
+		ctx.WriteHeader(eudore.StatusNotModified)
+		return
+	}
+	h := ctx.Response().Header()
 	for k, v := range w.Header {
 		h[k] = v
 	}
-	resp.Write(w.Body)
+	ctx.WriteHeader(w.Status)
+	ctx.Write(w.Body)
 }

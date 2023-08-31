@@ -5,7 +5,8 @@
 单元测试： `CGO_ENABLED=1 go test -v -timeout=2m -race -cover -coverpkg='github.com/eudore/eudore,github.com/eudore/eudore/middleware,github.com/eudore/eudore/policy' *_test.go
 `
 
-go version go1.18.7 linux/amd64 coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eudore/policy
+go version go1.20.1 linux/amd64	coverage: 100.0% of statements in github.com/eudore/eudore, github.com/eudore/eudore/middleware, github.com/eudore/eu
+dore/policy
 
 因版本变化未全部更新。
 
@@ -13,11 +14,7 @@ go version go1.18.7 linux/amd64 coverage: 100.0% of statements in github.com/eud
 	- [New](appNew.go)
 	- [静态文件](appStatic.go)
 	- [全局请求中间件](appMiddleware.go)
-	- [后台启动](appDaemon.go)(Alpha)
-	- [启动命令解析](appCommand.go)(Alpha)
-	- [监听代码自动编译重启](appNotify.go)(Alpha)
 	- [自定义app](appExtend.go)
-	- [重新加载配置](appReload.go)
 - Config
 	- [map存储配置](configMap.go)
 	- [结构体存储配置](configEudore.go)
@@ -37,6 +34,7 @@ go version go1.18.7 linux/amd64 coverage: 100.0% of statements in github.com/eud
 	- [写入Elastic](loggerElastic.go)
 	- [日志脱敏](loggerSensitive.go)
 	- [logrus库适配](loggerLogrus.go)
+- Client
 - Server
 	- [设置超时](serverStd.go)
 	- [服务监听](serverListen.go)
@@ -55,6 +53,11 @@ go version go1.18.7 linux/amd64 coverage: 100.0% of statements in github.com/eud
 	- [路由器注册移除](routerDelete.go)
 	- [路由器核心简化](routerCore.go)
 	- [radix树](routerRadix.go)
+- Controller
+	- [路由控制器](controllerAutoRoute.go)
+	- [控制器组合](controllerCompose.go)
+	- [控制器自定义参数](controllerParams.go)
+	- [控制器错误处理](controllerError.go)
 - Context
 	- [Request Info](contextRequestInfo.go)
 	- [Response Write](contextResponsWrite.go)
@@ -76,7 +79,7 @@ go version go1.18.7 linux/amd64 coverage: 100.0% of statements in github.com/eud
 	- [Send Template](contextRenderTemplate.go)
 	- [文件上传](contextUpload.go)
 	- [设置额外数据](contextValue.go)
-- Context处理扩展
+- HandlerExtender
 	- [默认处理](handlerDefault.go)
 	- [处理ContextData扩展](handlerContextData.go)
 	- [处理自定义函数类型](handlerFunc.go)
@@ -88,11 +91,8 @@ go version go1.18.7 linux/amd64 coverage: 100.0% of statements in github.com/eud
 	- [Rpc式map请求](handlerRpcMap.go)
 	- [使用embed](handlerEmbed.go)
 	- [使用jwt](handlerJwt.go)
-- Controller
-	- [路由控制器](controllerAutoRoute.go)
-	- [控制器组合](controllerCompose.go)
-	- [控制器自定义参数](controllerParams.go)
-	- [控制器错误处理](controllerError.go)
+- HandlerData
+	- FuncCreator 
 - Middleware
 	- [Admin中间件管理后台](middlewareAdmin.go)
 	- [BasicAuth](middlewareBasicAuth.go)
@@ -122,6 +122,11 @@ go version go1.18.7 linux/amd64 coverage: 100.0% of statements in github.com/eud
 	- [RouterRewrite](middlewareRouterRewrite.go)
 	- [Timeout请求超时](middlewareTimeout.go)
 	- [自定义中间件处理函数](middlewareHandle.go)
+- Daemon
+	- [后台启动](appDaemon.go)
+	- [命令管理进程](appCommand.go)
+	- [热重启](appRestart.go)
+	- [重新加载配置](appReload.go)
 - Policy(Alpha)
 	- [Pbac](policyPbac.go)
 	- [Rbac](policyRbac.go)
@@ -140,10 +145,6 @@ go version go1.18.7 linux/amd64 coverage: 100.0% of statements in github.com/eud
 - Websocket
 	- [使用github.com/gobwas/ws库](websocketGobwas.go)
 	- [使用github.com/gorilla/websocket库](websocketGorilla.go)
-- tool
-	- [转换对象成map](toolConvertMap.go)
-	- [对象转换](toolConvertTo.go)
-	- [基于路径读写对象](toolGetSet.go)
 - net/http
 	- [中间件 黑名单](nethttpBlack.go)
 	- [中间件 路径重写](nethttpRewrite.go)
@@ -155,5 +156,6 @@ go version go1.18.7 linux/amd64 coverage: 100.0% of statements in github.com/eud
 	- [http客户端简化实现](otherHttpClient.go)
 	- [http服务端简化实现](otherHttpServer.go)
 	- [http服务端简化](otherHttpServer2.go)
+	- [监听代码自动编译重启](otherNotify.go)(Alpha)
 
 

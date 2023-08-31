@@ -3,7 +3,6 @@ package eudore_test
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -26,13 +25,7 @@ func TestServerStd(t *testing.T) {
 	app.GetFunc("/panic", func(ctx eudore.Context) {
 		panic(400)
 	})
-	app.GetFunc("/meta", func(ctx eudore.Context) interface{} {
-		meta, ok := app.Server.(interface{ Metadata() interface{} })
-		if ok {
-			return meta.Metadata()
-		}
-		return nil
-	})
+	app.GetFunc("/meta/*", eudore.HandlerMetadata)
 	app.GetFunc("/err", func(ctx eudore.Context) {
 		var app eudore.App
 		app.CancelFunc()
@@ -43,7 +36,7 @@ func TestServerStd(t *testing.T) {
 	app.NewRequest(nil, "GET", "/wrote")
 	app.NewRequest(nil, "GET", "/panic")
 	app.NewRequest(nil, "GET", "/err")
-	app.NewRequest(nil, "GET", "/meta", eudore.NewClientHeader(eudore.HeaderAccept, eudore.MimeApplicationJSON))
+	app.NewRequest(nil, "GET", "/meta/server")
 
 	app.CancelFunc()
 	app.Run()
@@ -164,7 +157,7 @@ func TestServerMutualTLS(t *testing.T) {
 
 func createtp() (*http.Transport, error) {
 	pool := x509.NewCertPool()
-	data, err := ioutil.ReadFile("/tmp/mca/ca.cer")
+	data, err := os.ReadFile("/tmp/mca/ca.cer")
 	pool.AppendCertsFromPEM(data)
 	if err != nil {
 		return nil, err
@@ -210,7 +203,7 @@ openssl x509 -in server.cer -text -noout 2>&1| head -n 15
 */
 
 func createssl() {
-	ioutil.WriteFile("ca.cer", []byte(`-----BEGIN CERTIFICATE-----
+	os.WriteFile("ca.cer", []byte(`-----BEGIN CERTIFICATE-----
 MIIDYjCCAkoCCQDkcCR+EmTT1jANBgkqhkiG9w0BAQUFADBzMQswCQYDVQQGEwJD
 TjELMAkGA1UECAwCQkoxEDAOBgNVBAcMB2JlaWppbmcxDzANBgNVBAoMBmV1ZG9y
 ZTEPMA0GA1UECwwGZXVkb3JlMQ8wDQYDVQQLDAZldWRvcmUxEjAQBgNVBAMMCWxv
@@ -232,7 +225,7 @@ mjXWmb2mT7j+oZ4P84UFWZsTLgqZaCnY3x+9f7yh00cPGcLwdaC+UjmEsluGwtMG
 +8lmw2Fo
 -----END CERTIFICATE-----
 `), 0644)
-	ioutil.WriteFile("server.key", []byte(`-----BEGIN RSA PRIVATE KEY-----
+	os.WriteFile("server.key", []byte(`-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEA0zQ4iUpcInR2++dwEdTH/VGtFDXZEMKqZjdFuMQmqkB8+l7f
 2zaTDAweVkaGW7dAWyGQFl/p5GYEFyzdjj5lKhP9bSClxGAFnDjQbP9MI4zKKhtW
 qWXs1QASUhcM3NpaswUQlu3GtHuxkzZsJv+Y4wvx+6oEwrvqIfh6y+8IsAFHSDHw
@@ -260,7 +253,7 @@ d7I+u8v/415SnnwAp4HxpMCe1WgmoMotFPHrA3j9FqmQ74A3TzXV0BvasZK9Pd36
 LBPlsSEa0bH2ZjPim2xir8m92MKT3npoe9Qu9U49ozFSNFbx9DeK
 -----END RSA PRIVATE KEY-----
 `), 0644)
-	ioutil.WriteFile("server.cer", []byte(`-----BEGIN CERTIFICATE-----
+	os.WriteFile("server.cer", []byte(`-----BEGIN CERTIFICATE-----
 MIIDYjCCAkoCCQDKHAIPMuQDNDANBgkqhkiG9w0BAQUFADBzMQswCQYDVQQGEwJD
 TjELMAkGA1UECAwCQkoxEDAOBgNVBAcMB2JlaWppbmcxDzANBgNVBAoMBmV1ZG9y
 ZTEPMA0GA1UECwwGZXVkb3JlMQ8wDQYDVQQLDAZldWRvcmUxEjAQBgNVBAMMCWxv
@@ -282,7 +275,7 @@ wL5oxRH7f4om4vsY1Uhe6VUuXh1R05rlCnX9l/HPazaUj2zEGHh/Drxj6BcwSlOr
 uZwwKuNX
 -----END CERTIFICATE-----
 `), 0644)
-	ioutil.WriteFile("client.key", []byte(`-----BEGIN RSA PRIVATE KEY-----
+	os.WriteFile("client.key", []byte(`-----BEGIN RSA PRIVATE KEY-----
 MIIEowIBAAKCAQEApd+aNQYV4DuWG9Sb9iA6wdEMvRG7tIjBv78Nm9BxZwHaVgwd
 BEucdX1ieiyDSVJOVxBKjyGmehtE5VH1kAUHzln2TMKYj8cKb78BNmuU+VqV/C2G
 VbuCtB3wT3IXcI2L4ZvM/9w3INZbxo1oTiTfj2wiyo1ZSXygPuWIk+ardb2/u/ZU
@@ -310,7 +303,7 @@ IMoUnpMmCrDHeGZcfAkmZ4XDEXWn4gGIybQuqsJ1znfL6i0S68X/IlLyAuuz8D5Z
 q9GrgvzRgNgBZxSZagF0Xjk+wjvDiqe4N3kPYu2qxcpg555kaJgX
 -----END RSA PRIVATE KEY-----
 `), 0644)
-	ioutil.WriteFile("client.cer", []byte(`-----BEGIN CERTIFICATE-----
+	os.WriteFile("client.cer", []byte(`-----BEGIN CERTIFICATE-----
 MIIDYjCCAkoCCQDKHAIPMuQDNTANBgkqhkiG9w0BAQUFADBzMQswCQYDVQQGEwJD
 TjELMAkGA1UECAwCQkoxEDAOBgNVBAcMB2JlaWppbmcxDzANBgNVBAoMBmV1ZG9y
 ZTEPMA0GA1UECwwGZXVkb3JlMQ8wDQYDVQQLDAZldWRvcmUxEjAQBgNVBAMMCWxv
