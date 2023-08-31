@@ -1,0 +1,71 @@
+{
+  "run": {
+    "timeout": "2m",
+    "skip-files": [
+      "protobuf.go",
+      "middleware/admin.go",
+      "middleware/dump.go"
+    ]
+  },
+  "issues": {
+    "max-same-issues": 10
+  },
+  "linters": {
+    "enable-all": true,
+    "disable": [
+      "golint",
+      "deadcode",
+      "nosnakecase",
+      "ifshort",
+      "scopelint",
+      "maligned",
+      "structcheck",
+      "exhaustivestruct",
+      "varcheck",
+      "interfacer",
+      "errcheck",
+      "varnamelen",
+      "wrapcheck",
+      "nlreturn",
+      "ireturn",
+      "interfacebloat",
+      "gochecknoglobals",
+      "nonamedreturns",
+      "forcetypeassert",
+      "exhaustruct",
+      "lll",
+      "gosec",
+      "wsl",
+      "containedctx",
+      "exhaustive",
+      "contextcheck",
+      "tagliatelle",
+      "gomnd",
+      "goerr113",
+      "nestif",
+      "gocognit",
+      "tagalign"
+    ]
+  },
+  "linters-settings": {
+    "gocyclo": {
+      "min-complexity": 15
+    },
+    "cyclop": {
+      "max-complexity": 15
+    },
+    "depguard": {
+      "rules": {
+        "main": {
+          "allow": [
+            "$gostd",
+            "github.com/eudore/eudore"
+          ]
+        }
+      }
+    },
+    "funlen": {
+      "statements": 50
+    }
+  }
+}

@@ -1,0 +1,73 @@
+name: Run Tests
+on:
+  push:
+    branches: ["master"]
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v3
+        continue-on-error: true
+        with:
+          args: --verbose -c .github/workflows/golang-lint.json
+  test:
+    strategy:
+      max-parallel: 16
+      matrix:
+        os: [macos, ubuntu]
+        go: ["1.20", "1.21"]
+        include:
+          - os: macos
+            gopath: /Users/runner/go
+            gocache: /Users/runner/Library/Caches/go-build
+          - os: ubuntu
+            gopath: /home/runner/go
+            gocache: /home/runner/.cache/go-build
+    name: ${{ matrix.os }} @ Go ${{ matrix.go }}
+    runs-on: ${{ matrix.os }}-latest
+    env:
+      GO111MODULE: off
+      GOPATH: ${{ matrix.gopath }}:${{ github.workspace }}
+      CGO_ENABLED: 1
+      WORKDIR: src/github.com/eudore/eudore/
+      PACKAGES: github.com/eudore/eudore,github.com/eudore/eudore/middleware,github.com/eudore/eudore/policy
+    defaults:
+      run:
+        working-directory: ${{ env.WORKDIR }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: ${{ env.WORKDIR }}
+      - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go }}
+      - uses: actions/cache@v3
+        with:
+          key: ${{ runner.os }}-go-${{ hashFiles('src/github.com/eudore/eudore/go.mod') }}
+          restore-keys: ${{ runner.os }}-go-
+          path: |
+            ${{ matrix.gopath }}
+            ${{ matrix.gocache }}
+      - name: Run Go Get 
+        run: for pkg in $(go list -json _example/*_test.go | jq -r '.XTestImports[]' | grep -E "github.com|golang.org|monkey" | grep -v eudore); do go get -v $pkg; done
+      - name: Run Tests
+        run: go test -v -timeout=1m -race -cover -coverprofile=coverage.out -coverpkg='${{ env.PACKAGES }}' _example/*_test.go | tee output
+      - name: Run Notice
+        run: go run _example/otherAction.go
+      - name: Run Coverage
+        run: go tool cover -html coverage.out -o coverage.html
+      - uses: codecov/codecov-action@v3
+        with:
+          working-directory: ${{ env.WORKDIR }}
+          files: coverage.out
+          flags: ${{ matrix.os }},go-${{ matrix.go }}
+      - uses: actions/upload-artifact@v3
+        with:
+          name: Coverage-eudore-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.go }}
+          path: ${{ env.WORKDIR }}/coverage.html
