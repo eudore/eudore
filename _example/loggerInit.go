@@ -19,7 +19,6 @@ func main() {
 	app.Info("info")
 	app.Warning("warning")
 	app.Error("error")
-	app.Sync()
 
 	logout := app.WithField("caller", "mylogout").WithFields(nil, nil)
 	logout.WithField("level", "debug").Debug("debug")
@@ -27,8 +26,10 @@ func main() {
 	logout.WithField("level", "warning").Warning("warning")
 	logout.WithField("level", "error").Error("error")
 
+	app.SetValue(eudore.ContextKeyLogger, eudore.NewLogger(nil))
 	app.AnyFunc("/*path", eudore.HandlerEmpty)
 	app.WithField("depth", "enable").Info("info")
 
+	app.CancelFunc()
 	app.Run()
 }

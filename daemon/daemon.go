@@ -1,33 +1,48 @@
 /*
-Package daemon 实现应用进程启动命令、后台启动、信号处理、热重启的代码支持。
+Package daemon implements application startup command and signal processing.
 
-# 启动命令
+Multiple processes will be started and unit test coverage cannot be completed.
 
-	app --command=start/status/stop/restart/deamon/disable --pidfile=/run/run/pidfile
+# Startup commands
+
+Use [NewParseCommand] to load the full commad startup function.
+
+	app.ParseOption(daemon.NewParseCommand())
+	app.Parse()
+
+When executing the app, use parameters to specify the startup command.
+
+	app --command=start --pidfile=/run/run/pidfile
 
 command:
 
-	start	写入pid前台启动
-	daemon	写入pid后台启动
-	status	读取pid判断进程存在
-	stop	读取pid发送syscall.SIGTERM信号(15)
-	restart	读取pid发送syscall.SIGUSR2信号(12)
-	disable	跳过启动命令处理
+	start   Start the program and write pid.
+	daemon  Start the daemon process and write pid.
+	status  Read pid to determine whether the process exists.
+	reload  Read pid and send syscall.SIGUSR1 signal (10).
+	restart Read pid and send syscall.SIGUSR2 signal (12).
+	stop    Read pid and send syscall.SIGTERM signal (15).
+	disable Skip startup command processing.
 
-# 后台启动
+# Startup daemon
+
+In the first line of the main function, use [AppDaemon] and
+if it is not a daemon,
+execute fork to start the daemon.
 
 	func main() {
-		daemon.StartDaemon()
+		daemon.AppDaemon()
+		// start app
 	}
 
-# 信号处理
+# Signal processing
 
-# 热重启
+Use [NewParseSignal] to load the default [Signal] and Hot restart.
 
-使用command组件或kill命令发送SIGUSR2信号。
+Use [Signal.Register] to register custom signal processing.
 
-父进程接受SIGUSR2信号后，传递当前Listen FD和ppid后台启动子进程；
-子进程启动初始化后完成向父进程发送SIGTERM信号关闭父进程。
+	app.ParseOption(daemon.NewParseSignal())
+	app.Parse()
 */
 package daemon
 
@@ -41,71 +56,117 @@ import (
 	"github.com/eudore/eudore"
 )
 
-// NewParseCommand 函数创建Command配置解析函数。
-func NewParseDaemon(app *eudore.App) eudore.ConfigParseFunc {
+// The NewParseCommand function creates the [eudore.ConfigParseFunc] that
+// executes the startup Command.
+//
+// If the command is not [CommandStart] or [CommandDaemon],
+// it will try to disable logging by closing the [eudore.ContextKeyLogger]
+// of [context.Context].
+//
+// not supported by windows.
+func NewParseCommand() eudore.ConfigParseFunc {
 	return func(ctx context.Context, conf eudore.Config) error {
+		cmd := NewCommand(
+			eudore.GetAny(conf.Get("command"), CommandStart),
+			eudore.GetAny(conf.Get("pidfile"), eudore.DefaultDaemonPidfile),
+		)
+		eudore.NewLoggerWithContext(ctx).Infof(
+			"daemon command is %s, PID file located at '%s', process ID: %d.",
+			cmd.Command, cmd.Pidfile, os.Getpid(),
+		)
+
+		switch cmd.Command {
+		case CommandDaemon:
+			if !eudore.GetAny[bool](os.Getenv(eudore.EnvEudoreDaemonEnable)) {
+				setValue(ctx, eudore.ContextKeyLogger, eudore.DefaultLoggerNull)
+			}
+		case CommandStatus, CommandStop, CommandRestart, CommandReload:
+			setValue(ctx, eudore.ContextKeyLogger, eudore.DefaultLoggerNull)
+		case CommandDisable:
+			return nil
+		}
+
+		setValue(ctx, eudore.ContextKeyDaemonCommand, cmd)
+		return cmd.Run()
+	}
+}
+
+// The NewParseSignal function creates [eudore.ConfigParseFunc] for initializing
+// signal management.
+//
+// Default registered signals: [syscall.SIGINT]
+// [syscall.SIGUSR2] [syscall.SIGTERM].
+//
+// If [eudore.EnvEudoreDaemonParentPID] exists,
+// the parent process will be shut down.
+// This function must be placed after listen.
+func NewParseSignal() eudore.ConfigParseFunc {
+	return func(ctx context.Context, _ eudore.Config) error {
 		sig := &Signal{
 			Chan:  make(chan os.Signal),
 			Funcs: make(map[os.Signal][]SignalFunc),
 		}
-		sig.Register(syscall.Signal(0x02), AppStop)
+		sig.Register(syscall.Signal(0x02), AppStopWithFast)
+		sig.Register(syscall.Signal(0x0c), AppRestart)
 		sig.Register(syscall.Signal(0x0f), AppStop)
-		app.SetValue(eudore.ContextKeyDaemonSignal, sig)
-		go sig.Run(ctx)
-
-		cmd := &Command{
-			Command: eudore.GetAny(conf.Get("command"), CommandStart),
-			Pidfile: eudore.GetAny(conf.Get("pidfile"), eudore.DefaultDaemonPidfile),
-			Print: func(format string, args ...any) {
-				fmt.Printf(format+"\r\n", args...) //nolint:forbidigo
-			},
-		}
-		if cmd.Command == CommandDisable {
-			return nil
-		}
-		app.Infof("command is %s, pidfile in %s, process pid is %d.", cmd.Command, cmd.Pidfile, os.Getpid())
-		if cmd.Command != CommandStart && cmd.Command != CommandDaemon {
-			app.SetValue(eudore.ContextKeyLogger, eudore.DefaultLoggerNull)
-		}
-
-		app.SetValue(eudore.ContextKeyDaemonCommand, cmd)
-		return cmd.Run(ctx)
-	}
-}
-
-func NewParseRestart() eudore.ConfigParseFunc {
-	return func(ctx context.Context, conf eudore.Config) error {
-		sig, ok := ctx.Value(eudore.ContextKeyDaemonSignal).(*Signal)
+		setValue(ctx, eudore.ContextKeyDaemonSignal, sig)
+		app, ok := ctx.Value(eudore.ContextKeyApp).(context.Context)
 		if ok {
-			sig.Register(syscall.Signal(0x0c), AppRestart)
+			go sig.Run(app)
 		}
 
-		cmd, ok := ctx.Value(eudore.ContextKeyDaemonCommand).(*Command)
-		if ok {
-			restartid := eudore.GetAny[int](os.Getenv(eudore.EnvEudoreDaemonRestartID))
-			if restartid == 0 {
-				return nil
+		restartid := eudore.GetAny[int](
+			os.Getenv(eudore.EnvEudoreDaemonParentPID),
+		)
+		if restartid != 0 {
+			// Use Command to kill the parent process and write the pid.
+			cmd, ok := ctx.Value(eudore.ContextKeyDaemonCommand).(*Command)
+			if ok {
+				err := cmd.ExecSignal(syscall.Signal(0x0f))
+				if err != nil {
+					return err
+				}
+				return cmd.writepid()
 			}
-			err := cmd.ExecSignal(syscall.Signal(0x0f))
+
+			process, err := os.FindProcess(restartid)
 			if err != nil {
-				return err
+				return fmt.Errorf("find process %d error: %w", restartid, err)
 			}
-			return cmd.writepid(ctx)
+			return process.Signal(syscall.Signal(0x0f))
 		}
+
 		return nil
 	}
 }
 
-// StartDaemon 函数直接后台启动程序。
-func StartDaemon(envs ...string) {
+// The AppDaemon function directly starts the daemon process.
+//
+// After the daemon process is started, it may exit with an error.
+func AppDaemon(envs ...string) {
 	if eudore.GetAny[bool](os.Getenv(eudore.EnvEudoreDaemonEnable)) {
 		return
 	}
 
 	cmd := exec.Command(os.Args[0], os.Args[1:]...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d", eudore.EnvEudoreDaemonEnable, 1))
+	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d",
+		eudore.EnvEudoreDaemonEnable, 1,
+	))
 	cmd.Env = append(cmd.Env, envs...)
 	cmd.Stdout = os.Stdout
 	_ = cmd.Start()
 	os.Exit(0)
+}
+
+func setValue(ctx context.Context, key, val any) {
+	seter, ok := ctx.(interface{ SetValue(key any, val any) })
+	if ok {
+		seter.SetValue(key, val)
+		return
+	}
+
+	app, ok := ctx.Value(eudore.ContextKeyApp).(*eudore.App)
+	if ok {
+		app.SetValue(key, val)
+	}
 }

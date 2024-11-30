@@ -3,7 +3,6 @@ package eudore
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,7 +17,7 @@ import (
 
 type loggerHandlerInit struct {
 	sync.Mutex
-	Entrys []LoggerEntry
+	Entrys []*LoggerEntry
 }
 
 func (h *loggerHandlerInit) HandlerPriority() int {
@@ -26,13 +25,24 @@ func (h *loggerHandlerInit) HandlerPriority() int {
 }
 
 func (h *loggerHandlerInit) HandlerEntry(entry *LoggerEntry) {
-	entry.Time = time.Now()
 	h.Lock()
-	h.Entrys = append(h.Entrys, *entry)
-	h.Unlock()
+	defer h.Unlock()
+	if h.Entrys == nil {
+		panic(ErrLoggerInitUnmounted)
+	}
+	h.Entrys = append(h.Entrys, &LoggerEntry{
+		Level:   entry.Level,
+		Time:    entry.Time,
+		Message: entry.Message,
+		Keys:    append([]string{}, entry.Keys...),
+		Vals:    append([]any{}, entry.Vals...),
+	})
 }
 
-// Unmount 方法获取ContextKeyLogger.(Logger)接受Init存储的日志。
+// The Unmount method get [ContextKeyLogger] from [context.Context] and outputs
+// the saved entry.
+//
+// If it cannot be get, use [NewLogger].
 func (h *loggerHandlerInit) Unmount(ctx context.Context) {
 	h.Lock()
 	defer h.Unlock()
@@ -43,7 +53,8 @@ func (h *loggerHandlerInit) Unmount(ctx context.Context) {
 
 	logger = logger.WithField("depth", "disable").WithField("logger", true)
 	for _, data := range h.Entrys {
-		entry := logger.WithField("time", data.Time).WithFields(data.Keys, data.Vals)
+		entry := logger.WithField("time", data.Time).
+			WithFields(data.Keys, data.Vals)
 		switch data.Level {
 		case LoggerDebug:
 			entry.Debug(data.Message)
@@ -62,10 +73,13 @@ func (h *loggerHandlerInit) Unmount(ctx context.Context) {
 
 type loggerHookMeta struct {
 	Size  uint64
-	Count [5]uint64
+	Count [6]uint64
 }
 
-// NewLoggerHookMeta 函数创建日志Meta处理，记录日志数量和写入量。
+// NewLoggerHookMeta function creates [LoggerHandler] to implement log counting.
+//
+// Implement the Metadata method and return the count and size of the
+// [LoggerEntry].
 func NewLoggerHookMeta() LoggerHandler {
 	return &loggerHookMeta{}
 }
@@ -79,7 +93,11 @@ func (h *loggerHookMeta) Metadata() any {
 		SizeFormat: formatSize(int64(h.Size)),
 	}
 }
-func (h *loggerHookMeta) HandlerPriority() int { return 60 }
+
+func (h *loggerHookMeta) HandlerPriority() int {
+	return DefaultLoggerPriorityHookMeta
+}
+
 func (h *loggerHookMeta) HandlerEntry(entry *LoggerEntry) {
 	atomic.AddUint64(&h.Size, uint64(len(entry.Buffer)))
 	atomic.AddUint64(&h.Count[entry.Level], 1)
@@ -95,9 +113,8 @@ type loggerHookFilterFunc struct {
 	FuncRunner
 }
 
-// NewLoggerHookFilter 函数创建日志过滤处理器。
-//
-// 在Mount时如果规则初始化失败，查看FuncCreator的Metadata。
+// The NewLoggerHookFilter function creates [LoggerHandler] to implement
+// log filtering or modification.
 func NewLoggerHookFilter(rules [][]string) LoggerHandler {
 	for i := range rules {
 		rules[i] = sliceFilter(rules[i], func(t string) bool {
@@ -110,7 +127,6 @@ func NewLoggerHookFilter(rules [][]string) LoggerHandler {
 	}
 }
 
-// Mount 方法使LoggerStd挂载上下文，上下文传递给LoggerStdData。
 func (h *loggerHookFilter) Mount(ctx context.Context) {
 	fc := NewFuncCreatorWithContext(ctx)
 	for i := range h.Rules {
@@ -122,7 +138,10 @@ func (h *loggerHookFilter) Mount(ctx context.Context) {
 			if err != nil {
 				continue
 			}
-			funcs = append(funcs, loggerHookFilterFunc{strs[0], FuncRunner{kind, fn}})
+			funcs = append(funcs, loggerHookFilterFunc{
+				Key:        strs[0],
+				FuncRunner: FuncRunner{kind, fn},
+			})
 		}
 		if len(funcs) > 0 {
 			h.Funcs = append(h.Funcs, funcs)
@@ -130,7 +149,10 @@ func (h *loggerHookFilter) Mount(ctx context.Context) {
 	}
 }
 
-func (h *loggerHookFilter) HandlerPriority() int { return 10 }
+func (h *loggerHookFilter) HandlerPriority() int {
+	return DefaultLoggerPriorityHookFilter
+}
+
 func (h *loggerHookFilter) HandlerEntry(entry *LoggerEntry) {
 	for i := range h.Funcs {
 		h.HandlerRule(entry, h.Funcs[i])
@@ -140,7 +162,9 @@ func (h *loggerHookFilter) HandlerEntry(entry *LoggerEntry) {
 	}
 }
 
-func (h *loggerHookFilter) HandlerRule(entry *LoggerEntry, funcs []loggerHookFilterFunc) {
+func (h *loggerHookFilter) HandlerRule(entry *LoggerEntry,
+	funcs []loggerHookFilterFunc,
+) {
 	for i := range funcs {
 		pos := sliceIndex(entry.Keys, funcs[i].Key)
 		if pos == -1 {
@@ -153,7 +177,9 @@ func (h *loggerHookFilter) HandlerRule(entry *LoggerEntry, funcs []loggerHookFil
 		}
 
 		if funcs[i].Kind > FuncCreateAny {
-			entry.Vals[pos] = funcRunAny(funcs[i].Kind, funcs[i].Func, entry.Vals[pos])
+			entry.Vals[pos] = funcRunAny(
+				funcs[i].Kind, funcs[i].Func, entry.Vals[pos],
+			)
 		} else if !funcs[i].RunPtr(reflect.ValueOf(entry.Vals[pos])) {
 			return
 		}
@@ -194,29 +220,129 @@ type loggerHookFatal struct {
 	Callback func(*LoggerEntry)
 }
 
-// NewLoggerHookFatal 函数创建Fatal级别日志处理Hook。
+// The NewLoggerHookFatal function creates [LoggerHandler] to implement handle
+// [LoggerFatal] logs.
+//
+// In Mount, get [ContextKeyAppCancel] as [context.CancelFunc].
+//
+// If you can't get the Fatal handler, use panic.
 func NewLoggerHookFatal(fn func(*LoggerEntry)) LoggerHandler {
 	return &loggerHookFatal{fn}
 }
 
 func (h *loggerHookFatal) Mount(ctx context.Context) {
 	if h.Callback == nil {
-		app, ok := ctx.Value(ContextKeyApp).(*App)
+		cancel, ok := ctx.Value(ContextKeyAppCancel).(context.CancelFunc)
 		if ok {
-			h.Callback = func(entry *LoggerEntry) {
-				app.SetValue(ContextKeyError, fmt.Errorf(entry.Message))
+			h.Callback = func(_ *LoggerEntry) {
+				cancel()
 			}
 		}
 	}
 }
 
-func (h *loggerHookFatal) HandlerPriority() int { return 101 }
+func (h *loggerHookFatal) HandlerPriority() int {
+	return DefaultLoggerPriorityHookFatal
+}
+
 func (h *loggerHookFatal) HandlerEntry(entry *LoggerEntry) {
 	if entry.Level == LoggerFatal {
 		if h.Callback == nil {
 			panic(entry.Message)
 		}
 		h.Callback(entry)
+	}
+}
+
+type loggerWriterAsync struct {
+	loggerHookMeta
+	Handlers []LoggerHandler
+	pool     sync.Pool
+	timeout  time.Duration
+	async    chan *LoggerEntry
+	done     chan struct{}
+}
+
+// The NewLoggerWriterAsync function creates [LoggerHandler] to implement
+// async Writer for log processing.
+//
+// size specifies the asynchronous buffer size, after the timeout, the overflow
+// log will be discarded; buff specifies the length of the multiplexed []byte.
+//
+// This [LoggerHandler] implements the Metadata method to
+// record the number of discarded logs.
+//
+// The [LoggerEntry] used by handlers only has Level and Buffer field data.
+//
+// If you continue to use it after Unmount,
+// it will panic send on closed channel.
+func NewLoggerWriterAsync(handlers []LoggerHandler, size, buff int,
+	timeout time.Duration,
+) LoggerHandler {
+	w := &loggerWriterAsync{
+		pool: sync.Pool{
+			New: func() any {
+				buf := make([]byte, buff)
+				return &buf
+			},
+		},
+		timeout: timeout,
+		async:   make(chan *LoggerEntry, size),
+		done:    make(chan struct{}),
+	}
+	w.Handlers = append([]LoggerHandler{&w.loggerHookMeta}, handlers...)
+	return w
+}
+
+func (w *loggerWriterAsync) Mount(ctx context.Context) {
+	go func() {
+		for {
+			select {
+			case log := <-w.async:
+				for _, h := range w.Handlers {
+					h.HandlerEntry(log)
+				}
+				w.pool.Put(&log.Buffer)
+			case <-w.done:
+				return
+			}
+		}
+	}()
+	for _, h := range w.Handlers {
+		anyMount(ctx, h)
+	}
+}
+
+func (w *loggerWriterAsync) Unmount(ctx context.Context) {
+	for _, h := range w.Handlers {
+		anyUnmount(ctx, h)
+	}
+	close(w.done)
+}
+
+func (w *loggerWriterAsync) HandlerPriority() int {
+	return DefaultLoggerPriorityWriterAsync
+}
+
+func (w *loggerWriterAsync) HandlerEntry(entry *LoggerEntry) {
+	buf := w.pool.Get().(*[]byte)
+	log := &LoggerEntry{
+		Level:  entry.Level,
+		Buffer: append((*buf)[:0], entry.Buffer...),
+	}
+
+	// try write
+	select {
+	case w.async <- log:
+		return
+	default:
+	}
+
+	select {
+	case w.async <- log:
+	case <-time.After(w.timeout):
+		atomic.AddUint64(&w.loggerHookMeta.Count[LoggerDiscard], 1)
+		w.pool.Put(buf)
 	}
 }
 
@@ -227,6 +353,8 @@ type loggerWriterStdoutColor struct {
 	sync.Mutex
 }
 
+// The NewLoggerWriterStdout function creates [LoggerHandler] to output logs to
+// [os.Stdout].
 func NewLoggerWriterStdout(color bool) LoggerHandler {
 	if color {
 		return &loggerWriterStdoutColor{}
@@ -234,31 +362,34 @@ func NewLoggerWriterStdout(color bool) LoggerHandler {
 	return &loggerWriterStdout{}
 }
 
-func (h *loggerWriterStdout) HandlerPriority() int {
-	return 90
+func (w *loggerWriterStdout) HandlerPriority() int {
+	return DefaultLoggerPriorityWriterStdout
 }
 
-func (h *loggerWriterStdout) HandlerEntry(entry *LoggerEntry) {
-	h.Lock()
+func (w *loggerWriterStdout) HandlerEntry(entry *LoggerEntry) {
+	w.Lock()
 	_, _ = os.Stdout.Write(entry.Buffer)
-	h.Unlock()
+	w.Unlock()
 }
 
-func (h *loggerWriterStdoutColor) HandlerPriority() int {
-	return 90
+func (w *loggerWriterStdoutColor) HandlerPriority() int {
+	return DefaultLoggerPriorityWriterStdout
 }
 
-func (h *loggerWriterStdoutColor) HandlerEntry(entry *LoggerEntry) {
+func (w *loggerWriterStdoutColor) HandlerEntry(entry *LoggerEntry) {
+	// Search for level in the first 64 char
 	pos := bytes.Index(entry.Buffer[:64], loggerLevelDefaultBytes[entry.Level])
-	h.Lock()
+	w.Lock()
 	if pos != -1 {
 		_, _ = os.Stdout.Write(entry.Buffer[:pos])
 		_, _ = os.Stdout.Write(loggerLevelColorBytes[entry.Level])
-		_, _ = os.Stdout.Write(entry.Buffer[pos+loggerLevelDefaultLen[entry.Level]:])
+		_, _ = os.Stdout.Write(
+			entry.Buffer[pos+loggerLevelDefaultLen[entry.Level]:],
+		)
 	} else {
 		os.Stdout.Write(entry.Buffer)
 	}
-	h.Unlock()
+	w.Unlock()
 }
 
 type loggerWriterFile struct {
@@ -266,7 +397,8 @@ type loggerWriterFile struct {
 	File *os.File
 }
 
-// NewLoggerWriterFile 函数创建一个文件输出的日志写入流。
+// The NewLoggerWriterFile function creates [LoggerHandler] to write logs to
+// [os.File].
 func NewLoggerWriterFile(name string) (LoggerHandler, error) {
 	err := os.MkdirAll(filepath.Dir(name), 0o755)
 	if err != nil {
@@ -280,14 +412,14 @@ func NewLoggerWriterFile(name string) (LoggerHandler, error) {
 	return &loggerWriterFile{File: file}, nil
 }
 
-func (h *loggerWriterFile) HandlerPriority() int {
-	return 100
+func (w *loggerWriterFile) HandlerPriority() int {
+	return DefaultLoggerPriorityWriterFile
 }
 
-func (h *loggerWriterFile) HandlerEntry(entry *LoggerEntry) {
-	h.Lock()
-	_, _ = h.File.Write(entry.Buffer)
-	h.Unlock()
+func (w *loggerWriterFile) HandlerEntry(entry *LoggerEntry) {
+	w.Lock()
+	_, _ = w.File.Write(entry.Buffer)
+	w.Unlock()
 }
 
 type loggerWriterRotate struct {
@@ -304,10 +436,17 @@ type loggerWriterRotate struct {
 // max uint64, 9999-12-31 23:59:59 +0000 UTC.
 const roatteMaxSize, roatteMaxTime = 0xffffffffffffffff, 253402300799
 
-// NewLoggerWriterRotate 函数创建一个支持文件切割的的日志写入流。
+// The NewLoggerWriterRotate function creates [LoggerHandler] to write logs to
+// [os.File].
 //
-// 如果设置maxsize或name包含字符串yyyy/yy/mm/dd/hh，将可以滚动日志文件。
-func NewLoggerWriterRotate(name string, maxsize uint64, fn ...func(string, string)) (LoggerHandler, error) {
+// If maxsize is set or name contains the string yyyy/yy/mm/dd/hh,
+// the log file will be rotated according to size or time.
+//
+// hooks is a callback function used when opening a new file name to implement
+// log file cleaning and linking.
+func NewLoggerWriterRotate(name string, maxsize uint64,
+	hooks ...func(string, string),
+) (LoggerHandler, error) {
 	if maxsize == 0 && getNextTime(name).Unix() == roatteMaxTime {
 		return NewLoggerWriterFile(name)
 	}
@@ -319,45 +458,47 @@ func NewLoggerWriterRotate(name string, maxsize uint64, fn ...func(string, strin
 		maxSize:   maxsize,
 		nextIndex: getNextIndex(name, maxsize),
 		nextTime:  getNextTime(name),
-		openhooks: fn,
+		openhooks: hooks,
 	}
 	h.pattern = h.getFilePattern()
 	return h, h.rotateFile()
 }
 
-func (h *loggerWriterRotate) HandlerEntry(entry *LoggerEntry) {
-	h.Lock()
-	defer h.Unlock()
-	if h.writeSize+uint64(len(entry.Buffer)) >= h.maxSize {
-		h.rotateFile()
-	} else if entry.Time.After(h.nextTime) {
-		h.nextIndex = getNextIndex(h.name, h.maxSize)
-		h.nextTime = getNextTime(h.name)
-		h.rotateFile()
+func (w *loggerWriterRotate) HandlerEntry(entry *LoggerEntry) {
+	w.Lock()
+	defer w.Unlock()
+	if w.writeSize+uint64(len(entry.Buffer)) >= w.maxSize {
+		_ = w.rotateFile()
+	} else if entry.Time.After(w.nextTime) {
+		w.nextIndex = getNextIndex(w.name, w.maxSize)
+		w.nextTime = getNextTime(w.name)
+		_ = w.rotateFile()
 	}
 
-	n, _ := h.File.Write(entry.Buffer)
-	h.writeSize += uint64(n)
+	n, _ := w.File.Write(entry.Buffer)
+	w.writeSize += uint64(n)
 }
 
-func (h *loggerWriterRotate) rotateFile() error {
+func (w *loggerWriterRotate) rotateFile() error {
 	for {
-		name := h.getRotateName()
+		name := w.getRotateName()
 		_ = os.MkdirAll(filepath.Dir(name), 0o755)
-		file, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		file, err := os.OpenFile(
+			name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644,
+		)
 		if err != nil {
 			return err
 		}
-		h.nextIndex++
+		w.nextIndex++
 
 		stat, _ := file.Stat()
-		h.writeSize = uint64(stat.Size())
-		if h.writeSize < h.maxSize {
-			h.File.Sync()
-			h.File.Close()
-			h.File = file
-			for _, fn := range h.openhooks {
-				fn(name, h.pattern)
+		w.writeSize = uint64(stat.Size())
+		if w.writeSize < w.maxSize {
+			_ = w.File.Sync()
+			_ = w.File.Close()
+			w.File = file
+			for _, fn := range w.openhooks {
+				fn(name, w.pattern)
 			}
 			return nil
 		}
@@ -365,28 +506,31 @@ func (h *loggerWriterRotate) rotateFile() error {
 	}
 }
 
-func (h *loggerWriterRotate) getRotateName() string {
-	name := h.name
-	if h.nextTime.Unix() != roatteMaxTime {
+func (w *loggerWriterRotate) getRotateName() string {
+	name := w.name
+	if w.nextTime.Unix() != roatteMaxTime {
 		name = fileFormatTime(name)
 	}
-	if h.maxSize != roatteMaxSize {
-		ext := path.Ext(h.name)
-		name = name[:len(name)-len(ext)] + "-" + strconv.Itoa(h.nextIndex) + ext
+	if w.maxSize != roatteMaxSize {
+		ext := path.Ext(w.name)
+		name = name[:len(name)-len(ext)] +
+			"-" +
+			strconv.Itoa(w.nextIndex) +
+			ext
 	}
 	return name
 }
 
-func (h *loggerWriterRotate) getFilePattern() string {
-	name := h.name
-	if h.nextTime.Unix() != roatteMaxTime {
+func (w *loggerWriterRotate) getFilePattern() string {
+	name := w.name
+	if w.nextTime.Unix() != roatteMaxTime {
 		k := DefaultLoggerWriterRotateDataKeys
 		v := [...]int{2, 2, 2, 4}
 		for i := range k {
 			name = strings.ReplaceAll(name, k[i], strings.Repeat("[0-9]", v[i]))
 		}
 	}
-	if h.maxSize != roatteMaxSize {
+	if w.maxSize != roatteMaxSize {
 		ext := path.Ext(name)
 		name = name[:len(name)-len(ext)] + "-*" + ext
 	}
@@ -423,23 +567,28 @@ func getNextTime(name string) time.Time {
 	for i, str := range DefaultLoggerWriterRotateDataKeys {
 		if strings.Contains(name, str) {
 			now := time.Now()
-			datas := [...]int{now.Hour(), now.Day(), int(now.Month()), now.Year()}
+			datas := [...]int{
+				now.Hour(), now.Day(),
+				int(now.Month()), now.Year(),
+			}
 			datas[i]++
-			return time.Date(datas[3], time.Month(datas[2]), datas[1], datas[0], 0, 0, 0, now.Location())
+			return time.Date(datas[3], time.Month(datas[2]), datas[1],
+				datas[0], 0, 0, 0, now.Location(),
+			)
 		}
 	}
 	return time.Unix(roatteMaxTime, 0)
 }
 
 func hookFileLink(link string) func(string, string) {
-	os.MkdirAll(filepath.Dir(link), 0o755)
+	_ = os.MkdirAll(filepath.Dir(link), 0o755)
 	return func(name, _ string) {
 		if !filepath.IsAbs(name) {
 			pwd, _ := os.Getwd()
 			name = filepath.Join(pwd, name)
 		}
-		os.Remove(link)
-		os.Symlink(name, link)
+		_ = os.Remove(link)
+		_ = os.Symlink(name, link)
 	}
 }
 

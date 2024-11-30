@@ -1,5 +1,4 @@
 //go:build go1.16
-// +build go1.16
 
 package main
 
@@ -11,18 +10,22 @@ package main
 
 import (
 	"embed"
+
 	"github.com/eudore/eudore"
 )
 
-//go:embed *.go
+//go:embed handler*.go
 var f embed.FS
 
 func main() {
 	app := eudore.NewApp()
-	// 方式1：使用embed.FS扩展，路由参数dir指定多个允许存在的目录位置,分隔符';'。
-	app.GetFunc("/static/* dir=.", f)
-	// 方式2：使用NewHandlerEmbedFunc函数显示指定embed.FS和存在路径。
-	app.GetFunc("/static/*", eudore.NewHandlerEmbedFunc(f, "."))
+	// 方式1：使用embed.FS扩展，NewHandlerFileEmbed()是embed.FS对象显示调用。
+	app.GetFunc("/static/*", f)
+	app.GetFunc("/static/*", eudore.NewHandlerFileEmbed(f))
+	// 方式2：使用NewHandlerFileSystems函数指定多个embed.FS和资源路径。
+	// 参数允许为string iofs.FS http.FileSystem类型
+	app.GetFunc("/static/* autoindex=true", eudore.NewHandlerFileSystems(f, "."))
+	// 存在参数autoindex=true时，返回目录信息。
 
 	app.Listen(":8088")
 	app.Run()

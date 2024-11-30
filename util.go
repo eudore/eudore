@@ -2,8 +2,9 @@ package eudore
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"reflect"
@@ -16,7 +17,7 @@ type contextKey struct {
 	name string
 }
 
-// NewContextKey 定义context key。
+// NewContextKey defines a custom context key.
 func NewContextKey(key string) any {
 	return contextKey{key}
 }
@@ -25,10 +26,17 @@ func (key contextKey) String() string {
 	return key.name
 }
 
-// Params 定义用于保存一些键值数据。
+type Unmounter func(ctx context.Context)
+
+func (fn Unmounter) Unmount(ctx context.Context) {
+	fn(ctx)
+}
+
+// Params defines [Context] and [Router] to save key-value data.
 type Params []string
 
-// NewParamsRoute 方法根据一个路由路径创建Params，支持路由路径块模式。
+// The NewParamsRoute method creates [Params] based on a route and supports
+// routing path block mode.
 func NewParamsRoute(path string) Params {
 	route := getRoutePath(path)
 	args := strings.Split(path[len(route):], " ")
@@ -46,23 +54,38 @@ func NewParamsRoute(path string) Params {
 	return params
 }
 
-// Clone 方法深复制一个ParamArray对象。
+// getRoutePath function intercepts the [ParamRoute] in the path and
+// supports '{}' for block matching.
+func getRoutePath(path string) string {
+	var isblock bool
+	var last rune
+	for i, b := range path {
+		if isblock {
+			if b == '}' && last != '\\' {
+				isblock = false
+			}
+			last = b
+			continue
+		}
+
+		switch b {
+		case '{':
+			isblock = true
+		case ' ':
+			return path[:i]
+		}
+	}
+	return path
+}
+
+// The Clone method deeply copies a Param object.
 func (p Params) Clone() Params {
 	params := make(Params, len(p))
 	copy(params, p)
 	return params
 }
 
-// CombineWithRoute 方法将params数据合并到p，用于路由路径合并。
-func (p Params) CombineWithRoute(params Params) Params {
-	p[1] += params[1]
-	for i := 2; i < len(params); i += 2 {
-		p = p.Set(params[i], params[i+1])
-	}
-	return p
-}
-
-// String 方法输出Params成字符串。
+// The String method outputs Params as a string.
 func (p Params) String() string {
 	b := &bytes.Buffer{}
 	for i := 0; i < len(p); i += 2 {
@@ -76,18 +99,7 @@ func (p Params) String() string {
 	return b.String()
 }
 
-// MarshalJSON 方法设置Params json序列化显示的数据。
-func (p Params) MarshalJSON() ([]byte, error) {
-	data := make(map[string]string, len(p)/2)
-	for i := 0; i < len(p); i += 2 {
-		if p[i+1] != "" || i == 0 {
-			data[p[i]] = p[i+1]
-		}
-	}
-	return json.Marshal(data)
-}
-
-// Get 方法返回一个参数的值。
+// The Get method returns the first value of the specified key.
 func (p Params) Get(key string) string {
 	for i := 0; i < len(p); i += 2 {
 		if p[i] == key {
@@ -97,12 +109,12 @@ func (p Params) Get(key string) string {
 	return ""
 }
 
-// Add 方法添加一个参数。
+// The Add method adds a parameter.
 func (p Params) Add(vals ...string) Params {
 	return append(p, vals...)
 }
 
-// Set 方法设置一个参数的值。
+// The Set method sets the first value of the specified key or appends it.
 func (p Params) Set(key, val string) Params {
 	for i := 0; i < len(p); i += 2 {
 		if p[i] == key {
@@ -113,7 +125,7 @@ func (p Params) Set(key, val string) Params {
 	return append(p, key, val)
 }
 
-// Del 方法删除一个参数值。
+// The Del method clears the first value of the specified key.
 func (p Params) Del(key string) {
 	for i := 0; i < len(p); i += 2 {
 		if p[i] == key {
@@ -122,99 +134,98 @@ func (p Params) Del(key string) {
 	}
 }
 
-// GetWarp 对象封装Get函数提供类型转换功能。
-type GetWarp func(string) any
+// GetWrap object Wrap func(string) any provides type conversion function.
+type GetWrap func(string) any
 
-// NewGetWarp 函数创建一个getwarp处理类型转换。
-func NewGetWarp(fn func(string) any) GetWarp {
-	return fn
-}
-
-// NewGetWarpWithConfig 函数使用Config.Get创建getwarp。
-func NewGetWarpWithConfig(c Config) GetWarp {
+// The NewGetWrapWithConfig function creates [GetWrap] using [Config].Get.
+func NewGetWrapWithConfig(c Config) GetWrap {
 	return c.Get
 }
 
-// NewGetWarpWithApp 函数使用App创建getwarp。
-func NewGetWarpWithApp(app *App) GetWarp {
+// The NewGetWrapWithApp function creates [GetWrap] using [App].
+func NewGetWrapWithApp(app *App) GetWrap {
 	return func(key string) any {
 		return app.Get(key)
 	}
 }
 
-// NewGetWarpWithMapString 函数使用map[string]any创建getwarp。
-func NewGetWarpWithMapString(data map[string]any) GetWarp {
+// NewGetWrapWithMapString function creates [GetWrap] using map[string]any.
+func NewGetWrapWithMapString(data map[string]any) GetWrap {
 	return func(key string) any {
 		return data[key]
 	}
 }
 
-// NewGetWarpWithObject 函数使用map或创建getwarp。
-func NewGetWarpWithObject(obj any) GetWarp {
+// The NewGetWrapWithObject function uses object to create [GetWrap] and uses
+// [GetAnyByPath] to get value.
+func NewGetWrapWithObject(obj any) GetWrap {
 	return func(key string) any {
 		return GetAnyByPath(obj, key)
 	}
 }
 
-// GetAny 方法获取any类型的配置值。
-func (fn GetWarp) GetAny(key string) any {
+// The GetAny method returns the any type.
+func (fn GetWrap) GetAny(key string) any {
 	return fn(key)
 }
 
-// GetBool 方法获取bool类型的配置值。
-func (fn GetWarp) GetBool(key string) bool {
+// The GetBool method returns the bool type.
+func (fn GetWrap) GetBool(key string) bool {
 	return GetAny[bool](fn(key))
 }
 
-// GetInt 方法获取int类型的配置值。
-func (fn GetWarp) GetInt(key string, vals ...int) int {
+// The GetInt method returns the int type.
+func (fn GetWrap) GetInt(key string, vals ...int) int {
 	return GetAny(fn(key), vals...)
 }
 
-// GetUint 方法取获取uint类型的配置值。
-func (fn GetWarp) GetUint(key string, vals ...uint) uint {
+// The GetUint method returns the uint type.
+func (fn GetWrap) GetUint(key string, vals ...uint) uint {
 	return GetAny(fn(key), vals...)
 }
 
-// GetInt64 方法int64类型的配置值。
-func (fn GetWarp) GetInt64(key string, vals ...int64) int64 {
+// The GetInt64 method returns the int64 type.
+func (fn GetWrap) GetInt64(key string, vals ...int64) int64 {
 	return GetAny(fn(key), vals...)
 }
 
-// GetUint64 方法取获取uint64类型的配置值。
-func (fn GetWarp) GetUint64(key string, vals ...uint64) uint64 {
+// The GetUint64 method returns the uint64 type.
+func (fn GetWrap) GetUint64(key string, vals ...uint64) uint64 {
 	return GetAny(fn(key), vals...)
 }
 
-// GetFloat32 方法取获取float32类型的配置值。
-func (fn GetWarp) GetFloat32(key string, vals ...float32) float32 {
+// The GetFloat32 method returns the float32 type.
+func (fn GetWrap) GetFloat32(key string, vals ...float32) float32 {
 	return GetAny(fn(key), vals...)
 }
 
-// GetFloat64 方法取获取float64类型的配置值。
-func (fn GetWarp) GetFloat64(key string, vals ...float64) float64 {
+// The GetFloat64 method returns the float64 type.
+func (fn GetWrap) GetFloat64(key string, vals ...float64) float64 {
 	return GetAny(fn(key), vals...)
 }
 
-// GetString 方法获取一个字符串，如果字符串为空返回其他默认非空字符串。
-func (fn GetWarp) GetString(key string, vals ...string) string {
+// The GetString method returns the string type.
+// If the string is empty, it returns another non-empty string.
+func (fn GetWrap) GetString(key string, vals ...string) string {
 	return GetStringByAny(fn(key), vals...)
 }
 
-// TimeDuration 定义time.Duration类型处理json。
+// TimeDuration defines [time.Duration] and implements [json.Marshaler] and
+// [json.UnmarshalJSON].
 type TimeDuration time.Duration
 
-// String 方法格式化输出时间。
+// String method formats the output time.
 func (d TimeDuration) String() string {
 	return time.Duration(d).String()
 }
 
-// MarshalText 方法实现json序列化输出。
+// The MarshalText method implements [encoding.MarshalText] and
+// [json.Marshaler].
 func (d TimeDuration) MarshalText() ([]byte, error) {
 	return []byte(time.Duration(d).String()), nil
 }
 
-// UnmarshalJSON 方法实现解析json格式时间。
+// The UnmarshalJSON method implements [json.UnmarshalJSON].
 func (d *TimeDuration) UnmarshalJSON(b []byte) error {
 	if len(b) > 0 && b[0] == '"' && b[len(b)-1] == '"' {
 		b = b[1 : len(b)-1]
@@ -222,7 +233,8 @@ func (d *TimeDuration) UnmarshalJSON(b []byte) error {
 	return d.UnmarshalText(b)
 }
 
-// UnmarshalText 方法实现解析时间。
+// The UnmarshalJSON method implements [encoding.UnmarshalText] and parse
+// [time.Duration].
 func (d *TimeDuration) UnmarshalText(b []byte) error {
 	str := string(b)
 	// parse int64
@@ -240,13 +252,72 @@ func (d *TimeDuration) UnmarshalText(b []byte) error {
 	return fmt.Errorf("invalid duration value: '%s'", b)
 }
 
-// mulitError 实现多个error组合。
+type radixData[T any] interface {
+	*T
+	Insert(vals ...any) error
+}
+
+type radixNode[P radixData[T], T any] struct {
+	path  string
+	data  P
+	child []*radixNode[P, T]
+}
+
+func (node *radixNode[P, T]) insert(path string, data ...any) error {
+	next := node.insertPath(path)
+	if next.data == nil {
+		next.data = new(T)
+	}
+	return next.data.Insert(data...)
+}
+
+func (node *radixNode[P, T]) insertPath(path string) *radixNode[P, T] {
+	if path == "" {
+		return node
+	}
+	for i := range node.child {
+		prefix, find := getSubsetPrefix(path, node.child[i].path)
+		if find {
+			if prefix != node.child[i].path {
+				node.child[i].path = node.child[i].path[len(prefix):]
+				node.child[i] = &radixNode[P, T]{
+					path:  prefix,
+					child: []*radixNode[P, T]{node.child[i]},
+				}
+			}
+			return node.child[i].insertPath(path[len(prefix):])
+		}
+	}
+
+	next := &radixNode[P, T]{path: path}
+	node.child = append(node.child, next)
+	return next
+}
+
+func (node *radixNode[P, T]) lookPath(path string) []P {
+	for _, child := range node.child {
+		if strings.HasPrefix(path, child.path) {
+			next := child.lookPath(path[len(child.path):])
+			if node.data != nil {
+				next = append(next, node.data)
+			}
+			return next
+		}
+	}
+	if node.data != nil {
+		return []P{node.data}
+	}
+	return nil
+}
+
+// mulitError implements multiple error combinations.
 type mulitError struct {
 	errs []error
 }
 
-// HandleError 实现处理多个错误，如果非空则保存错误。
-func (err *mulitError) HandleError(errs ...error) {
+// Handle implementation handles multiple errors and saves the errors if
+// non-empty.
+func (err *mulitError) Handle(errs ...error) {
 	for _, e := range errs {
 		if e != nil {
 			err.errs = append(err.errs, e)
@@ -254,12 +325,16 @@ func (err *mulitError) HandleError(errs ...error) {
 	}
 }
 
-// Error 方法实现error接口，返回错误描述。
+// The Error method implements the error interface and returns an error.
 func (err *mulitError) Error() string {
-	return fmt.Sprint(err.errs)
+	errs := make([]string, len(err.errs))
+	for i := range err.errs {
+		errs[i] = err.errs[i].Error()
+	}
+	return strings.Join(errs, ", ")
 }
 
-// GetError 方法返回错误，如果没有保存的错误则返回空。
+// The GetError method returns the error, or null if there is no saved error.
 func (err *mulitError) Unwrap() error {
 	switch len(err.errs) {
 	case 0:
@@ -271,8 +346,12 @@ func (err *mulitError) Unwrap() error {
 	}
 }
 
-// NewErrorWithStatusCode 方法组合ErrorStatus和ErrorCode。
+// The NewErrorWithStatusCode method combines [NewErrorWithStatus] and
+// [NewErrorWithCode].
 func NewErrorWithStatusCode(err error, status, code int) error {
+	if err == nil {
+		return nil
+	}
 	if code > 0 {
 		err = codeError{err, code}
 	}
@@ -282,8 +361,12 @@ func NewErrorWithStatusCode(err error, status, code int) error {
 	return err
 }
 
-// NewErrorWithStatus 方法封装error实现Status方法。
+// The NewErrorWithStatus function returns the wrap error implementation
+// Status method.
 func NewErrorWithStatus(err error, status int) error {
+	if err == nil {
+		return nil
+	}
 	if status > 0 {
 		return statusError{err, status}
 	}
@@ -307,8 +390,12 @@ func (err statusError) Status() int {
 	return err.status
 }
 
-// NewErrorWithCode 方法封装error实现Code方法。
+// The NewErrorWithCode function returns the wrap error implementation
+// Code method.
 func NewErrorWithCode(err error, code int) error {
+	if err == nil {
+		return nil
+	}
 	if code > 0 {
 		return codeError{err, code}
 	}
@@ -332,9 +419,13 @@ func (err codeError) Code() int {
 	return err.code
 }
 
-func clearCap[T any](s []T) []T {
-	l := len(s)
-	return s[:l:l]
+func sliceClearAppend[T any](dst []T, src ...T) []T {
+	if src == nil {
+		return dst
+	}
+	dst = append(dst, src...)
+	l := len(dst)
+	return dst[:l:l]
 }
 
 func cutOmit(s string) (string, bool) {
@@ -384,7 +475,15 @@ func sliceFilter[T any](s []T, fn func(T) bool) []T {
 	return n
 }
 
-// GetAnyDefault 函数返回非空值。
+func mapClone[K comparable, V any](d map[K]V) map[K]V {
+	n := make(map[K]V, len(d))
+	for k, v := range d {
+		n[k] = v
+	}
+	return n
+}
+
+// The GetAnyDefault function returns a non-NULL value.
 func GetAnyDefault[T comparable](arg1, arg2 T) T {
 	var zero T
 	if arg1 != zero {
@@ -393,7 +492,7 @@ func GetAnyDefault[T comparable](arg1, arg2 T) T {
 	return arg2
 }
 
-// GetAnyDefaults 函数返回第一个非空值。
+// The GetAnyDefaults function returns the first non-null value.
 func GetAnyDefaults[T comparable](args ...T) T {
 	var zero T
 	for i := range args {
@@ -404,26 +503,15 @@ func GetAnyDefaults[T comparable](args ...T) T {
 	return zero
 }
 
-func SetAnyDefault[T any](arg1, arg2 *T) {
-	v1 := reflect.Indirect(reflect.ValueOf(arg1))
-	v2 := reflect.Indirect(reflect.ValueOf(arg2))
-	if v1.Kind() == reflect.Struct && v1.Type() == v2.Type() {
-		for i := 0; i < v1.NumField(); i++ {
-			f1, f2 := v1.Field(i), v2.Field(i)
-			if f1.CanSet() && !f2.IsZero() {
-				f1.Set(f2)
-			}
-		}
-	}
+// typeNumber defines a typeParam numeric type set.
+type typeNumber interface {
+	int | int8 | int16 | int32 | int64 |
+		uint | uint8 | uint16 | uint32 | uint64 |
+		float32 | float64 | complex64 | complex128
 }
 
-// TypeNumber 定义泛型数值类型集合。
-type TypeNumber interface {
-	int | int8 | int16 | int32 | int64 | uint | uint8 | uint16 | uint32 | uint64 | float32 | float64 | complex64 | complex128
-}
-
-// GetAny 函数类型Value转换成另外一个类型。
-func GetAny[T string | bool | TypeNumber](s any, defaults ...T) T {
+// GetAny function converts the Value any type into T type.
+func GetAny[T string | bool | typeNumber](s any, defaults ...T) T {
 	var t, zero T
 	if s != nil {
 		sValue := reflect.ValueOf(s)
@@ -437,6 +525,8 @@ func GetAny[T string | bool | TypeNumber](s any, defaults ...T) T {
 			t = GetAnyByString(sValue.String(), defaults...)
 		case tType.Kind() == reflect.String:
 			t = any(GetStringByAny(s)).(T)
+		case tType.Kind() == reflect.Bool:
+			t = any(getBoolByAny(s)).(T)
 		case sValue.CanConvert(tType):
 			t = sValue.Convert(tType).Interface().(T)
 		}
@@ -453,7 +543,27 @@ func GetAny[T string | bool | TypeNumber](s any, defaults ...T) T {
 	return t
 }
 
-// GetStringByAny 函数将any转换成string
+func getBoolByAny(i any) bool {
+	v := reflect.ValueOf(i)
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int() != 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32,
+		reflect.Uint64, reflect.Uintptr:
+		return v.Uint() != 0
+	case reflect.Float32, reflect.Float64:
+		return v.Float() != 0
+	case reflect.Ptr, reflect.Interface:
+		if !v.IsNil() {
+			return getBoolByAny(v.Elem().Interface())
+		}
+	case reflect.Array, reflect.Slice, reflect.Map, reflect.Chan:
+		return v.Len() != 0
+	}
+	return false
+}
+
+// GetStringByAny function converts any into string.
 //
 //nolint:cyclop,gocyclo
 func GetStringByAny(i any, strs ...string) string {
@@ -496,7 +606,9 @@ func GetStringByAny(i any, strs ...string) string {
 	case complex128:
 		str = strconv.FormatComplex(v, 'f', -1, 128)
 	default:
-		str = fmt.Sprint(i)
+		if i != nil {
+			str = fmt.Sprint(i)
+		}
 	}
 
 	if str != "" {
@@ -510,23 +622,58 @@ func GetStringByAny(i any, strs ...string) string {
 	return ""
 }
 
-// GetStringRandom 函数返回指定长度随机字符串。
+// The GetStringRandom function returns a random string of the specified length.
 func GetStringRandom(length int) string {
 	buf := make([]byte, length)
-	io.ReadFull(rand.Reader, buf)
-	return fmt.Sprintf("%x", buf)
+	_, _ = io.ReadFull(rand.Reader, buf)
+	return hex.EncodeToString(buf)
 }
 
-// GetAnyByString 函数将字符串转换为其他值。
-func GetAnyByString[T string | bool | TypeNumber | time.Time | time.Duration](str string, defaults ...T) T {
+func GetStringDuration(n time.Duration) fmt.Stringer {
+	var result durationString
+	size := 7
+	if n > 10000 {
+		size = 4
+		n /= 1000
+	}
+	for i := 0; n != 0 || i < size; i++ {
+		if i == size-1 {
+			result = append(result, '.')
+		}
+		result = append(result, byte('0'+n%10))
+		n /= 10
+	}
+	left, right := 0, len(result)-1
+	for left < right {
+		result[left], result[right] = result[right], result[left]
+		left++
+		right--
+	}
+	return result
+}
+
+type durationString []byte
+
+func (d durationString) String() string {
+	return string(d)
+}
+
+func (d durationString) MarshalJSON() ([]byte, error) {
+	return []byte(d), nil
+}
+
+// The GetAnyByString function converts a string to T value.
+func GetAnyByString[T string | bool | time.Time | time.Duration |
+	typeNumber](str string, defaults ...T) T {
 	val, _ := GetAnyByStringWithError(str, defaults...)
 	return val
 }
 
-// GetAnyByStringWithError 函数将字符串转换成泛型数值。
+// The GetAnyByStringWithError function converts a string to T value.
 //
 //nolint:cyclop,funlen,gocyclo
-func GetAnyByStringWithError[T string | bool | TypeNumber | time.Time | time.Duration](str string, defaults ...T) (T, error) {
+func GetAnyByStringWithError[T string | bool | time.Time | time.Duration |
+	typeNumber](str string, defaults ...T) (T, error) {
 	var zero T
 	var val any
 	var err error

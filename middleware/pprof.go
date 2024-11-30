@@ -2,50 +2,38 @@ package middleware
 
 import (
 	"bytes"
-	"expvar"
 	"fmt"
 	"regexp"
 	"runtime/pprof"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 
 	"github.com/eudore/eudore"
 )
 
-// HandlerPprof 处理pprof请求，路由注册路径必须以/*结尾，使用*获取处理函数。
-func HandlerPprof(ctx eudore.Context) {
-	name := ctx.GetParam("*")
-	handler, ok := DefaultPprofHandlers[name]
-	if ok {
-		handler.ServeHTTP(ctx.Response(), ctx.Request())
-		return
-	}
-	switch name {
-	case "goroutine":
-		HandlerPprofGoroutine(ctx)
-	case "expvar":
-		HandlerExpvar(ctx)
-	default:
-		HandlerPporfIndex(ctx)
-	}
-}
-
-// HandlerExpvar 方法实现expvar处理。
-func HandlerExpvar(ctx eudore.Context) {
-	ctx.SetHeader(eudore.HeaderContentType, eudore.MimeApplicationJSONCharsetUtf8)
-	ctx.SetHeader(eudore.HeaderXEudoreAdmin, "expvar")
-	ctx.WriteHeader(eudore.StatusOK)
-	_, _ = ctx.Write([]byte("{\n"))
-	first := true
-	expvar.Do(func(kv expvar.KeyValue) {
-		if !first {
-			_, _ = ctx.Write([]byte(",\n"))
+// The NewPProfFunc function handles pprof requests.
+//
+// The route registration path must end with /*.
+// Use Params '*' to get the processing function name.
+//
+//go:noinline
+func NewPProfFunc() Middleware {
+	return func(ctx eudore.Context) {
+		name := ctx.GetParam("*")
+		handler, ok := DefaultPProfHandlers[name]
+		if ok {
+			handler.ServeHTTP(ctx.Response(), ctx.Request())
+			return
 		}
-		first = false
-		fmt.Fprintf(ctx, "%q: %s", kv.Key, kv.Value)
-	})
-	_, _ = ctx.Write([]byte("\n}\n"))
+		switch name {
+		case "goroutine":
+			handlerPProfGoroutine(ctx)
+		default:
+			handlerPPorfIndex(ctx)
+		}
+	}
 }
 
 type profile struct {
@@ -67,8 +55,9 @@ var profileDescriptions = map[string]string{
 	"trace":        "A trace of execution of the current program. You can specify the duration in the seconds GET parameter. After you get the trace file, use the go tool trace command to investigate the trace.",
 }
 
-// HandlerPporfIndex 函数处理pprof index页面，返回index消息，响应format=text/json/html三种格式。
-func HandlerPporfIndex(ctx eudore.Context) {
+// The handlerPPorfIndex function processes the pprof index page,
+// returns the index message, and response formats: format=text/json/html.
+func handlerPPorfIndex(ctx eudore.Context) {
 	runtimeprofiles := pprof.Profiles()
 	profiles := make([]profile, 0, len(runtimeprofiles)+3)
 	for _, p := range runtimeprofiles {
@@ -90,15 +79,15 @@ func HandlerPporfIndex(ctx eudore.Context) {
 		return profiles[i].Name < profiles[j].Name
 	})
 
-	switch getRequestForma(ctx) {
+	switch getRequestFormat(ctx) {
 	case QueryFormatJSON:
-		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeApplicationJSONCharsetUtf8)
-		_ = eudore.RenderJSON(ctx, profiles)
+		ctx.SetHeader(headerContentType, eudore.MimeApplicationJSONCharsetUtf8)
+		_ = eudore.HandlerDataRenderJSON(ctx, profiles)
 	case QueryFormatHTML:
-		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
+		ctx.SetHeader(headerContentType, eudore.MimeTextHTMLCharsetUtf8)
 		_ = pprofIndexTemplate.ExecuteTemplate(ctx, "index-html", profiles)
 	default:
-		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextPlainCharsetUtf8)
+		ctx.SetHeader(headerContentType, eudore.MimeTextPlainCharsetUtf8)
 		_ = pprofIndexTemplate.ExecuteTemplate(ctx, "index-text", profiles)
 	}
 }
@@ -132,20 +121,22 @@ Count	Profile		Descriptions
 {{end}}
 `)
 
-// HandlerPprofGoroutine 函数处理pprof Goroutine数据，响应format=text/json/html三种格式。
-func HandlerPprofGoroutine(ctx eudore.Context) {
+// The handlerPProfGoroutine function processes pprof Goroutine data
+// and responds to three formats: format=text/json/html.
+func handlerPProfGoroutine(ctx eudore.Context) {
 	p := pprof.Lookup("goroutine")
 	debug := eudore.GetAnyByString[int](ctx.GetQuery("debug"))
 	if debug == 0 {
-		ctx.SetHeader(eudore.HeaderContentType, "application/octet-stream")
-		ctx.SetHeader(eudore.HeaderContentDisposition, "attachment; filename=\"goroutine\"")
+		name := "attachment; filename=\"goroutine\""
+		ctx.SetHeader(eudore.HeaderContentDisposition, name)
+		ctx.SetHeader(headerContentType, eudore.MimeApplicationOctetStream)
 		_ = p.WriteTo(ctx, 0)
 		return
 	}
 
 	format := ctx.GetQuery("format")
 	if format == QueryFormatText {
-		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextPlainCharsetUtf8)
+		ctx.SetHeader(headerContentType, eudore.MimeTextPlainCharsetUtf8)
 		_ = p.WriteTo(ctx, debug)
 		return
 	}
@@ -160,8 +151,8 @@ func HandlerPprofGoroutine(ctx eudore.Context) {
 	}
 
 	if format == QueryFormatJSON {
-		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeApplicationJSONCharsetUtf8)
-		_ = eudore.RenderJSON(ctx, data)
+		ctx.SetHeader(headerContentType, eudore.MimeApplicationJSONCharsetUtf8)
+		_ = eudore.HandlerDataRenderJSON(ctx, data)
 	} else {
 		godoc := eudore.GetAnyByString(ctx.GetQuery("godoc"), ctx.GetParam("godoc"), eudore.DefaultGodocServer)
 		godoc = strings.TrimSuffix(godoc, "/")
@@ -169,11 +160,12 @@ func HandlerPprofGoroutine(ctx eudore.Context) {
 			"getPackage": getGodocPackage(godoc),
 			"getSource":  getGodocSource(godoc),
 		}).Parse(pprofGoroutineTemplate)
-		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
-		_ = tpl.Execute(ctx, &goroutineData{
+		ctx.SetHeader(headerContentType, eudore.MimeTextHTMLCharsetUtf8)
+		err := tpl.Execute(ctx, &goroutineData{
 			Data:  data,
 			Debug: debug,
 		})
+		ctx.Error(err)
 	}
 }
 
@@ -209,7 +201,7 @@ type goroutineDebug2Line struct {
 	File    string `json:"file"`
 	Line    string `json:"line"`
 	Pos     string `json:"pos"`
-	Created bool   `json:"created"`
+	Created int    `json:"created,omitempty"`
 }
 
 func newGoroutineDebug1(str string) []goroutineDebug1Block {
@@ -235,7 +227,7 @@ func newGoroutineDebug1(str string) []goroutineDebug1Block {
 
 func newGoroutineDebug2(str string) []goroutineDebug2Block {
 	reghead := regexp.MustCompile(`goroutine (\d+) \[(.*)\]`)
-	regline := regexp.MustCompile(`\n(\S+)\((.*)\)\n\t(\S+):(\d+)( \+0x\S+)?|\n(created by )(\S+)\n\t(\S+):(\d+) \+0x(\S+)`)
+	regline := regexp.MustCompile(`\n(\S+)\((.*)\)\n\t(\S+):(\d+)( \+0x\S+)?|\n(?:created by )(\S+)(?: in goroutine (\d+))?\n\t(\S+):(\d+) \+0x(\S+)`)
 	routines := strings.Split(str, "\n\n")
 	blocks := make([]goroutineDebug2Block, 0, len(routines))
 	for i := range routines {
@@ -243,10 +235,11 @@ func newGoroutineDebug2(str string) []goroutineDebug2Block {
 		block := goroutineDebug2Block{Number: head[1], State: head[2]}
 		matchs := regline.FindAllStringSubmatch(routines[i], -1)
 		for _, m := range matchs {
-			if m[6] != "created by " {
+			if m[1] != "" {
 				block.Lines = append(block.Lines, goroutineDebug2Line{Func: m[1], Args: m[2], File: m[3], Line: m[4], Pos: strings.TrimPrefix(m[5], " +0x")})
 			} else {
-				block.Lines = append(block.Lines, goroutineDebug2Line{Func: m[7], File: m[8], Line: m[9], Pos: m[10], Created: true})
+				id, _ := strconv.Atoi(m[7])
+				block.Lines = append(block.Lines, goroutineDebug2Line{Func: m[6], File: m[8], Line: m[9], Pos: m[10], Created: id})
 			}
 		}
 		blocks = append(blocks, block)
@@ -268,13 +261,13 @@ goroutine profile: total {{len .Data}}
 {{- range $index, $elem := .Data }}
 goroutine {{$elem.Number}} [{{$elem.State}}]:
 {{- range $index, $elem := $elem.Lines }}
-{{- if $elem.Created }}
-created by {{getPackage $elem.Func}}
-	{{getSource $elem.File $elem.Line}} +0x{{$elem.Pos}}
-{{- else}}
+{{- if ne $elem.Args "" }}
 {{getPackage $elem.Func}}({{$elem.Args}})
 	{{getSource $elem.File $elem.Line}}{{if $elem.Pos}} +0x{{$elem.Pos}}{{end}}
-{{- end}}
+{{- else }}
+created by {{getPackage $elem.Func}}{{if ne $elem.Created 0 }} in goroutine {{$elem.Created}}{{end}}
+	{{getSource $elem.File $elem.Line}} +0x{{$elem.Pos}}
+{{- end }}
 {{- end }}
 {{ end }}
 {{- end }}
@@ -308,7 +301,7 @@ func getGodocPackage(godoc string) func(string) string {
 
 		pos = strings.IndexByte(fn, '.')
 		if pos == -1 {
-			// github.com/eudore/eudore/middleware.PprofGoroutine
+			// github.com/eudore/eudore/middleware.PProfGoroutine
 			return fmt.Sprintf("<a href='%s/pkg/%s#%s' target='_Blank'>%s.%s</a>", godoc, pkg, obj, pkg, fn)
 		}
 		// github.com/eudore/eudore.(*App).serveContext

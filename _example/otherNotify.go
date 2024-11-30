@@ -14,7 +14,6 @@ go build -o ~/go/bin/gonotify otherNotify.go
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -25,6 +24,7 @@ import (
 	"time"
 
 	"github.com/eudore/eudore"
+	"github.com/eudore/eudore/daemon"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -40,18 +40,19 @@ func init() {
 
 // Notify 定义监听重启对象。
 type App struct {
-	sync.Mutex
-	*NotifyConfig
 	*eudore.App
-	Watcher     *fsnotify.Watcher
-	lastBuild   context.CancelFunc
-	lastProcess context.CancelFunc
+	*ConfigNotify
+	sync.Mutex
+	Watcher       *fsnotify.Watcher
+	cancelBuild   context.CancelFunc
+	cancelProcess context.CancelFunc
 }
 
-type NotifyConfig struct {
+type ConfigNotify struct {
 	Workdir string `json:"workdir" alias:"workdir"`
 	Command string `json:"command" alias:"command"`
 	Pidfile string `json:"pidfile" alias:"pidfile"`
+	Main    string `json:"main" alias:"main"`
 	Build   string `json:"build" alias:"build"`
 	Start   string `json:"start" alias:"start"`
 	Watch   string `json:"watch" alias:"watch"`
@@ -60,24 +61,28 @@ type NotifyConfig struct {
 func main() {
 	app := NewApp()
 	app.Parse()
-	go app.Run()
-	app.App.Run()
+	go app.RunNotify()
+	app.Run()
 }
 
 // NewApp 函数创建一个Notify对象。
 func NewApp() *App {
-	conf := &NotifyConfig{
-		Build: "",
-		Start: "go run .",
-		Watch: ".",
-	}
 	app := &App{
-		NotifyConfig: conf,
-		App:          eudore.NewApp(),
+		App: eudore.NewApp(),
+		ConfigNotify: &ConfigNotify{
+			Build: "go build -o app .",
+			Start: "./app",
+			Watch: ".",
+		},
 	}
-	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfig(conf))
+	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfig(app.ConfigNotify))
+	app.ParseOption()
 	app.ParseOption(
-		eudore.DefaultConfigAllParseFunc,
+		eudore.NewConfigParseEnvFile(),
+		eudore.NewConfigParseEnvs(""),
+		eudore.NewConfigParseArgs(),
+		eudore.NewConfigParseWorkdir("workdir"),
+		daemon.NewParseSignal(),
 		app.NewParseWatcherFunc(),
 	)
 	return app
@@ -90,6 +95,13 @@ func (app *App) NewParseWatcherFunc() eudore.ConfigParseFunc {
 			return err
 		}
 		app.Watcher = watcher
+		for _, path := range strings.Split(app.Watch, ";") {
+			app.WatchAll(strings.TrimSpace(path))
+		}
+
+		app.SetValue(eudore.NewContextKey("watch-close"), eudore.Unmounter(func(context.Context) {
+			watcher.Close()
+		}))
 		return nil
 	}
 }
@@ -97,112 +109,109 @@ func (app *App) NewParseWatcherFunc() eudore.ConfigParseFunc {
 // Run 方法启动Notify。
 //
 // 调用App.Logger
-func (n *App) Run() {
-	n.App.Info("notify buildCmd", n.Build)
-	n.App.Info("notify startCmd", n.Start)
-	for _, path := range strings.Split(n.Watch, ";") {
-		n.WatchAll(strings.TrimSpace(path))
+func (app *App) RunNotify() {
+	if app.Main != "" {
+		app.Build = "go build -o app " + app.Main
 	}
+	app.Info("notify buildCmd", app.Build)
+	app.Info("notify startCmd", app.Start)
+	app.buildAndRestart()
 
-	n.buildAndRestart()
-
-	var timer = time.AfterFunc(1000*time.Hour, n.buildAndRestart)
+	timer := time.AfterFunc(1000*time.Hour, app.buildAndRestart)
 	defer func() {
 		timer.Stop()
-		if n.lastBuild != nil {
-			n.lastBuild()
+		if app.cancelBuild != nil {
+			app.cancelBuild()
 		}
-		if n.lastProcess != nil {
-			n.lastProcess()
+		if app.cancelProcess != nil {
+			app.cancelProcess()
 		}
 	}()
 
 	for {
 		select {
-		case event, ok := <-n.Watcher.Events:
+		case event, ok := <-app.Watcher.Events:
 			if !ok {
 				return
 			}
 
 			// 监听go文件写入
 			if event.Name[len(event.Name)-3:] == ".go" && event.Op&fsnotify.Write == fsnotify.Write {
-				n.App.Debug("modified file:", event.Name)
+				app.Debug("modified file:", event.Name)
 
 				// 等待0.1秒执行更新，防止短时间大量触发
 				timer.Reset(100 * time.Millisecond)
 			}
-		case err, ok := <-n.Watcher.Errors:
+		case err, ok := <-app.Watcher.Errors:
 			if !ok {
 				return
 			}
-			n.App.Error("notify watcher error:", err)
-		case <-n.App.Done():
+			app.Error("notify watcher error:", err)
+		case <-app.Done():
 			return
 		}
 	}
 }
 
-func (n *App) buildAndRestart() {
-	if n.Build != "" {
-		// 取消上传编译
-		n.Lock()
-		if n.lastBuild != nil {
-			n.lastBuild()
-		}
-		ctx, cannel := context.WithCancel(n.App.Context)
-		n.lastBuild = cannel
-		n.Unlock()
-		// 执行编译命令
-		cmd := exec.CommandContext(ctx, startcmd, "-c", n.Build)
-		cmd.Env = os.Environ()
-		body, err := cmd.CombinedOutput()
-		if err != nil {
-			fmt.Printf("notify build error: \n%s", body)
-			n.App.Errorf("notify build error: %s", body)
-			return
-		}
+func (app *App) buildAndRestart() {
+	// 取消上传编译
+	app.Lock()
+	if app.cancelBuild != nil {
+		app.cancelBuild()
 	}
-	n.App.Info("notify build success, restart process...")
+	ctx, cancel := context.WithCancel(app.Context)
+	app.cancelBuild = cancel
+	app.Unlock()
+	// 执行编译命令
+	cmd := exec.CommandContext(ctx, startcmd, "-c", app.Build)
+	cmd.Env = os.Environ()
+	body, err := cmd.CombinedOutput()
+	if err != nil {
+		app.Errorf("notify build error: %s", body)
+		return
+	}
+
+	app.Info("notify build success, restart process...")
 	time.Sleep(10 * time.Millisecond)
 	// 重启子进程
-	n.restart()
+	app.restart()
 }
 
-func (n *App) restart() {
+func (app *App) restart() {
 	// 关闭旧进程
-	n.Lock()
-	if n.lastProcess != nil {
-		n.lastProcess()
+	app.Lock()
+	if app.cancelProcess != nil {
+		app.cancelProcess()
 	}
-	ctx, cannel := context.WithCancel(n.App.Context)
-	n.lastProcess = cannel
-	n.Unlock()
+	ctx, cancel := context.WithCancel(app.Context)
+	app.cancelProcess = cancel
+	app.Unlock()
 	// 启动新进程
-	cmd := exec.CommandContext(ctx, startcmd, "-c", n.Start)
+	cmd := exec.CommandContext(ctx, startcmd, "-c", app.Start)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = os.Environ()
 	err := cmd.Start()
 	if err != nil {
-		n.App.Error("notify start error:", err)
+		app.Error("notify start error:", err)
 	}
 }
 
 // WatchAll 方法添加一个文件或目录，如果/结尾的目录会递归监听子目录。
-func (n *App) WatchAll(path string) {
+func (app *App) WatchAll(path string) {
 	if path != "" {
 		// 递归目录处理
-		listDir(path, n.watch)
-		n.watch(path)
+		listDir(path, app.watch)
+		app.watch(path)
 	}
 }
 
-func (n *App) watch(path string) {
-	n.App.Debug("notify add watch dir " + path)
-	err := n.Watcher.Add(path)
+func (app *App) watch(path string) {
+	app.Debug("notify add watch dir " + path)
+	err := app.Watcher.Add(path)
 	if err != nil {
-		n.App.Error(err)
+		app.Error(err)
 	}
 }
 

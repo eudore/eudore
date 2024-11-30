@@ -11,39 +11,42 @@ MethodNotAllowed, 405 方法注册全局405处理方法，默认实现响应返�
 
 import (
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 	"github.com/eudore/eudore/middleware"
 )
 
 func main() {
-	// RouterStd方法扩展
-	eudore.RouterAllMethod = append(eudore.RouterAllMethod, "MOVE", "COPY", "LOCK", "UNLOCK")
-	eudore.RouterAnyMethod = append(eudore.RouterAnyMethod, "LOCK", "UNLOCK")
+	// 定义Router允许的方法
+	// 必须在NewRouter之前修改默认定义
+	eudore.DefaultRouterAllMethod = append(eudore.DefaultRouterAllMethod, "MOVE", "COPY", "LOCK", "UNLOCK")
+	eudore.DefaultRouterAnyMethod = append(eudore.DefaultRouterAnyMethod, "LOCK", "UNLOCK")
 
 	app := eudore.NewApp()
-	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
-	// 通配符覆盖
+	app.AddMiddleware(middleware.NewLoggerFunc(app))
+	// 注册自定义方法
 	app.AnyFunc("/eudore/debug/look/*", middleware.NewLookFunc(app))
 	app.AnyFunc("/*path", eudore.HandlerEmpty)
 	app.AddHandler("LOCK", "/*", eudore.HandlerEmpty)
 	app.AddHandler("MOVE", "/*", eudore.HandlerEmpty)
 	app.AddHandler("LOCK", "/dav/*", eudore.HandlerEmpty)
 	app.AddHandler("UNLOCK", "/dav/*", eudore.HandlerEmpty)
+	app.AddHandler("none", "/dav/*", eudore.HandlerEmpty)
 	app.AddHandler("404", "", eudore.HandlerRouter404)
 	app.AddHandler("405", "", eudore.HandlerRouter405)
 
-	// 请求测试
-	client := httptest.NewClient(app)
-	client.NewRequest("LOCK2", "/").Do().Out()
-	client.NewRequest("LOCK", "/dav/1").Do().Out()
-	client.NewRequest("COPY", "/dav/1").Do().Out()
-
-	// 路由注销 使用参数register=off或空处理函数
-	app.AddHandler("LOCK", "/* register=off", eudore.HandlerEmpty)
-	app.AddHandler("ANY", "/* register=off", eudore.HandlerEmpty)
-	app.AddHandler("MOVE", "/*")
+	// ---------- Any方法优先级 ----------
+	// 通配符覆盖
+	app.GetFunc("/*path", func(ctx eudore.Context) {
+		ctx.WriteString("method is get\n")
+	})
+	// Any方法不会覆盖Get方法。
+	app.AnyFunc("/*path", func(ctx eudore.Context) {
+		ctx.WriteString("method is any\n")
+	})
+	// 非Any方法覆盖Any方法。
+	app.PostFunc("/*path", func(ctx eudore.Context) {
+		ctx.WriteString("method is post\n")
+	})
 
 	app.Listen(":8088")
-	// app.CancelFunc()
 	app.Run()
 }

@@ -4,74 +4,53 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
-	"sync"
+	"strings"
 	"testing"
-	"time"
 
-	"github.com/eudore/eudore"
+	. "github.com/eudore/eudore"
 )
 
 func TestConfigStdGetSet(t *testing.T) {
-	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfig(map[string]interface{}{
+	c := NewConfig(map[string]interface{}{
 		"name":   "eudore",
 		"type":   "ConfigMap",
 		"number": 3,
-	}))
-	app.Parse()
-	app.Set("auth.secret", "secret")
-	app.Infof("data: %# v", app.Get(""))
-	app.Infof("data name: %v", app.Get("name"))
+	})
+	c.Parse(context.Background())
+	c.Set("auth.secret", "secret")
+	t.Logf("data: %# v", c.Get(""))
+	t.Logf("data name: %v", c.Get("name"))
 
 	type Config struct {
 		Name string `alias:"name"`
 		Type string `alias:"type"`
 	}
-	app.Set("", &Config{Name: "eudore"})
-	app.Set("type", "config")
-	app.Infof("data name: %v", app.Get("name"))
-	app.Config.(interface{ Metadata() any }).Metadata()
+	c.Set("", &Config{Name: "eudore"})
+	c.Set("type", "config")
+	t.Logf("data name: %v", c.Get("name"))
 
-	app.CancelFunc()
-	app.Run()
+	c.(interface{ Metadata() any }).Metadata()
 }
 
 func TestConfigStdpParse(t *testing.T) {
-	app := eudore.NewApp()
-	app.ParseOption(func(ctx context.Context, config eudore.Config) error {
+	c := NewConfig(nil)
+	c.ParseOption(func(ctx context.Context, config Config) error {
 		config.Set("parse", true)
 		return nil
 	})
-	app.Infof("parse eror: %v", app.Parse())
-	app.Infof("data: %# v", app.Get(""))
+	t.Logf("parse eror: %v", c.Parse(context.Background()))
+	t.Logf("data: %# v", c.Get(""))
 
-	app.ParseOption()
-	app.ParseOption(func(ctx context.Context, config eudore.Config) error {
+	c.ParseOption()
+	c.ParseOption(func(ctx context.Context, config Config) error {
 		config.Set("error", true)
 		return errors.New("parse test error")
 	})
-	app.Infof("parse eror: %v", app.Parse())
-	app.Infof("parse eror: %v", app.Parse())
-	app.Infof("data: %# v", app.Get(""))
-
-	app.CancelFunc()
-	app.Run()
-}
-
-func TestConfigStdJSON(t *testing.T) {
-	app := eudore.NewApp()
-	app.ParseOption(func(ctx context.Context, config eudore.Config) error {
-		return json.Unmarshal([]byte(`{"name":"eudore"}`), config)
-	})
-	app.Infof("ConfigMap parse eror: %v", app.Parse())
-	app.Infof("ConfigMap data: %# v", app.Get(""))
-
-	body, err := json.Marshal(app.Config)
-	app.Infof("ConfigMap json data: %s,error: %v", body, err)
-
-	app.CancelFunc()
-	app.Run()
+	t.Logf("parse eror: %v", c.Parse(context.Background()))
+	t.Logf("parse eror: %v", c.Parse(context.Background()))
+	t.Logf("data: %# v", c.Get(""))
 }
 
 func TestConfigParseJSON(t *testing.T) {
@@ -80,28 +59,50 @@ func TestConfigParseJSON(t *testing.T) {
 	filepath2 := "tmp-config2.json"
 	defer tempConfigFile(filepath2, `name:eudore`)()
 
-	app := eudore.NewApp()
-	app.ParseOption()
-	app.ParseOption(eudore.NewConfigParseJSON("config"))
+	c := NewConfig(nil)
+	c.ParseOption()
+	c.ParseOption(
+		NewConfigParseJSON("config"),
+		func(ctx context.Context, config Config) error {
+			return json.Unmarshal([]byte(`{"name":"eudore"}`), config)
+		},
+	)
+	body, err := json.Marshal(c)
+	t.Logf("ConfigMap json data: %s,error: %v", body, err)
 
-	app.Infof("NewConfigParseJSON parse empty error %v:", app.Parse())
+	t.Logf("NewConfigParseJSON parse empty error %v:", c.Parse(context.Background()))
 
-	app.Set("config", filepath1)
-	app.Infof("NewConfigParseJSON parse file error: %v", app.Parse())
+	c.Set("config", filepath1)
+	t.Logf("NewConfigParseJSON parse file error: %v", c.Parse(context.Background()))
 
-	app.Set("config", []string{filepath1})
-	app.Infof("NewConfigParseJSON parse mutil file error: %v", app.Parse())
+	c.Set("config", []string{filepath1})
+	t.Logf("NewConfigParseJSON parse mutil file error: %v", c.Parse(context.Background()))
 
-	app.Set("config", "not-"+filepath1)
-	app.Infof("NewConfigParseJSON parse not file error: %v", app.Parse())
+	c.Set("config", "not-"+filepath1)
+	t.Logf("NewConfigParseJSON parse not file error: %v", c.Parse(context.Background()))
 
-	app.Set("config", filepath2)
-	app.Infof("NewConfigParseJSON parse error: %v", app.Parse())
+	os.Setenv("ENV_CONFIG", "path")
+	t.Logf("NewConfigParseJSON parse env error: %v", c.Parse(context.Background()))
+	os.Unsetenv("ENV_CONFIG")
 
-	app.Infof("Config data: %# v", app.Get(""))
+	os.Args = append(os.Args, "--config=path")
+	t.Logf("NewConfigParseJSON parse args error: %v", c.Parse(context.Background()))
+	os.Args = os.Args[:len(os.Args)-1]
 
-	app.CancelFunc()
-	app.Run()
+	c.ParseOption()
+	c.ParseOption(NewConfigParseDecoder("config", "json-custom",
+		func(reader io.Reader, data any) error {
+			return json.NewDecoder(reader).Decode(data)
+		},
+	))
+	c.Set("config", filepath2)
+	t.Logf("NewConfigParseJSON parse decoder error: %v", c.Parse(context.Background()))
+
+	path := "config" + strings.Repeat("-", 256) + ".json"
+	c.ParseOption()
+	c.ParseOption(NewConfigParseJSON("config"))
+	c.Set("config", path)
+	t.Logf("NewConfigParseJSON parse open error: %v", c.Parse(context.Background()))
 }
 
 func tempConfigFile(path, content string) func() {
@@ -116,17 +117,29 @@ func tempConfigFile(path, content string) func() {
 	}
 }
 
+type Config020 struct {
+	Workdir   string
+	Name      string  `alias:"name"`
+	Namespace *string `alias:"namespace" flag:"n"`
+	Body      []byte  `alias:"body" flag:"b"`
+	Slices    []int   `alias:"slices" flag:"s"`
+	Any       any
+}
+
 func TestConfigParseArgs(t *testing.T) {
 	os.Args = append(os.Args, "start", "--name=eudore")
-	app := eudore.NewApp()
-	app.ParseOption()
-	app.ParseOption(eudore.NewConfigParseArgs(nil))
+	defer func() {
+		os.Args = os.Args[:len(os.Args)-2]
+	}()
+	conf := &Config020{}
+	conf.Any = conf
 
-	app.Infof("NewConfigParseArgs parse error: %v", app.Parse())
-	app.Infof("Config data: %# v", app.Get(""))
+	c := NewConfig(conf)
+	c.ParseOption()
+	c.ParseOption(NewConfigParseArgs())
 
-	app.CancelFunc()
-	app.Run()
+	t.Logf("NewConfigParseArgs parse error: %v", c.Parse(context.Background()))
+	t.Logf("Config data: %# v", c.Get(""))
 }
 
 func TestConfigParseArgsShort(t *testing.T) {
@@ -135,36 +148,26 @@ func TestConfigParseArgsShort(t *testing.T) {
 		Config string `alias:"config" json:"config" flag:"c"`
 		Name   string `alias:"name" json:"name"`
 	}
-	shortMapping := map[string][]string{
-		"f": {"config"},
-	}
 	os.Args = append(os.Args, "--name=eudore", "-f=config.json", "-h", "--help")
 
-	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfig(&configShort{false, "eudore", "msg"}))
-	app.ParseOption()
-	app.ParseOption(eudore.NewConfigParseArgs(shortMapping))
+	c := NewConfig(&configShort{false, "eudore", "msg"})
+	c.ParseOption()
+	c.ParseOption(NewConfigParseArgs())
 
-	app.Infof("NewConfigParseArgs parse error: %v", app.Parse())
-	app.Infof("Config data: %# v", app.Get(""))
-
-	app.CancelFunc()
-	app.Run()
+	t.Logf("NewConfigParseArgs parse error: %v", c.Parse(context.Background()))
+	t.Logf("Config data: %# v", c.Get(""))
 }
 
 func TestConfigParseEnvs(t *testing.T) {
 	os.Setenv("ENV_NAME", "eudore")
 	defer os.Unsetenv("ENV_NAME")
 	// init envs by cmd
-	app := eudore.NewApp()
-	app.ParseOption()
-	app.ParseOption(eudore.NewConfigParseEnvs("ENV_"))
+	c := NewConfig(nil)
+	c.ParseOption()
+	c.ParseOption(NewConfigParseEnvs("ENV_"))
 
-	app.Infof("NewConfigParseEnvs parse error: %v", app.Parse())
-	app.Infof("Config data: %# v", app.Get(""))
-
-	app.CancelFunc()
-	app.Run()
+	t.Logf("NewConfigParseEnvs parse error: %v", c.Parse(context.Background()))
+	t.Logf("Config data: %# v", c.Get(""))
 }
 
 func TestConfigParseEnvsFile(t *testing.T) {
@@ -172,109 +175,28 @@ func TestConfigParseEnvsFile(t *testing.T) {
 	defer os.Unsetenv("ENV_NAME")
 	// init envs by cmd
 
-	p := "out----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------1.log"
-	app := eudore.NewApp()
-	app.ParseOption()
-	app.ParseOption(eudore.NewConfigParseEnvFile(".env", p))
+	path := "config" + strings.Repeat("-", 256) + ".json"
+	c := NewConfig(nil)
 
-	app.Infof("NewConfigParseEnvFile parse error: %v", app.Parse())
-	app.Infof("Config data: %# v", app.Get(""))
+	c.ParseOption()
+	c.ParseOption(NewConfigParseEnvFile(".env", path))
 
-	app.ParseOption()
-	app.ParseOption(eudore.NewConfigParseEnvFile())
-	app.Parse()
+	t.Logf("NewConfigParseEnvFile parse error: %v", c.Parse(context.Background()))
+	t.Logf("Config data: %# v", c.Get(""))
 
-	app.CancelFunc()
-	app.Run()
+	c.ParseOption()
+	c.ParseOption(NewConfigParseEnvFile())
+	c.Parse(context.Background())
 }
 
 func TestConfigParseWorkdir(t *testing.T) {
-	app := eudore.NewApp()
-	app.ParseOption()
-	app.ParseOption(eudore.NewConfigParseWorkdir("workdir"))
+	c := NewConfig(nil)
+	c.ParseOption()
+	c.ParseOption(NewConfigParseWorkdir("workdir"))
 
-	app.Infof("NewConfigParseWorkdir parse empty dir error: %v", app.Parse())
+	t.Logf("NewConfigParseWorkdir parse empty dir error: %v", c.Parse(context.Background()))
 
-	app.Set("workdir", ".")
-	app.Infof("NewConfigParseWorkdir parse error: %v", app.Parse())
-	app.Infof("Config data: %# v", app.Get(""))
-
-	app.CancelFunc()
-	app.Run()
-}
-
-func TestConfigParseHelp(t *testing.T) {
-	conf := &helpConfig{Iface: &helpDBConfig{}}
-	conf.Link = conf
-
-	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyConfig, eudore.NewConfig(conf))
-	app.ParseOption()
-	app.ParseOption(eudore.NewConfigParseHelp("help"))
-
-	app.Infof("NewConfigParseHelp parse not help error: %v", app.Parse())
-	app.Set("help", true)
-	app.Infof("NewConfigParseHelp parse error: %v", app.Parse())
-	app.Infof("Config data: %# v", app.Get(""))
-
-	app.CancelFunc()
-	app.Run()
-}
-
-type helpConfig struct {
-	sync.RWMutex
-	Command   string                      `json:"command" alias:"command" description:"app start command, start/stop/status/restart" flag:"cmd"`
-	Pidfile   string                      `json:"pidfile" alias:"pidfile" description:"pid file localtion"`
-	Workdir   string                      `json:"workdir" alias:"workdir" description:"set app working directory"`
-	Config    string                      `json:"config" alias:"config" description:"config path" flag:"f"`
-	Help      bool                        `json:"help" alias:"help" description:"output help info" flag:"h"`
-	Enable    []string                    `json:"enable" alias:"enable" description:"enable config mods"`
-	Mods      map[string]*helpConfig      `json:"mods" alias:"mods" description:"config mods"`
-	Listeners []eudore.ServerListenConfig `json:"listeners" alias:"listeners"`
-	Component *helpComponentConfig        `json:"component" alias:"component"`
-	Length    int                         `json:"length" alias:"length" description:"this is int"`
-	Num       [3]int                      `json:"num" alias:"num" description:"this is array"`
-	Body      []byte                      `json:"body" alias:"body" description:"this is []byte"`
-	Float     float64                     `json:"body" alias:"body" description:"this is float"`
-	Time      time.Time                   `json:"time" alias:"time" description:"this is time"`
-	Map       map[string]interface{}      `json:"map" alias:"map" description:"this is map"`
-
-	Auth  *helpAuthConfig `json:"auth" alias:"auth"`
-	Iface interface{}
-	Link  interface{} `json:"-" alias:"link"`
-	// Node *Node
-}
-
-type Node struct {
-	Next *Node
-}
-
-// ComponentConfig 定义website使用的组件的配置。
-type helpComponentConfig struct {
-	DB     helpDBConfig         `json:"db" alias:"db"`
-	Logger *eudore.LoggerConfig `json:"logger" alias:"logger"`
-	Server *eudore.ServerConfig `json:"server" alias:"server"`
-	Notify map[string]string    `json:"notify" alias:"notify"`
-	Pprof  *helpPprofConfig     `json:"pprof" alias:"pprof"`
-	Black  map[string]bool      `json:"black" alias:"black"`
-}
-type helpDBConfig struct {
-	Driver string `json:"driver" alias:"driver" description:"database driver type"`
-	Config string `json:"config" alias:"config" description:"database config info" flag:"db"`
-}
-type helpPprofConfig struct {
-	Godoc     string            `json:"godoc" alias:"godoc" description:"godoc server"`
-	BasicAuth map[string]string `json:"basicauth" alias:"basicauth" description:"basic auth username and password"`
-}
-
-type helpAuthConfig struct {
-	Secrets  map[string]string    `json:"secrets" alias:"secrets" description:"default auth secrets"`
-	IconTemp string               `json:"icontemp" alias:"icontemp" description:"save icon temp dir"`
-	Sender   helpMailSenderConfig `json:"sender" alias:"sender" description:""`
-}
-type helpMailSenderConfig struct {
-	Username string `json:"username" alias:"username" description:"email send username"`
-	Password string `json:"password" alias:"password" description:"email send password"`
-	Addr     string `json:"addr" alias:"addr"`
-	Subject  string `json:"subject" alias:"subject"`
+	c.Set("workdir", ".")
+	t.Logf("NewConfigParseWorkdir parse error: %v", c.Parse(context.Background()))
+	t.Logf("Config data: %# v", c.Get(""))
 }

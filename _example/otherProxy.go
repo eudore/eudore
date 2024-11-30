@@ -11,31 +11,29 @@ import (
 	"net/url"
 
 	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/component/httptest"
 )
 
 func main() {
 	app := eudore.NewApp()
-	addr, _ := url.Parse("http://localhost:8088")
+	addr, _ := url.Parse("http://localhost:8089")
 	app.AnyFunc("/*", httputil.NewSingleHostReverseProxy(addr))
+	app.AnyFunc("/print", handlePrint)
 
-	go func(app2 *eudore.App) {
+	go func() {
 		app := eudore.NewApp()
-		app.AnyFunc("/*", func(ctx eudore.Context) {
-			ctx.WriteString("host: " + ctx.Host())
-			ctx.WriteString("\r\nrealip: " + ctx.RealIP())
-		})
-		app.Listen(":8088")
+		app.AnyFunc("/*", handlePrint)
 
-		client := httptest.NewClient(app2)
-		client.NewRequest("GET", "/").Do().Out()
-		client.NewRequest("GET", "http://localhost:8088").Do().Out()
-		client.NewRequest("GET", "https://localhost:8088").Do().Out()
-
-		app.CancelFunc()
-		app2.CancelFunc()
+		app.Listen(":8089")
 		app.Run()
-	}(app)
+	}()
 
+	app.Listen(":8088")
 	app.Run()
+}
+
+func handlePrint(ctx eudore.Context) {
+	ctx.WriteString("host: " + ctx.Host())
+	ctx.WriteString("\r\nrealip: " + ctx.RealIP())
+	ctx.WriteString("\r\nremote: " + ctx.Request().RemoteAddr)
+	ctx.WriteString("\r\nx-forward: " + ctx.GetHeader(eudore.HeaderXForwardedFor))
 }

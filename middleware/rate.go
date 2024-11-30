@@ -3,95 +3,131 @@ package middleware
 import (
 	"context"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/eudore/eudore"
 )
 
-// NewRateRequestFunc 返回一个限流处理函数。
-//
-// 每周期(默认秒)增加speed个令牌，最多拥有max个。
-//
-// options:
-//
-// context.Context               =>    控制cleanupVisitors退出的生命周期
-//
-// time.Duration                 =>    基础时间周期单位，默认秒
-//
-// func(eudore.Context) string   =>    限流获取key的函数，默认Context.ReadIP。
-func NewRateRequestFunc(speed, max int64, options ...any) eudore.HandlerFunc {
-	return newRate(speed, max, options...).HandlerRequest
+// rate defines the rate limiter.
+type rate struct {
+	mu         sync.RWMutex
+	visitors   map[string]*rateBucket
+	GetKeyFunc func(eudore.Context) string
+	speed      int64
+	total      int64
 }
 
-// NewRateSpeedFunc 函数创建一个限速处理函数，不区分上下行流量。
-//
-// speed为速度(byte),max为默认初始化流量值，参数参考NewRateRequestFunc。
-//
-// speed速度不要小于通常Reader的缓冲区大小(最好大于4kB 4096)，否则无法请求到住够的令牌导致阻塞。
-//
-// Read时先请求缓冲区大小数量的令牌，然后返还未使用的令牌数量；Write时请求写入数据长度数量的令牌。
-func NewRateSpeedFunc(speed, max int64, options ...any) eudore.HandlerFunc {
-	return newRate(speed, max, options...).HandlerSpeed
+type rateBucket struct {
+	sync.Mutex
+	speed int64
+	max   int64
+	last  int64
 }
 
-func newRate(speed, max int64, options ...any) *rate {
+// NewRateRequestFunc function creates middleware to implement request limit,
+//
+// Use memory-based token bucket rate limiting.
+//
+// Speed is tokens per second, with a maximum of total tokens.
+//
+// This middleware does not support cluster mode.
+//
+// options: [NewOptionKeyFunc] [NewOptionRateCleanup].
+func NewRateRequestFunc(speed, total int64, options ...Option) Middleware {
+	r := newRate(speed, total, options)
+	return func(ctx eudore.Context) {
+		key := r.GetKeyFunc(ctx)
+		if key == "" {
+			return
+		}
+		now, at, ok := r.GetVisitor(key).Allow()
+		state := now - at
+		ctx.SetHeader(eudore.HeaderXRateLimit, fi64(r.total/r.speed))
+		ctx.SetHeader(eudore.HeaderXRateReset, fi64((at+r.total)/1000000000))
+		if ok {
+			ctx.SetHeader(eudore.HeaderXRateRemaining, fi64(state/r.speed))
+			return
+		}
+
+		retry := int((r.speed - state) / 1000000000)
+		if retry < DefaultRateRetryMin {
+			retry = DefaultRateRetryMin
+		}
+		ctx.SetHeader(eudore.HeaderRetryAfter, strconv.Itoa(retry))
+		writePage(ctx, eudore.StatusTooManyRequests, DefaultPageRate, key)
+		ctx.End()
+	}
+}
+
+func fi64(i int64) string {
+	return strconv.FormatInt(i, 10)
+}
+
+// The NewRateSpeedFunc function creates middleware to implement rate limiting,
+// without distinguishing between upstream and downstream traffic.
+//
+// speed is the speed (byte), total is the default initialization flow value,
+// refer: [NewRateRequestFunc].
+//
+// The speed should not be less than the [io.Reader] buffer size
+// (preferably greater than 4kB 4096),
+// otherwise the unable to get token will cause blocking.
+//
+// When reading, first request the tokens of the buffer size (512),
+// and then return the number of unused tokens;
+// when writing, request the tokens of the write data length.
+func NewRateSpeedFunc(speed, total int64, options ...Option) Middleware {
+	r := newRate(speed, total, options)
+	return func(ctx eudore.Context) {
+		key := r.GetKeyFunc(ctx)
+		if key == "" {
+			return
+		}
+		rate := r.GetVisitor(key)
+		httpctx := ctx.Context()
+		req := ctx.Request()
+		if req.ContentLength != 0 {
+			req.Body = &requqestReaderRate{
+				ReadCloser: req.Body,
+				Context:    httpctx,
+				rateBucket: rate,
+			}
+		}
+		ctx.SetResponse(&responseWriterRate{
+			ResponseWriter: ctx.Response(),
+			Context:        httpctx,
+			rateBucket:     rate,
+		})
+	}
+}
+
+func newRate(speed, total int64, options []Option) *rate {
 	r := &rate{
 		visitors: make(map[string]*rateBucket),
 		GetKeyFunc: func(ctx eudore.Context) string {
 			return ctx.RealIP()
 		},
 		speed: int64(time.Second) / speed,
-		max:   int64(time.Second) / speed * max,
+		total: int64(time.Second) / speed * total,
 	}
-	ctx := context.Background()
-	for _, i := range options {
-		switch val := i.(type) {
-		case context.Context:
-			ctx = val
-		case time.Duration:
-			r.speed = int64(val) / speed
-			r.max = int64(val) / speed * max
-		case func(eudore.Context) string:
-			r.GetKeyFunc = val
-		}
-	}
-	go r.cleanupVisitors(ctx)
+	applyOption(r, options)
+
 	return r
 }
 
-// HandlerRequest 方法实现eudore请求上下文处理函数。
-func (r *rate) HandlerRequest(ctx eudore.Context) {
-	key := r.GetKeyFunc(ctx)
-	if !r.GetVisitor(key).WaitWithDeadline(ctx.GetContext(), 1) {
-		ctx.WriteHeader(eudore.StatusTooManyRequests)
-		ctx.Fatal("deny request of rate request: " + key)
-		ctx.End()
-	}
-}
-
-func (r *rate) HandlerSpeed(ctx eudore.Context) {
-	rate := r.GetVisitor(r.GetKeyFunc(ctx))
-	httpctx := ctx.GetContext()
-	ctx.Request().Body = &requqestReaderRate{
-		ReadCloser: ctx.Request().Body,
-		Context:    httpctx,
-		rateBucket: rate,
-	}
-	ctx.SetResponse(&responseWriterRate{
-		ResponseWriter: ctx.Response(),
-		Context:        httpctx,
-		rateBucket:     rate,
-	})
-}
-
-// GetVisitor 方法通过ip获得rateBucket。
+// The GetVisitor method gets the rateBucket through the key.
 func (r *rate) GetVisitor(key string) *rateBucket {
 	r.mu.RLock()
 	v, exists := r.visitors[key]
 	r.mu.RUnlock()
 	if !exists {
-		limiter := newBucket(r.speed, r.max)
+		limiter := &rateBucket{
+			speed: r.speed,
+			max:   r.total,
+			last:  time.Now().UnixNano() - r.total,
+		}
 		r.mu.Lock()
 		r.visitors[key] = limiter
 		r.mu.Unlock()
@@ -100,15 +136,23 @@ func (r *rate) GetVisitor(key string) *rateBucket {
 	return v
 }
 
-func (r *rate) cleanupVisitors(ctx context.Context) {
-	dura := time.Duration(r.max) * 10
-	if time.Millisecond < dura && dura < time.Minute {
-		dura = time.Minute
+// The cleanupVisitors method periodically clears unactive rates.
+func (r *rate) cleanupVisitors(ctx context.Context, t time.Duration, less int) {
+	last := time.Duration(r.total) * 10
+	if time.Millisecond < t && t < last {
+		t = last
 	}
 	for {
 		select {
-		case now := <-time.After(dura):
-			dead := now.UnixNano() - int64(dura)
+		case now := <-time.After(t):
+			r.mu.RLock()
+			if len(r.visitors) < less {
+				r.mu.RUnlock()
+				break
+			}
+			r.mu.RUnlock()
+
+			dead := now.UnixNano() - int64(last)
 			r.mu.Lock()
 			for key, v := range r.visitors {
 				v.Lock()
@@ -124,103 +168,28 @@ func (r *rate) cleanupVisitors(ctx context.Context) {
 	}
 }
 
-type requqestReaderRate struct {
-	io.ReadCloser
-	context.Context
-	*rateBucket
-}
-
-type responseWriterRate struct {
-	eudore.ResponseWriter
-	context.Context
-	*rateBucket
-}
-
-func (r *requqestReaderRate) Read(body []byte) (int, error) {
-	length := len(body)
-	if r.Wait(r.Context, int64(length)) {
-		n, err := r.ReadCloser.Read(body)
-		if length != n {
-			r.Put(int64(length - n))
-		}
-		return n, err
-	}
-	err := r.Err()
-	if err == nil {
-		err = ErrRateReadWaitLong
-	}
-	return 0, err
-}
-
-func (r *responseWriterRate) Write(data []byte) (int, error) {
-	if r.Wait(r.Context, int64(len(data))) {
-		return r.ResponseWriter.Write(data)
-	}
-	err := r.Err()
-	if err == nil {
-		err = ErrRateWriteWaitLong
-	}
-	return 0, err
-}
-
-func (r *responseWriterRate) WriteString(data string) (int, error) {
-	if r.Wait(r.Context, int64(len(data))) {
-		return r.ResponseWriter.WriteString(data)
-	}
-	err := r.Err()
-	if err == nil {
-		err = ErrRateWriteWaitLong
-	}
-	return 0, err
-}
-
-// rate 定义限流器。
-type rate struct {
-	mu         sync.RWMutex
-	visitors   map[string]*rateBucket
-	GetKeyFunc func(eudore.Context) string
-	speed      int64
-	max        int64
-}
-
-type rateBucket struct {
-	sync.Mutex
-	speed int64
-	max   int64
-	last  int64
-}
-
-func newBucket(speed, max int64) *rateBucket {
-	return &rateBucket{
-		speed: speed,
-		max:   max,
-		last:  time.Now().UnixNano() - max,
-	}
-}
-
 func (r *rateBucket) Put(n int64) {
 	r.Lock()
 	r.last -= n * r.speed
 	r.Unlock()
 }
 
-func (r *rateBucket) Allow(n int64) bool {
+func (r *rateBucket) Allow() (int64, int64, bool) {
 	r.Lock()
 	defer r.Unlock()
 	now := time.Now().UnixNano()
-	n = r.last + n*r.speed
-	if n < now {
-		r.last = n
-		now -= r.max
-		if r.last < now {
-			r.last = now
+	next := r.last + r.speed
+	if next < now {
+		r.last = next
+		if r.last < now-r.max {
+			r.last = now - r.max
 		}
-		return true
+		return now, r.last, true
 	}
-	return false
+	return now, next, false
 }
 
-func (r *rateBucket) Wait(ctx context.Context, n int64) bool {
+func (r *rateBucket) WaitN(ctx context.Context, n int64) bool {
 	r.Lock()
 	now := time.Now().UnixNano()
 	n = r.last + n*r.speed
@@ -240,7 +209,7 @@ func (r *rateBucket) Wait(ctx context.Context, n int64) bool {
 		return false
 	}
 
-	// 预支令牌 等待可用
+	// prepay token and wait for it to become available
 	ticker := time.NewTicker(time.Duration(n - now))
 	defer ticker.Stop()
 	r.last = n
@@ -249,14 +218,45 @@ func (r *rateBucket) Wait(ctx context.Context, n int64) bool {
 	case <-ticker.C:
 		return true
 	case <-ctx.Done():
-		// 取消上下文不退还令牌
+		// cancelling the context does not return the token
 		return false
 	}
 }
 
-func (r *rateBucket) WaitWithDeadline(ctx context.Context, n int64) bool {
-	if _, ok := ctx.Deadline(); ok {
-		return r.Wait(ctx, n)
+type requqestReaderRate struct {
+	io.ReadCloser
+	context.Context
+	*rateBucket
+}
+
+type responseWriterRate struct {
+	eudore.ResponseWriter
+	context.Context
+	*rateBucket
+}
+
+func (r *requqestReaderRate) Read(body []byte) (int, error) {
+	length := len(body)
+	if r.WaitN(r.Context, int64(length)) {
+		n, err := r.ReadCloser.Read(body)
+		if length != n {
+			r.Put(int64(length - n))
+		}
+		return n, err
 	}
-	return r.Allow(n)
+	return 0, r.Err()
+}
+
+func (r *responseWriterRate) Write(data []byte) (int, error) {
+	if r.WaitN(r.Context, int64(len(data))) {
+		return r.ResponseWriter.Write(data)
+	}
+	return 0, r.Err()
+}
+
+func (r *responseWriterRate) WriteString(data string) (int, error) {
+	if r.WaitN(r.Context, int64(len(data))) {
+		return r.ResponseWriter.WriteString(data)
+	}
+	return 0, r.Err()
 }

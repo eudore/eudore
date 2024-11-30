@@ -220,7 +220,7 @@ func TestProtoBufHandlerData(t *testing.T) {
 		return data
 	})
 
-	app.NewRequest(nil, "PUT", "/",
+	app.NewRequest("PUT", "/",
 		http.Header{
 			eudore.HeaderAccept:      []string{eudore.MimeApplicationProtobuf},
 			eudore.HeaderContentType: []string{eudore.MimeApplicationProtobuf},

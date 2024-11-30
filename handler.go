@@ -15,77 +15,43 @@ import (
 	"unsafe"
 )
 
-// HandlerFunc is a function that processes a Context.
-//
-// HandlerFunc 是处理一个Context的函数。
+// HandlerFunc is a function that processes a [Context].
 type HandlerFunc func(Context)
 
-// HandlerFuncs is a collection of HandlerFunc, representing multiple request processing functions.
-//
-// HandlerFuncs 是HandlerFunc的集合，表示多个请求处理函数。
-type HandlerFuncs []HandlerFunc
+// HandlerFuncs is a collection of [HandlerFunc], representing multiple
+// request processing functions.
+type HandlerFuncs = []HandlerFunc
 
-// HandlerFuncs is a collection of HandlerFunc, representing multiple request processing functions.
-//
-// HandlerEmpty 函数定义一个空的请求上下文处理函数。
+// The HandlerEmpty function is an empty handler.
 func HandlerEmpty(Context) {
 	// Do nothing because empty handler does not process entries.
 }
 
-// HandlerRouter403 function defines the default 403 processing.
-//
-// HandlerRouter403 函数定义默认403处理。
+// HandlerRouter403 function defines the [StatusForbidden] processing.
 func HandlerRouter403(ctx Context) {
-	const page404 string = "403 forbidden"
-	ctx.WriteHeader(StatusForbidden)
+	const page404 = "403 Forbidden"
+	ctx.WriteStatus(StatusForbidden)
 	_ = ctx.Render(page404)
 }
 
-// HandlerRouter404 function defines the default 404 processing.
-//
-// HandlerRouter404 函数定义默认404处理。
+// HandlerRouter404 function defines the [StatusNotFound] processing.
 func HandlerRouter404(ctx Context) {
-	const page404 string = "404 page not found"
-	ctx.WriteHeader(StatusNotFound)
+	const page404 = "404 Not Found"
+	ctx.WriteStatus(StatusNotFound)
 	_ = ctx.Render(page404)
 }
 
-// HandlerRouter405 function defines the default 405 processing and returns Allow and X-Match-Route Header.
-//
-// HandlerRouter405 函数定义默认405处理,返回Allow和X-Match-Route Header。
+// HandlerRouter405 function defines the [StatusMethodNotAllowed] processing
+// and returns [HeaderAllow] and [HeaderXEudoreRoute] Header.
 func HandlerRouter405(ctx Context) {
-	const page405 string = "405 method not allowed"
+	const page405 = "405 Method Not Allowed"
 	ctx.SetHeader(HeaderAllow, ctx.GetParam(ParamAllow))
 	ctx.SetHeader(HeaderXEudoreRoute, ctx.GetParam(ParamRoute))
-	ctx.WriteHeader(StatusMethodNotAllowed)
+	ctx.WriteStatus(StatusMethodNotAllowed)
 	_ = ctx.Render(page405)
 }
 
-// HandlerMetadata 函数返回从contextKey获取metadata，可以使用路由参数*或name指定key。
-func HandlerMetadata(ctx Context) {
-	name := GetAnyByString(ctx.GetParam("*"), ctx.GetParam("name"))
-	if name != "" {
-		meta := anyMetadata(ctx.Value(NewContextKey(name)))
-		if meta != nil {
-			_ = ctx.Render(meta)
-		} else {
-			HandlerRouter404(ctx)
-		}
-		return
-	}
-
-	keys := ctx.Value(ContextKeyAppKeys).([]any)
-	metas := make(map[string]any, len(keys))
-	for i := range keys {
-		meta := anyMetadata(ctx.Value(keys[i]))
-		if meta != nil {
-			metas[fmt.Sprint(keys[i])] = meta
-		}
-	}
-	_ = ctx.Render(metas)
-}
-
-// NewHandlerFuncsFilter 函数过滤掉多个请求上下文处理函数中的空对象。
+// The NewHandlerFuncsFilter function filters out nil objects in [HandlerFuncs].
 func NewHandlerFuncsFilter(hs HandlerFuncs) HandlerFuncs {
 	var size int
 	for _, h := range hs {
@@ -97,7 +63,7 @@ func NewHandlerFuncsFilter(hs HandlerFuncs) HandlerFuncs {
 		return hs[:size:size]
 	}
 
-	// 返回新过滤空的处理函数。
+	// Return the filtered processing function.
 	nhs := make(HandlerFuncs, 0, size)
 	for _, h := range hs {
 		if h != nil {
@@ -107,13 +73,11 @@ func NewHandlerFuncsFilter(hs HandlerFuncs) HandlerFuncs {
 	return nhs
 }
 
-// NewHandlerFuncsCombine function merges two HandlerFuncs into one. The default maximum length is now 63, which exceeds panic.
+// NewHandlerFuncsCombine function merges two [HandlerFuncs] into one.
+// The default max length is [DefaultContextMaxHandler], which exceeds panic.
 //
-// Used to reconstruct the slice and prevent the appended data from being confused.
-//
-// HandlerFuncsCombine 函数将两个HandlerFuncs合并成一个，默认现在最大长度63，超过过panic。
-//
-// 用于重构切片，防止切片append数据混乱。
+// Used to reconstruct the slice and prevent the slice append data from
+// being confused.
 func NewHandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	// if nil
 	if len(hs1) == 0 {
@@ -125,7 +89,7 @@ func NewHandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	// combine
 	size := len(hs1) + len(hs2)
 	if size >= DefaultContextMaxHandler {
-		panic(fmt.Errorf("HandlerFuncsCombine: too many handlers %d", size))
+		panic(fmt.Errorf(ErrHandlerFuncsCombineTooMany, size))
 	}
 	hs := make(HandlerFuncs, size)
 	copy(hs, hs1)
@@ -139,15 +103,17 @@ type reflectValue struct {
 	flag uintptr
 }
 
-// getFuncPointer 函数获取一个reflect值的地址作为唯一标识id。
+// The getFuncPointer function get the address of [HandlerFunc]
+// as the unique identifier id.
 func getFuncPointer(v reflect.Value) uintptr {
 	val := *(*reflectValue)(unsafe.Pointer(&v))
 	return val.ptr
 }
 
-// SetHandlerAliasName 函数设置一个函数处理对象原始名称，如果扩展未生成名称，使用此值。
+// The SetHandlerAliasName function sets the original name of extension object.
 //
-// 在handlerExtendBase对象和ControllerInjectSingleton函数中使用到，用于传递控制器函数名称。
+// Used in the [NewHandlerExtenderBase] object and [ControllerInjectAutoRoute]
+// function to pass the controller function name.
 func SetHandlerAliasName(i any, name string) {
 	if name == "" {
 		return
@@ -178,13 +144,10 @@ func getHandlerAliasName(v reflect.Value) string {
 	return ""
 }
 
-// SetHandlerFuncName function sets the name of a request context handler.
+// SetHandlerFuncName function sets the name of a [HandlerFunc].
 //
-// Note: functions are not comparable, the method names of objects are overwritten by other method names.
-//
-// SetHandlerFuncName 函数设置一个请求上下文处理函数的名称。
-//
-// 注意：函数不具有可比性，对象的方法的名称会被其他方法名称覆盖。
+// Note: functions are not comparable, the method names of objects are
+// overwritten by other method names.
 func SetHandlerFuncName(i HandlerFunc, name string) {
 	if name == "" {
 		return
@@ -192,9 +155,8 @@ func SetHandlerFuncName(i HandlerFunc, name string) {
 	contextSaveName[getFuncPointer(reflect.ValueOf(i))] = name
 }
 
-// String method implements the fmt.Stringer interface and implements the output function name.
-//
-// String 方法实现fmt.Stringer接口，实现输出函数名称。
+// String method implements the [fmt.Stringer] interface
+// and output [HandlerFunc] name.
 func (h HandlerFunc) String() string {
 	rh := reflect.ValueOf(h)
 	ptr := getFuncPointer(rh)
@@ -209,18 +171,31 @@ func (h HandlerFunc) String() string {
 	return runtime.FuncForPC(rh.Pointer()).Name()
 }
 
-// NewHandlerStatic 函数使用多个any值创建混合静态文件处理函数。
-func NewHandlerStatic(dirs ...any) HandlerFunc {
-	return NewHandlerHTTPFileSystem(NewFileSystems(dirs...))
+// The NewHandlerFileSystems function uses multiple any values to create
+// an [http.FileSystem] handler for static files.
+//
+// refer [NewHandlerFileSystem] and [NewFileSystems].
+func NewHandlerFileSystems(dirs ...any) HandlerFunc {
+	return NewHandlerFileSystem(NewFileSystems(dirs...))
 }
 
-// NewHandlerEmbed 函数创建iofs.FS扩展函数。
-func NewHandlerEmbed(fs iofs.FS) HandlerFunc {
-	return NewHandlerHTTPFileSystem(NewFileSystems(fs))
+// The NewHandlerFileEmbed function creates the [iofs.FS] extension function.
+//
+// refer [NewHandlerFileSystem].
+func NewHandlerFileEmbed(fs iofs.FS) HandlerFunc {
+	return NewHandlerFileSystem(NewFileSystems(fs))
 }
 
-// NewHandlerHTTPFileSystem 函数创建http.FileSystem扩展函数。
-func NewHandlerHTTPFileSystem(fs http.FileSystem) HandlerFunc {
+// The NewHandlerFileSystem function creates an [http.FileSystem] extension
+// function.
+//
+// Open the file path as [ParamPrefix] join ctx.GetParam("*").
+//
+// If the file is a directory and [ParamAutoIndex] is true,
+// display the directory index page.
+func NewHandlerFileSystem(fs http.FileSystem) HandlerFunc {
+	embedTime := DefaultHandlerEmbedTime
+	cacheControl := DefaultHandlerEmbedCacheControl
 	return func(ctx Context) {
 		path := filepath.Join(ctx.GetParam(ParamPrefix), ctx.GetParam("*"))
 		if path == "" {
@@ -239,26 +214,38 @@ func NewHandlerHTTPFileSystem(fs http.FileSystem) HandlerFunc {
 		defer file.Close()
 
 		stat, _ := file.Stat()
-		// embed.FS的ModTime()为空无法使用缓存，设置为默认时间使用304缓存机制。
+		// // The ModTime() of embed.FS is empty and cannot use cache.
+		// Set it to the default time and use the 304 cache mechanism.
 		modtime := stat.ModTime()
 		if modtime.IsZero() {
-			modtime = DefaultHandlerEmbedTime
+			modtime = embedTime
 		}
 
 		switch {
 		case !stat.IsDir():
-			if ctx.Response().Header().Get(HeaderCacheControl) == "" {
-				ctx.SetHeader(HeaderCacheControl, DefaultHandlerEmbedCacheControl)
+			w := ctx.Response()
+			if w.Header().Get(HeaderCacheControl) == "" {
+				w.Header().Add(HeaderCacheControl, cacheControl)
 			}
-			http.ServeContent(ctx.Response(), ctx.Request(), stat.Name(), modtime, file)
+			http.ServeContent(w, ctx.Request(), stat.Name(), modtime, file)
 		case GetAnyByString[bool](ctx.GetParam(ParamAutoIndex)):
-			ctx.SetHeader(HeaderCacheControl, "no-cache")
-			ctx.SetHeader(HeaderLastModified, modtime.UTC().Format(http.TimeFormat))
+			h := ctx.Response().Header()
+			h.Set(HeaderCacheControl, "no-cache")
+			h.Set(HeaderLastModified, modtime.UTC().Format(http.TimeFormat))
 			handlerStaticDirs(ctx, "/"+ctx.GetParam("*"), file)
 		default:
 			ctx.WriteHeader(StatusNotFound)
 		}
 	}
+}
+
+type fileInfo struct {
+	Name       string `json:"name" protobuf:"1,name" yaml:"name"`
+	Size       int64  `json:"size" protobuf:"2,size"  yaml:"size"`
+	SizeFormat string `json:"sizeFormat" protobuf:"3,sizeFormat" yaml:"sizeFormat"`
+	ModTime    string `json:"modTime" protobuf:"4,modTime" yaml:"modTime"`
+	UnixTime   int64  `json:"unixTime" protobuf:"5,unixTime" yaml:"unixTime"`
+	IsDir      bool   `json:"isDir" protobuf:"6,isDir" yaml:"isDir"`
 }
 
 func handlerStaticDirs(ctx Context, path string, file http.File) {
@@ -268,14 +255,6 @@ func handlerStaticDirs(ctx Context, path string, file http.File) {
 		return
 	}
 
-	type fileInfo struct {
-		Name       string `alias:"name" json:"name" xml:"name" yaml:"name"`
-		Size       int64  `alias:"size" json:"size" xml:"size" yaml:"size"`
-		SizeFormat string `alias:"sizeformat" json:"sizeformat" xml:"sizeformat" yaml:"sizeformat"`
-		ModTime    string `alias:"modtime" json:"modtime" xml:"modtime" yaml:"modtime"`
-		UnixTime   int64  `alias:"unixtime" json:"unixtime" xml:"unixtime" yaml:"unixtime"`
-		IsDir      bool   `alias:"isdir" json:"isdir" xml:"isdir" yaml:"isdir"`
-	}
 	infos := make([]fileInfo, len(files))
 	for i := range files {
 		infos[i] = fileInfo{
@@ -295,13 +274,12 @@ func handlerStaticDirs(ctx Context, path string, file http.File) {
 	})
 
 	if ctx.GetParam(ParamTemplate) == "" {
-		ctx.SetParam(ParamTemplate, DefaultTemplateNameStaticIndex)
+		ctx.SetParam(ParamTemplate, DefaultHandlerEmbedTemplateName)
 	}
 	_ = ctx.Render(struct {
-		Path   string
-		Files  []fileInfo
-		Upload bool
-	}{path, infos, GetAnyByString[bool](ctx.GetParam("upload"))})
+		Path  string
+		Files []fileInfo
+	}{path, infos})
 }
 
 func formatSize(n int64) string {
@@ -317,22 +295,15 @@ func formatSize(n int64) string {
 	return fmt.Sprintf("%.0f %s", v, sizes[int(e)])
 }
 
-// Combine multiple http.FileSystem
-//
-// 组合多个http.FileSystem。
+// Combine multiple [http.FileSystem].
 type fileSystems []http.FileSystem
 
-// The NewFileSystems function creates a hybrid http.FileSystem object that returns the first file from multiple http.FileSystems.
+// The NewFileSystems function creates a hybrid [http.FileSystem] object
+// that returns the first [http.File] from multiple [http.FileSystems].
 //
-// If the type is string and the path exists, it will be converted to http.Dir;
-// If the type is embed.FS converted to http.FS;
-// If the type is http.FileSystem, add it directly.
-//
-// NewFileSystems 函数创建一个混合http.FileSystem对象，从多个http.FileSystem返回首个文件。
-//
-// 如果类型为string且路径存在将转换成http.Dir;
-// 如果类型为embed.FS转换成http.FS;
-// 如果类型为http.FileSystem直接追加。
+// If the type is string and path exists, it will be converted to [http.Dir];
+// If the type is [iofs.FS] or [embed.FS] converted to [http.FS];
+// If the type is [http.FileSystem], add it directly.
 func NewFileSystems(dirs ...any) http.FileSystem {
 	var fs fileSystems
 	for i := range dirs {
@@ -356,7 +327,8 @@ func NewFileSystems(dirs ...any) http.FileSystem {
 	return fs
 }
 
-// Open 方法从多个http.FileSystem返回首个文件。
+// The Open method returns the first [http.File] from multiple
+// [http.FileSystems].
 func (fs fileSystems) Open(name string) (file http.File, err error) {
 	err = os.ErrNotExist
 	for _, f := range fs {

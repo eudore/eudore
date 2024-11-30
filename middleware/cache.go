@@ -1,10 +1,13 @@
 package middleware
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,155 +16,226 @@ import (
 
 type cache struct {
 	sync.Mutex
-	dura       time.Duration
-	context    context.Context
-	getKeyFunc func(eudore.Context) string
 	waits      map[string]*sync.WaitGroup
-	CacheStore
+	storage    cacheData
+	GetKeyFunc func(ctx eudore.Context) string
 }
 
-type CacheStore interface {
-	Load(string) *CacheData
-	Store(string, *CacheData)
+type cacheData interface {
+	LoadData(key string) *cacheResponse
+	SaveData(key string, val *cacheResponse)
 }
 
-/*
-NewCacheFunc 函数创建一个缓存中间件，对Get请求具有缓存和SingleFlight双重效果，
-无法获得中间件之前的响应header数据。
+// cacheResponse defines the cached data type.
+type cacheResponse struct {
+	Expired time.Time
+	Status  int
+	Header  http.Header
+	Body    []byte
+}
 
-options:
+// The NewCacheFunc function creates middleware to implement
+// cache response content,
+// which has the dual effects of Cache and SingleFlight, except panic.
+//
+// This middleware caches data in memory and is used to cache API data.
+// Caching files is not recommended.
+//
+// Skip non-Get methods, Websocket and SSE by default.
+//
+// Cannot get response headers before this middleware.
+//
+// This middleware does not support cluster mode.
+// Cache requests are idempotent and do not rely on the cluster.
+//
+// options: [NewOptionKeyFunc] [NewOptionCacheClear].
+func NewCacheFunc(dura time.Duration, options ...Option) Middleware {
+	c := newCache(options)
+	return func(ctx eudore.Context) {
+		key := c.GetKeyFunc(ctx)
+		if key == "" {
+			return
+		}
+		fullkey := fmt.Sprintf("%s:%s:%s", key,
+			formatAccept(ctx.GetHeader(eudore.HeaderAccept)),
+			ctx.GetHeader(eudore.HeaderAcceptEncoding),
+		)
 
-	context.Context               =>    控制默认cacheMap清理过期数据的生命周期。
-	time.Duration                 =>    请求数据缓存时间，默认秒。
-	func(eudore.Context) string   =>    自定义缓存key，为空则跳过缓存。
-	CacheStore			          =>    缓存存储对象。
-*/
-func NewCacheFunc(args ...any) eudore.HandlerFunc {
+		wait := c.load(ctx, fullkey)
+		if wait == nil {
+			return
+		}
+		defer func() {
+			// waits for done and cleanup
+			c.Lock()
+			delete(c.waits, fullkey)
+			c.Unlock()
+			wait.Done()
+		}()
+
+		now := time.Now()
+		w := &responseWriterCache{
+			ResponseWriter: ctx.Response(),
+			h: http.Header{
+				eudore.HeaderLastModified: {now.UTC().Format(http.TimeFormat)},
+			},
+		}
+		ctx.SetResponse(w)
+		defer ctx.SetResponse(w.ResponseWriter)
+		ctx.Next()
+		c.storage.SaveData(fullkey, &cacheResponse{
+			Expired: now.Add(dura),
+			Status:  w.Status(),
+			Header:  w.h,
+			Body:    w.w.Bytes(),
+		})
+	}
+}
+
+func newCache(options []Option) *cache {
 	c := &cache{
-		dura:    DefaultCacheSaveTime,
-		context: context.Background(),
-		getKeyFunc: func(ctx eudore.Context) string {
-			if ctx.Method() != eudore.MethodGet || ctx.GetHeader(eudore.HeaderUpgrade) != "" {
+		waits:   make(map[string]*sync.WaitGroup),
+		storage: new(cacheMap),
+		GetKeyFunc: func(ctx eudore.Context) string {
+			if ctx.Method() != eudore.MethodGet ||
+				ctx.GetHeader(eudore.HeaderConnection) ==
+					eudore.HeaderValueUpgrade ||
+				ctx.GetHeader(eudore.HeaderAccept) ==
+					eudore.MimeTextEventStream {
 				return ""
 			}
 			return ctx.Request().URL.RequestURI()
 		},
-		waits: make(map[string]*sync.WaitGroup),
 	}
-	for _, i := range args {
-		switch val := i.(type) {
-		case time.Duration:
-			c.dura = val
-		case context.Context:
-			c.context = val
-		case func(eudore.Context) string:
-			c.getKeyFunc = val
-		case CacheStore:
-			c.CacheStore = val
-		}
-	}
-	if c.CacheStore == nil {
-		c.CacheStore = newCacheMap(c.context, c.dura)
-	}
-	return c.Handle
+	applyOption(c, options)
+	return c
 }
 
-func (cache *cache) Handle(ctx eudore.Context) {
-	key := cache.getKeyFunc(ctx)
-	if key == "" || ctx.GetHeader(eudore.HeaderConnection) == "Upgrade" {
-		return
-	}
-
-	fullkey := fmt.Sprintf("%s:%s:%s", key,
-		ctx.GetHeader(eudore.HeaderAccept),
-		ctx.GetHeader(eudore.HeaderAcceptEncoding),
-	)
-
-	var wait *sync.WaitGroup
-	var ok bool
+func (c *cache) load(ctx eudore.Context, key string) *sync.WaitGroup {
 	for {
 		// load cache
-		data := cache.Load(fullkey)
+		data := c.storage.LoadData(key)
 		if data != nil {
-			data.writeData(ctx)
-			ctx.SetParam("cache", key)
+			// write cache data
+			headerCopy(ctx.Response().Header(), data.Header)
+			ctx.WriteHeader(data.Status)
+			if len(data.Body) != 0 {
+				_, _ = ctx.Write(data.Body)
+			}
 			ctx.End()
-			return
+			return nil
 		}
 
-		// cas
-		cache.Lock()
-		wait, ok = cache.waits[fullkey]
+		c.Lock()
+		wait, ok := c.waits[key]
 		if !ok {
+			// Create the first SingleFlight request
 			wait = new(sync.WaitGroup)
 			wait.Add(1)
-			cache.waits[fullkey] = wait
-			cache.Unlock()
-			break
+			c.waits[key] = wait
+			c.Unlock()
+			return wait
 		}
-		cache.Unlock()
+		c.Unlock()
+		// Waiting for other requests to done
 		wait.Wait()
 	}
+}
 
-	now := time.Now()
-	w := &responseWriterCache{
-		ResponseWriter: ctx.Response(),
-		CacheHeader: http.Header{
-			eudore.HeaderLastModified: {now.UTC().Format(http.TimeFormat)},
-		},
+// The formatAccept function filters invalid Accept.
+func formatAccept(accept string) string {
+	var accepts []string
+	for _, accept := range strings.Split(accept, ",") {
+		k, _, _ := strings.Cut(accept, ";")
+		_, ok := DefaultCacheAllowAccept[k]
+		if ok {
+			accepts = append(accepts, k)
+		}
 	}
-	ctx.SetResponse(w)
-	ctx.Next()
-	ctx.SetResponse(w.ResponseWriter)
-	cache.Store(fullkey, &CacheData{
-		Expired:      now.Add(cache.dura),
-		ModifiedTime: w.CacheHeader.Get(eudore.HeaderLastModified),
-		Status:       w.Status(),
-		Header:       w.CacheHeader,
-		Body:         w.CacheData.Bytes(),
-	})
+	return strings.Join(accepts, ",")
+}
 
-	cache.Lock()
-	delete(cache.waits, fullkey)
-	wait.Done()
-	cache.Unlock()
+// responseWriterCache defines cached response data.
+type responseWriterCache struct {
+	eudore.ResponseWriter
+	w bytes.Buffer
+	h http.Header
+}
+
+func (w *responseWriterCache) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func (w *responseWriterCache) Write(data []byte) (int, error) {
+	if w.Size() == 0 {
+		headerCopy(w.ResponseWriter.Header(), w.h)
+	}
+	w.w.Write(data)
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *responseWriterCache) WriteString(data string) (int, error) {
+	if w.Size() == 0 {
+		headerCopy(w.ResponseWriter.Header(), w.h)
+	}
+	w.w.WriteString(data)
+	return w.ResponseWriter.WriteString(data)
+}
+
+// The WriteHeader method adds the Cache-Header when writing for the first time.
+func (w *responseWriterCache) WriteHeader(code int) {
+	if w.Size() == 0 {
+		headerCopy(w.ResponseWriter.Header(), w.h)
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *responseWriterCache) Header() http.Header {
+	return w.h
+}
+
+// refer: [responseWriterTimeout.Body].
+func (w *responseWriterCache) Body() []byte {
+	return w.w.Bytes()
+}
+
+// The Flush method is not supported.
+func (w *responseWriterCache) Flush() {}
+
+// The Hijack method is not supported.
+func (w *responseWriterCache) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return nil, nil, eudore.ErrContextNotHijacker
 }
 
 type cacheMap struct {
 	sync.Map
 }
 
-func newCacheMap(ctx context.Context, t time.Duration) *cacheMap {
-	c := new(cacheMap)
-	go c.Run(ctx, t*2)
-	return c
-}
-
-func (m *cacheMap) Load(key string) *CacheData {
-	data, ok := m.Map.Load(key)
+func (c *cacheMap) LoadData(key string) *cacheResponse {
+	data, ok := c.Map.Load(key)
 	if !ok {
 		return nil
 	}
-	item := data.(*CacheData)
+	item := data.(*cacheResponse)
 	if time.Now().After(item.Expired) {
-		m.Map.Delete(key)
+		c.Map.Delete(key)
 		return nil
 	}
 	return item
 }
 
-func (m *cacheMap) Store(key string, val *CacheData) {
-	m.Map.Store(key, val)
+func (c *cacheMap) SaveData(key string, val *cacheResponse) {
+	c.Map.Store(key, val)
 }
 
-func (m *cacheMap) Run(ctx context.Context, t time.Duration) {
+func (c *cacheMap) cleanupExpired(ctx context.Context, t time.Duration) {
 	for {
 		select {
 		case now := <-time.After(t):
-			m.Map.Range(func(key, value any) bool {
-				item := value.(*CacheData)
+			c.Map.Range(func(key, value any) bool {
+				item := value.(*cacheResponse)
 				if now.After(item.Expired) {
-					m.Map.Delete(key)
+					c.Map.Delete(key)
 				}
 				return true
 			})
@@ -169,69 +243,4 @@ func (m *cacheMap) Run(ctx context.Context, t time.Duration) {
 			return
 		}
 	}
-}
-
-// responseWriterCache 对象记录返回的响应数据
-//
-// Upgrade请求不会进入cache处理，push处理仅push主请求，缓存请求不push无明显影响。
-type responseWriterCache struct {
-	eudore.ResponseWriter
-	CacheData    bytes.Buffer
-	CacheHeader  http.Header
-	ModifiedTime string
-}
-
-// Write 方法实现ResponseWriter中的Write方法。
-func (w *responseWriterCache) Write(data []byte) (int, error) {
-	if w.Size() == 0 {
-		h := w.ResponseWriter.Header()
-		h.Add(eudore.HeaderLastModified, w.ModifiedTime)
-		for k, v := range w.CacheHeader {
-			h[k] = v
-		}
-	}
-	w.CacheData.Write(data)
-	return w.ResponseWriter.Write(data)
-}
-
-func (w *responseWriterCache) WriteString(data string) (int, error) {
-	if w.Size() == 0 {
-		h := w.ResponseWriter.Header()
-		h.Add(eudore.HeaderLastModified, w.ModifiedTime)
-		for k, v := range w.CacheHeader {
-			h[k] = v
-		}
-	}
-	w.CacheData.WriteString(data)
-	return w.ResponseWriter.WriteString(data)
-}
-
-// Header 方法返回响应设置的header。
-func (w *responseWriterCache) Header() http.Header {
-	return w.CacheHeader
-}
-
-// CacheData 定义缓存的数据类型。
-type CacheData struct {
-	Expired      time.Time
-	ModifiedTime string
-	Status       int
-	Header       http.Header
-	Body         []byte
-}
-
-// writeData 方法将cache响应数据写入到请求响应。
-func (w *CacheData) writeData(ctx eudore.Context) {
-	ctx.SetHeader(eudore.HeaderXEudoreCache, "true")
-	if ctx.GetHeader(eudore.HeaderIfModifiedSince) == w.ModifiedTime {
-		ctx.SetHeader(eudore.HeaderLastModified, w.ModifiedTime)
-		ctx.WriteHeader(eudore.StatusNotModified)
-		return
-	}
-	h := ctx.Response().Header()
-	for k, v := range w.Header {
-		h[k] = v
-	}
-	ctx.WriteHeader(w.Status)
-	ctx.Write(w.Body)
 }

@@ -5,69 +5,63 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/eudore/eudore"
+	. "github.com/eudore/eudore"
 )
 
-func TestControllerError(t *testing.T) {
-	app := eudore.NewApp()
-	app.AddController(NewErrController(-10))
-	app.AddController(NewErrController(10))
-
-	app.CancelFunc()
-	app.Run()
+func TestControllerInject(*testing.T) {
+	r := NewRouter(nil)
+	r.AddController(new(autoController))
+	r.AddController(new(typeController))
+	r.AddController(NewErrController(-10))
+	r.AddController(NewErrController(10))
+	r.AddController(new(MethodController))
+	r.Group(" controllergroup=route").AddController(new(RouteController))
+	r.AddController(&typeNameController[int]{})
 }
 
 type errController struct {
-	eudore.ControllerAutoRoute
+	ControllerAutoRoute
 }
 
-func NewErrController(i int) eudore.Controller {
+func NewErrController(i int) Controller {
 	ctl := new(errController)
 	if i < 0 {
 		// controller创建错误处理。
-		return eudore.NewControllerError(ctl, errors.New("int must grate 0"))
+		return NewControllerError(ctl, errors.New("int must grate 0"))
 	}
 	return ctl
 }
 
-func (ctl *errController) ControllerGroup(string) string {
+func (ctl *errController) ControllerGroup(string, string) string {
 	return "err"
 }
 
-func (ctl *errController) Any(ctx eudore.Context) {
+func (ctl *errController) Any(ctx Context) {
 	ctx.Info("errController Any")
 }
 
 // Get 方法注册不存在的扩展函数，触发注册error。
-func (*errController) Get(eudore.ControllerAutoRoute) interface{} {
+func (*errController) Get(ControllerAutoRoute) interface{} {
 	return "get errController"
 }
 
-func TestControllerAutoRoute(t *testing.T) {
-	app := eudore.NewApp()
-	app.AddController(new(autoController))
-
-	app.CancelFunc()
-	app.Run()
-}
-
 type autoController struct {
-	eudore.ControllerAutoRoute
+	ControllerAutoRoute
 }
 
 // Any 方法注册 Any /*路径。
-func (*autoController) Any(ctx eudore.Context) {
+func (*autoController) Any(ctx Context) {
 	ctx.Info("autoController Any")
 }
 
 // Get 方法注册 Get /*路径。
-func (*autoController) GetBy(ctx eudore.Context) interface{} {
+func (*autoController) GetBy(ctx Context) interface{} {
 	ctx.Debug("get")
 	return "get autoController"
 }
 
 // GetInfoById 方法注册GET /info/:id/name 路由路径。
-func (*autoController) GetInfoByIDName(ctx eudore.Context) interface{} {
+func (*autoController) GetInfoByIDName(ctx Context) interface{} {
 	return ctx.GetParam("id")
 }
 
@@ -77,15 +71,15 @@ func (*autoController) String() string {
 }
 
 // Help 方法定义一个控制器本身的方法。
-func (*autoController) Help(ctx eudore.Context) {}
+func (*autoController) Help(ctx Context) {}
 
-func (*autoController) GetData(ctx eudore.Context) {}
+func (*autoController) GetData(ctx Context) {}
 
-func (*autoController) Inject(controller eudore.Controller, router eudore.Router) error {
+func (*autoController) Inject(controller Controller, router Router) error {
 	router = router.Group("")
 	params := router.Params()
-	*params = params.Set(eudore.ParamControllerGroup, "/auto")
-	return eudore.ControllerInjectAutoRoute(controller, router)
+	*params = params.Set(ParamControllerGroup, "/auto")
+	return ControllerInjectAutoRoute(controller, router)
 }
 
 // ControllerRoute 方法返回控制器路由推导修改信息。
@@ -104,25 +98,31 @@ func (*autoController) ControllerParam(pkg, name, method string) string {
 	return fmt.Sprintf("source=ControllerParam cpkg=%s cname=%s cmethod=%s", pkg, name, method)
 }
 
-func TestControllerCompose(t *testing.T) {
-	app := eudore.NewApp()
-	app.AddController(new(MethodController))
-	app.AddController(new(RouteController))
-
-	app.CancelFunc()
-	app.Run()
+type typeController struct {
+	ControllerAutoType[request14]
 }
+
+type request14 struct {
+	Name string
+}
+
+func (*typeController) AnyH1(ctx Context, data *request14)               {}
+func (*typeController) AnyH2(ctx Context, data *request14) error         { return nil }
+func (*typeController) AnyH3(ctx Context, data *request14) (any, error)  { return nil, nil }
+func (*typeController) AnyH4(ctx Context, data []request14)              {}
+func (*typeController) AnyH5(ctx Context, data []request14) error        { return nil }
+func (*typeController) AnyH6(ctx Context, data []request14) (any, error) { return nil, nil }
 
 // Controllerwebsite 是基础方法的控制器
 type Controllerwebsite struct {
-	eudore.ControllerAutoRoute
+	ControllerAutoRoute
 }
 type MethodController struct {
 	// Controllerwebsite 因名称后缀不为Controller所以不会注册Hello方法为路由。
 	Controllerwebsite
 }
 type tableController struct {
-	eudore.ControllerAutoRoute
+	ControllerAutoRoute
 }
 
 // RouteController 从tableController嵌入两个方法注册成路由。
@@ -141,11 +141,15 @@ func (ctl *Controllerwebsite) Hello() string {
 }
 
 // Get 方法不会被组合
-func (ctl *Controllerwebsite) Get(ctx eudore.Context) {}
+func (ctl *Controllerwebsite) Get(ctx Context) {}
 
 // Any 方法处理控制器全部请求。
-func (ctl *MethodController) Any(ctx eudore.Context) {
+func (ctl *MethodController) Any(ctx Context) {
 	ctx.Debug("MethodController Any", ctl.Hello())
+}
+
+func (ctl *MethodController) ControllerGroup(pkg, name string) string {
+	return ""
 }
 
 func (ctl tableController) ControllerName() string {
@@ -156,23 +160,15 @@ func (ctl *tableController) Hello() interface{} {
 	return "hello eudore"
 }
 
-func (ctl *tableController) Any(ctx eudore.Context) {
+func (ctl *tableController) Any(ctx Context) {
 	ctx.Debug("tableController Any", ctl.Hello())
 }
 
-type typeController[T any] struct {
-	eudore.ControllerAutoRoute
+type typeNameController[T any] struct {
+	ControllerAutoRoute
 }
 
-func TestControllerTypeName(t *testing.T) {
-	app := eudore.NewApp()
-	app.AddController(&typeController[int]{})
-
-	app.CancelFunc()
-	app.Run()
-}
-
-func (ctl *typeController[T]) Any(ctx eudore.Context) {
+func (ctl *typeNameController[T]) Any(ctx Context) {
 	var t T
-	ctx.Debugf("typeController is %T", t)
+	ctx.Debugf("typeNameController is %T", t)
 }

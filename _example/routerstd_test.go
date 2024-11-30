@@ -1,181 +1,237 @@
 package eudore_test
 
 import (
+	"context"
+	"fmt"
+	"net/http"
 	"testing"
 
-	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/middleware"
+	. "github.com/eudore/eudore"
 )
 
 func TestRouterStdAny(t *testing.T) {
 	// 扩展RouterStd允许的方法
-	eudore.DefaultRouterAllMethod = append(eudore.DefaultRouterAllMethod, "LOCK", "UNLOCK")
-	eudore.DefaultRouterAnyMethod = append(eudore.DefaultRouterAnyMethod, "LOCK", "UNLOCK")
+	DefaultRouterAllMethod = append(DefaultRouterAllMethod, "LOCK", "UNLOCK")
+	DefaultRouterAnyMethod = append(DefaultRouterAnyMethod, "LOCK", "UNLOCK")
 	defer func() {
-		eudore.DefaultRouterAllMethod = eudore.DefaultRouterAllMethod[:len(eudore.DefaultRouterAllMethod)-2]
-		eudore.DefaultRouterAnyMethod = eudore.DefaultRouterAnyMethod[:len(eudore.DefaultRouterAnyMethod)-2]
+		DefaultRouterAllMethod = DefaultRouterAllMethod[:len(DefaultRouterAllMethod)-2]
+		DefaultRouterAnyMethod = DefaultRouterAnyMethod[:len(DefaultRouterAnyMethod)-2]
 	}()
 
-	app := eudore.NewApp()
+	r, c := newCSR(nil)
 	// Any方法覆盖
-	app.GetFunc("/get/:val", func(ctx eudore.Context) {
-		ctx.WriteString("method is get\n")
+	r.GetFunc("/get/:val")
+	r.GetFunc("/get/:val", func(ctx Context) {
+		ctx.WriteString("method is get1")
 	})
-	app.AnyFunc("/get/:val", func(ctx eudore.Context) {
-		ctx.WriteString("method is any\n")
+	r.AnyFunc("/get/:val", func(ctx Context) {
+		ctx.WriteString("method is any")
 	})
-	app.PostFunc("/get/:val", func(ctx eudore.Context) {
-		ctx.WriteString("method is post\n")
+	r.GetFunc("/get/:val", func(ctx Context) {
+		ctx.WriteString("method is get2")
 	})
-	app.AddHandler("LOCK", "/get/:val", func(ctx eudore.Context) {
-		ctx.WriteString("method is lock\n")
+	r.PostFunc("/get/:val", func(ctx Context) {
+		ctx.WriteString("method is post")
 	})
-	app.GetFunc("/index", eudore.HandlerEmpty)
-	app.AddHandler("404,444", "", eudore.HandlerRouter404)
-	app.AddHandler("405", "", eudore.HandlerRouter405)
+	r.AddHandler("LOCK", "/get/:val", func(ctx Context) {
+		ctx.WriteString("method is lock")
+	})
+	r.GetFunc("/index", HandlerEmpty)
+	r.AddHandler("404,444", "", HandlerRouter404)
+	r.AddHandler("405", "", HandlerRouter405)
 
-	// 请求测试
-	app.NewRequest(nil, "GET", "/get/1")
-	app.NewRequest(nil, "POST", "/get/2")
-	app.NewRequest(nil, "PUT", "/get/3")
-	app.NewRequest(nil, "LOCK", "/get/4")
-	app.NewRequest(nil, "COPY", "/get/5")
-	app.NewRequest(nil, "GET", "/get")
-	app.NewRequest(nil, "POST", "/get")
-	app.NewRequest(nil, "PUT", "/get")
-	app.NewRequest(nil, "PUT", "/3")
-	app.NewRequest(nil, "put", "/3")
-	app.NewRequest(nil, "POST", "/index")
-
-	app.CancelFunc()
-	app.Run()
+	routes := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{"GET", "/get/1", "method is get"},
+		{"POST", "/get/2", "method is post"},
+		{"PUT", "/get/3", "method is any"},
+		{"LOCK", "/get/4", "method is lock"},
+		{"COPY", "/get/5", "405"},
+		{"GET", "/get", "404"},
+		{"POST", "/get", "404"},
+		{"PUT", "/get", "404"},
+		{"POST", "/index", "405"},
+		{"GET", "/index", ""},
+	}
+	for _, route := range routes {
+		err := c.NewRequest(route.method, route.path,
+			NewClientCheckBody(route.body),
+		)
+		if err != nil {
+			t.Error(route.method, route.path, err)
+		}
+	}
 }
 
 func TestRouterStdCheck(t *testing.T) {
-	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyFuncCreator, eudore.NewFuncCreator())
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(nil))
-
-	app.AnyFunc("/1/:num|num version=1", eudore.HandlerEmpty)
-	app.AnyFunc("/1/222", eudore.HandlerEmpty)
-	app.AnyFunc("/2/:num|num", eudore.HandlerEmpty)
-	app.AnyFunc("/2/:num|", eudore.HandlerEmpty)
-	app.AnyFunc("/2/:", eudore.HandlerEmpty)
-	app.AnyFunc("/3/:num|num/22", eudore.HandlerEmpty)
-	app.AnyFunc("/3/:num|num/*", eudore.HandlerEmpty)
-	app.AnyFunc("/4/*num|num", eudore.HandlerEmpty)
-	app.AnyFunc("/4/*num|num", eudore.HandlerEmpty)
-	app.AnyFunc("/4/*", eudore.HandlerEmpty)
-	app.AnyFunc("/5/*num|num", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v1/2", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v1/1", eudore.HandlerEmpty)
-	app.AnyFunc("/*num|^\\d+$", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v1/*|{^0/api\\S+$}", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v1/*|{\\s+{}}", eudore.HandlerEmpty)
-	app.AnyFunc("{/api/v1/*}", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v1/{{*}}", eudore.HandlerEmpty)
-	app.AnyFunc("/api/*", eudore.HandlerEmpty)
-	app.AnyFunc("/api/*", eudore.HandlerEmpty)
-	app.AddHandler(eudore.MethodOptions, "/", eudore.HandlerEmpty)
-	app.AddHandler(eudore.MethodConnect, "/", eudore.HandlerEmpty)
-	app.AddHandler(eudore.MethodTrace, "/", eudore.HandlerEmpty)
+	r, c := newCSR(NewRouterCoreMux())
+	r.AnyFunc("/1/:num|num version=1", HandlerEmpty)
+	r.AnyFunc("/1/222", HandlerEmpty)
+	r.AnyFunc("/2/:num|num", HandlerEmpty)
+	r.AnyFunc("/2/:num|", HandlerEmpty)
+	r.AnyFunc("/2/:", HandlerEmpty)
+	r.AnyFunc("/3/:num|num/22", HandlerEmpty)
+	r.AnyFunc("/3/:num|num/*", HandlerEmpty)
+	r.AnyFunc("/4/*num|num", HandlerEmpty)
+	r.AnyFunc("/4/*num|num", HandlerEmpty)
+	r.AnyFunc("/4/*", HandlerEmpty)
+	r.AnyFunc("/5/*num|num", HandlerEmpty)
+	r.AnyFunc("/api/v1/2", HandlerEmpty)
+	r.AnyFunc("/api/v1/1", HandlerEmpty)
+	r.AnyFunc("/*num|^\\d+$", HandlerEmpty)
+	r.AnyFunc("/api/v1/*|{^0/api\\S+$}", HandlerEmpty)
+	r.AnyFunc("/api/v1/*|{\\s+{}}", HandlerEmpty)
+	r.AnyFunc("{/api/v1/*\\}}", HandlerEmpty)
+	r.AnyFunc("/api/v1/{{*}}", HandlerEmpty)
+	r.AnyFunc("/api/*", HandlerEmpty)
+	r.AnyFunc("/api/*", HandlerEmpty)
+	r.AddHandler(MethodOptions, "/", HandlerEmpty)
+	r.AddHandler(MethodConnect, "/", HandlerEmpty)
+	r.AddHandler(MethodTrace, "/", HandlerEmpty)
 
 	// 请求测试
-	app.NewRequest(nil, "GET", "/1/1")
-	app.NewRequest(nil, "POST", "/1/222")
-	app.NewRequest(nil, "PUT", "/2/3")
-	app.NewRequest(nil, "PUT", "/3/11/3")
-	app.NewRequest(nil, "PUT", "/3/11/22")
-	app.NewRequest(nil, "PUT", "/4/22")
-	app.NewRequest(nil, "PUT", "/5/22")
-	app.NewRequest(nil, "PUT", "/:{num}")
-
-	app.CancelFunc()
-	app.Run()
+	c.NewRequest("GET", "/1/1")
+	c.NewRequest("POST", "/1/222")
+	c.NewRequest("PUT", "/2/3")
+	c.NewRequest("PUT", "/3/11/3")
+	c.NewRequest("PUT", "/3/11/22")
+	c.NewRequest("PUT", "/4/22")
+	c.NewRequest("PUT", "/5/22")
+	c.NewRequest("PUT", "/:{num}")
 }
 
-func TestRouterStdDelete(t *testing.T) {
-	eudore.DefaultRouterAllMethod = append(eudore.DefaultRouterAllMethod, "LOCK", "UNLOCK")
-	eudore.DefaultRouterAnyMethod = append(eudore.DefaultRouterAnyMethod, "LOCK", "UNLOCK")
-	defer func() {
-		eudore.DefaultRouterAllMethod = eudore.DefaultRouterAllMethod[:len(eudore.DefaultRouterAllMethod)-2]
-		eudore.DefaultRouterAnyMethod = eudore.DefaultRouterAnyMethod[:len(eudore.DefaultRouterAnyMethod)-2]
-	}()
+func newCSR(core RouterCore) (Router, Client) {
+	s := NewServer(nil)
+	c := NewClient()
+	r := NewRouter(core)
+	get := NewContextBaseFunc(context.Background())
+	s.SetHandler(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		ctx := get()
+		ctx.Reset(w, req)
+		ctx.SetHandlers(-1, r.Match(ctx.Method(), ctx.Path(), ctx.Params()))
+		ctx.Next()
+	}))
 
-	echoStringHandler := func(str string) eudore.HandlerFunc {
-		return func(ctx eudore.Context) {
-			ctx.WriteString(str)
+	ctx := context.WithValue(context.Background(),
+		ContextKeyServer, s,
+	)
+	ctx = context.WithValue(ctx,
+		ContextKeyFuncCreator, DefaultFuncCreator,
+	)
+
+	r.(interface{ Mount(context.Context) }).Mount(ctx)
+	c.(interface{ Mount(context.Context) }).Mount(ctx)
+	return r, c
+}
+
+func TestRouterStdSplit(t *testing.T) {
+	paths := []struct {
+		path string
+		sub  string
+	}{
+		{"/ a=1", "/"},
+		{"/{} a=1", "/{}"},
+		{"/{{} a=1", "/{{}"},
+		{"/{}} a=1", "/{}}"},
+		{"/{ } a=1", "/{ }"},
+		{"/{ } \\d", "/{ }"},
+	}
+	for i := range paths {
+		if getRoutePathT(paths[i].path) != paths[i].sub {
+			t.Error(i, data[i], getRoutePathT(paths[i].path))
 		}
 	}
 
-	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(eudore.NewRouterCoreLock(nil)))
+	datas := []struct {
+		path string
+		strs []string
+	}{
+		{"/", []string{"/"}},
+		{"/api/note/", []string{"/api/note/"}},
+		{"//api/*", []string{"//api/", "*"}},
+		{"//api/*name", []string{"//api/", "*name"}},
+		{"/api/get/", []string{"/api/get/"}},
+		{"/api/get", []string{"/api/get"}},
+		{"/api/:get", []string{"/api/", ":get"}},
+		{"/api/:get/*", []string{"/api/", ":get", "/", "*"}},
+		{"{/api/**{}:get/*}", []string{"/api/**{", ":get", "/", "*}"}},
+		{"/api/:name/info/*", []string{"/api/", ":name", "/info/", "*"}},
+		{"/api/:name|^\\d+$/info", []string{"/api/", ":name|^\\d+$", "/info"}},
+		{"/api/*|{^0/api\\S+$}", []string{"/api/", "*|^0/api\\S+$"}},
+		{"/api/*|^\\$\\d+$", []string{"/api/", "*|^\\$\\d+$"}},
+	}
+	for i := range datas {
+		if fmt.Sprint(getSplitPathT(datas[i].path)) != fmt.Sprint(datas[i].strs) {
+			t.Error(i, data[i])
+		}
+	}
+}
 
-	register := app.Group(" register=off")
-	app.AnyFunc("/version", echoStringHandler("any version"))
-	app.AnyFunc("/version")
+func getRoutePathT(path string) string {
+	var isblock bool
+	var last rune
+	for i, b := range path {
+		if isblock {
+			if b == '}' && last != '\\' {
+				isblock = false
+			}
+			last = b
+			continue
+		}
 
-	app.AnyFunc("/version", echoStringHandler("any version"))
-	app.AnyFunc("/version1", echoStringHandler("any version"))
-	app.NewRequest(nil, "GET", "/version", eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("any version"))
-	app.GetFunc("/version", echoStringHandler("get version"))
-	app.NewRequest(nil, "GET", "/version", eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("get version"))
-	register.AddHandler("GET,POST", "/version", echoStringHandler("get version"))
-	app.NewRequest(nil, "GET", "/version", eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("any version"))
-	register.AnyFunc("/version*", echoStringHandler("any version"))
-	register.AnyFunc("/version0", echoStringHandler("any version"))
-	register.AnyFunc("/version2", echoStringHandler("any version"))
-	register.AnyFunc("/version1", echoStringHandler("any version"))
-	register.AnyFunc("/version", echoStringHandler("any version"))
+		switch b {
+		case '{':
+			isblock = true
+		case ' ':
+			return path[:i]
+		}
+	}
+	return path
+}
 
-	app.AnyFunc("/api/v:v1/*", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v:v2/*", eudore.HandlerEmpty)
-	app.AddHandler("LOCK", "/api/v:v2/*", eudore.HandlerEmpty)
-	app.AddHandler("LOCK", "/api/v:v3/*", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v:ve/*", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v:v1/*", eudore.HandlerEmpty)
-	register.AddHandler("LOCK", "/api/v:v2/*", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v:v2/*", eudore.HandlerEmpty)
-	register.AddHandler("LOCK", "/api/v:v2/*", eudore.HandlerEmpty)
-	register.AddHandler("LOCK", "/api/v:v3/*", eudore.HandlerEmpty)
-
-	// ---------------- 测试 ----------------
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(eudore.NewRouterCoreLock(nil)))
-	register = app.Group(" register=off")
-	app.AnyFunc("/eudore/debug/look/*", middleware.NewLookFunc(app))
-	app.AnyFunc("/version", echoStringHandler("any version"))
-	app.AnyFunc("/version1", echoStringHandler("any version"))
-	app.AnyFunc("/version2", echoStringHandler("any version"))
-	app.NewRequest(nil, "GET", "/version", eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("any version"))
-	app.GetFunc("/version", echoStringHandler("get version"))
-	app.NewRequest(nil, "GET", "/version", eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("get version"))
-	register.AddHandler("GET,POST", "/version", echoStringHandler("get version"))
-	app.NewRequest(nil, "GET", "/version", eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("any version"))
-	register.GetFunc("/version", echoStringHandler("get version"))
-	register.AnyFunc("/version*", echoStringHandler("any version"))
-	register.AnyFunc("/version0", echoStringHandler("any version"))
-	register.AnyFunc("/version1", echoStringHandler("any version"))
-	register.AnyFunc("/version3", echoStringHandler("any version"))
-	register.AnyFunc("/version2", echoStringHandler("any version"))
-	register.AnyFunc("/version", echoStringHandler("any version"))
-
-	app.AnyFunc("/api/v:v1/*", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v:v2/*", eudore.HandlerEmpty)
-	app.AddHandler("TEST", "/api/v:v2/*", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v:ve/*", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v:v1/*", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v:v2/*", eudore.HandlerEmpty)
-
-	app.AnyFunc("/api/v1/user/id/:id", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v1/user/name/*name", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v1/user/:id|num", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v1/user/*name|nozero", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v1/user/:id|num/", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v1/user/:id|num", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v1/user/*name|nozero", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v1/user/id/:id", eudore.HandlerEmpty)
-	register.AnyFunc("/api/v1/user/name/*name", eudore.HandlerEmpty)
-
-	app.CancelFunc()
-	app.Run()
+func getSplitPathT(path string) []string {
+	var strs []string
+	bytes := make([]byte, 0, 64)
+	var isblock, isconst bool
+	for _, b := range path {
+		// block pattern
+		if isblock {
+			if b == '}' {
+				if len(bytes) != 0 && bytes[len(bytes)-1] != '\\' {
+					isblock = false
+					continue
+				}
+				// escaping }
+				bytes = bytes[:len(bytes)-1]
+			}
+			bytes = append(bytes, string(b)...)
+			continue
+		}
+		switch b {
+		case '/':
+			// constant mode, creates a new string in non-constant mode
+			if !isconst {
+				isconst = true
+				strs = append(strs, string(bytes))
+				bytes = bytes[:0]
+			}
+		case ':', '*':
+			// variable pattern or wildcard pattern
+			isconst = false
+			strs = append(strs, string(bytes))
+			bytes = bytes[:0]
+		case '{':
+			isblock = true
+			continue
+		}
+		bytes = append(bytes, string(b)...)
+	}
+	strs = append(strs, string(bytes))
+	if strs[0] == "" {
+		strs = strs[1:]
+	}
+	return strs
 }

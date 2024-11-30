@@ -1,55 +1,84 @@
 package middleware
 
 import (
-	"errors"
+	"expvar"
 	"net/http"
 	"net/http/pprof"
-	"time"
+
+	"github.com/eudore/eudore"
 )
 
 const (
-	CompressBufferLength = 1024
-	CompressStateUnknown = iota
-	CompressStateBuffer
-	CompressStateEnable
-	CompressStateDisable
-	CompressNameGzip     = "gzip"
-	CompressNameBrotli   = "br"
-	CompressNameDeflate  = "deflate"
-	CompressNameIdentity = "identity"
-	MimeValueJSON        = "value/json"
-	MimeValueHTML        = "value/html"
-	MimeValueText        = "value/text"
-	QueryFormatJSON      = "json"
-	QueryFormatHTML      = "html"
-	QueryFormatText      = "text"
+	CompressionBufferLength  = 1024
+	CompressionNameGzip      = "gzip"
+	CompressionNameBrotli    = "br"
+	CompressionNameZstandard = "zstd"
+	CompressionNameDeflate   = "deflate"
+	CompressionNameIdentity  = "identity"
+	QueryFormatJSON          = "json"
+	QueryFormatHTML          = "html"
+	QueryFormatText          = "text"
+
+	headerContentType = eudore.HeaderContentType
 )
 
 var (
-	// DefaultBlackInvalidAddress 定义解析无效地址时使用的默认地址，127.0.0.2。
-	DefaultBlackInvalidAddress uint64 = 2130706434
-	DefaultCacheSaveTime              = time.Second * 10
-	// DefaultComoressBrotliFunc 指定brotli压缩构造函数。
-	//
-	// import "github.com/andybalholm/brotli"
-	//
-	// middleware.DefaultComoressBrotliFunc = func() any {return brotli.NewWriter(io.Discard)} .
-	DefaultComoressBrotliFunc  func() any
-	DefaultComoressDisableMime = map[string]bool{
-		"application/gzip":             true, // gz
-		"application/zip":              true, // zip
-		"application/x-compressed-tar": true, // tar.gz
-		"application/x-7z-compressed":  true, // 7z
-		"application/x-rar-compressed": true, // rar
-		"image/gif":                    true, // gif
-		"image/jpeg":                   true, // jpeg
-		"image/png":                    true, // png
-		"image/svg+xml":                true, // svg
-		"image/webp":                   true, // webp
-		"font/woff2":                   true, // woff2
+	DefaultCacheAllowAccept = map[string]struct{}{
+		eudore.MimeAll:                 {},
+		eudore.MimeApplicationJSON:     {},
+		eudore.MimeApplicationProtobuf: {},
+		eudore.MimeApplicationXML:      {},
 	}
-
-	DefaultPprofHandlers = map[string]http.Handler{
+	// DefaultCompressionDisableMime global defines the Mime type that disables
+	// compression. The data is in compressed format.
+	DefaultCompressionDisableMime = map[string]struct{}{
+		"application/gzip":             {}, // gz
+		"application/zip":              {}, // zip
+		"application/x-compressed-tar": {}, // tar.gz
+		"application/x-7z-compressed":  {}, // 7z
+		"application/x-rar-compressed": {}, // rar
+		"image/gif":                    {}, // gif
+		"image/jpeg":                   {}, // jpeg
+		"image/png":                    {}, // png
+		"image/svg+xml":                {}, // svg
+		"image/webp":                   {}, // webp
+		"font/woff2":                   {}, // woff2
+	}
+	// DefaultCompressionEncoder defines the default supported hybrid
+	// compression methods.
+	DefaultCompressionEncoder = map[string]func() any{
+		CompressionNameGzip:    compressionWriterGzip,
+		CompressionNameDeflate: compressionWriterFlate,
+	}
+	// DefaultCompressionOrder global  defines the priority order of available
+	// compression,
+	// compression methods outside the list have the lowest priority.
+	DefaultCompressionOrder = []string{
+		CompressionNameZstandard,
+		CompressionNameBrotli,
+		CompressionNameGzip,
+		CompressionNameDeflate,
+	}
+	DefaultLoggerFixedFields = [...]string{
+		"host", "method", "path", "proto", "realip", "route",
+		"status", "bytes-out", "duration",
+	}
+	DefaultLoggerOptionalFields = [...]string{
+		"remote-addr", "scheme", "querys", "byte-in",
+	}
+	DefaultPageAdmin          = adminStatic
+	DefaultPageBasicAuth      = "401 Unauthorized"
+	DefaultPageBodyLimit      = "413 Request Entity Too Large: body limit {{value}} bytes."
+	DefaultPageBlack          = "403 Forbidden: your IP is blacklisted {{value}}."
+	DefaultPageCircuitBreaker = "503 Service Unavailable: breaker triggered {{value}}."
+	DefaultPageCORS           = ""
+	DefaultPageCSRF           = "403 Forbidden: invalid CSRF token {{value}}."
+	DefaultPageHealth         = "unhealthy: {{value}}"
+	DefaultPageRate           = "429 Too Many Requests: rate limit exceeded {{value}}."
+	DefaultPageReferer        = "403 Forbidden: invalid Referer header {{value}}."
+	DefaultPageTimeout        = "503 Service Unavailable"
+	// DefaultPProfHandlers global defines pprof route.
+	DefaultPProfHandlers = map[string]http.Handler{
 		"cmdline":      http.HandlerFunc(pprof.Cmdline),
 		"profile":      http.HandlerFunc(pprof.Profile),
 		"symbol":       http.HandlerFunc(pprof.Symbol),
@@ -59,8 +88,7 @@ var (
 		"heap":         pprof.Handler("heap"),
 		"mutex":        pprof.Handler("mutex"),
 		"threadcreate": pprof.Handler("threadcreate"),
+		"expvar":       expvar.Handler(),
 	}
-
-	ErrRateReadWaitLong  = errors.New("if the github.com/eudore/eudore/middleware speed limit waiting time is too long, it will time out")
-	ErrRateWriteWaitLong = errors.New("if the github.com/eudore/eudore/middleware speed limit waits for write time is too long, it will wait for timeout")
+	DefaultRateRetryMin = 3
 )

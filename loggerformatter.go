@@ -1,14 +1,5 @@
 package eudore
 
-/*
-在encoding/json基础上
-Func/Chan/UnsafePointer类型输出指针地址
-Ptr/Map/Slice类型循环引用时输出指针地址
-Invalid类型输出null
-Map类型不基于Key进行排序
-将fmt.Stringer/errorj接口转换字符串
-*/
-
 import (
 	"encoding"
 	"encoding/json"
@@ -60,14 +51,20 @@ type loggerFormatterText struct {
 	TimeFormat string
 }
 
-// NewLoggerFormatterText 函数创建文件行格式日志格式化。
+// The NewLoggerStdDataJSON function creates [LoggerHandler] to implement Text
+// formatted logging.
+//
+// Format: Time Level {file} Message {fileds}.
 func NewLoggerFormatterText(timeformat string) LoggerHandler {
 	return &loggerFormatterText{
 		TimeFormat: timeformat + " ",
 	}
 }
 
-func (h *loggerFormatterText) HandlerPriority() int { return 30 }
+func (h *loggerFormatterText) HandlerPriority() int {
+	return DefaultLoggerPriorityFormatter
+}
+
 func (h *loggerFormatterText) HandlerEntry(entry *LoggerEntry) {
 	en := &loggerEncoder{
 		data: entry.Buffer,
@@ -105,10 +102,13 @@ type loggerFormatterJSON struct {
 	KeyLevel   []byte
 }
 
-// NewLoggerStdDataJSON 函数创建一个LoggerStd的JSON数据处理器。
+// The NewLoggerStdDataJSON function creates [LoggerHandler] to implement JSON
+// formatted logging.
 //
-// 如果设置EnvEudoreDaemonEnable表示为后台运行，非终端启动会自动设置Std=false；
-// 在非windows系统下，仅输出到终端不输出到文件时Level关键字会设置为彩色。
+// Func/Chan/UnsafePointer type outputs pointer address;
+// Ptr/Map/Slice type outputs pointer address when circularly referenced;
+// Invalid type outputs null;
+// Convert fmt.Stringer/errorj interface to string.
 func NewLoggerFormatterJSON(timeformat string) LoggerHandler {
 	return &loggerFormatterJSON{
 		TimeFormat: timeformat,
@@ -118,7 +118,10 @@ func NewLoggerFormatterJSON(timeformat string) LoggerHandler {
 	}
 }
 
-func (h *loggerFormatterJSON) HandlerPriority() int { return 30 }
+func (h *loggerFormatterJSON) HandlerPriority() int {
+	return DefaultLoggerPriorityFormatter
+}
+
 func (h *loggerFormatterJSON) HandlerEntry(entry *LoggerEntry) {
 	en := &loggerEncoder{
 		data: entry.Buffer,
@@ -386,10 +389,12 @@ type sliceEnocder struct {
 }
 
 func (e sliceEnocder) encode(en *loggerEncoder, v reflect.Value) {
-	if en.formatVia(v) {
-		return
+	if v.Kind() == reflect.Slice {
+		if en.formatVia(v) {
+			return
+		}
+		defer en.releaseVia()
 	}
-	defer en.releaseVia()
 	en.WriteBytes('[')
 	pos := len(en.data)
 	for i := 0; i < v.Len(); i++ {

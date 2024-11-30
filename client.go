@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -14,80 +13,120 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 )
 
-// Client 定义http客户端接口，构建并发送http请求。
+// Client defines the http client interface, builds and sends [http.Client]
+// requests.
+//
+// Can be used to send requests or for unit testing.
 type Client interface {
-	NewRequest(context.Context, string, string, ...any) error
-	WithClient(...any) Client
-	GetClient() *http.Client
+	// The NewRequest method creates and sends a request,
+	// using options to customize processing.
+	NewRequest(method string, path string, options ...any) error
+	// The NewClient method uses options to create a new Client,
+	// inheriting Options.
+	//
+	// refer: [NewClient].
+	NewClient(options ...any) Client
+	GetRequest(path string, options ...any) error
+	PostRequest(path string, options ...any) error
+	PutRequest(path string, options ...any) error
+	DeleteRequest(path string, options ...any) error
+	HeadRequest(path string, options ...any) error
+	PatchRequest(path string, options ...any) error
 }
 
-// clientStd 定义http客户端默认实现。
+type ClientHook interface {
+	// When Name is not empty, it affects the Client to remove duplicate Hooks.
+	Name() string
+	// The Wrap method wraps the [http.RoundTripper] and returns a copy.
+	Wrap(rt http.RoundTripper) http.RoundTripper
+	// The RoundTrip method implements [http.RoundTripper] to send a request.
+	//
+	// Wrap RoundTrip to implement a custom Hook function.
+	RoundTrip(req *http.Request) (*http.Response, error)
+}
+
+type MetadataClient struct {
+	Health    bool     `json:"health" protobuf:"1,name=health" yaml:"health"`
+	Name      string   `json:"name" protobuf:"2,name=name" yaml:"name"`
+	Transport string   `json:"transport" protobuf:"3,name=transport" yaml:"transport"`
+	Hooks     []string `json:"hooks" protobuf:"4,name=hooks" yaml:"hooks"`
+}
+
 type clientStd struct {
-	Client *http.Client  `alias:"client"`
-	Option *ClientOption `alias:"option"`
+	Transport    http.RoundTripper
+	RoundTripper http.RoundTripper
+	Option       *ClientOption
+	Hooks        []ClientHook
+	Names        []string
 }
 
-/*
-ClientBody defines the client Body.
-
-The GetBody method returns a shallow copy of the data for request redirection and retry.
-
-The AddValue method sets the data saved by the body.
-
-The AddFile method can add file upload when using MultipartForm.
-
-ClientBody 定义客户端Body。
-
-GetBody方法返回数据浅复制用于请求重定向和重试。
-
-AddValue方法设置body保存的数据。
-
-AddFile方法在MultipartForm时可以添加文件上传。
-*/
-type ClientBody interface {
-	io.ReadCloser
-	GetContentType() string
-	GetBody() (io.ReadCloser, error)
-	AddValue(string, any)
-	AddFile(string, string, any)
-}
-
-// NewClient 函数创建默认http客户端实现，参数为默认选项。
+// NewClient creates [Client] with custom options.
+//
+// The options types are: [http.RoundTripper], [ClientHook],
+// func(http.RoundTripper), [ClientOption].
+//
+// By default, [NewClientHookTimeout] and [NewClientHookRedirect] are used.
 func NewClient(options ...any) Client {
+	client := newClientStd()
+	client.Hooks = []ClientHook{
+		NewClientHookTimeout(DefaultClientTimeout),
+		NewClientHookRedirect(nil),
+	}
+	client.Names = []string{
+		client.Hooks[0].Name(),
+		client.Hooks[1].Name(),
+	}
+	return client.NewClient(options...)
+}
+
+// NewClientCustom creates [Client] with empty options.
+//
+// refer: [NewClient].
+func NewClientCustom(options ...any) Client {
+	return newClientStd().NewClient(options...)
+}
+
+func newClientStd() *clientStd {
 	return &clientStd{
-		Client: &http.Client{
-			Transport: &http.Transport{
-				Proxy:                 http.ProxyFromEnvironment,
-				DialContext:           newDialContext(),
-				ForceAttemptHTTP2:     true,
-				MaxIdleConns:          100,
-				IdleConnTimeout:       90 * time.Second,
-				TLSHandshakeTimeout:   10 * time.Second,
-				ExpectContinueTimeout: 1 * time.Second,
-			},
-			Timeout: DefaultClientTimeout,
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			DialContext:           newDialContext(),
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
 		},
-		Option: NewClientOption(context.Background(), options),
+		Option: &ClientOption{
+			Context: context.Background(),
+		},
 	}
 }
 
 // newDialContext 函数创建http客户端Dial函数，如果是内部请求Host，从环境上下文获取到Server处理连接。
-func newDialContext() func(ctx context.Context, network, addr string) (net.Conn, error) {
+func newDialContext() func(ctx context.Context, network, addr string,
+) (net.Conn, error) {
 	fn := (&net.Dialer{
 		Timeout:   DefaultClientDialTimeout,
 		KeepAlive: DefaultClientDialKeepAlive,
 	}).DialContext
+	type ServeConn interface{ ServeConn(conn net.Conn) }
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
-		if network == "tcp" && addr == DefaultClientInternalHost {
-			server, ok := ctx.Value(ContextKeyServer).(interface{ ServeConn(conn net.Conn) })
-			if ok {
-				serverConn, clientConn := net.Pipe()
-				server.ServeConn(serverConn)
-				return clientConn, nil
+		if network == "tcp" &&
+			strings.HasPrefix(addr, DefaultClientInternalHost) {
+			port := addr[len(DefaultClientInternalHost):]
+			if port == ":80" || port == "" {
+				server, ok := ctx.Value(ContextKeyServer).(ServeConn)
+				if ok {
+					serverConn, clientConn := net.Pipe()
+					server.ServeConn(serverConn)
+					return clientConn, nil
+				}
 			}
 		}
 
@@ -95,78 +134,38 @@ func newDialContext() func(ctx context.Context, network, addr string) (net.Conn,
 	}
 }
 
-// Mount 方法保存context.Context作为Client默认发起请求的context.Context。
+// The Mount method saves the [context.Context] as the default context.Context
+// for the Client to initiate the request.
 func (client *clientStd) Mount(ctx context.Context) {
-	client.Option.Context = ctx
+	if client.Option.Context == context.Background() {
+		client.Option.Context = ctx
+	}
 }
 
-// WithClient 方法给客户端追加新的选项，返回客户端深拷贝。
-/*
-	Timeout
-	http.CookieJar
-	*http.Transport
-*/
-func (client *clientStd) WithClient(options ...any) Client {
-	c := client.Client
-	if canCopyClient(options) {
-		c = &http.Client{}
-		*c = *client.Client
-	}
-
-	for i := range options {
-		switch o := options[i].(type) {
-		case *http.Client:
-			c = o
-		case *http.Transport:
-			tp, ok := c.Transport.(*http.Transport)
-			if ok {
-				SetAnyDefault(tp, o)
-			} else {
-				c.Transport = o
-			}
-		case http.RoundTripper:
-			c.Transport = o
-		case http.CookieJar:
-			c.Jar = o
-		case time.Duration:
-			c.Timeout = o
+func (client *clientStd) Metadata() any {
+	names := make([]string, len(client.Hooks))
+	for i := range client.Hooks {
+		s, ok := client.Hooks[i].(fmt.Stringer)
+		if ok {
+			names[i] = s.String()
+			continue
 		}
+		names[i] = client.Hooks[i].Name()
 	}
-
-	return &clientStd{
-		Client: c,
-		Option: client.Option.clone().appendOptions(client.Option.Context, options),
+	return MetadataClient{
+		Name:      "eudore.clientStd",
+		Health:    true,
+		Transport: reflect.TypeOf(client.Transport).String(),
+		Hooks:     names,
 	}
 }
 
-func canCopyClient(options []any) bool {
-	for i := range options {
-		switch options[i].(type) {
-		case *http.Client, *http.Transport, http.RoundTripper, http.CookieJar, time.Duration:
-			return true
-		}
-	}
-	return false
-}
-
-// GetClient 方法返回*http.Client对象，用于修改属性。
-func (client *clientStd) GetClient() *http.Client {
-	return client.Client
-}
-
-// NewRequest 方法发送http请求。
-func (client *clientStd) NewRequest(ctx context.Context, method string, path string, options ...any) error {
-	option := client.Option.clone().appendOptions(ctx, options)
-	path = initRequestPath(option.Context, path)
+func (client *clientStd) NewRequest(method string, path string, options ...any) error {
+	option := client.Option.clone().appendOptions(options)
+	path = option.parsePath(path)
+	ctx := option.Context
 	if option.Trace != nil {
-		option.Context = NewClientTraceWithContext(option.Context, option.Trace)
-	}
-
-	ctx = option.Context
-	if option.Retrys == nil && option.Timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(option.Context, option.Timeout)
-		defer cancel()
+		ctx = NewClientTraceWithContext(ctx, option.Trace)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, path, option.Body)
@@ -175,175 +174,263 @@ func (client *clientStd) NewRequest(ctx context.Context, method string, path str
 	}
 	option.apply(req)
 
-	resp, err := client.dotry(req, option)
-	if resp != nil && resp.Body != nil {
+	resp, err := client.getRoundTripper(option.Hooks).RoundTrip(req)
+	if resp != nil {
 		defer resp.Body.Close()
 	}
-	return option.release(req, resp, err)
-}
-
-func (client *clientStd) dotry(req *http.Request, option *ClientOption) (*http.Response, error) {
-	if option.Retrys == nil {
-		return client.Client.Do(req)
-	}
-
-	attempts := make([]int, len(option.Retrys))
-	for {
-		r := req
-		// retry set timeout
-		if option.Timeout > 0 {
-			ctx, cancel := context.WithTimeout(option.Context, option.Timeout)
-			defer cancel()
-			r = req.WithContext(ctx)
-		}
-
-		resp, err := client.Client.Do(r)
-		if err == nil && resp.StatusCode < StatusTooManyRequests && resp.StatusCode != StatusUnauthorized {
-			return resp, err
-		}
-
-		// If body has been sent
-		if resp != nil && req.Body != nil {
-			if req.GetBody == nil {
-				return resp, err
-			}
-			body, err2 := req.GetBody()
-			if err2 != nil {
-				return resp, err
-			}
-			req.Body = body
-		}
-
-		notry := true
-		for i, retry := range option.Retrys {
-			if attempts[i] < retry.Max && retry.Condition(attempts[i], resp, err) {
-				attempts[i]++
-				notry = false
-				break
-			}
-		}
-		if notry {
-			return resp, err
-		}
-	}
-}
-
-// initRequestPath 函数初始化请求url，如果Host为空设置默认或内部Host，如果请求协议为空设置为http。
-func initRequestPath(ctx context.Context, path string) string {
-	u, err := url.ParseRequestURI(path)
 	if err != nil {
-		return path
+		return err
+	}
+	return option.release(resp)
+}
+
+func (client *clientStd) getRoundTripper(hooks []ClientHook) http.RoundTripper {
+	if hooks == nil {
+		return client.RoundTripper
 	}
 
-	if u.Host == "" {
-		_, ok := ctx.Value(ContextKeyServer).(interface{ ServeConn(conn net.Conn) })
-		if ok {
-			u.Host = DefaultClientInternalHost
+	overs := make([]int, len(client.Hooks))
+	adds := make([]ClientHook, 0, len(hooks))
+	for i, hook := range hooks {
+		name := hook.Name()
+		pos := sliceIndex(client.Names, name)
+		if name != "" && pos != -1 {
+			overs[pos] = i + 1
 		} else {
-			u.Host = DefaultClientHost
+			adds = append(adds, hook)
 		}
 	}
-	if u.Scheme == "" {
-		u.Scheme = "http"
+
+	rt := client.Transport
+	if len(hooks) != len(adds) {
+		for i, hook := range client.Hooks {
+			if overs[i] > 0 {
+				hook = hooks[overs[i]-1]
+			}
+			rt = hook.Wrap(rt)
+		}
+		hooks = adds
+	} else {
+		rt = client.RoundTripper
 	}
-	return u.String()
+
+	for _, hook := range hooks {
+		rt = hook.Wrap(rt)
+	}
+	return rt
+}
+
+func (client *clientStd) NewClient(options ...any) Client {
+	client = &clientStd{
+		Transport:    client.Transport,
+		RoundTripper: client.RoundTripper,
+		Option:       client.Option,
+		Hooks:        append([]ClientHook{}, client.Hooks...),
+		Names:        append([]string{}, client.Names...),
+	}
+	var opts []any
+	for i := range options {
+		switch o := options[i].(type) {
+		case ClientHook:
+			client.RoundTripper = nil
+			name := o.Name()
+			pos := sliceIndex(client.Names, name)
+			if pos == -1 || name == "" {
+				client.Hooks = append(client.Hooks, o)
+				client.Names = append(client.Names, name)
+			} else {
+				client.Hooks[pos] = o
+			}
+		case http.RoundTripper:
+			client.RoundTripper = nil
+			client.Transport = o
+		case func(http.RoundTripper):
+			o(client.Transport)
+			options[i] = nil
+		default:
+			opts = append(opts, o)
+		}
+	}
+
+	if client.RoundTripper == nil {
+		client.RoundTripper = client.Transport
+		for _, hook := range client.Hooks {
+			client.RoundTripper = hook.Wrap(client.RoundTripper)
+		}
+	}
+	client.Option = client.Option.clone().appendOptions(opts)
+	return client
+}
+
+func (client *clientStd) GetRequest(path string, options ...any) error {
+	return client.NewRequest(MethodGet, path, options...)
+}
+
+func (client *clientStd) PostRequest(path string, options ...any) error {
+	return client.NewRequest(MethodPost, path, options...)
+}
+
+func (client *clientStd) PutRequest(path string, options ...any) error {
+	return client.NewRequest(MethodPut, path, options...)
+}
+
+func (client *clientStd) DeleteRequest(path string, options ...any) error {
+	return client.NewRequest(MethodDelete, path, options...)
+}
+
+func (client *clientStd) HeadRequest(path string, options ...any) error {
+	return client.NewRequest(MethodHead, path, options...)
+}
+
+func (client *clientStd) PatchRequest(path string, options ...any) error {
+	return client.NewRequest(MethodPatch, path, options...)
+}
+
+// ClientBody defines the client Body.
+type ClientBody interface {
+	io.ReadCloser
+	GetContentType() string
+	// The GetBody method returns a shallow copy of the data for
+	// request redirection and retry.
+	GetBody() (io.ReadCloser, error)
+	// The AddValue method sets the data saved by the body.
+	AddValue(key string, val any)
+	// The AddFile method can add file upload when using MultipartForm.
+	//
+	// Convert the file type to io.Reader,
+	// the file type is []byte as the content;
+	// the file type is string to open the os file.
+	AddFile(key string, name string, data any)
 }
 
 type bodyDecoder struct {
-	Reader  io.ReadCloser
-	Values  map[string]any
-	Data    any
-	Type    string
-	Encoder func(io.Writer, any)
+	reader      io.ReadCloser
+	values      map[string]any
+	data        any
+	contentType string
+	encoder     func(io.Writer, any)
 }
 
-// NewClientBodyJSON 函数创建一个json编码器。
+// The NewClientBodyJSON function creates [ClientBody] with [json] encoder.
 func NewClientBodyJSON(data any) ClientBody {
-	return NewClientBodyDecoder(MimeApplicationJSON, data, func(w io.Writer, data any) {
-		json.NewEncoder(w).Encode(data)
-	})
+	return NewClientBodyDecoder(MimeApplicationJSON, data,
+		func(w io.Writer, data any) {
+			_ = json.NewEncoder(w).Encode(data)
+		},
+	)
 }
 
-// NewClientBodyXML 函数创建一个xml编码器。
+// The NewClientBodyJSON function creates [ClientBody] with [xml] encoder.
 func NewClientBodyXML(data any) ClientBody {
-	return NewClientBodyDecoder(MimeApplicationXML, data, func(w io.Writer, data any) {
-		xml.NewEncoder(w).Encode(data)
-	})
+	return NewClientBodyDecoder(MimeApplicationXML, data,
+		func(w io.Writer, data any) {
+			_ = xml.NewEncoder(w).Encode(data)
+		},
+	)
 }
 
-// NewClientBodyProtobuf 函数创建一个protobuf编码器。
+// The NewClientBodyJSON function creates [ClientBody] with [NewProtobufEncoder]
+// encoder.
 func NewClientBodyProtobuf(data any) ClientBody {
-	return NewClientBodyDecoder(MimeApplicationProtobuf, data, func(w io.Writer, data any) {
-		NewProtobufEncoder(w).Encode(data)
-	})
+	return NewClientBodyDecoder(MimeApplicationProtobuf, data,
+		func(w io.Writer, data any) {
+			_ = NewProtobufEncoder(w).Encode(data)
+		},
+	)
 }
 
-// The NewClientBodyDecoder function creates a ClientBody encoder,
-// which needs to specify contenttype and encoder.
-//
-// NewClientBodyDecoder 函数创建一个ClientBody编码器，需要指定contenttype和encoder。
-func NewClientBodyDecoder(contenttype string, data any, encoder func(io.Writer, any)) ClientBody {
+// The NewClientBodyDecoder function creates [ClientBody] encoder,
+// which needs to specify [HeaderContentType] and encoder.
+func NewClientBodyDecoder(contenttype string, data any,
+	encoder func(io.Writer, any),
+) ClientBody {
 	if data == nil {
 		data = make(map[string]any)
 	}
 	vals, _ := data.(map[string]any)
 	body := &bodyDecoder{
-		Data:    data,
-		Values:  vals,
-		Type:    contenttype,
-		Encoder: encoder,
+		data:        data,
+		values:      vals,
+		contentType: contenttype,
+		encoder:     encoder,
 	}
 	return body
 }
 
 func (body *bodyDecoder) Read(p []byte) (int, error) {
-	if body.Reader == nil {
+	if body.reader == nil {
 		rc, wc := io.Pipe()
-		body.Reader = rc
+		body.reader = rc
 		go func() {
-			body.Encoder(wc, body.Data)
+			body.encoder(wc, body.data)
 			wc.Close()
 		}()
 	}
-	return body.Reader.Read(p)
+	return body.reader.Read(p)
 }
 
 func (body *bodyDecoder) Close() error {
-	if body.Reader != nil {
-		return body.Reader.Close()
+	if body.reader != nil {
+		return body.reader.Close()
 	}
 	return nil
 }
 
 func (body *bodyDecoder) GetContentType() string {
-	return body.Type
+	return body.contentType
 }
 
 func (body *bodyDecoder) GetBody() (io.ReadCloser, error) {
 	return &bodyDecoder{
-		Data:    body.Data,
-		Values:  body.Values,
-		Type:    body.Type,
-		Encoder: body.Encoder,
+		data:        body.data,
+		values:      body.values,
+		contentType: body.contentType,
+		encoder:     body.encoder,
 	}, nil
 }
 
 func (body *bodyDecoder) AddValue(key string, val any) {
-	if body.Values != nil {
-		body.Values[key] = val
+	if body.values != nil {
+		body.values[key] = val
 	} else {
-		SetAnyByPath(body.Data, key, val)
+		_ = SetAnyByPath(body.data, key, val)
 	}
 }
 
 func (body *bodyDecoder) AddFile(string, string, any) {}
 
+type bodyFile struct {
+	*os.File
+	contentType string
+}
+
+func NewClientBodyFile(contenttype string, file *os.File) ClientBody {
+	if contenttype == "" {
+		contenttype = MimeApplicationOctetStream
+	}
+	return &bodyFile{
+		File:        file,
+		contentType: contenttype,
+	}
+}
+
+func (body *bodyFile) GetContentType() string {
+	return body.contentType
+}
+
+func (body *bodyFile) GetBody() (io.ReadCloser, error) {
+	path := body.File.Name()
+	return os.OpenFile(path, os.O_RDWR, 0)
+}
+func (body *bodyFile) AddValue(string, any)        {}
+func (body *bodyFile) AddFile(string, string, any) {}
+
 type bodyForm struct {
-	Reader   io.ReadCloser
-	Values   url.Values
-	Files    map[string][]fileContent
-	Boundary string
-	NoClone  bool
+	reader   io.ReadCloser
+	values   url.Values
+	files    map[string][]fileContent
+	boundary string
+	noClone  bool
 }
 
 type fileContent struct {
@@ -353,45 +440,45 @@ type fileContent struct {
 	Reader io.Reader
 }
 
-// NewClientBodyForm 函数创建ApplicationForm或MultipartForm请求body。
+// The NewClientBodyForm function creates [MimeApplicationForm] or
+// [MimeMultipartForm] request body.
 //
-// AddFile方法允许data类型为[]byte io.Reader；如果类型为string则加载这个本地文件。
-//
-// 如果使用AddFile方法添加文件ContentType为MultipartForm。
+// If you use the AddFile method to add file,
+// the [HeaderContentType] is [MimeMultipartForm].
 func NewClientBodyForm(data url.Values) ClientBody {
-	return &bodyForm{Values: data, Boundary: GetStringRandom(30)}
+	return &bodyForm{values: data, boundary: GetStringRandom(30)}
 }
 
-func (body *bodyForm) Read(p []byte) (n int, err error) {
-	if body.Reader == nil {
-		if body.Files == nil {
-			body.Reader = io.NopCloser(strings.NewReader(body.Values.Encode()))
+func (body *bodyForm) Read(p []byte) (int, error) {
+	if body.reader == nil {
+		if body.files == nil {
+			body.reader = io.NopCloser(strings.NewReader(body.values.Encode()))
 		} else {
 			rc, wc := io.Pipe()
-			body.Reader = rc
+			body.reader = rc
 			body.encode(wc)
 		}
 	}
-	return body.Reader.Read(p)
+	return body.reader.Read(p)
 }
 
 func (body *bodyForm) encode(wc io.WriteCloser) {
 	w := multipart.NewWriter(wc)
-	w.SetBoundary(body.Boundary)
+	_ = w.SetBoundary(body.boundary)
 	go func() {
-		for key, vals := range body.Values {
+		for key, vals := range body.values {
 			for _, val := range vals {
-				w.WriteField(key, val)
+				_ = w.WriteField(key, val)
 			}
 		}
-		for key, vals := range body.Files {
+		for key, vals := range body.files {
 			for _, val := range vals {
 				part, _ := w.CreateFormFile(key, val.Name)
 				switch {
 				case val.Body != nil:
-					part.Write(val.Body)
+					_, _ = part.Write(val.Body)
 				case val.Reader != nil:
-					io.Copy(part, val.Reader)
+					_, _ = io.Copy(part, val.Reader)
 					c, ok := val.Reader.(io.Closer)
 					if ok {
 						c.Close()
@@ -399,7 +486,7 @@ func (body *bodyForm) encode(wc io.WriteCloser) {
 				case val.File != "":
 					file, err := os.Open(val.File)
 					if err == nil {
-						io.Copy(part, file)
+						_, _ = io.Copy(part, file)
 						file.Close()
 					}
 				}
@@ -411,41 +498,41 @@ func (body *bodyForm) encode(wc io.WriteCloser) {
 }
 
 func (body *bodyForm) Close() error {
-	if body.Reader != nil {
-		return body.Reader.Close()
+	if body.reader != nil {
+		return body.reader.Close()
 	}
 	return nil
 }
 
 func (body *bodyForm) GetContentType() string {
-	if body.Files == nil {
+	if body.files == nil {
 		return MimeApplicationForm
 	}
 
-	return "multipart/form-data; boundary=" + body.Boundary
+	return MimeMultipartForm + "; boundary=" + body.boundary
 }
 
 func (body *bodyForm) GetBody() (io.ReadCloser, error) {
-	if body.NoClone {
-		return nil, ErrClientBodyFormNotGetBody
+	if body.noClone {
+		return nil, ErrClientBodyNotGetBody
 	}
 	return &bodyForm{
-		Values:   body.Values,
-		Files:    body.Files,
-		Boundary: body.Boundary,
+		values:   body.values,
+		files:    body.files,
+		boundary: body.boundary,
 	}, nil
 }
 
 func (body *bodyForm) AddValue(key string, val any) {
-	if body.Values == nil {
-		body.Values = make(url.Values)
+	if body.values == nil {
+		body.values = make(url.Values)
 	}
-	body.Values.Add(key, GetStringByAny(val))
+	body.values.Add(key, GetStringByAny(val))
 }
 
 func (body *bodyForm) AddFile(key string, name string, data any) {
-	if body.Files == nil {
-		body.Files = make(map[string][]fileContent)
+	if body.files == nil {
+		body.files = make(map[string][]fileContent)
 	}
 
 	content := fileContent{Name: name}
@@ -458,15 +545,16 @@ func (body *bodyForm) AddFile(key string, name string, data any) {
 		}
 		content.File = b
 	case io.Reader:
-		body.NoClone = true
+		body.noClone = true
 		content.Reader = b
 	default:
 		return
 	}
-	body.Files[key] = append(body.Files[key], content)
+	body.files[key] = append(body.files[key], content)
 }
 
-// NewClientCheckStatus 方法创建响应选项检查响应状态码。
+// The NewClientCheckStatus method creates [ClientOption] to check the response
+// status code.
 func NewClientCheckStatus(status ...int) func(*http.Response) error {
 	return func(w *http.Response) error {
 		for i := range status {
@@ -475,69 +563,72 @@ func NewClientCheckStatus(status ...int) func(*http.Response) error {
 			}
 		}
 
-		return fmt.Errorf(ErrFormatClintCheckStatusError, w.StatusCode, status)
+		return fmt.Errorf(ErrClientCheckStatusError,
+			w.Request.Method, w.Request.URL.Path, w.StatusCode, status,
+		)
 	}
 }
 
-// NewClienProxyWriter 函数将客户端响应写入另外Writer，
+// The NewClientParse method creates [ClientOption] to parse body data.
 //
-// 如果Writer实现http.ResponseWriter接口会写入状态码和Header。
-func NewClienProxyWriter(writer io.Writer) func(*http.Response) error {
-	return func(w *http.Response) error {
-		wr, ok := writer.(http.ResponseWriter)
-		if ok {
-			wr.WriteHeader(w.StatusCode)
-			h := w.Header.Clone()
-			for _, key := range DefaultClinetHopHeaders {
-				h.Del(key)
-			}
-			for key, vals := range h {
-				for _, val := range vals {
-					wr.Header().Add(key, val)
-				}
-			}
-		}
-
-		_, err := io.Copy(writer, w.Body)
-		return err
-	}
-}
-
-// NewClientParse 方法创建响应选项解析body数据。
+// data type is *string or [io.Writer] to write data directly.
+//
+// If the [HeaderContentType] value is [MimeApplicationJSON]
+// [MimeApplicationProtobuf] [MimeApplicationXML],
+// use the corresponding Decoder to parse.
 func NewClientParse(data any) func(*http.Response) error {
 	return func(w *http.Response) error {
 		return clientParseIn(w, 0, 0xffffffff, data)
 	}
 }
 
-// NewClientParseIf 方法创建响应选项，在指定状态码时解析body数据。
+// The NewClientParseIf method creates [ClientOption] and parses the body data
+// when the status code is specified.
+//
+// refer: [NewClientParse].
 func NewClientParseIf(status int, data any) func(*http.Response) error {
 	return func(w *http.Response) error {
 		return clientParseIn(w, status, status, data)
 	}
 }
 
-// NewClientParseIn 方法创建响应选项，在指定状态码范围时解析body数据。
+// The NewClientParseIn method creates [ClientOption] and parses the body data
+// when the status code in range.
+//
+// refer: [NewClientParse].
 func NewClientParseIn(star, end int, data any) func(*http.Response) error {
 	return func(w *http.Response) error {
 		return clientParseIn(w, star, end, data)
 	}
 }
 
-// NewClientParseErr 方法创建响应选项，在默认范围时解析body中的Error字段返回。
+// The NewClientParseErr method creates [ClientOption] parsing response error.
+//
+// When the status code is in [DefaultClientParseErrRange],
+// the Error field in the parsed body is returned.
 func NewClientParseErr() func(*http.Response) error {
 	return func(w *http.Response) error {
 		var data struct {
-			Status int    `json:"status" protobuf:"6,name=status" xml:"status" yaml:"status"`
-			Code   int    `json:"code,omitempty" protobuf:"7,name=code" xml:"code,omitempty" yaml:"code,omitempty"`
-			Error  string `json:"error,omitempty" protobuf:"10,name=error" xml:"error,omitempty" yaml:"error,omitempty"`
+			Status int    `json:"status" protobuf:"6,name=status" yaml:"status"`
+			Code   int    `json:"code,omitempty" protobuf:"7,name=code" yaml:"code,omitempty"`
+			Error  string `json:"error,omitempty" protobuf:"10,name=error" yaml:"error,omitempty"`
 		}
-		err := clientParseIn(w, DefaultClientParseErrStar, DefaultClientParseErrEnd, &data)
+		err := clientParseIn(w,
+			DefaultClientParseErrRange[0], DefaultClientParseErrRange[1],
+			&data,
+		)
 		if err != nil {
 			return err
 		}
 		if data.Error != "" {
-			return errors.New(data.Error)
+			if data.Code == 0 {
+				return fmt.Errorf("client request status is %d, error: %s",
+					data.Status, data.Error,
+				)
+			}
+			return fmt.Errorf("client request status is %d, code is %d, error: %s",
+				data.Status, data.Code, data.Error,
+			)
 		}
 		return nil
 	}
@@ -547,15 +638,20 @@ func clientParseIn(w *http.Response, star, end int, data any) error {
 	if w.StatusCode < star || w.StatusCode > end || w.Body == nil {
 		return nil
 	}
-	body, ok := data.(*string)
-	if ok {
+
+	switch body := data.(type) {
+	case *string:
 		data, err := io.ReadAll(w.Body)
 		if err != nil {
 			return err
 		}
 		*body = string(data)
 		return nil
+	case io.Writer:
+		_, err := io.Copy(body, w.Body)
+		return err
 	}
+
 	mime := w.Header.Get(HeaderContentType)
 	pos := strings.IndexByte(mime, ';')
 	if pos != -1 {
@@ -564,15 +660,16 @@ func clientParseIn(w *http.Response, star, end int, data any) error {
 	switch mime {
 	case MimeApplicationJSON:
 		return json.NewDecoder(w.Body).Decode(data)
-	case MimeApplicationXML:
-		return xml.NewDecoder(w.Body).Decode(data)
 	case MimeApplicationProtobuf:
 		return NewProtobufDecoder(w.Body).Decode(data)
+	case MimeApplicationXML:
+		return xml.NewDecoder(w.Body).Decode(data)
 	}
-	return fmt.Errorf(ErrFormatClintParseBodyError, mime)
+	return fmt.Errorf(ErrClientParseBodyError, mime)
 }
 
-// NewClientCheckBody 方法创建响应选项检查响应body是否包含指定字符串。
+// The NewClientCheckBody method creates [ClientOption] to check response body
+// contains the specified string.
 func NewClientCheckBody(str string) func(*http.Response) error {
 	return func(w *http.Response) error {
 		body, err := io.ReadAll(w.Body)
@@ -581,7 +678,12 @@ func NewClientCheckBody(str string) func(*http.Response) error {
 		}
 		w.Body = io.NopCloser(bytes.NewReader(body))
 		if !strings.Contains(string(body), str) {
-			return fmt.Errorf("check body not have string '%s'"+string(body[:20]), str)
+			if len(body) > DefaultClientCheckBodyLength {
+				body = body[:DefaultClientCheckBodyLength]
+			}
+			return fmt.Errorf("check body '%s' not have string '%s'",
+				string(body), str,
+			)
 		}
 		return nil
 	}

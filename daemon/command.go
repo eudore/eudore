@@ -1,9 +1,8 @@
 package daemon
 
-/*
-利用系统信号进制，执行start、daemon、stop、status、restart命令来操作进程。
-进程pid存储在pid文件中。
-*/
+// Use the system signal system to execute start, daemon, stop, status,
+// and restart commands to operate the process.
+// The process pid is stored in the pid file.
 
 import (
 	"context"
@@ -26,86 +25,164 @@ const (
 	CommandStatus  = "status"
 	CommandStop    = "stop"
 	CommandRestart = "restart"
+	CommandReload  = "reload"
 	CommandDisable = "disable"
+	OutputDaemon   = "Daemon process ID {{pid}} started successfully, wait time: {{time}}."
+	OutputStatus   = "Process ID {{pid}} is running, PID file located at {{pidfile}}."
+	OutputStop     = "Successfully stopped process ID {{pid}}, wait time: {{time}}."
+	OutputRestart  = "Successfully restarted process ID {{pid}}, wait time: {{time}}."
+	OutputReload   = "Process ID {{pid}} is reload, PID file located at {{pidfile}}."
+	OutputError    = "Command {{command}} failed with error: {{error}}."
+	OutputFailed   = "Command {{command}} failed, timed out after {{time}}."
 )
 
-// Command is a command parser that performs the corresponding behavior based on the current command.
+// CustomWaitHook defines hook to implement custom waiting.
 //
-// Command 对象是一个命令解析器，根据当前命令执行对应行为。
+// [Command.Wait] may have inaccurate waiting time.
+var CustomWaitHook = func(_, _ string, _ int) {}
+
+// Command defines the startup command and pid file.
 type Command struct {
 	Command string
 	Pidfile string
 	Args    []string
 	Envs    []string
-	Print   func(string, ...any)
+	execpid int
 }
 
-// Run 方法启动Command解析。
-func (cmd *Command) Run(ctx context.Context) (err error) {
+func NewCommand(cmd, pid string) *Command {
+	return &Command{
+		Command: cmd,
+		Pidfile: pid,
+	}
+}
+
+func (cmd *Command) Unmount(context.Context) {
+	pid, err := cmd.readpid()
+	if err == nil && pid == os.Getpid() {
+		os.Remove(cmd.Pidfile)
+	}
+}
+
+// The Run method executes the Command.
+func (cmd *Command) Run() (err error) {
 	switch cmd.Command {
 	case CommandStart:
-		return cmd.Start(ctx)
+		return cmd.Start()
 	case CommandDaemon:
-		return cmd.Daemon(ctx)
+		if eudore.GetAny[bool](os.Getenv(eudore.EnvEudoreDaemonEnable)) {
+			return cmd.Start()
+		}
+		err = cmd.Daemon()
 	case CommandStatus:
 		err = cmd.Status()
 	case CommandStop:
 		err = cmd.Stop()
 	case CommandRestart:
 		err = cmd.Restart()
+	case CommandReload:
+		err = cmd.Reload()
 	default:
+		cmds := []string{
+			CommandStart,
+			CommandDaemon,
+			CommandStatus,
+			CommandStop,
+			CommandRestart,
+			CommandReload,
+		}
 		err = errors.New("undefined command " + cmd.Command)
-		cmd.Print("undefined command %s, support command: start/status/stop/restart/daemon.", cmd.Command)
-	}
-
-	if err != nil {
-		cmd.Print("%s is false, error: %w.", cmd.Command, err)
+		cmd.output(fmt.Sprintf("%v. Supported commands: %s.", err, strings.Join(cmds, "/")), 0, 0)
 		return err
 	}
 
-	pid, _ := cmd.readpid()
-	cmd.Print("%s is true, pid is %d, pidfile in %s.", cmd.Command, pid, cmd.Pidfile)
-	cmd.Wait(pid)
-
-	return fmt.Errorf("daemon is %s %w", cmd.Command, context.Canceled)
-}
-
-func (cmd *Command) Wait(p int) {
-	t := eudore.GetAnyByString(os.Getenv(eudore.EnvEudoreDaemonTimeout), 60)
-	if t < 0 || (cmd.Command != CommandStop && cmd.Command != CommandRestart) {
-		return
+	if err != nil {
+		str := strings.ReplaceAll(OutputError, "{{error}}", err.Error())
+		cmd.output(str, 0, 0)
+		return err
 	}
 
-	for i := 0; i <= t; i++ {
+	CustomWaitHook(cmd.Command, cmd.Pidfile, cmd.execpid)
+	switch cmd.Command {
+	case CommandStatus:
+		cmd.output(OutputStatus, cmd.execpid, 0)
+	case CommandReload:
+		cmd.output(OutputReload, cmd.execpid, 0)
+	default:
+		cmd.Wait()
+	}
+
+	return context.Canceled
+}
+
+// The Wait method reads the PID file to determine the execution status.
+//
+// [CommandStop] waits for PID file to be deleted.
+//
+// [CommandDaemon] waits for PID file to be created,
+// but may not be listening on the port.
+//
+// [CommandRestart] waits for PID file content to change.
+func (cmd *Command) Wait() {
+	str := os.Getenv(eudore.EnvEudoreDaemonTimeout)
+	t := eudore.GetAnyByString(str, 30*time.Second)
+	s := time.Millisecond
+	for wait := time.Duration(0); wait <= t; {
 		pid, err := cmd.readpid()
 		switch {
 		case cmd.Command == CommandStop && err != nil:
-			cmd.Print("stop successfully, wait time %ds.", i)
+			cmd.output(OutputStop, cmd.execpid, wait)
 			return
-		case err != nil:
-			cmd.Print("%s read pid error: %w.", cmd.Command, err)
-		case cmd.Command == CommandRestart && pid != p:
-			cmd.Print("restart successfully, new pid is %d, wait time %ds.", pid, i)
+		case cmd.Command == CommandDaemon && err == nil:
+			cmd.output(OutputDaemon, pid, wait)
+			return
+		case cmd.Command == CommandRestart && pid != cmd.execpid:
+			cmd.output(OutputRestart, pid, wait)
 			return
 		}
-		time.Sleep(time.Second)
+
+		switch {
+		case wait < time.Millisecond*100:
+			s *= 2
+		case wait < time.Second:
+			s = time.Millisecond * 100
+		case wait < time.Second*3:
+			s = time.Millisecond * 200
+		case wait < time.Second*10:
+			s = time.Millisecond * 500
+		default:
+			s = time.Second
+		}
+		time.Sleep(s)
+		wait += s
 	}
 	if t > 0 {
-		cmd.Print("%s failed, wait time %ds timeout.", cmd.Command, t)
+		cmd.output(OutputFailed, 0, t)
+	}
+}
+
+var initat = time.Now()
+
+func (cmd *Command) output(out string, pid int, wait time.Duration) {
+	if out != "" {
+		wait += time.Since(initat).Truncate(time.Millisecond)
+		fn := strings.ReplaceAll
+		out = fn(out, "{{command}}", cmd.Command)
+		out = fn(out, "{{pidfile}}", cmd.Pidfile)
+		out = fn(out, "{{pid}}", strconv.Itoa(pid))
+		out = fn(out, "{{time}}", wait.String())
+		fmt.Fprint(os.Stdout, out+"\r\n")
 	}
 }
 
 // Start execute the startup function and write the pid to the file.
-//
-// Start 函数执行启动函数，并将pid写入文件。
-func (cmd *Command) Start(ctx context.Context) error {
-	// 测试文件是否被锁定
+func (cmd *Command) Start() error {
 	pid, err := cmd.readpid()
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 
-	restartid := eudore.GetAny[int](os.Getenv(eudore.EnvEudoreDaemonRestartID))
+	restartid := eudore.GetAny[int](os.Getenv(eudore.EnvEudoreDaemonParentPID))
 	if pid != 0 && pid == restartid {
 		return nil
 	}
@@ -115,19 +192,11 @@ func (cmd *Command) Start(ctx context.Context) error {
 		return fmt.Errorf("process exites pid %d", pid)
 	}
 
-	// 写入pid
-	return cmd.writepid(ctx)
+	return cmd.writepid()
 }
 
-// Daemon Start the process in the background. If it is not started in the background, create a background process.
-//
-// Daemon 函数后台启动进程。若不是后台启动，则创建一个后台进程。
-func (cmd *Command) Daemon(ctx context.Context) error {
-	if eudore.GetAny[bool](os.Getenv(eudore.EnvEudoreDaemonEnable)) {
-		return cmd.Start(ctx)
-	}
-
-	// 测试文件是否被锁定
+// Daemon Start the process in the daemon.
+func (cmd *Command) Daemon() error {
 	pid, err := cmd.readpid()
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -139,37 +208,36 @@ func (cmd *Command) Daemon(ctx context.Context) error {
 
 	fork := exec.Command(os.Args[0], os.Args[1:]...)
 	fork.Args = append(fork.Args, cmd.Args...)
-	fork.Env = append(os.Environ(), fmt.Sprintf("%s=%d", eudore.EnvEudoreDaemonEnable, 1))
+	fork.Env = append(os.Environ(), fmt.Sprintf("%s=%d",
+		eudore.EnvEudoreDaemonEnable, 1,
+	))
 	fork.Env = append(fork.Env, cmd.Envs...)
 	fork.Stdout = os.Stdout
-	err = fork.Start()
-	if err != nil {
-		return err
-	}
-	return fmt.Errorf("daemon start %w", context.Canceled)
+	return fork.Start()
 }
 
-// Status 函数调用系统命令，想进程发送信号 0。
+// Status function process sends signal 0, determine if a process exists.
 func (cmd *Command) Status() error {
 	return cmd.ExecSignal(syscall.Signal(0x00))
 }
 
-// Stop 函数调用系统命令，想进程发送信号syscall.SIGTERM。
-func (cmd *Command) Stop() error {
-	return cmd.ExecSignal(syscall.Signal(0x0f))
-}
-
-// Reload 函数调用系统命令，想进程发送信号syscall.SIGUSR1。
+// Reload function process sends signal syscall.SIGUSR1.
 func (cmd *Command) Reload() error {
 	return cmd.ExecSignal(syscall.Signal(0x0a))
 }
 
-// Restart 函数调用系统命令，想进程发送信号syscall.SIGUSR2。
+// Restart function process sends signal syscall.SIGUSR2.
 func (cmd *Command) Restart() error {
 	return cmd.ExecSignal(syscall.Signal(0x0c))
 }
 
-// ExecSignal 函数向pidfile内的进程发送指定命令。
+// Stop function process sends signal syscall.SIGTERM.
+func (cmd *Command) Stop() error {
+	return cmd.ExecSignal(syscall.Signal(0x0f))
+}
+
+// The ExecSignal function sends the specified signal to the process
+// in the pidfile.
 func (cmd *Command) ExecSignal(sig os.Signal) error {
 	pid, err := cmd.readpid()
 	if err != nil {
@@ -182,16 +250,15 @@ func (cmd *Command) ExecSignal(sig os.Signal) error {
 	}
 
 	err = process.Signal(sig)
-	if err != nil {
+	if errors.Is(err, os.ErrProcessDone) {
 		os.Remove(cmd.Pidfile)
 		return err
 	}
-	return nil
+	cmd.execpid = pid
+	return err
 }
 
 // Read the value in the pid file.
-//
-// 读取pid文件内的值。
 func (cmd *Command) readpid() (int, error) {
 	file, err := os.OpenFile(cmd.Pidfile, os.O_RDONLY, 0o644)
 	if err != nil {
@@ -199,7 +266,7 @@ func (cmd *Command) readpid() (int, error) {
 	}
 	defer file.Close()
 
-	id, err := io.ReadAll(file)
+	id, err := io.ReadAll(io.LimitReader(file, 128))
 	if err != nil {
 		return 0, err
 	}
@@ -207,26 +274,13 @@ func (cmd *Command) readpid() (int, error) {
 }
 
 // Open and lock the pid file and write the value of pid.
-//
-// 打开并锁定pid文件，写入pid的值。
-func (cmd *Command) writepid(ctx context.Context) (err error) {
+func (cmd *Command) writepid() error {
 	file, err := os.OpenFile(cmd.Pidfile, os.O_WRONLY|os.O_CREATE, 0o644)
 	if err != nil {
-		return
+		return err
 	}
 	defer file.Close()
 
-	_, err = fmt.Fprintf(file, "%d", os.Getpid())
-	if err != nil {
-		return
-	}
-	go func() {
-		// 关闭删除pid文件
-		<-ctx.Done()
-		pid, err := cmd.readpid()
-		if err == nil && pid == os.Getpid() {
-			os.Remove(cmd.Pidfile)
-		}
-	}()
-	return nil
+	_, err = file.WriteString(strconv.Itoa(os.Getpid()))
+	return err
 }

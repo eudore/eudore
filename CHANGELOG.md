@@ -1,14 +1,52 @@
 # Change Log
 
 Next
-- Database 实现
+- ClientOption
+- FuncCreator
+- EventHub
 
-[2023年8月31日]
-- go.mod	go版本依赖从1.9升级为1.18，增加error embed 泛型等新版本特性支持。
-- github	使用action配置添加lint和codecov。
-- LoggerStd		修改为Hook结构增强扩展。
-- Client		添加ClietOption/ClintBody，修改请求构造方法。
-- RouterStd		使用Group时参数loggerkind时修改router日志输出级别，加入Metadata接口实现。
+[2024年11月30日]
+- App		新增使用Mutex锁全部Values。
+- Logger	新增WriterAsync实现日志异步写入。
+- Config	移除NewConfigParseHelp实现，Parse添加timeout。
+- Client	新增ClientHook处理RoundTripper包裹，使用Hook重新实现部分功能。
+- Database	移除数据库相关设计。
+- Router	移除路由反注册功能和读写锁路由实现。
+- Router.checkMethod	修复检查NotFound方法判断大写值。
+- Router.LoggerKind		新增使用~值修改当前输出日志类型。
+- RouterMux				修改逻辑实现减少代码量，更新路径切割括号。
+- RouterHost			修改host映射方法，将host pattern添加带路径之前。
+- Context.Context		修改Context使用上下文拷贝允许脱离请求使用，增长读写锁。
+- Context.WriteStatue	修改Render Status使用独立方法。
+- HandlerData			新增组合式处理，可组合Validate和Filter。
+- NewHandlerDataRenders	修改Render失败时可重试下一个Render。
+- NewHandlerDataRenderTemplates	新增模板渲染方式，实现io/fs加载和自动重新加载。
+- HandlerExtender		新增4个泛型下扩展函数，移除部分不常用扩展函数。
+- HandlerExtenderTree	修改radix实现与router.Middlewares一致。
+- ControllerAutoRoute	修改注册方法根据控制器方法和路由器方法排序，显示实现可用控制器接口。
+- LoggerFormatter		修复数组格式化异常。
+- Event				新增SSE客户端和服务端。
+- EventHub			新增Hub处理SSE和WS消息分发。
+- middleware		新增DefaultPage配置各项中间件默认响应页面。
+- middleware		新增中间件实现Timeout、BodySize、Health、Metadata、ServerTiming。
+- middleware		更新cors、referer、rewrute与routerHost、routerMux使用一致radix实现。
+- middleware		修改black、breaker、cache、rate使用Option初始化。
+- middleware/black		新增ipv6匹配实现和ip格式检查，启用api时使用读写锁。
+- middleware/cache		移除自定义存储接口，简化Accept内容。
+- middleware/compress	修复SSE判断条件，修复错误循环，移除对压缩权值处理。
+- middleware/logger		修改默认参数和动态参数格式。
+- middleware/pprof		更新1.21 pprof格式。
+- middleware/rate		新增RateRequest返回限流状态Header。
+- daemon		修改daemon配置函数参数。
+- \_example		更新并合并减少example内容。
+
+
+[2023年8月31日](https://github.com/eudore/eudore/tree/b68a5f9199b93ce260d14ce0b1f1b30d56ce2359)
+- go.mod	升级go版本依赖从1.9到1.20，增加error embed 泛型等新版本特性支持。
+- github	新增action配置添加lint和codecov。
+- LoggerStd		修改为Hook结构增强扩展，添加回收文件、过滤日志、彩色Level等功能。
+- Client		新增ClietOption/ClintBody，修改请求构造方法。
+- RouterStd		新增Group时参数loggerkind时修改router日志输出级别，加入Metadata接口实现。
 - HandlerData	validate使用新fc实现避免反射，完成filter实现过滤或修改数据。
 - FuncCreator	使用泛型重构减少反射使用，额外扩展新函数规则，允许使用逻辑关系式。
 - Context		FormValues调用parseForm解析方法修改，不将PostForm和Form复制数据。
@@ -19,12 +57,11 @@ Next
 - NewFileSystems	处理Dir和Embed的http混合文件对象。
 - NewConfigParseEnvFile	配置解析env文件。
 - NewConfigParseArgs	保存未处理的命令行参数。
-- LoggerStdDataJSON		具有环境变量EnvEudoreDaemonEnable时禁用标准输出。
 - ServerListenConfig	使用DefaultServerListen启动监听。
-- middleware/cache		添加对Accept/Accept-Encoding/304支持。
-- middleware/compress	添加选择压缩方法，忽略小Body和已压缩Mime。
-- middleware/bodylimit	忽略NoBody，使用http.MaxBytesReader限制body长度。
-- daemon				整理启动命令、后台启动、信号处理、热重启，不进行单位测试覆盖。
+- middleware/cache		新增对Accept/Accept-Encoding/304支持。
+- middleware/compress	新增选择压缩方法，忽略小Body和已压缩Mime。
+- middleware/bodylimit	修改忽略NoBody，使用http.MaxBytesReader限制body长度。
+- daemon				重估启动命令、后台启动、信号处理、热重启，不进行单位测试覆盖。
 
 [2022年10月31日](https://github.com/eudore/eudore/tree/de9fd1ea1b653ba6e4f9bb5c108733e3142cadf6)
 - App		优化运行输出日志
@@ -38,6 +75,7 @@ Next
 
 [2022年4月30日](https://github.com/eudore/eudore/tree/b80422e67f5c9907967e36e577d23220793a6c9c)
 - App和Context	生命周期管理
+- HandlerExtender	允许使用扩展函数获得路由路径
 - DataHandlerFunc	合并Bind Validate Filte Render
 - Client	移入App组合
 - Server	实现ServeConn方法
@@ -177,7 +215,7 @@ Next
 - ServerGrace	从主包移除到component/server/grace
 - ServerStdConfig	方法修改时间类型为TimeDuration，优化Set和json方法使用
 - validate	更新使用方法，不再使用单例
-- GetWarp	使用map[string]interface{}创建getwarp
+- GetWrap	使用map[string]interface{}创建getwrap
 - ConvertTo	优化对象接口和指针对象转换处理
 - component/pprof 优化look显示属性
 

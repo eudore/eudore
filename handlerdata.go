@@ -1,184 +1,203 @@
 package eudore
 
 import (
-	"bytes"
 	"encoding/json"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 )
 
-// HandlerDataFunc defines the request context data processing function.
+// HandlerDataFunc defines the [Context] data processing function.
 //
-// Define four behaviors of Bind Validater Filter Render by default.
+// Define behaviors such as Bind and Render.
 //
-// Binder object is used to request data deserialization,
-// By default, data is parsed according to the request data format specified
-// by the Content-Type header of the http request.
+// Bind is used to request data parsing.
+// By default, [HeaderContentType] is used to select the data parsing method.
 //
-// The Renderer object accepts the header to select the data object serialization method.
-// HandlerDataFunc 定义请求上下文数据处理函数。
-//
-// 默认定义Bind Validater Filter Render四种行为。
-//
-// Binder对象用于请求数据反序列化，
-// 默认根据http请求的Content-Type header指定的请求数据格式来解析数据。
-//
-// Renderer对象更加Accept Header选择数据对象序列化的方法。
+// Render is used to return response data.
+// By default, [HeaderAccept] is used to select the data rendering method.
 type HandlerDataFunc = func(Context, any) error
 
-// The NewBinds method defines the ContentType Header mapping Bind function.
-//
-// NewBinds 方法定义ContentType Header映射Bind函数。
-func NewBinds(binds map[string]HandlerDataFunc) HandlerDataFunc {
-	if binds == nil {
-		binds = map[string]HandlerDataFunc{
-			MimeApplicationJSON:     BindJSON,
-			MimeApplicationForm:     BindURL,
-			MimeMultipartForm:       BindForm,
-			MimeApplicationProtobuf: BindProtobuf,
-			MimeApplicationXML:      BindXML,
+// The NewHandlerDataFuncs function combines multiple [HandlerDataFunc] to
+// process data in sequence.
+func NewHandlerDataFuncs(handlers ...HandlerDataFunc) HandlerDataFunc {
+	switch len(handlers) {
+	case 0:
+		return nil
+	case 1:
+		return handlers[0]
+	default:
+		return func(ctx Context, data any) error {
+			for i := range handlers {
+				err := handlers[i](ctx, data)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
 		}
+	}
+}
+
+// NewHandlerDataStatusCode function wraps the response status or code
+// when [HandlerDataFunc] returns an error.
+//
+// If err is [http.MaxBytesError],
+// it may override [StatusRequestEntityTooLarge].
+func NewHandlerDataStatusCode(handler HandlerDataFunc, status, code int,
+) HandlerDataFunc {
+	if handler == nil || (status == 0 && code == 0) {
+		return handler
+	}
+	return func(ctx Context, data any) error {
+		err := handler(ctx, data)
+		if err != nil {
+			return NewErrorWithStatusCode(err, status, code)
+		}
+		return nil
+	}
+}
+
+// The NewHandlerDataBinds method defines the [HeaderContentType] mapping
+// Bind function.
+//
+// [DefaultHandlerDataBinds] is used by default.
+// [HandlerDataBindURL] is used when [HeaderContentType] is empty.
+//
+// If there is no matching [HandlerDataFunc],
+// return [StatusUnsupportedMediaType].
+func NewHandlerDataBinds(binds map[string]HandlerDataFunc) HandlerDataFunc {
+	if binds == nil {
+		binds = mapClone(DefaultHandlerDataBinds)
+	}
+	if _, ok := binds[""]; !ok {
+		binds[""] = HandlerDataBindURL
 	}
 	var mimes string
 	for k := range binds {
-		mimes += ", " + k
+		if k != "" && k != MimeApplicationOctetStream {
+			mimes += ", " + k
+		}
 	}
 	mimes = strings.TrimPrefix(mimes, ", ")
-	return func(ctx Context, i any) error {
+	return func(ctx Context, data any) error {
 		contentType := ctx.GetHeader(HeaderContentType)
-		if contentType == "" {
-			return BindURL(ctx, i)
-		}
 		fn, ok := binds[strings.SplitN(contentType, ";", 2)[0]]
 		if ok {
-			return fn(ctx, i)
+			return fn(ctx, data)
 		}
-		ctx.WriteHeader(StatusUnsupportedMediaType)
+
 		switch ctx.Method() {
 		case MethodPost:
 			ctx.SetHeader(HeaderAcceptPost, mimes)
 		case MethodPatch:
 			ctx.SetHeader(HeaderAcceptPatch, mimes)
 		}
-		return fmt.Errorf(ErrFormatBindDefaultNotSupportContentType, contentType)
+
+		err := fmt.Errorf(ErrHandlerDataBindNotSupportContentType, contentType)
+		return NewErrorWithStatus(err, StatusUnsupportedMediaType)
 	}
 }
 
-// NewBindWithHeader implements Bind to additionally encapsulate bind header.
-//
-// NewBindWithHeader 实现Bind额外封装bind header。
-func NewBindWithHeader(fn HandlerDataFunc) HandlerDataFunc {
-	return func(ctx Context, i any) error {
-		BindHeader(ctx, i)
-		return fn(ctx, i)
-	}
-}
-
-// NewBindWithURL implements Bind and also executes BindURL
-// when HeaderContentType is not empty.
-//
-// NewBindWithURL 实现Bind在HeaderContentType非空时也执行BindURL。
-func NewBindWithURL(fn HandlerDataFunc) HandlerDataFunc {
-	return func(ctx Context, i any) error {
-		if ctx.GetHeader(HeaderContentType) != "" {
-			BindURL(ctx, i)
-		}
-		return fn(ctx, i)
-	}
-}
-
-func bindMaps[T any](data map[string][]T, i any, tags []string) error {
-	for key, vals := range data {
-		for _, val := range vals {
-			SetAnyByPathWithTag(i, key, val, tags, false)
-		}
-	}
-	return nil
-}
-
-// The BindURL function uses the url parameter to parse the binding body.
-//
-// BindURL 函数使用url参数解析绑定body。
-func BindURL(ctx Context, i any) error {
-	return bindMaps(ctx.Querys(), i, DefaultHandlerBindURLTags)
-}
-
-// The BindForm function uses form to parse and bind the body.
-//
-// BindForm 函数使用form解析绑定body。
-func BindForm(ctx Context, i any) error {
-	bindMaps(ctx.FormFiles(), i, DefaultHandlerBindFormTags)
-	return bindMaps(ctx.FormValues(), i, DefaultHandlerBindFormTags)
-}
-
-// The BindJSON function uses encoding/json to parse and bind the body.
-//
-// BindJSON 函数使用encoding/json解析绑定body。
-func BindJSON(ctx Context, i any) error {
-	return json.NewDecoder(ctx).Decode(i)
-}
-
-// The BindXML function uses encoding/xml to parse the bound body.
-//
-// BindXML 函数使用encoding/xml解析绑定body。
-func BindXML(ctx Context, i any) error {
-	return xml.NewDecoder(ctx).Decode(i)
-}
-
-// The BindProtobuf function uses the built-in protobu to parse the bound body.
-//
-// BindProtobuf 函数使用内置protobu解析绑定body。
-func BindProtobuf(ctx Context, i any) error {
-	return NewProtobufDecoder(ctx).Decode(i)
-}
-
-// The BindHeader function implements binding using header data.
-//
-// The header name prefix must be 'X-', example: X-Euduore-Name => Eudore.Name.
-//
-// BindHeader 函数实现使用header数据bind。
-//
-// header名称前缀必须是'X-'，example: X-Euduore-Name => Eudore.Name。
-func BindHeader(ctx Context, i any) error {
-	for key, vals := range ctx.Request().Header {
-		if strings.HasPrefix(key, "X-") {
-			key = strings.ReplaceAll(key[2:], "-", ".")
+func bindMaps[T any](source map[string][]T, target any, tags []string) error {
+	v := reflect.Indirect(reflect.ValueOf(target))
+	switch v.Kind() {
+	case reflect.Struct, reflect.Map:
+		for key, vals := range source {
 			for _, val := range vals {
-				SetAnyByPathWithTag(i, key, val, DefaultHandlerBindHeaderTags, false)
+				err := SetAnyByPathWithTag(target, key, val, tags, false)
+				// need to be improved
+				if err != nil &&
+					!strings.Contains(err.Error(), "not found field ") {
+					return err
+				}
 			}
 		}
+		return nil
+	default:
+		// map data is unordered and cannot be bound to an array.
+		return fmt.Errorf(ErrHandlerDataBindMustSturct,
+			reflect.TypeOf(target).String(),
+		)
+	}
+}
+
+// The HandlerDataBindURL function uses the url parameter to Bind data.
+//
+// Using tag [DefaultHandlerDataBindURLTags],
+// Use the [SetAnyByPathWithTag] function to bind data.
+func HandlerDataBindURL(ctx Context, data any) error {
+	vals, err := ctx.Querys()
+	if err != nil {
+		return err
+	}
+	if len(vals) > 0 {
+		return bindMaps(vals, data, DefaultHandlerDataBindURLTags)
 	}
 	return nil
 }
 
-// The NewRenders method defines the default HeaderAccept value mapping Render function.
+// The HandlerDataBindForm function uses form data to Bind data.
 //
-// The HeaderAccept value ignores non-zero weight values, and the order takes precedence.
+// If the request body is empty, use the url parameter.
 //
-// NewRenders 方法定义默认HeaderAccept值映射Render函数。
+// Using tag [DefaultHandlerDataBindFormTags],
+// Use the [SetAnyByPathWithTag] function to bind data.
+func HandlerDataBindForm(ctx Context, data any) error {
+	vals, err := ctx.FormValues()
+	if err != nil {
+		return err
+	}
+	files := ctx.FormFiles()
+	if len(files) > 0 {
+		_ = bindMaps(files, data, DefaultHandlerDataBindFormTags)
+	}
+	if len(vals) > 0 {
+		return bindMaps(vals, data, DefaultHandlerDataBindFormTags)
+	}
+	return nil
+}
+
+// The HandlerDataBindJSON function uses [json.NewDecoder] to Bind data.
+func HandlerDataBindJSON(ctx Context, data any) error {
+	return json.NewDecoder(ctx).Decode(data)
+}
+
+// The BindXML function uses [xml.NewDecoder] to Bind data.
+func HandlerDataBindXML(ctx Context, data any) error {
+	return xml.NewDecoder(ctx).Decode(data)
+}
+
+// The HandlerDataBindProtobuf function uses the built-in [NewProtobufDecoder]
+// to Bind protobuf data.
+func HandlerDataBindProtobuf(ctx Context, data any) error {
+	return NewProtobufDecoder(ctx).Decode(data)
+}
+
+// The NewHandlerDataRenders method uses [HeaderAccept] to matching for
+// Render functions in renders.
+// [DefaultHandlerDataRenders] is used by default.
 //
-// HeaderAccept值忽略非零权重值，顺序优先。
-func NewRenders(renders map[string]HandlerDataFunc) HandlerDataFunc {
+// If Render fails and [ResponseWriter].Size=0, ignore this Render.
+func NewHandlerDataRenders(renders map[string]HandlerDataFunc) HandlerDataFunc {
 	if renders == nil {
-		renders = map[string]HandlerDataFunc{
-			MimeText:                RenderText,
-			MimeTextPlain:           RenderText,
-			MimeTextHTML:            RenderHTML,
-			MimeApplicationJSON:     RenderJSON,
-			MimeApplicationProtobuf: RenderProtobuf,
-			MimeApplicationXML:      RenderXML,
-		}
+		renders = mapClone(DefaultHandlerDataRenders)
 	}
-	render, ok := renders["*"]
+	render, ok := renders[MimeAll]
 	if !ok {
-		render = DefaultHandlerRenderFunc
+		render = DefaultHandlerDataRenderFunc
 	}
-	return func(ctx Context, i any) error {
+	return func(ctx Context, data any) error {
+		w := ctx.Response()
+		h := w.Header()
+		contentType, vary := h[HeaderContentType], h[HeaderVary]
+
 		for _, accept := range strings.Split(ctx.GetHeader(HeaderAccept), ",") {
 			name, quality, ok := strings.Cut(strings.TrimSpace(accept), ";")
 			if ok && quality == "q=0" {
@@ -187,35 +206,50 @@ func NewRenders(renders map[string]HandlerDataFunc) HandlerDataFunc {
 
 			fn, ok := renders[name]
 			if ok && fn != nil {
-				h := ctx.Response().Header()
-				v := h.Values(HeaderVary)
-				h.Set(HeaderVary, strings.Join(append(v, HeaderAccept), ", "))
-				err := fn(ctx, i)
-				if !errors.Is(err, ErrRenderHandlerSkip) {
+				h.Set(HeaderVary,
+					strings.Join(append(vary, HeaderAccept), ", "),
+				)
+				err := fn(ctx, data)
+				// Render is successful if return nil
+				// Render is irrevocable if size > 0
+				if err == nil || w.Size() > 0 {
 					return err
 				}
-				h[HeaderVary] = v
+				h[HeaderContentType], h[HeaderVary] = contentType, vary
 			}
 		}
-		return render(ctx, i)
+		return render(ctx, data)
 	}
 }
 
 func renderSetContentType(ctx Context, mime string) {
-	header := ctx.Response().Header()
-	if val := header.Get(HeaderContentType); len(val) == 0 {
-		header.Add(HeaderContentType, mime)
+	h := ctx.Response().Header()
+	if val := h.Get(HeaderContentType); len(val) == 0 {
+		h.Add(HeaderContentType, mime)
 	}
 }
 
-// The RenderJSON function uses the encoding/json library to implement json deserialization.
+// RenderText function Render Text, written using the [fmt.Fprint] function.
+func HandlerDataRenderText(ctx Context, data any) error {
+	renderSetContentType(ctx, MimeTextPlainCharsetUtf8)
+	var err error
+	switch v := data.(type) {
+	case []byte:
+		_, err = ctx.Write(v)
+	case string:
+		_, err = ctx.WriteString(v)
+	case fmt.Stringer:
+		_, err = ctx.WriteString(v.String())
+	default:
+		_, err = fmt.Fprintf(ctx, "%#v", data)
+	}
+	return err
+}
+
+// The HandlerDataRenderJSON function uses [json.NewEncoder] to Render data.
 //
-// If the request Accept is not "application/json", output in json indent format.
-//
-// RenderJSON 函数使用encoding/json库实现json反序列化。
-//
-// 如果请求Accept不为"application/json"，使用json indent格式输出。
-func RenderJSON(ctx Context, data any) error {
+// If [HeaderAccept] is not [MimeApplicationJSON], use json indent for output.
+func HandlerDataRenderJSON(ctx Context, data any) error {
 	renderSetContentType(ctx, MimeApplicationJSONCharsetUtf8)
 	switch reflect.Indirect(reflect.ValueOf(data)).Kind() {
 	case reflect.Struct, reflect.Map, reflect.Slice, reflect.Array:
@@ -229,93 +263,153 @@ func RenderJSON(ctx Context, data any) error {
 	return encoder.Encode(data)
 }
 
-// RenderXML function Render Xml,
-// using the encoding/xml library to realize xml deserialization.
-//
-// RenderXML 函数Render Xml，使用encoding/xml库实现xml反序列化。
-func RenderXML(ctx Context, data any) error {
-	renderSetContentType(ctx, MimeApplicationXMLCharsetUtf8)
-	return xml.NewEncoder(ctx).Encode(data)
-}
-
-// RenderText function Render Text, written using the fmt.Fprint function.
-//
-// RenderText 函数Render Text，使用fmt.Fprint函数写入。
-func RenderText(ctx Context, data any) error {
-	renderSetContentType(ctx, MimeTextPlainCharsetUtf8)
-	if s, ok := data.(string); ok {
-		ctx.WriteString(s)
-		return nil
-	}
-	if s, ok := data.(fmt.Stringer); ok {
-		ctx.WriteString(s.String())
-		return nil
-	}
-	_, err := fmt.Fprintf(ctx, "%#v", data)
-	return err
-}
-
-// RenderProtobuf function Render Protobuf,
-// using the built-in protobuf encoding, invalid properties will be ignored.
-//
-// RenderProtobuf 函数Render Protobuf，使用内置protobuf编码，无效属性将忽略。
-func RenderProtobuf(ctx Context, i any) error {
+// The HandlerDataRenderProtobuf function uses the built-in [NewProtobufEncoder]
+// to Render protobuf data.
+// Invalid properties will be ignored.
+func HandlerDataRenderProtobuf(ctx Context, data any) error {
 	renderSetContentType(ctx, MimeApplicationProtobuf)
-	return NewProtobufEncoder(ctx).Encode(i)
+	return NewProtobufEncoder(ctx).Encode(data)
 }
 
-// The RenderHTML function creates a template Renderer using a template.
+// The HandlerDataRenderHTML function creates Render using [template.Template].
 //
-// Load *template.Template from ctx.Value(eudore.ContextKeyTemplate),
-// Load the template function from ctx.GetParam("template").
+// patterns will load templates from both [template.ParseFS] and
+// [template.ParseFiles].
 //
-// RenderHTML 函数使用模板创建一个模板Renderer。
+// If [fs.FS] is not empty, the [embed] template will be loaded.
 //
-// 从ctx.Value(eudore.ContextKeyTemplate)加载*template.Template，
-// 从ctx.GetParam("template")加载模板函数。
-func RenderHTML(ctx Context, data any) error {
-	tpl, ok := ctx.Value(ContextKeyTemplate).(*template.Template)
-	if !ok {
-		return ErrRenderHandlerSkip
+// If patterns loads the template from the [os]; each request is reloaded,
+// you can use [DefaultHandlerDataTemplateReload] to
+// turn off the template automatic reload feature.
+//
+// When returning an HTML response,
+// append [DefaultHandlerDataRenderTemplateHeaders].
+//
+// If go run is started, workdir may be in a temp directory and the file cannot
+// be read.
+func NewHandlerDataRenderTemplates(temp *template.Template,
+	fs fs.FS, patterns ...string,
+) HandlerDataFunc {
+	if temp == nil {
+		temp = template.New("")
 	}
+	t, reload, err := parseTemplates(temp, fs, patterns)
+	if err != nil {
+		return func(ctx Context, _ any) error {
+			return renderTemplatesError(ctx, err)
+		}
+	}
+	h := templateHeaders()
+	if reload && DefaultHandlerDataTemplateReload {
+		return func(ctx Context, data any) error {
+			t, _, err := parseTemplates(temp, nil, patterns)
+			if err != nil {
+				return renderTemplatesError(ctx, err)
+			}
 
-	name := ctx.GetParam("template")
-	if name == "" {
-		// 默认模板
-		name = DefaultTemplateNameRenderData
-		b := bytes.NewBuffer([]byte{})
-		en := json.NewEncoder(b)
-		en.SetEscapeHTML(false)
-		en.SetIndent("", "\t")
-		err := en.Encode(data)
+			return renderTemplatesData(ctx, data, t, h)
+		}
+	}
+	return func(ctx Context, data any) error {
+		return renderTemplatesData(ctx, data, t, h)
+	}
+}
+
+func templateHeaders() http.Header {
+	h := make(http.Header)
+	h[HeaderContentType] = []string{MimeTextHTMLCharsetUtf8}
+	for k, v := range DefaultHandlerDataRenderTemplateHeaders {
+		h.Set(k, v)
+	}
+	return h
+}
+
+func parseTemplates(temp *template.Template, fs fs.FS, patterns []string,
+) (*template.Template, bool, error) {
+	temp, err := temp.Clone()
+	if err != nil {
+		return nil, false, err
+	}
+	size0 := len(temp.Templates())
+	if fs != nil && len(patterns) > 0 {
+		_, err := temp.ParseFS(fs, patterns...)
 		if err != nil {
-			b.WriteString(err.Error())
-		}
-		data = map[string]any{
-			"Method": ctx.Method(),
-			"Host":   ctx.Host(),
-			"Path":   ctx.Request().RequestURI,
-			"Query":  ctx.Querys(),
-			"Status": fmt.Sprintf("%d %s",
-				ctx.Response().Status(),
-				http.StatusText(ctx.Response().Status()),
-			),
-			"RemoteAddr":     ctx.Host(),
-			"LocalAddr":      ctx.RealIP(),
-			"Params":         ctx.Params(),
-			"RequestHeader":  ctx.Request().Header,
-			"ResponseHeader": ctx.Response().Header(),
-			"Data":           b.String(),
-			"GodocServer":    DefaultGodocServer,
-			"TraceServer":    DefaultTraceServer,
+			return nil, false, err
 		}
 	}
 
-	tpl = tpl.Lookup(name)
-	if tpl == nil {
-		return ErrRenderHandlerSkip
+	size1 := len(temp.Templates())
+	for i := range patterns {
+		names, err := filepath.Glob(patterns[i])
+		if err != nil {
+			return nil, false, err
+		}
+		if len(names) > 0 {
+			_, err = temp.ParseFiles(names...)
+			if err != nil {
+				return nil, false, err
+			}
+		}
+	}
+	size2 := len(temp.Templates())
+
+	if patterns != nil && size0 == size2 {
+		dir, _ := os.Getwd()
+		return nil, false, fmt.Errorf(ErrHandlerDataRenderTemplateNotLoad,
+			dir, patterns,
+		)
 	}
 
-	renderSetContentType(ctx, MimeTextHTMLCharsetUtf8)
-	return tpl.Execute(ctx, data)
+	// append default template
+	for _, t := range DefaultHandlerDataRenderTemplateAppend.Templates() {
+		if temp.Lookup(t.Name()) == nil {
+			_, _ = temp.AddParseTree(t.Name(), t.Tree)
+		}
+	}
+	return temp, size1 != size2, nil
+}
+
+func renderTemplatesError(ctx Context, err error) error {
+	ctx.Error(err)
+	renderSetContentType(ctx, MimeTextPlainCharsetUtf8)
+	ctx.WriteHeader(StatusInternalServerError)
+	_, _ = ctx.WriteString(err.Error())
+	return nil
+}
+
+func renderTemplatesData(ctx Context, data any,
+	temp *template.Template, hr http.Header,
+) error {
+	name := ctx.GetParam(ParamTemplate)
+	if name == "" {
+		var err error
+		switch v := data.(type) {
+		case []byte:
+			renderSetContentType(ctx, MimeTextPlainCharsetUtf8)
+			_, err = ctx.Write(v)
+		case string:
+			renderSetContentType(ctx, MimeTextPlainCharsetUtf8)
+			_, err = ctx.WriteString(v)
+		case fmt.Stringer:
+			renderSetContentType(ctx, MimeTextPlainCharsetUtf8)
+			_, err = ctx.WriteString(v.String())
+		default:
+			return ErrHandlerDataRenderTemplateNeedName
+		}
+		return err
+	}
+
+	t := temp.Lookup(name)
+	if t == nil {
+		return fmt.Errorf(ErrHandlerDataRenderTemplateNotFound, name)
+	}
+
+	hw := ctx.Response().Header()
+	for k, v := range hr {
+		if hw.Values(k) == nil {
+			hw[k] = v
+		}
+	}
+	_ = t.Execute(ctx, data)
+	return nil
 }

@@ -1,18 +1,19 @@
 package eudore_test
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"testing"
 
-	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/middleware"
+	. "github.com/eudore/eudore"
 )
 
 type Test014Controller struct {
-	eudore.ControllerAutoRoute
+	ControllerAutoRoute
 }
 
-func (ctl *Test014Controller) Get(ctx eudore.Context) interface{} {
+func (ctl *Test014Controller) Get(ctx Context) interface{} {
 	return "Test014Controller"
 }
 
@@ -20,19 +21,25 @@ func TestRouterStdAdd(t *testing.T) {
 	type String struct {
 		Data string
 	}
+	ctx := context.WithValue(context.Background(),
+		ContextKeyHandlerExtender, DefaultHandlerExtender,
+	)
+	ctx = context.WithValue(ctx,
+		ContextKeyLogger, DefaultLoggerNull,
+	)
 
-	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyHandlerExtender, eudore.NewHandlerExtender())
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(nil))
-	app.AddHandlerExtend(func(str String) eudore.HandlerFunc {
-		return func(ctx eudore.Context) {
+	r := NewRouter(nil)
+	r.(interface{ Mount(context.Context) }).Mount(ctx)
+	r.AddHandlerExtend(func(str String) HandlerFunc {
+		return func(ctx Context) {
 			ctx.WriteString(str.Data)
 		}
 	})
-	app.AddMiddleware(middleware.NewRecoverFunc())
-	app.Group(" loggerkind=middleware").AddController(&Test014Controller{})
+	r.Group(" loggerkind=all")
+	r.Group(" loggerkind=~all")
+	r.Group(" loggerkind=middleware").AddController(&Test014Controller{})
 
-	api := app.Group("/method")
+	api := r.Group("/api")
 	api.AddHandler("TEST", "/*", String{"test"})
 	api.AddHandler("LOCK", "/*", String{"lock"})
 	api.AddHandler("UNLOCK", "/*", String{"unlock"})
@@ -44,114 +51,100 @@ func TestRouterStdAdd(t *testing.T) {
 	api.DeleteFunc("/", String{"delete"})
 	api.HeadFunc("/", String{"head"})
 	api.PatchFunc("/", String{"patch"})
+	api.AnyFunc("/allow", String{"405"})
 
-	app.CancelFunc()
-	app.Run()
+	r.Match(MethodOptions, "/api/allow", &Params{"route", ""})
 }
 
 func TestRouterError(t *testing.T) {
-	app := eudore.NewApp()
-	app.AddHandlerExtend("/api", TestRouterError)
-	app.AddController(&Test015Controller{})
-	app.AddController(eudore.NewControllerError(&Test015Controller{}, fmt.Errorf("test controller error")))
-	app.GetFunc("{/*}", eudore.HandlerEmpty)
-	app.GetFunc("/*path|check", eudore.HandlerEmpty)
-	app.GetFunc("/err", func(*testing.T) {})
-
-	app.CancelFunc()
-	app.Run()
+	var h HandlerFunc
+	r := NewRouter(nil)
+	r.Group(" loggerkind=~handler|metadata").GetFunc("/", HandlerEmpty)
+	r.AddHandlerExtend("/api", TestRouterError)
+	r.AddController(&Test015Controller{})
+	r.AddController(NewControllerError(&Test015Controller{}, fmt.Errorf("test controller error")))
+	r.Group("/api").AddController(NewControllerError(&Test015Controller{}, fmt.Errorf("test controller error")))
+	r.GetFunc("{/*}", HandlerEmpty)
+	r.GetFunc("/*path|check", HandlerEmpty)
+	r.GetFunc("/err", func(*testing.T) {})
+	r.GetFunc("/nil", h)
 }
 
 type Test015Controller struct {
-	eudore.ControllerAutoRoute
+	ControllerAutoRoute
 }
 
 func (Test015Controller) String() string {
 	return "015"
 }
 
-func TestRouterStd404_405(t *testing.T) {
-	app := eudore.NewApp()
-	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
-	app.AddHandler("404", "", eudore.HandlerRouter404)
-	app.AddHandler("405", "", eudore.HandlerRouter405)
-	app.GetFunc("/index", eudore.HandlerEmpty)
+func TestRouterMiddleware(t *testing.T) {
+	r := NewRouter(nil)
+	r.AddMiddleware()
+	r.AddMiddleware("/api", func(int) {})
+	r.AddMiddleware(func(int) {})
+	r.AddHandlerExtend()
+	r.AddMiddleware("/api/v2", HandlerEmpty)
+	r.AddMiddleware("/api/v1", HandlerEmpty)
+	r.AddMiddleware("/api", HandlerEmpty)
+	r.AnyFunc("/api/v1", HandlerEmpty)
 
-	app.NewRequest(nil, "GET", "/", eudore.NewClientCheckStatus(404))
-	app.NewRequest(nil, "PUT", "/", eudore.NewClientCheckStatus(404))
-	app.NewRequest(nil, "GET", "/index", eudore.NewClientCheckStatus(200))
-	app.NewRequest(nil, "PUT", "/index", eudore.NewClientCheckStatus(405))
-
-	app.CancelFunc()
-	app.Run()
-}
-
-func TestRouterMiddleware2(t *testing.T) {
-	app := eudore.NewApp()
-	app.AddMiddleware()
-	app.AddMiddleware("/api", func(int) {})
-	app.AddMiddleware(func(int) {})
-	app.AddHandlerExtend()
-
-	app.AddMiddleware(middleware.NewRecoverFunc(), middleware.NewLoggerFunc(app))
-	app.AddMiddleware("/api/v2", eudore.HandlerEmpty)
-	app.AddMiddleware("/api/v1", eudore.HandlerEmpty)
-	app.AddMiddleware("/api", eudore.HandlerEmpty)
-	app.AnyFunc("/api/v1", eudore.HandlerEmpty)
-
-	apiv1 := app.Group("/api/v1")
+	apiv1 := r.Group("/api/v1")
 	apiv1.AddMiddleware(func(int) {})
-	apiv1.AnyFunc("/users", eudore.HandlerEmpty)
-
-	app.CancelFunc()
-	app.Run()
-}
-
-func TestRouterCoreLock(t *testing.T) {
-	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(eudore.NewRouterCoreLock(nil)))
-	app.Info(app.Router.(interface{ Metadata() interface{} }).Metadata())
-	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
-	app.GetFunc("/", eudore.HandlerEmpty)
-
-	app.NewRequest(nil, "GET", "/", eudore.NewClientCheckStatus(200))
-	app.CancelFunc()
-	app.Run()
+	apiv1.AnyFunc("/users", HandlerEmpty)
 }
 
 func TestRouterCoreHost(t *testing.T) {
-	echoHandleHost := func(ctx eudore.Context) {
-		ctx.WriteString(ctx.GetParam("host"))
+	echoHandleHost := func(ctx Context) {
+		ctx.WriteString(ctx.GetParam("route-host"))
 	}
+	s := NewServer(nil)
+	c := NewClient()
+	r := NewRouter(NewRouterCoreHost(nil))
+	get := NewContextBaseFunc(context.Background())
 
-	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyRouter, eudore.NewRouter(eudore.NewRouterCoreHost(nil)))
-	app.AddMiddleware(middleware.NewLoggerFunc(app, "route"))
-	app.AnyFunc("/* host=eudore.com", echoHandleHost)
-	app.AnyFunc("/* host=eudore.com:8088", echoHandleHost)
-	app.AnyFunc("/* host=eudore.cn", echoHandleHost)
-	app.AnyFunc("/* host=eudore.*", echoHandleHost)
-	app.AnyFunc("/* host=example.com", echoHandleHost)
-	app.AnyFunc("/* host=www.*.cn", echoHandleHost)
-	app.AnyFunc("/api/* host=*", echoHandleHost)
-	app.AnyFunc("/api/* host=eudore.com,eudore.cn", echoHandleHost)
-	app.AnyFunc("/*", echoHandleHost)
+	s.SetHandler(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		ctx := get()
+		ctx.Reset(w, req)
+		ctx.SetHandlers(-1, r.Match(ctx.Method(), ctx.Path(), ctx.Params()))
+		ctx.Next()
+	}))
 
-	host := func(h string) any {
-		return eudore.NewClientOptionHost(h)
+	r.AnyFunc("/* route-host=*.eudore.cn", echoHandleHost)
+	r.AnyFunc("/* route-host=www.example.*", echoHandleHost)
+	r.AnyFunc("/* route-host=eudore.cn", echoHandleHost)
+	r.AnyFunc("/* route-host=eudore.*", echoHandleHost)
+	r.AnyFunc("/* route-host=eudore.*:8080", echoHandleHost)
+	r.AddHandler("404", "", HandlerRouter404)
+	r.(interface{ Metadata() interface{} }).Metadata()
+
+	routes := []struct {
+		path   string
+		host   string
+		status int
+		body   string
+	}{
+		{"/", "www.eudore.net", 404, "404"},
+		{"/", "eudore.cn", 200, "eudore.cn"},
+		{"/", "eudore.cn2", 200, "eudore.*"},
+		{"/", "eudore.com", 200, "eudore.*"},
+		{"/", "eudore.com:80", 200, "eudore.*"},
+		{"/", "godoc.eudore.cn", 200, "*.eudore.cn"},
+		{"/", "www.example.cn", 200, "www.example.*"},
 	}
-	app.NewRequest(nil, "GET", "/", eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody(""))
-	app.NewRequest(nil, "GET", "/", host("eudore.cn"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.cn"))
-	app.NewRequest(nil, "GET", "/", host("eudore.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com"))
-	app.NewRequest(nil, "GET", "/", host("eudore.com:8088"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com"))
-	app.NewRequest(nil, "GET", "/", host("eudore.com:8089"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com"))
-	app.NewRequest(nil, "GET", "/", host("eudore.net"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.*"))
-	app.NewRequest(nil, "GET", "/", host("www.eudore.cn"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("www.*.cn"))
-	app.NewRequest(nil, "GET", "/", host("example.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("example.com"))
-	app.NewRequest(nil, "GET", "/", host("www.example"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody(""))
-	app.NewRequest(nil, "GET", "/api/v1", host("example.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("*"))
-	app.NewRequest(nil, "GET", "/api/v1", host("eudore.com"), eudore.NewClientCheckStatus(200), eudore.NewClientCheckBody("eudore.com,eudore.cn"))
-
-	app.CancelFunc()
-	app.Run()
+	ctx := context.WithValue(context.Background(),
+		ContextKeyServer, s,
+	)
+	for _, route := range routes {
+		err := c.NewRequest("GET", route.path, ctx,
+			NewClientOptionHost(route.host),
+			NewClientCheckStatus(route.status),
+			NewClientCheckBody(route.body),
+		)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+	r.(interface{ Mount(context.Context) }).Mount(context.Background())
+	r.(interface{ Unmount(context.Context) }).Unmount(context.Background())
 }

@@ -1,158 +1,128 @@
 package eudore_test
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"net"
 	"net/http"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/eudore/eudore"
-	"github.com/eudore/eudore/middleware"
+	. "github.com/eudore/eudore"
 )
 
 func TestServerStd(t *testing.T) {
-	app := eudore.NewApp()
-	app.AddMiddleware(middleware.NewLoggerFunc(app))
-
-	app.GetFunc("/index", eudore.HandlerEmpty)
-	app.GetFunc("/wrote", func(ctx eudore.Context) {
-		ctx.WriteString("hello")
-		ctx.WriteHeader(400)
+	NewServer(nil)
+	ln, _ := DefaultServerListen("tcp", ":8088")
+	ctx := context.WithValue(context.Background(),
+		ContextKeyHTTPHandler, http.NotFoundHandler(),
+	)
+	ctx = context.WithValue(ctx,
+		ContextKeyLogger, DefaultLoggerNull,
+	)
+	srv := NewServer(&ServerConfig{
+		ReadTimeout:       -1,
+		ReadHeaderTimeout: -1,
+		WriteTimeout:      -1,
+		IdleTimeout:       -1,
 	})
-	app.GetFunc("/panic", func(ctx eudore.Context) {
-		panic(400)
-	})
-	app.GetFunc("/meta/*", eudore.HandlerMetadata)
-	app.GetFunc("/err", func(ctx eudore.Context) {
-		var app eudore.App
-		app.CancelFunc()
-	})
-	app.Listen(":8088")
+	srv.(interface{ Mount(context.Context) }).Mount(ctx)
+	srv.SetHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/panic":
+			panic(400)
+		case "/wrote":
+			w.WriteHeader(200)
+			w.WriteHeader(200)
+		}
+	}))
+	go srv.Serve(ln)
+	time.Sleep(time.Millisecond * 20)
 
-	app.NewRequest(nil, "GET", "/index")
-	app.NewRequest(nil, "GET", "/wrote")
-	app.NewRequest(nil, "GET", "/panic")
-	app.NewRequest(nil, "GET", "/err")
-	app.NewRequest(nil, "GET", "/meta/server")
+	ctx = context.WithValue(context.Background(), ContextKeyServer, srv)
+	clt := NewClient(ctx)
+	clt.NewRequest("GET", "/index")
+	clt.NewRequest("GET", "/wrote")
+	clt.NewRequest("GET", "/panic")
+	clt.NewRequest("GET", "/err")
+	clt.NewRequest("GET", "/meta/server")
 
-	app.CancelFunc()
-	app.Run()
+	srv.(interface{ Unmount(context.Context) }).Unmount(context.Background())
+	srv.(interface{ Metadata() any }).Metadata()
 }
 
 func TestServerCgi(t *testing.T) {
-	app := eudore.NewApp()
-	app.SetValue(eudore.ContextKeyServer, eudore.NewServerFcgi())
+	ln, _ := DefaultServerListen("tcp", ":8088")
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	ctx := context.WithValue(context.Background(),
+		ContextKeyHTTPHandler, http.NotFoundHandler(),
+	)
 
-	app.Listen(":8088")
+	srv := NewServerFcgi()
+	srv.(interface{ Mount(context.Context) }).Mount(ctx)
+	srv.SetHandler(h)
+	go srv.Serve(ln)
 	time.Sleep(time.Millisecond * 20)
-	app.CancelFunc()
-	app.Run()
+	srv.(interface{ Mount(context.Context) }).Mount(context.Background())
+	srv.(interface{ Unmount(context.Context) }).Unmount(context.Background())
 }
 
 func TestServerListen(t *testing.T) {
-	app := eudore.NewApp()
-
-	// 方式1: net.Listen获得net.Listener然后启动server。
-	ln, err := net.Listen("tcp", ":8086")
-	if err == nil {
-		app.Infof("listen %s %s", ln.Addr().Network(), ln.Addr().String())
-		app.Serve(ln)
-	} else {
-		app.Error(err)
-	}
-
-	// 方式2: 使用eudore.ServerListenConfig配置启动监听，该方法支持eudore热重启，会进行fd的传递，需要指定启动函数startNewProcess。
-	ln, err = (&eudore.ServerListenConfig{
-		Addr:     ":8087",
-		HTTPS:    true,
-		HTTP2:    true,
-		Keyfile:  "",
-		Certfile: "",
-	}).Listen()
-	if err == nil {
-		app.Infof("listen %s %s", ln.Addr().Network(), ln.Addr().String())
-		app.Serve(ln)
-	} else {
-		app.Error(err)
-	}
-
-	(&eudore.ServerListenConfig{HTTPS: true}).Listen()
-	(&eudore.ServerListenConfig{HTTPS: false}).Listen()
-
-	app.CancelFunc()
-	app.Run()
-}
-
-func TestServerMutualTLS(t *testing.T) {
 	createssl()
 	defer os.Remove("ca.cer")
 	defer os.Remove("server.key")
 	defer os.Remove("server.cer")
 	defer os.Remove("client.key")
 	defer os.Remove("client.cer")
-	app := eudore.NewApp()
-	app.AnyFunc("/*", func(ctx eudore.Context) {
-		// ctx.Debug("istls:", ctx.Istls())
-	})
 
-	ln, err := (&eudore.ServerListenConfig{
-		Addr:     ":8088",
-		HTTPS:    true,
-		HTTP2:    true,
-		Mutual:   true,
-		Keyfile:  "server.key",
-		Certfile: "server.cer",
-	}).Listen()
-	if err == nil {
-		app.Serve(ln)
-	} else {
-		app.Error(err)
+	confs := []*ServerListenConfig{
+		{},
+		{
+			HTTPS: true,
+		},
+		{
+			Addr: ":8089",
+		},
+		{
+			Addr:  ":8089",
+			HTTPS: true,
+			HTTP2: true,
+		},
+		{
+			Addr:      ":8088",
+			HTTPS:     true,
+			HTTP2:     true,
+			Mutual:    true,
+			Keyfile:   "server.key",
+			Certfile:  "server.cer",
+			Trustfile: "ca.cer",
+		},
+		{
+			Addr:     ":8088",
+			HTTPS:    true,
+			HTTP2:    true,
+			Mutual:   true,
+			Keyfile:  "server.key",
+			Certfile: "server.cer",
+		},
+		{
+			Addr:      ":8088",
+			HTTPS:     true,
+			HTTP2:     true,
+			Mutual:    true,
+			Keyfile:   "not found.key",
+			Certfile:  "server.cer",
+			Trustfile: "ca.cer",
+		},
 	}
-
-	ln, err = (&eudore.ServerListenConfig{
-		Addr:      ":8088",
-		HTTPS:     true,
-		HTTP2:     true,
-		Mutual:    true,
-		Keyfile:   "server.key",
-		Certfile:  "server.cer",
-		Trustfile: "ca.cer",
-	}).Listen()
-	if err == nil {
-		app.Serve(ln)
-	} else {
-		app.Error(err)
-	}
-
-	ln, err = (&eudore.ServerListenConfig{
-		Addr:      ":8088",
-		HTTPS:     true,
-		HTTP2:     true,
-		Mutual:    true,
-		Keyfile:   "not found.key",
-		Certfile:  "server.cer",
-		Trustfile: "ca.cer",
-	}).Listen()
-	if err == nil {
-		app.Serve(ln)
-	} else {
-		app.Error(err)
-	}
-
-	/*	client := httptest.NewClient(app)
-		tp, err := createtp()
-		if err == nil {
-			client.Client.Transport = tp
-		} else {
-			app.Options(err)
+	for i, c := range confs {
+		ln, err := c.Listen()
+		if err == nil && c.Addr != ":8089" {
+			ln.Close()
 		}
-		client.NewRequest("GET", "https://localhost:8088/").Do().CheckStatus(200).Out()
-	*/
-	app.CancelFunc()
-	app.Run()
+		t.Log(i, err)
+	}
 }
 
 func createtp() (*http.Transport, error) {

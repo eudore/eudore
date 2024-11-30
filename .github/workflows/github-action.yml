@@ -15,7 +15,7 @@ jobs:
       - uses: golangci/golangci-lint-action@v3
         continue-on-error: true
         with:
-          args: --verbose -c .github/workflows/golang-lint.json
+          args: --verbose --config .github/workflows/golang-lint.json
   test:
     strategy:
       max-parallel: 16
@@ -34,9 +34,10 @@ jobs:
     env:
       GO111MODULE: off
       GOPATH: ${{ matrix.gopath }}:${{ github.workspace }}
+      GOARCH: amd64
       CGO_ENABLED: 1
       WORKDIR: src/github.com/eudore/eudore/
-      PACKAGES: github.com/eudore/eudore,github.com/eudore/eudore/middleware,github.com/eudore/eudore/policy
+      PACKAGES: github.com/eudore/eudore,github.com/eudore/eudore/middleware
     defaults:
       run:
         working-directory: ${{ env.WORKDIR }}
@@ -56,18 +57,23 @@ jobs:
             ${{ matrix.gocache }}
       - name: Run Go Get 
         run: for pkg in $(go list -json _example/*_test.go | jq -r '.XTestImports[]' | grep -E "github.com|golang.org|monkey" | grep -v eudore); do go get -v $pkg; done
+      - name: Run Bench
+        run: go test -run=^$ -bench=. -cpu=1 _example/*_test.go
       - name: Run Tests
-        run: go test -v -timeout=1m -race -cover -coverprofile=coverage.out -coverpkg='${{ env.PACKAGES }}' _example/*_test.go | tee output
+        run: go test -v -timeout=1m -race -cover -coverprofile=coverage.out -coverpkg='${{ env.PACKAGES }}' _example/*_test.go
       - name: Run Notice
-        run: go run _example/otherAction.go
+        run: go run _example/otherCover.go
       - name: Run Coverage
+        if: matrix.go == '1.20'
         run: go tool cover -html coverage.out -o coverage.html
       - uses: codecov/codecov-action@v3
+        if: matrix.go == '1.20'
         with:
           working-directory: ${{ env.WORKDIR }}
           files: coverage.out
           flags: ${{ matrix.os }},go-${{ matrix.go }}
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
+        if: matrix.go == '1.20'
         with:
           name: Coverage-eudore-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.go }}
           path: ${{ env.WORKDIR }}/coverage.html

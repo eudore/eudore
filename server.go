@@ -20,150 +20,207 @@ import (
 	"time"
 )
 
-// Server 定义启动http服务的对象。
+// Server defines the object that starts the http service.
 type Server interface {
-	SetHandler(http.Handler)
-	Serve(net.Listener) error
-	Shutdown(context.Context) error
+	SetHandler(h http.Handler)
+	Serve(ln net.Listener) error
+	Shutdown(ctx context.Context) error
 }
 
-// ServerConfig 定义serverStd使用的配置。
+// ServerConfig defines the configuration used by [NewServer].
 type ServerConfig struct {
 	// set default ServerHandler
-	Handler http.Handler `alias:"handler" json:"-" xml:"-" yaml:"-"`
+	Handler http.Handler `alias:"handler" json:"-" yaml:"-"`
 
-	// ReadTimeout is the maximum duration for reading the entire request, including the body.
+	// ReadTimeout is the maximum duration for reading the entire
+	// request, including the body. A zero or negative value means
+	// there will be no timeout.
 	//
-	// Because ReadTimeout does not let Handlers make per-request decisions on each request body's acceptable deadline or upload rate,
-	// most users will prefer to use ReadHeaderTimeout. It is valid to use them both.
-	ReadTimeout TimeDuration `alias:"readtimeout" json:"readtimeout" xml:"readtimeout" yaml:"readtimeout" description:"Http server read timeout."`
+	// Because ReadTimeout does not let Handlers make per-request
+	// decisions on each request body's acceptable deadline or
+	// upload rate, most users will prefer to use
+	// ReadHeaderTimeout. It is valid to use them both.
+	ReadTimeout TimeDuration `alias:"readTimeout" json:"readTimeout" yaml:"readTimeout"`
 
-	// ReadHeaderTimeout is the amount of time allowed to read request headers.
-	// The connection's read deadline is reset after reading the headers and the Handler can decide what is considered too slow for the body.
-	ReadHeaderTimeout TimeDuration `alias:"readheadertimeout" json:"readheadertimeout" xml:"readheadertimeout" yaml:"readheadertimeout" description:"Http server read header timeout."`
-	// WriteTimeout is the maximum duration before timing out writes of the response.
-	// It is reset whenever a new request's header is read.
-	// Like ReadTimeout, it does not let Handlers make decisions on a per-request basis.
-	WriteTimeout TimeDuration `alias:"writetimeout" json:"writetimeout" xml:"writetimeout" yaml:"writetimeout" description:"Http server write timeout."`
+	// WriteTimeout is the maximum duration before timing out
+	// writes of the response. It is reset whenever a new
+	// request's header is read. Like ReadTimeout, it does not
+	// let Handlers make decisions on a per-request basis.
+	// A zero or negative value means there will be no timeout.
+	WriteTimeout TimeDuration `alias:"writeTimeout" json:"writeTimeout" yaml:"writeTimeout"`
 
-	// IdleTimeout is the maximum amount of time to wait for the next request when keep-alives are enabled.
-	// If IdleTimeout is zero, the value of ReadTimeout is used. If both are zero, ReadHeaderTimeout is used.
-	IdleTimeout TimeDuration `alias:"idletimeout" json:"idletimeout" xml:"idletimeout" yaml:"idletimeout" description:"Http server idle timeout."`
+	// ReadHeaderTimeout is the amount of time allowed to read
+	// request headers. The connection's read deadline is reset
+	// after reading the headers and the Handler can decide what
+	// is considered too slow for the body. If zero, the value of
+	// ReadTimeout is used. If negative, or if zero and ReadTimeout
+	// is zero or negative, there is no timeout.
+	ReadHeaderTimeout TimeDuration `alias:"readHeaderTimeout" json:"readHeaderTimeout" yaml:"readHeaderTimeout"`
 
-	// MaxHeaderBytes controls the maximum number of bytes the server will read parsing the request header's keys and values, including the request line.
-	// It does not limit the size of the request body. If zero, DefaultMaxHeaderBytes is used.
-	MaxHeaderBytes int `alias:"maxheaderbytes" json:"maxheaderbytes" xml:"maxheaderbytes" yaml:"maxheaderbytes" description:"Http server max header size."`
+	// IdleTimeout is the maximum amount of time to wait for the
+	// next request when keep-alives are enabled. If zero, the value
+	// of ReadTimeout is used. If negative, or if zero and ReadTimeout
+	// is zero or negative, there is no timeout.
+	IdleTimeout TimeDuration `alias:"idleTimeout" json:"idleTimeout" yaml:"idleTimeout"`
+
+	// MaxHeaderBytes controls the maximum number of bytes the
+	// server will read parsing the request header's keys and
+	// values, including the request line. It does not limit the
+	// size of the request body.
+	// If zero, DefaultMaxHeaderBytes is used.
+	MaxHeaderBytes int `alias:"maxHeaderBytes" json:"maxHeaderBytes" yaml:"maxHeaderBytes"`
 
 	// ErrorLog specifies an optional logger for errors accepting
 	// connections, unexpected behavior from handlers, and
 	// underlying FileSystem errors.
 	// If nil, logging is done via the log package's standard logger.
-	ErrorLog *log.Logger `alias:"errorlog" json:"-" xml:"-" yaml:"-"`
+	ErrorLog *log.Logger `alias:"errorLog" json:"-" yaml:"-"`
 
-	// BaseContext optionally specifies a function that returns the base context for incoming requests on this server.
-	// The provided Listener is the specific Listener that's about to start accepting requests.
-	// If BaseContext is nil, the default is context.Background(). If non-nil, it must return a non-nil context.
-	BaseContext func(net.Listener) context.Context `alias:"basecontext" json:"-" xml:"-" yaml:"-"`
+	// BaseContext optionally specifies a function that returns
+	// the base context for incoming requests on this server.
+	// The provided Listener is the specific Listener that's
+	// about to start accepting requests.
+	// If BaseContext is nil, the default is context.Background().
+	// If non-nil, it must return a non-nil context.
+	BaseContext func(net.Listener) context.Context `alias:"baseContext" json:"-" yaml:"-"`
 
-	// ConnContext optionally specifies a function that modifies the context used for a new connection c.
-	// The provided ctx is derived from the base context and has a ServerContextKey value.
-	ConnContext func(context.Context, net.Conn) context.Context `alias:"conncontext" json:"-" xml:"-" yaml:"-"`
+	// ConnContext optionally specifies a function that modifies
+	// the context used for a new connection c. The provided ctx
+	// is derived from the base context and has a ServerContextKey
+	// value.
+	ConnContext func(context.Context, net.Conn) context.Context `alias:"connContext" json:"-" yaml:"-"`
 }
 
-// serverStd 定义使用net/http启动http server。
+// serverStd defines using [http.Server] to start the http server.
 type serverStd struct {
-	*http.Server
-	Mutex         sync.Mutex
-	Logger        Logger
-	localListener localListener
-	Ports         []string
-	Counter       int64
+	*http.Server `alias:"server"`
+	Mutex        sync.Mutex       `alias:"mutex"`
+	listener     internalListener `alias:"listener"`
+	Ports        []string         `alias:"ports"`
+	Counter      int64            `alias:"counter"`
 }
 
 type MetadataServer struct {
-	Health     bool     `alias:"health" json:"health" xml:"health" yaml:"health"`
-	Name       string   `alias:"name" json:"name" xml:"name" yaml:"name"`
-	Ports      []string `alias:"ports" json:"ports" xml:"ports" yaml:"ports"`
-	ErrorCount int64    `alias:"errorcount" json:"errorcount" xml:"errorcount" yaml:"errorcount"`
+	Health     bool     `json:"health" protobuf:"1,name=health" yaml:"health"`
+	Name       string   `json:"name" protobuf:"2,name=name" yaml:"name"`
+	Ports      []string `json:"ports" protobuf:"3,name=ports" yaml:"ports"`
+	ErrorCount int64    `json:"errorCount" protobuf:"4,name=errorCount" yaml:"errorCount"`
 }
 
-// serverFcgi 定义fastcgi server。
+// serverStd defines using [fcgi.Serve] to start the http server.
 type serverFcgi struct {
 	http.Handler
 	sync.Mutex
 	listeners []net.Listener
 }
 
-// ServerListenConfig 定义一个通用的端口监听配置,监听https仅支持单证书。
+// ServerListenConfig defines a common port listening configuration.
 type ServerListenConfig struct {
-	Addr        string            `alias:"addr" json:"addr" xml:"addr" yaml:"addr" description:"Listen addr."`
-	HTTPS       bool              `alias:"https" json:"https" xml:"https" yaml:"https" description:"Is https."`
-	HTTP2       bool              `alias:"http2" json:"http2" xml:"http2" yaml:"http2" description:"Is http2."`
-	Mutual      bool              `alias:"mutual" json:"mutual" xml:"mutual" yaml:"mutual" description:"Is mutual tls."`
-	Certfile    string            `alias:"certfile" json:"certfile" xml:"certfile" yaml:"certfile" description:"Http server cert file."`
-	Keyfile     string            `alias:"keyfile" json:"keyfile" xml:"keyfile" yaml:"keyfile" description:"Http server key file."`
-	Trustfile   string            `alias:"trustfile" json:"trustfile" xml:"trustfile" yaml:"trustfile" description:"Http client ca file."`
-	Certificate *x509.Certificate `alias:"certificate" json:"certificate" xml:"certificate" yaml:"certificate" description:"https use tls certificate."`
+	Addr        string            `alias:"addr" json:"addr" yaml:"addr"`
+	HTTPS       bool              `alias:"https" json:"https" yaml:"https"`
+	HTTP2       bool              `alias:"http2" json:"http2" yaml:"http2"`
+	Mutual      bool              `alias:"mutual" json:"mutual" yaml:"mutual"`
+	Certfile    string            `alias:"certfile" json:"certfile" yaml:"certfile"`
+	Keyfile     string            `alias:"keyfile" json:"keyfile" yaml:"keyfile"`
+	Trustfile   string            `alias:"trustfile" json:"trustfile" yaml:"trustfile"`
+	Certificate *x509.Certificate `alias:"certificate" json:"certificate" yaml:"certificate"`
 }
 
-// NewServer 创建一个标准server。
+// The NewServer function creates a [Server] implemented by warp [http.Server].
 func NewServer(config *ServerConfig) Server {
 	if config == nil {
 		config = &ServerConfig{}
 	}
 	srv := &serverStd{
 		Server: &http.Server{
-			Handler:           config.Handler,
-			ReadTimeout:       GetAnyDefault(time.Duration(config.ReadTimeout), DefaultServerReadTimeout),
-			ReadHeaderTimeout: GetAnyDefault(time.Duration(config.ReadHeaderTimeout), DefaultServerReadHeaderTimeout),
-			WriteTimeout:      GetAnyDefault(time.Duration(config.WriteTimeout), DefaultServerWriteTimeout),
-			IdleTimeout:       GetAnyDefault(time.Duration(config.IdleTimeout), DefaultServerIdleTimeout),
-			MaxHeaderBytes:    config.MaxHeaderBytes,
-			ErrorLog:          config.ErrorLog,
-			BaseContext:       config.BaseContext,
-			ConnContext:       config.ConnContext,
+			Handler: config.Handler,
+			ReadTimeout: GetAnyDefault(
+				time.Duration(config.ReadTimeout),
+				DefaultServerReadTimeout,
+			),
+			ReadHeaderTimeout: GetAnyDefault(
+				time.Duration(config.ReadHeaderTimeout),
+				DefaultServerReadHeaderTimeout,
+			),
+			WriteTimeout: GetAnyDefault(
+				time.Duration(config.WriteTimeout),
+				DefaultServerWriteTimeout,
+			),
+			IdleTimeout: GetAnyDefault(
+				time.Duration(config.IdleTimeout),
+				DefaultServerIdleTimeout,
+			),
+			MaxHeaderBytes: config.MaxHeaderBytes,
+			ErrorLog:       config.ErrorLog,
+			BaseContext:    config.BaseContext,
+			ConnContext:    config.ConnContext,
 		},
-		Logger: DefaultLoggerNull,
 	}
-	// 捕捉net/http.Server输出的error内容。
-	if srv.ErrorLog == nil {
-		srv.ErrorLog = log.New(srv, "", 0)
+	// fix http2 server in golang ?-1.22
+	// https://github.com/golang/go/issues/65785
+	if srv.Server.ReadTimeout < 0 {
+		srv.Server.ReadTimeout = 0
+	}
+	if srv.Server.ReadHeaderTimeout < 0 {
+		srv.Server.ReadHeaderTimeout = 0
+	}
+	if srv.Server.WriteTimeout < 0 {
+		srv.Server.WriteTimeout = 0
+	}
+	if srv.Server.IdleTimeout < 0 {
+		srv.Server.IdleTimeout = 0
 	}
 	return srv
 }
 
-// Mount 方法获取ContextKeyApp.(Logger)用于输出http.Server错误日志。
-// 获取ContextKeyApp.(http.Handler)作为http.Server的处理对象。
+// The Mount method gets [ContextKeyHTTPHandler] or [ContextKeyApp] from
+// [context.Context] as [http.Handler],
+//
+// Get [ContextKeyApp] or [ContextKeyLogger] as [Logger] to
+// receive [http.Server.ErrorLog].
 func (srv *serverStd) Mount(ctx context.Context) {
 	if srv.Handler == nil {
-		srv.SetHandler(ctx.Value(ContextKeyApp).(http.Handler))
-	}
-	if srv.BaseContext == nil {
-		srv.BaseContext = func(net.Listener) context.Context {
-			return ctx
+		for _, key := range [...]any{ContextKeyHTTPHandler, ContextKeyApp} {
+			h, ok := ctx.Value(key).(http.Handler)
+			if ok {
+				srv.SetHandler(h)
+				break
+			}
 		}
 	}
-	log, ok := ctx.Value(ContextKeyApp).(Logger)
-	if ok {
-		srv.Logger = log
+
+	if srv.ErrorLog == nil {
+		// Capture the error content output by net/http.Server.
+		for _, key := range [...]any{ContextKeyApp, ContextKeyLogger} {
+			logger, ok := ctx.Value(key).(Logger)
+			if ok {
+				out := &serverLogger{
+					Logger:  logger,
+					Counter: &srv.Counter,
+				}
+				srv.ErrorLog = log.New(out, "", 0)
+				break
+			}
+		}
 	}
 }
 
-// Unmount 方法等待DefaulerServerShutdownWait(默认60s)优雅停机。
+// Unmount method waits for [DefaulerServerShutdownWait] to use
+// [http.Server.Shutdown] to shut down [Server] listening.
 func (srv *serverStd) Unmount(context.Context) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultServerShutdownWait)
+	ctx, cancel := context.WithTimeout(context.Background(),
+		DefaultServerShutdownWait,
+	)
 	defer cancel()
 	_ = srv.Shutdown(ctx)
 }
 
-// SetHandler 方法设置server的http处理者。
 func (srv *serverStd) SetHandler(h http.Handler) {
 	srv.Mutex.Lock()
 	defer srv.Mutex.Unlock()
 	srv.Server.Handler = h
 }
 
-// Serve 方法阻塞监听请求。
 func (srv *serverStd) Serve(ln net.Listener) error {
 	srv.Mutex.Lock()
 	srv.Ports = append(srv.Ports, ln.Addr().String())
@@ -175,21 +232,23 @@ func (srv *serverStd) Serve(ln net.Listener) error {
 	return err
 }
 
-// ServeConn 方法出来一个连接，第一次请求初始化localListener。
+// The ServeConn method handles a [net.Conn].
+//
+// Implement [net.Listen] to pass [net.Conn] to [http.Servr].
 func (srv *serverStd) ServeConn(conn net.Conn) {
 	srv.Mutex.Lock()
-	if srv.localListener.Ch == nil {
-		srv.localListener.Ch = make(chan net.Conn)
-		srv.Ports = append(srv.Ports, srv.localListener.Addr().String())
+	if srv.listener.Ch == nil {
+		srv.listener.Ch = make(chan net.Conn)
+		srv.Ports = append(srv.Ports, srv.listener.Addr().String())
 		go func() {
-			_ = srv.Server.Serve(&srv.localListener)
+			_ = srv.Server.Serve(&srv.listener)
 		}()
 	}
 	srv.Mutex.Unlock()
-	srv.localListener.Ch <- conn
+	srv.listener.Ch <- conn
 }
 
-// Metadata 方法返回serverStd元数据。
+// The Metadata method returns [MetadataServer].
 func (srv *serverStd) Metadata() any {
 	srv.Mutex.Lock()
 	defer srv.Mutex.Unlock()
@@ -201,9 +260,15 @@ func (srv *serverStd) Metadata() any {
 	}
 }
 
-func (srv *serverStd) Write(p []byte) (n int, err error) {
-	atomic.AddInt64(&srv.Counter, 1)
-	log := srv.Logger.WithField(ParamDepth, "disable").WithField(ParamCaller, "*serverStd.ErrorLog.Write")
+type serverLogger struct {
+	Logger  Logger
+	Counter *int64
+}
+
+func (srv *serverLogger) Write(p []byte) (n int, err error) {
+	atomic.AddInt64(srv.Counter, 1)
+	log := srv.Logger.WithField(ParamDepth, DefaultLoggerDepthKindDisable).
+		WithField(ParamCaller, "serverStd.ErrorLog")
 	strs := strings.Split(string(p), "\n")
 	if strings.HasPrefix(strs[0], "http: panic serving ") {
 		lines := []string{}
@@ -220,30 +285,34 @@ func (srv *serverStd) Write(p []byte) (n int, err error) {
 			if pos != -1 {
 				strs[i+1] = strs[i+1][:pos]
 			}
-			lines = append(lines, strings.TrimPrefix(strs[i+1], "\t")+" "+strs[i])
+			lines = append(lines,
+				strings.TrimPrefix(strs[i+1], "\t")+" "+strs[i],
+			)
 		}
-		log.WithField("stack", lines).Errorf("%s %s", strs[0], strs[1][:len(strs[1])-1])
+		log.WithField("stack", lines).Errorf("%s %s",
+			strs[0], strs[1][:len(strs[1])-1],
+		)
 	} else {
 		log.Errorf(strs[0])
 	}
 	return 0, nil
 }
 
-type localListener struct {
+type internalListener struct {
 	Ch    chan net.Conn
 	close bool
 }
 
-func (ln *localListener) Accept() (net.Conn, error) {
+func (ln *internalListener) Accept() (net.Conn, error) {
 	for conn := range ln.Ch {
 		if conn != nil {
 			return conn, nil
 		}
 	}
-	return nil, errors.New("server close")
+	return nil, http.ErrServerClosed
 }
 
-func (ln *localListener) Close() error {
+func (ln *internalListener) Close() error {
 	if !ln.close {
 		close(ln.Ch)
 		ln.close = true
@@ -251,35 +320,45 @@ func (ln *localListener) Close() error {
 	return nil
 }
 
-func (ln *localListener) Addr() net.Addr {
+func (ln *internalListener) Addr() net.Addr {
 	return &net.IPAddr{
 		IP: net.IP{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 127, 0, 0, 1},
 	}
 }
 
-// NewServerFcgi 函数创建一个fcgi server。
+// The NewServerFcgi function creates a [Server] using [fcgi.Serve].
 func NewServerFcgi() Server {
-	return &serverFcgi{Handler: http.NotFoundHandler()}
+	return &serverFcgi{}
 }
 
-// Mount 获取ContextKeyApp.(http.Handler)作为http.Server的处理对象。
+// The Mount method gets [ContextKeyHTTPHandler] or [ContextKeyApp] from
+// [context.Context] as [http.Handler].
 func (srv *serverFcgi) Mount(ctx context.Context) {
-	srv.SetHandler(ctx.Value(ContextKeyApp).(http.Handler))
+	if srv.Handler == nil {
+		for _, key := range [...]any{ContextKeyHTTPHandler, ContextKeyApp} {
+			h, ok := ctx.Value(key).(http.Handler)
+			if ok {
+				srv.SetHandler(h)
+				break
+			}
+		}
+	}
 }
 
-// Unmount 方法等待DefaulerServerShutdownWait(默认60s)优雅停机。
+// Unmount method waits for [DefaulerServerShutdownWait] shuts down all
+// fcgi listeners.
 func (srv *serverFcgi) Unmount(context.Context) {
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultServerShutdownWait)
+	ctx, cancel := context.WithTimeout(context.Background(),
+		DefaultServerShutdownWait,
+	)
 	defer cancel()
 	_ = srv.Shutdown(ctx)
 }
 
-// SetHandler 方法设置fcgi处理对象。
 func (srv *serverFcgi) SetHandler(h http.Handler) {
 	srv.Handler = h
 }
 
-// Serve 方法启动一个新的fcgi监听。
 func (srv *serverFcgi) Serve(ln net.Listener) error {
 	srv.Lock()
 	srv.listeners = append(srv.listeners, ln)
@@ -287,18 +366,22 @@ func (srv *serverFcgi) Serve(ln net.Listener) error {
 	return fcgi.Serve(ln, srv.Handler)
 }
 
-// Shutdown 方法关闭fcgi关闭监听。
+// The Shutdown method shuts down all fcgi listeners.
 func (srv *serverFcgi) Shutdown(context.Context) error {
 	srv.Lock()
 	defer srv.Unlock()
 	var errs mulitError
 	for _, ln := range srv.listeners {
-		errs.HandleError(ln.Close())
+		errs.Handle(ln.Close())
 	}
 	return errs.Unwrap()
 }
 
-// Listen 方法使ServerListenConfig实现serverListener接口，用于使用对象创建监听。
+// The Listen method uses the port configuration to create a listener,
+// and uses Certificate to save the parsed TLS certificate.
+//
+// If https is enabled but there is no certificate, a private certificate will
+// be created.
 func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 	// set default port
 	if slc.Addr == "" {
@@ -321,11 +404,11 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 		config.NextProtos = []string{"h2"}
 	}
 
-	var err error
-	config.Certificates[0], slc.Certificate, err = loadCertificate(slc.Certfile, slc.Keyfile)
+	cert, ca, err := loadCertificate(slc.Certfile, slc.Keyfile)
 	if err != nil {
 		return nil, err
 	}
+	config.Certificates[0], slc.Certificate = cert, ca
 
 	// set mutual tls
 	if slc.Mutual {
@@ -346,8 +429,9 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 	return tls.NewListener(ln, config), nil
 }
 
-// loadCertificate 实现加载证书，如果证书配置文件为空，则自动创建一个私有证书。
-func loadCertificate(cret, key string) (tls.Certificate, *x509.Certificate, error) {
+func loadCertificate(cret, key string) (tls.Certificate, *x509.Certificate,
+	error,
+) {
 	if cret != "" && key != "" {
 		cret509, err := tls.LoadX509KeyPair(cret, key)
 		if err != nil {
@@ -369,8 +453,11 @@ func loadCertificate(cret, key string) (tls.Certificate, *x509.Certificate, erro
 		SubjectKeyId:          []byte{1, 2, 3, 4, 5},
 		BasicConstraintsValid: true,
 
-		IsCA:        true,
-		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		IsCA: true,
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageClientAuth,
+			x509.ExtKeyUsageServerAuth,
+		},
 		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		DNSNames:    []string{"localhost"},
 		IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
@@ -378,8 +465,10 @@ func loadCertificate(cret, key string) (tls.Certificate, *x509.Certificate, erro
 	pool := x509.NewCertPool()
 	pool.AddCert(ca)
 
-	priv, _ := rsa.GenerateMultiPrimeKey(rand.Reader, 2, 2048)
-	caByte, err := x509.CreateCertificate(rand.Reader, ca, ca, &priv.PublicKey, priv)
+	priv, _ := rsa.GenerateKey(rand.Reader, 2048)
+	caByte, err := x509.CreateCertificate(rand.Reader, ca, ca,
+		&priv.PublicKey, priv,
+	)
 
 	return tls.Certificate{
 		Certificate: [][]byte{caByte},
