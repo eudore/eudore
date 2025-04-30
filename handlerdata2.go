@@ -281,7 +281,7 @@ func (f *filterRule) filteRules(v reflect.Value, rules []string,
 ) bool {
 	for _, rule := range rules {
 		key, val, _ := strings.Cut(rule, "=")
-		field, err := getValue(v, key, []string{"filter", "alias"}, false)
+		field, err := GetValueByPath(v, key, []string{"filter", "alias"})
 		if err != nil {
 			continue
 		}

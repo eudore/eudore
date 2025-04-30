@@ -36,7 +36,6 @@ func NewLookFunc(data any) Middleware {
 		}
 	}
 	return func(ctx eudore.Context) {
-		data := fn(ctx)
 		doc := strings.TrimSuffix(ctx.GetQuery("godoc"), "/")
 		look := &lookValue{
 			lookConfig: &lookConfig{
@@ -46,10 +45,14 @@ func NewLookFunc(data any) Middleware {
 				Refs:    make(map[uintptr]struct{}),
 			},
 		}
-		val, err := eudore.GetAnyByPathWithValue(data,
+
+		v := fn(ctx)
+		if look.ShowAll && v != nil {
+			v = reflect.ValueOf(v)
+		}
+		val, err := eudore.GetValueByPath(v,
 			strings.ReplaceAll(ctx.GetParam("*"), "/", "."),
 			nil,
-			look.ShowAll,
 		)
 		if err != nil {
 			ctx.Fatal(err)

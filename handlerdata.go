@@ -3,6 +3,7 @@ package eudore
 import (
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -76,9 +77,6 @@ func NewHandlerDataBinds(binds map[string]HandlerDataFunc) HandlerDataFunc {
 	if binds == nil {
 		binds = mapClone(DefaultHandlerDataBinds)
 	}
-	if _, ok := binds[""]; !ok {
-		binds[""] = HandlerDataBindURL
-	}
 	var mimes string
 	for k := range binds {
 		if k != "" && k != MimeApplicationOctetStream {
@@ -111,10 +109,8 @@ func bindMaps[T any](source map[string][]T, target any, tags []string) error {
 	case reflect.Struct, reflect.Map:
 		for key, vals := range source {
 			for _, val := range vals {
-				err := SetAnyByPathWithTag(target, key, val, tags, false)
-				// need to be improved
-				if err != nil &&
-					!strings.Contains(err.Error(), "not found field ") {
+				err := SetAnyByPath(target, key, val, tags)
+				if err != nil && !errors.Is(err, ErrValueNotFound) {
 					return err
 				}
 			}
@@ -122,9 +118,8 @@ func bindMaps[T any](source map[string][]T, target any, tags []string) error {
 		return nil
 	default:
 		// map data is unordered and cannot be bound to an array.
-		return fmt.Errorf(ErrHandlerDataBindMustSturct,
-			reflect.TypeOf(target).String(),
-		)
+		t := reflect.TypeOf(target).String()
+		return fmt.Errorf(ErrHandlerDataBindMustSturct, t)
 	}
 }
 
@@ -174,12 +169,6 @@ func HandlerDataBindXML(ctx Context, data any) error {
 	return xml.NewDecoder(ctx).Decode(data)
 }
 
-// The HandlerDataBindProtobuf function uses the built-in [NewProtobufDecoder]
-// to Bind protobuf data.
-func HandlerDataBindProtobuf(ctx Context, data any) error {
-	return NewProtobufDecoder(ctx).Decode(data)
-}
-
 // The NewHandlerDataRenders method uses [HeaderAccept] to matching for
 // Render functions in renders.
 // [DefaultHandlerDataRenders] is used by default.
@@ -191,7 +180,7 @@ func NewHandlerDataRenders(renders map[string]HandlerDataFunc) HandlerDataFunc {
 	}
 	render, ok := renders[MimeAll]
 	if !ok {
-		render = DefaultHandlerDataRenderFunc
+		render = HandlerDataRenderNotAcceptable
 	}
 	return func(ctx Context, data any) error {
 		w := ctx.Response()
@@ -229,6 +218,11 @@ func renderSetContentType(ctx Context, mime string) {
 	}
 }
 
+func HandlerDataRenderNotAcceptable(ctx Context, _ any) error {
+	ctx.WriteHeader(StatusNotAcceptable)
+	return nil
+}
+
 // RenderText function Render Text, written using the [fmt.Fprint] function.
 func HandlerDataRenderText(ctx Context, data any) error {
 	renderSetContentType(ctx, MimeTextPlainCharsetUtf8)
@@ -261,14 +255,6 @@ func HandlerDataRenderJSON(ctx Context, data any) error {
 		encoder.SetIndent("", "\t")
 	}
 	return encoder.Encode(data)
-}
-
-// The HandlerDataRenderProtobuf function uses the built-in [NewProtobufEncoder]
-// to Render protobuf data.
-// Invalid properties will be ignored.
-func HandlerDataRenderProtobuf(ctx Context, data any) error {
-	renderSetContentType(ctx, MimeApplicationProtobuf)
-	return NewProtobufEncoder(ctx).Encode(data)
 }
 
 // The HandlerDataRenderHTML function creates Render using [template.Template].
@@ -410,6 +396,5 @@ func renderTemplatesData(ctx Context, data any,
 			hw[k] = v
 		}
 	}
-	_ = t.Execute(ctx, data)
-	return nil
+	return t.Execute(ctx, data)
 }

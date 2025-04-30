@@ -124,7 +124,8 @@ func (c *configStd) Get(key string) any {
 	if c.Map != nil {
 		return c.Map[key]
 	}
-	return GetAnyByPath(c.Data, key)
+	v, _ := GetAnyByPath(c.Data, key, nil)
+	return v
 }
 
 // The Set method implements setting data,
@@ -143,7 +144,7 @@ func (c *configStd) Set(key string, val any) error {
 		c.Map[key] = val
 		return nil
 	}
-	return SetAnyByPath(c.Data, key, val)
+	return SetAnyByPath(c.Data, key, val, nil)
 }
 
 // ParseOption method adds [ConfigParseFunc],
@@ -343,11 +344,9 @@ func NewConfigParseArgs() ConfigParseFunc {
 				log.Info("set os argument: " + str)
 				_ = conf.Set(key[2:], val)
 			case len(key) > 1 && key[0] == '-' && key[1] != '-': // short param
-				for _, lkey := range shorts[key[1:]] {
-					log.Infof("set os short argument: %s --%s=%s",
-						key[1:], lkey, val,
-					)
-					_ = conf.Set(lkey, val)
+				for _, k := range shorts[key[1:]] {
+					log.Infof("set os short argument: %s --%s=%s", key[1:], k, val)
+					_ = conf.Set(k, val)
 				}
 			default:
 				args = append(args, str)

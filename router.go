@@ -140,6 +140,8 @@ func NewRouter(core RouterCore) Router {
 	if core == nil {
 		core = NewRouterCoreMux()
 	}
+
+	all := append([]string{}, DefaultRouterAllMethod...)
 	return &routerStd{
 		RouterCore: core,
 		HandlerExtender: NewHandlerExtenderWrap(
@@ -149,10 +151,10 @@ func NewRouter(core RouterCore) Router {
 		GroupParams: Params{ParamRoute, ""},
 		Logger:      DefaultLoggerNull,
 		LoggerKind:  getRouterLoggerKind(0, DefaultRouterLoggerKind),
-		MethodAll:   DefaultRouterAllMethod,
+		MethodAll:   all,
 		Meta: &MetadataRouter{
 			Name:      "eudore.routerStd",
-			AllMethod: DefaultRouterAllMethod,
+			AllMethod: all,
 		},
 	}
 }
@@ -232,7 +234,7 @@ func (r *routerStd) AddHandler(method, path string, hs ...any) error {
 	return r.addHandler(strings.ToUpper(method), path, hs...)
 }
 
-var formatTestInfo = "test handlers params is %s, " +
+var formatRouterTestInfo = "test handlers params is %s, " +
 	"split path to: ['%s'], " +
 	"match middlewares is: %v, " +
 	"register handlers is: %v."
@@ -254,12 +256,7 @@ func (r *routerStd) addHandler(method, path string, hs ...any) (err error) {
 
 	params := combineParams(r.GroupParams.Clone(), NewParamsRoute(path))
 	path = params.Get(ParamRoute)
-	fullpath := params.String()
-	// If the method is 404 or 405, the [ParamRoute] is empty
-	if len(fullpath) > 6 && fullpath[:6] == "route=" {
-		fullpath = fullpath[6:]
-	}
-
+	fullpath := strings.TrimPrefix(params.String(), "route=")
 	depth := getRouterDepthWithFunc(2, 8, ".AddController")
 	handlers, err := r.newHandlerFuncs(path, hs, depth+1)
 	if err != nil {
@@ -268,8 +265,7 @@ func (r *routerStd) addHandler(method, path string, hs ...any) (err error) {
 
 	// If the registration method is TEST, then output routerStd debug info.
 	if method == "TEST" {
-		r.getLogger(routerLoggerHandler, depth).Debugf(
-			formatTestInfo,
+		r.getLogger(routerLoggerHandler, depth).Debugf(formatRouterTestInfo,
 			params.String(), strings.Join(getSplitPath(path), "', '"),
 			r.Middlewares.Lookup(path), handlers,
 		)
@@ -284,22 +280,23 @@ func (r *routerStd) addHandler(method, path string, hs ...any) (err error) {
 
 	// Handle multiple methods
 	var errs mulitError
-	for _, method := range strings.Split(method, ",") {
-		method = strings.TrimSpace(method)
-		if checkMethod(r.MethodAll, method) {
-			r.RouterCore.HandleFunc(method, fullpath, handlers)
+	for _, m := range strings.Split(method, ",") {
+		m = strings.TrimSpace(m)
+		if checkMethod(r.MethodAll, m) {
+			r.RouterCore.HandleFunc(m, fullpath, handlers)
 			if r.getLogger(routerLoggerMetadata, 0) != DefaultLoggerNull {
-				addMetadataRouter(r.Meta, method, fullpath, handlers)
+				addMetadataRouter(r.Meta, m, fullpath, handlers)
 			}
 		} else {
-			err := fmt.Errorf(ErrRouterAddHandlerMethodInvalid,
-				method, fullpath,
-			)
+			err := fmt.Errorf(ErrRouterAddHandlerMethodInvalid, m, fullpath)
 			errs.Handle(err)
 			r.getLoggerError(err, depth).Error(err)
 		}
 	}
-	return errs.Unwrap()
+	if errs.errs != nil {
+		return &errs
+	}
+	return nil
 }
 
 func checkMethod(all []string, method string) bool {
@@ -307,8 +304,8 @@ func checkMethod(all []string, method string) bool {
 	case "ANY", "404", "405", "NOTFOUND", "METHODNOTALLOWED":
 		return true
 	}
-	for _, allMethod := range all {
-		if allMethod == method {
+	for _, m := range all {
+		if m == method {
 			return true
 		}
 	}
@@ -338,7 +335,10 @@ func (r *routerStd) newHandlerFuncs(path string, handlers []any, depth int,
 			r.getLoggerError(err, depth).Error(err)
 		}
 	}
-	return hs, errs.Unwrap()
+	if errs.errs != nil {
+		return nil, &errs
+	}
+	return hs, nil
 }
 
 func (r *routerStd) AddController(controllers ...Controller) error {
@@ -359,7 +359,10 @@ func (r *routerStd) AddController(controllers ...Controller) error {
 			r.getLoggerError(err, 1).Error(err)
 		}
 	}
-	return errs.Unwrap()
+	if errs.errs != nil {
+		return &errs
+	}
+	return nil
 }
 
 // The getControllerPathName function gets the name of the [Controller].
@@ -433,7 +436,10 @@ func (r *routerStd) AddHandlerExtend(handlers ...any) error {
 			}
 		}
 	}
-	return errs.Unwrap()
+	if errs.errs != nil {
+		return &errs
+	}
+	return nil
 }
 
 func (r *routerStd) AnyFunc(path string, h ...any) {

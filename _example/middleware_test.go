@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -185,6 +187,27 @@ func TestMiddlewareRoutes(*testing.T) {
 	app.Run()
 }
 
+func TestMiddlewareSkipHandler(*testing.T) {
+	NewSkipHandlerFunc("", nil)
+	NewSkipHandlerFunc("", map[string]struct{}{})
+	app := NewApp()
+	app.GetFunc("/path/*", NewSkipHandlerFunc("path", map[string]struct{}{"/path/200": {}}), HandlerRouter403)
+	app.GetFunc("/param", NewSkipHandlerFunc("param:route", map[string]struct{}{"/param": {}}), HandlerRouter403)
+	app.GetFunc("/cookie", NewSkipHandlerFunc("cookie:name", map[string]struct{}{"eudore": {}}), HandlerRouter403)
+	app.GetFunc("/request", NewSkipHandlerFunc("request:name", map[string]struct{}{"eudore": {}}), HandlerRouter403)
+
+	app.GetRequest("/path/200", NewClientCheckStatus(200))
+	app.GetRequest("/path/201", NewClientCheckStatus(403))
+	app.GetRequest("/param", NewClientCheckStatus(200))
+	app.GetRequest("/cookie", &Cookie{"name", "eudore"}, NewClientCheckStatus(200))
+	app.GetRequest("/cookie", NewClientCheckStatus(403))
+	app.GetRequest("/request", http.Header{"Name": []string{"eudore"}}, NewClientCheckStatus(200))
+	app.GetRequest("/request", NewClientCheckStatus(403))
+
+	app.CancelFunc()
+	app.Run()
+}
+
 func TestMiddlewareOption(*testing.T) {
 	op := NewOptionKeyFunc(func(ctx Context) string { return "" })
 	NewCSRFFunc("", op)
@@ -229,11 +252,14 @@ func TestMiddlewareName(t *testing.T) {
 		NewRouterFunc(app),
 		NewRoutesFunc(map[string]any{}),
 		NewServerTimingFunc(),
+		NewSkipHandlerFunc("path", map[string]struct{}{"/": {}}),
 		NewTimeoutFunc(app.ContextPool, time.Second),
 		NewTimeoutSkipFunc(app.ContextPool, time.Second, nil),
 	}
 	for _, h := range hs {
-		if !strings.Contains(h.String(), "eudore/middleware.New") {
+		rh := reflect.ValueOf(h)
+		name := runtime.FuncForPC(rh.Pointer()).Name()
+		if !strings.Contains(name, "/eudore/middleware.New") {
 			panic(h.String())
 		}
 	}

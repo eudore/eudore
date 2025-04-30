@@ -713,12 +713,10 @@ func (ctx *contextBase) Render(data any) error {
 func (ctx *contextBase) writeFatal(err error) {
 	w := ctx.ResponseWriter
 	if w.Size() == 0 {
-		msg := NewContextMessgae(ctx, err, nil)
-		status := w.Status()
-		if status == StatusOK {
+		if w.Status() == StatusOK {
 			ctx.WriteStatus(getErrorStatus(err))
 		}
-		_ = ctx.Render(msg)
+		_ = ctx.Render(NewContextMessgae(ctx, err, nil))
 	}
 	base, ok := ctx.context.Value(&baseCtxKey).(*contextBaseValue)
 	if ok {

@@ -98,9 +98,13 @@ func newClientStd() *clientStd {
 			DialContext:           newDialContext(),
 			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   10,
+			MaxConnsPerHost:       100,
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   10 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			DisableKeepAlives:     false,
 		},
 		Option: &ClientOption{
 			Context: context.Background(),
@@ -329,16 +333,6 @@ func NewClientBodyXML(data any) ClientBody {
 	)
 }
 
-// The NewClientBodyJSON function creates [ClientBody] with [NewProtobufEncoder]
-// encoder.
-func NewClientBodyProtobuf(data any) ClientBody {
-	return NewClientBodyDecoder(MimeApplicationProtobuf, data,
-		func(w io.Writer, data any) {
-			_ = NewProtobufEncoder(w).Encode(data)
-		},
-	)
-}
-
 // The NewClientBodyDecoder function creates [ClientBody] encoder,
 // which needs to specify [HeaderContentType] and encoder.
 func NewClientBodyDecoder(contenttype string, data any,
@@ -393,7 +387,7 @@ func (body *bodyDecoder) AddValue(key string, val any) {
 	if body.values != nil {
 		body.values[key] = val
 	} else {
-		_ = SetAnyByPath(body.data, key, val)
+		_ = SetAnyByPath(body.data, key, val, nil)
 	}
 }
 
@@ -574,7 +568,7 @@ func NewClientCheckStatus(status ...int) func(*http.Response) error {
 // data type is *string or [io.Writer] to write data directly.
 //
 // If the [HeaderContentType] value is [MimeApplicationJSON]
-// [MimeApplicationProtobuf] [MimeApplicationXML],
+// [MimeApplicationXML],
 // use the corresponding Decoder to parse.
 func NewClientParse(data any) func(*http.Response) error {
 	return func(w *http.Response) error {
@@ -660,8 +654,6 @@ func clientParseIn(w *http.Response, star, end int, data any) error {
 	switch mime {
 	case MimeApplicationJSON:
 		return json.NewDecoder(w.Body).Decode(data)
-	case MimeApplicationProtobuf:
-		return NewProtobufDecoder(w.Body).Decode(data)
 	case MimeApplicationXML:
 		return xml.NewDecoder(w.Body).Decode(data)
 	}

@@ -10,462 +10,174 @@ import (
 	"unsafe"
 )
 
-type value struct {
-	Tags     []string
-	Keys     []string
-	Index    int
-	All      bool
-	Set      bool
-	Value    any
-	Pointers []uintptr
-	Pindex   int
-}
-
-// GetAnyByPath method A more path to get an attribute from an object.
+// The GetAnyByPath function gets the specified attribute of the object.
 //
-// The path will be split using '.' and then look for the path in turn.
+// The path will be separated by '.' and then searched for in sequence.
 //
-// Structure attributes can use the structure tag 'alias' to match attributes.
-//
-// Returns a null value if the match fails.
-//
-// 根据路径来从一个对象获得一个属性。
-//
-// 路径将使用'.'分割，然后依次寻找路径。
-//
-// 结构体属性可以使用结构体标签'alias'来匹配属性。
-//
-// 如果匹配失败直接返回空值。
-func GetAnyByPath(i any, key string) any {
-	val, err := getValue(i, key, nil, false)
-	if err != nil {
-		return nil
-	}
-	return val.Interface()
-}
-
-// GetAnyByPathWithTag 函数和GetAnyByPath函数相同，可以额外设置tags，同时会返回error。
-func GetAnyByPathWithTag(i any, key string, tags []string, all bool) (any, error) {
-	val, err := getValue(i, key, tags, all)
+// The structure uses the tag 'alias' to match the field by default.
+func GetAnyByPath(data any, key string, tags []string) (any, error) {
+	v := &value{tags: tags}
+	err := v.Look(data, strings.Split(key, ".")...)
 	if err != nil {
 		return nil, err
 	}
-	if all {
-		val = reflect.NewAt(val.Type(), unsafe.Pointer(val.UnsafeAddr())).Elem()
+	return v.value.Interface(), nil
+}
+
+// The GetAnyByPath function gets the specified attribute of the object and
+// returns the [reflect.Value] type.
+//
+// refer: [GetAnyByPath].
+func GetValueByPath(data any, key string, tags []string) (reflect.Value, error) {
+	v := &value{tags: tags}
+	err := v.Look(data, strings.Split(key, ".")...)
+	if err != nil {
+		return reflect.Value{}, err
 	}
-	return val.Interface(), nil
+	return v.value, nil
 }
 
-// GetAnyByPathWithValue 函数和Get函数相同，可以允许查找私有属性并返回reflect.Value。
-func GetAnyByPathWithValue(i any, key string, tags []string, all bool) (reflect.Value, error) {
-	return getValue(i, key, tags, all)
+// The GetAnyByPath function sets the specified attribute of the object.
+//
+// If the value type is string, it will be converted according to the dta type.
+//
+// refer: [GetAnyByPath].
+func SetAnyByPath(data any, key string, val any, tags []string) error {
+	v := &value{to: val, tags: tags, allowSet: true}
+	return v.Look(data, strings.Split(key, ".")...)
 }
 
-func getValue(i any, key string, tags []string, all bool) (reflect.Value, error) {
-	val, ok := i.(reflect.Value)
+type value struct {
+	value     reflect.Value
+	to        any
+	tags      []string
+	anonymous map[int][]reflect.Type
+	allowSet  bool
+	allowAll  bool
+}
+
+func (v *value) Look(data any, paths ...string) error {
+	if data == nil {
+		return ErrValueNil
+	}
+	val, ok := data.(reflect.Value)
 	if !ok {
-		val = reflect.ValueOf(i)
+		val = reflect.ValueOf(data)
 	}
-	if i == nil {
-		return val, ErrValueInputDataNil
+	v.allowAll = ok
+	v.value = reflect.Indirect(val)
+	if v.tags == nil {
+		v.tags = DefaultValueGetSetTags
 	}
-	if key == "" {
-		return val, nil
+
+	if v.allowSet && !v.value.CanSet() {
+		return ErrValueNotSet
 	}
-	if tags == nil {
-		tags = DefaultValueGetSetTags
-	}
-	v := &value{
-		Tags: tags,
-		Keys: strings.Split(key, "."),
-		All:  all,
-	}
-	v.Pointers = make([]uintptr, 0, len(v.Keys))
-	return v.getValue(val)
+	return v.lookValue(v.value, paths)
 }
 
-// 从目标类型获取字符串路径的属性。
-func (v *value) getValue(iValue reflect.Value) (reflect.Value, error) {
-	if len(v.Keys) == v.Index {
-		return iValue, nil
+// Get the string path property from the target type.
+//
+//nolint:cyclop
+func (v *value) lookValue(val reflect.Value, path []string) error {
+	for len(path) > 0 && path[0] == "" {
+		path = path[1:]
 	}
-	if v.HasPointer(iValue) {
-		return iValue, v.newError(ErrFormatValueAnonymousField, iValue)
-	}
-	switch iValue.Kind() {
-	case reflect.Ptr, reflect.Interface:
-		if iValue.IsNil() {
-			return iValue, v.newError(ErrFormatValueTypeNil, iValue)
+	if len(path) == 0 {
+		v.value = val
+		if v.allowSet {
+			if v.to == nil {
+				v.value.Set(reflect.Zero(v.value.Type()))
+				return nil
+			}
+			// return set error
+			return setValuePtr(v.value, reflect.ValueOf(v.to))
 		}
-		return v.getValue(iValue.Elem())
-	case reflect.Struct:
-		return v.getStruct(iValue)
-	case reflect.Map:
-		return v.getMap(iValue)
-	case reflect.Array, reflect.Slice:
-		return v.getSlice(iValue)
+		return nil
 	}
-	return iValue, v.newError(ErrFormatValueNotField, iValue, v.Keys[v.Index])
-}
 
-// 处理结构体对象的读取。
-func (v *value) getStruct(iValue reflect.Value) (reflect.Value, error) {
-	field := getStructFieldOfTags(iValue, v.Keys[v.Index], v.Tags)
-	if field.Kind() == reflect.Invalid {
-		iType := iValue.Type()
-		for i := 0; i < iType.NumField(); i++ {
-			if iType.Field(i).Anonymous {
-				v2, err := v.getValue(iValue.Field(i))
-				if err == nil {
-					return v2, nil
-				}
+	if !v.allowSet {
+		switch val.Kind() {
+		case reflect.Ptr, reflect.Interface, reflect.Map, reflect.Slice:
+			if val.IsNil() {
+				s := val.Type().String()
+				return fmt.Errorf(ErrValueLookNil, val.Kind(), s, ErrValueNil)
 			}
 		}
-
-		return iValue, v.newError(ErrFormatValueNotField, iValue, v.Keys[v.Index])
 	}
-
-	if field.CanInterface() || v.All {
-		v.Index++
-		defer func() { v.Index-- }()
-		return v.getValue(field)
-	}
-	return iValue, v.newError(ErrFormatValueStructUnexported, iValue, v.Keys[v.Index])
-}
-
-// 处理map读取属性。
-func (v *value) getMap(iValue reflect.Value) (reflect.Value, error) {
-	// 检测map是否为空
-	if iValue.IsNil() {
-		return iValue, v.newError(ErrFormatValueTypeNil, iValue)
-	}
-	// 创建map需要的key
-	mapKey := reflect.New(iValue.Type().Key()).Elem()
-	err := setValueString(mapKey, v.Keys[v.Index])
-	if err != nil {
-		return iValue, v.newError(ErrFormatValueMapIndexInvalid, iValue, v.Keys[v.Index])
-	}
-
-	// 获得map的value, 如果值无效则返回空。
-	mapvalue := iValue.MapIndex(mapKey)
-	if mapvalue.Kind() == reflect.Invalid {
-		return iValue, v.newError(ErrFormatValueMapValueInvalid, iValue, v.Keys[v.Index])
-	}
-	v.Index++
-	defer func() { v.Index-- }()
-	return v.getValue(mapvalue)
-}
-
-// 处理数组切片读取属性。
-func (v *value) getSlice(iValue reflect.Value) (reflect.Value, error) {
-	// 检测切片是否为空
-	if iValue.Kind() == reflect.Slice && iValue.IsNil() {
-		return iValue, v.newError(ErrFormatValueTypeNil, iValue)
-	}
-	// 检测索引是否存在
-	index, err := strconv.Atoi(v.Keys[v.Index])
-	if err != nil || iValue.Len() <= index || iValue.Len() < -index {
-		return iValue, v.newError(ErrFormatValueArrayIndexInvalid, iValue, v.Keys[v.Index], iValue.Len())
-	} else if index < 0 {
-		index += iValue.Len()
-	}
-	v.Index++
-	defer func() { v.Index-- }()
-	return v.getValue(iValue.Index(index))
-}
-
-// The SetAnyByPath function sets the properties of an object, and the object must be a pointer type.
-//
-// The path will be separated using '.', and then the path will be searched for in sequence.
-//
-// When the object type selected in the path is ptr, it will be checked to see if it is empty.
-// If the object is empty, it will be initialized by default.
-//
-// When the object type selected in the path is any,
-// if the object is empty, it will be initialized to map[string]any,
-// otherwise the next operation will be determined based on the value type.
-//
-// When the object type selected in the path is array,
-// the path will be converted into an object index to set the array elements,
-// and if the index is [], the elements will be appended.
-//
-// When the object type selected in the path is struct,
-// the attribute name and attribute label 'alias' will be used to match when selecting attributes.
-//
-// If the value type is a string, it will be converted according to the set target type.
-//
-// If the target type is a string, the value will be output as a string and then assigned.
-//
-// SetAnyByPath 函数设置一个对象的属性，改对象必须是指针类型。
-//
-// 路径将使用'.'分割，然后依次寻找路径。
-//
-// 当路径中选择对象类型为ptr时，会检查是否为空，对象为空会默认进行初始化。
-//
-// 当路径中选择对象类型为any时，如果对象为空会初始化为map[string]any，
-// 否则按值类型来判断下一步操作。
-//
-// 当路径中选择对象类型为array时，路径会转换成对象索引来设置数组元素，索引为[]则追加元素。
-//
-// 当路径中选择对象类型为struct时，选择属性时会使用属性名称和属性标签'alias'来匹配。
-//
-// 如果值的类型是字符串，会根据设置的目标类型来转换。
-//
-// 如果目标类型是字符串，将会值输出成字符串然后赋值。
-func SetAnyByPath(i any, key string, val any) error {
-	return SetAnyByPathWithTag(i, key, val, nil, false)
-}
-
-// SetAnyByPathWithTag 函数和SetAnyByPath函数相同，可以额外设置tags。
-func SetAnyByPathWithTag(i any, key string, val any, tags []string, all bool) error {
-	if i == nil || key == "" {
-		return ErrValueInputDataNil
-	}
-	iValue, ok := i.(reflect.Value)
-	if !ok {
-		iValue = reflect.ValueOf(i)
-	}
-	// 检测目标是指针类型。
-	if iValue.Kind() != reflect.Ptr {
-		return ErrValueInputDataNotPtr
-	}
-	if tags == nil {
-		tags = DefaultValueGetSetTags
-	}
-	v := &value{
-		Tags:  tags,
-		Keys:  strings.Split(key, "."),
-		All:   all,
-		Set:   true,
-		Value: val,
-	}
-	v.Pointers = make([]uintptr, 0, len(v.Keys))
-	return v.setValue(iValue)
-}
-
-func (v *value) setValue(iValue reflect.Value) error {
-	if len(v.Keys) == v.Index {
-		err := setValuePtr(reflect.ValueOf(v.Value), iValue)
-		if err != nil {
-			v.Index--
-			err = v.newError("%s", iValue, err)
-			v.Index++
-		}
-		return err
-	}
-	if v.HasPointer(iValue) {
-		return v.newError(ErrFormatValueAnonymousField, iValue)
-	}
-	switch iValue.Kind() {
+	switch val.Kind() {
 	case reflect.Ptr:
-		if iValue.IsNil() {
-			return v.setMake(iValue, reflect.New(iValue.Type().Elem()))
+		if val.IsNil() {
+			return v.lookNil(val, reflect.New(val.Type().Elem()), path)
 		}
-		return v.setValue(iValue.Elem())
+		return v.lookValue(val.Elem(), path)
 	case reflect.Interface:
-		return v.setInterface(iValue)
+		return v.lookInterface(val, path)
 	case reflect.Struct:
-		return v.setStruct(iValue)
+		return v.lookStruct(val, path)
 	case reflect.Map:
-		return v.setMap(iValue)
-	case reflect.Slice:
-		return v.setSlice(iValue)
-	case reflect.Array:
-		return v.setArray(iValue)
+		return v.lookMap(val, path)
+	case reflect.Array, reflect.Slice:
+		return v.lookSlice(val, path)
+	default:
+		return fmt.Errorf(ErrValueLookType, val.Type().String(), path[0], ErrValueNotFound)
 	}
-
-	return v.newError(ErrFormatValueNotField, iValue, v.Keys[v.Index])
 }
 
-func (v *value) setMake(iValue, newValue reflect.Value) error {
-	err := v.setValue(newValue)
-	if err == nil {
-		iValue.Set(newValue)
+func (v *value) lookNil(val, next reflect.Value, path []string) error {
+	val.Set(next)
+	err := v.lookValue(val, path)
+	if err != nil {
+		val.Set(reflect.Zero(val.Type()))
 	}
 	return err
 }
 
-// 处理接口类型。
-func (v *value) setInterface(iValue reflect.Value) (err error) {
-	// 如果是空接口，初始化为map[string]any类型
-	if iValue.IsNil() {
-		if iValue.Type() != typeAny {
-			return v.newError(ErrFormatValueTypeNil, iValue)
+func (v *value) lookInterface(val reflect.Value, path []string) error {
+	// If it is an empty interface, initialize it to map[string]any type
+	if val.IsNil() {
+		if val.Type() != typeAny {
+			s := val.Type().String()
+			return fmt.Errorf(ErrValueLookNil, reflect.Interface, s, ErrValueNil)
 		}
-		return v.setMake(iValue, reflect.ValueOf(make(map[string]any)))
+		return v.lookNil(val, reflect.ValueOf(make(map[string]any)), path)
 	}
-	// 创建一个可取地址的临时变量，并设置值用于下一步设置。
-	newValue := reflect.New(iValue.Elem().Type()).Elem()
-	newValue.Set(iValue.Elem())
-	err = v.setValue(newValue)
-	// 将修改后的值重新赋值给对象
-	if err == nil {
-		iValue.Set(newValue)
-	}
-	return err
+	return v.lookValue(val.Elem(), path)
 }
 
-// 处理结构体设置属性。
-func (v *value) setStruct(iValue reflect.Value) error {
-	field := getStructFieldOfTags(iValue, v.Keys[v.Index], v.Tags)
+func (v *value) lookStruct(val reflect.Value, path []string) error {
+	field := getStructFieldOfTags(val, path[0], v.tags)
 	if field.Kind() == reflect.Invalid {
-		iType := iValue.Type()
+		iType := val.Type()
 		for i := 0; i < iType.NumField(); i++ {
-			if iType.Field(i).Anonymous {
-				err := v.setValue(iValue.Field(i))
-				if err == nil {
+			if iType.Field(i).Anonymous && sliceIndex(v.anonymous[len(path)], iType.Field(i).Type) == -1 {
+				if v.anonymous == nil {
+					v.anonymous = make(map[int][]reflect.Type)
+				}
+				v.anonymous[len(path)] = append(v.anonymous[len(path)], iType.Field(i).Type)
+				if v.lookValue(val.Field(i), path) == nil {
 					return nil
 				}
 			}
 		}
 
-		return v.newError(ErrFormatValueNotField, iValue, v.Keys[v.Index])
+		return fmt.Errorf(ErrValueLookStruct, val.Type(), path[0], ErrValueStructNotField)
 	}
 
-	if !field.CanSet() {
-		if v.All {
-			field = reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem()
-		} else {
-			return v.newError(ErrFormatValueStructNotCanset, iValue, v.Keys[v.Index])
-		}
+	if field.CanInterface() {
+		return v.lookValue(field, path[1:])
 	}
-	v.Index++
-	defer func() { v.Index-- }()
-	return v.setValue(field)
+	if v.allowAll {
+		return v.lookValue(reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem(), path[1:])
+	}
+	return fmt.Errorf(ErrValueLookStruct, val.Type(), path[0], ErrValueStructUnexported)
 }
 
-// 处理map。
-func (v *value) setMap(iValue reflect.Value) error {
-	iType := iValue.Type()
-	// 对空map初始化
-	if iValue.IsNil() {
-		return v.setMake(iValue, reflect.MakeMap(iType))
-	}
-
-	// 创建map需要匹配的key
-	mapKey := reflect.New(iType.Key()).Elem()
-	err := setValueString(mapKey, v.Keys[v.Index])
-	if err != nil {
-		return v.newError(ErrFormatValueMapIndexInvalid, iValue, v.Keys[v.Index])
-	}
-
-	newValue := reflect.New(iType.Elem()).Elem()
-	mapvalue := iValue.MapIndex(mapKey)
-	if mapvalue.Kind() != reflect.Invalid {
-		newValue.Set(mapvalue)
-	}
-
-	v.Index++
-	defer func() { v.Index-- }()
-	err = v.setValue(newValue)
-	// 将修改后的mapvalue重新赋值给map
-	if err == nil {
-		iValue.SetMapIndex(mapKey, newValue)
-	}
-	return err
-}
-
-func (v *value) setArray(iValue reflect.Value) error {
-	index, err := strconv.Atoi(v.Keys[v.Index])
-	if err != nil || iValue.Len() <= index || iValue.Len() < -index {
-		return v.newError(ErrFormatValueArrayIndexInvalid, iValue, v.Keys[v.Index], iValue.Len())
-	} else if index < 0 {
-		index += iValue.Len()
-	}
-	v.Index++
-	defer func() { v.Index-- }()
-	return v.setValue(iValue.Index(index))
-}
-
-// 处理数组和切片。
-func (v *value) setSlice(iValue reflect.Value) error {
-	iType := iValue.Type()
-	// 处理空切片
-	if iValue.IsNil() {
-		iValue.Set(reflect.MakeSlice(iType, 0, 4))
-		err := v.setSlice(iValue)
-		if err != nil {
-			iValue.Set(reflect.Zero(iType))
-		}
-		return err
-	}
-
-	// 解析index
-	index, err := strconv.Atoi(v.Keys[v.Index])
-	switch {
-	case (err != nil && v.Keys[v.Index] != "[]") || iValue.Len() < -index:
-		return v.newError(ErrFormatValueArrayIndexInvalid, iValue, v.Keys[v.Index], iValue.Len())
-	case index < 0:
-		index += iValue.Len()
-	case v.Keys[v.Index] == "[]":
-		index = -1
-	}
-
-	// 创建新元素的类型和值
-	newValue := reflect.New(iType.Elem()).Elem()
-	if index > -1 {
-		// 新建数组替换原数组扩容
-		if iValue.Cap() <= index {
-			iValue.Set(reflect.AppendSlice(reflect.MakeSlice(iType, 0, index+1), iValue))
-		}
-		// 对数组长度扩充，新元素添加空值
-		if iValue.Len() <= index {
-			iValue.SetLen(index + 1)
-		}
-		// 将原数组值设置给newValue
-		newValue.Set(iValue.Index(index))
-	}
-
-	v.Index++
-	defer func() { v.Index-- }()
-	err = v.setValue(newValue)
-	if err == nil {
-		if index > -1 {
-			iValue.Index(index).Set(newValue)
-		} else {
-			iValue.Set(reflect.Append(iValue, newValue))
-		}
-	}
-	return err
-}
-
-func (v *value) HasPointer(iValue reflect.Value) bool {
-	kind := iValue.Kind()
-	if kind < reflect.Map || kind > reflect.Slice {
-		return false
-	}
-
-	ptr := iValue.Pointer()
-	if v.Pointers != nil && v.Index != v.Pindex {
-		v.Pindex = v.Index
-		v.Pointers = nil
-	}
-
-	for _, p := range v.Pointers {
-		if p == ptr {
-			return true
-		}
-	}
-	v.Pointers = append(v.Pointers, ptr)
-	return false
-}
-
-func (v *value) newError(f string, iValue reflect.Value, args ...any) error {
-	m := "get"
-	if v.Set {
-		m = "set"
-	}
-
-	err := fmt.Errorf(fmt.Sprintf("%s type %s ", iValue.Kind(), iValue.Type())+f, args...)
-	return fmt.Errorf(ErrFormatValueError, m, strings.Join(v.Keys[:v.Index+1], "."), err)
-}
-
-// 通过字符串获取结构体属性的索引。
+// Get the index of the struct property through the string.
 func getStructFieldOfTags(iValue reflect.Value, name string, tags []string) reflect.Value {
 	iType := iValue.Type()
 	for i := 0; i < iType.NumField(); i++ {
 		typeField := iType.Field(i)
-		// 字符串为结构体名称或结构体属性标签的值，则匹配返回索引。
 		if typeField.Name == name {
 			return iValue.Field(i)
 		}
@@ -478,7 +190,83 @@ func getStructFieldOfTags(iValue reflect.Value, name string, tags []string) refl
 	return reflect.Value{}
 }
 
-// getIndirectAllValue 函数获得解除引用的全部类型和值。
+func (v *value) lookMap(val reflect.Value, path []string) error {
+	iType := val.Type()
+	if val.IsNil() {
+		return v.lookNil(val, reflect.MakeMap(iType), path)
+	}
+
+	// Create the key used by the map
+	mapKey := reflect.New(iType.Key()).Elem()
+	err := setValueString(mapKey, path[0])
+	if err != nil {
+		return fmt.Errorf(ErrValueParseMapKey, path[0], err)
+	}
+
+	mapvalue := val.MapIndex(mapKey)
+	if mapvalue.Kind() != reflect.Invalid {
+		newValue := reflect.New(iType.Elem()).Elem()
+		newValue.Set(mapvalue)
+
+		return v.lookValue(newValue, path[1:])
+	} else if !v.allowSet {
+		return fmt.Errorf(ErrValueLookMap, val.Type().String(), path[0], ErrValueMapIndexInvalid)
+	}
+
+	// Reassign the modified mapvalue to the map
+	mapvalue = reflect.New(iType.Elem()).Elem()
+	err = v.lookValue(mapvalue, path[1:])
+	if err == nil {
+		val.SetMapIndex(mapKey, mapvalue)
+	}
+	return err
+}
+
+func (v *value) lookSlice(val reflect.Value, path []string) error {
+	index, err := strconv.Atoi(path[0])
+	switch {
+	case (err != nil && path[0] != "[]"):
+		return fmt.Errorf(ErrValueParseSliceIndex, path[0], val.Len(), err)
+	case val.Len() < -index:
+		return fmt.Errorf(ErrValueParseSliceIndex, path[0], val.Len(), ErrValueSliceIndexOutOfRange)
+	case index < 0:
+		index += val.Len()
+	case path[0] == "[]":
+		index = val.Len() + 1
+	}
+
+	// Check slice is empty
+	iType := val.Type()
+	if val.Kind() == reflect.Slice && val.IsNil() {
+		return v.lookNil(val, reflect.MakeSlice(iType, index, index), path)
+	}
+
+	if index < val.Len() {
+		return v.lookValue(val.Index(index), path[1:])
+	} else if !v.allowSet {
+		return fmt.Errorf(ErrValueLookSlice, iType.String(), path[0], val.Len(), ErrValueSliceIndexOutOfRange)
+	}
+
+	// Creates a new element's type and value
+	newValue := reflect.New(iType.Elem()).Elem()
+	err = v.lookValue(newValue, path[1:])
+	if err != nil {
+		return err
+	}
+
+	// Create a new array to replace the original array and expand the capacity
+	if val.Cap() <= index {
+		val.Set(reflect.AppendSlice(reflect.MakeSlice(iType, 0, index+1), val))
+	}
+	// Expand the array length and add null values to new elements
+	if val.Len() <= index {
+		val.SetLen(index + 1)
+	}
+	val.Index(index).Set(newValue)
+	return nil
+}
+
+// The function obtains the full type and value of the dereference.
 func getIndirectAllValue(iValue reflect.Value) (types []reflect.Type, values []reflect.Value) {
 	for {
 		types = append(types, iValue.Type())
@@ -495,36 +283,36 @@ func getIndirectAllValue(iValue reflect.Value) (types []reflect.Type, values []r
 	}
 }
 
-func setValuePtr(sValue reflect.Value, tValue reflect.Value) error {
+func setValuePtr(tValue, sValue reflect.Value) error {
 	if sValue.Kind() == reflect.Ptr || sValue.Kind() == reflect.Interface ||
 		tValue.Kind() == reflect.Ptr || tValue.Kind() == reflect.Interface {
 		stypes, svalues := getIndirectAllValue(sValue)
 		ttypes, tvalues := getIndirectAllValue(tValue)
 		for i, ttype := range ttypes {
 			for j, stype := range stypes {
-				// 转换接口类型、相同类型、type别名类型
+				// Convert interface type, same type, type alias type
 				if stype.ConvertibleTo(ttype) && tvalues[i].CanSet() {
-					return setValueData(svalues[j], tvalues[i])
+					return setValueData(tvalues[i], svalues[j])
 				}
 			}
 		}
 		sValue = svalues[len(svalues)-1]
 		tValue = tvalues[len(tvalues)-1]
 
-		// 目标类型如果是空指针，则尝试进行初始化并转换
+		// If the target type is a null pointer, try to initialize and convert
 		if tValue.Kind() == reflect.Ptr && tValue.IsNil() {
 			newValue := reflect.New(tValue.Type().Elem())
-			err := setValuePtr(sValue, newValue)
+			err := setValuePtr(newValue, sValue)
 			if err == nil {
 				tValue.Set(newValue)
 			}
 			return err
 		}
 	}
-	return setValueData(sValue, tValue)
+	return setValueData(tValue, sValue)
 }
 
-func setValueData(sValue reflect.Value, tValue reflect.Value) error {
+func setValueData(tValue, sValue reflect.Value) error {
 	sType := sValue.Type()
 	tType := tValue.Type()
 	switch {
@@ -536,7 +324,7 @@ func setValueData(sValue reflect.Value, tValue reflect.Value) error {
 		return nil
 	case tValue.Kind() == reflect.Slice:
 		newValue := reflect.New(tValue.Type().Elem()).Elem()
-		err := setValueData(sValue, newValue)
+		err := setValueData(newValue, sValue)
 		if err == nil {
 			tValue.Set(reflect.Append(tValue, newValue))
 		}
@@ -547,12 +335,12 @@ func setValueData(sValue reflect.Value, tValue reflect.Value) error {
 		tValue.SetString(fmt.Sprintf("%+v", sValue.Interface()))
 		return nil
 	}
-	return fmt.Errorf(ErrFormatValueSetWithValue, sValue.Type().String(), tValue.Type().String())
+	return fmt.Errorf(ErrValueSetValuePtr, sValue.Type().String(), tValue.Type().String())
 }
 
 var bitSizes = [...]int{0, 0, 0, 8, 16, 32, 64, 0, 8, 16, 32, 64, 32, 64, 32, 64}
 
-// 使用字符串设置对象的值。
+// Set the value of an object using a string.
 //
 //nolint:cyclop,gocyclo
 func setValueString(v reflect.Value, s string) error {
@@ -571,39 +359,42 @@ func setValueString(v reflect.Value, s string) error {
 	case reflect.String:
 		v.SetString(s)
 		return nil
+	case reflect.Struct:
+		if v.Type().ConvertibleTo(typeTimeTime) {
+			err = setTimeField(v, s)
+		} else {
+			err = fmt.Errorf(ErrValueSetStringUnknownType, v.Type().String())
+		}
 	case reflect.Ptr:
+		// only lookMap
 		if v.IsNil() {
 			newValue := reflect.New(v.Type().Elem())
-			err := setValueString(newValue, s)
+			err = setValueString(newValue, s)
 			if err == nil {
 				v.Set(newValue)
 			}
-			return err
+		} else {
+			err = setValueString(v.Elem(), s)
 		}
-		return setValueString(v.Elem(), s)
 	case reflect.Interface:
-		if v.IsNil() && v.Type() == typeAny {
+		// only lookMap
+		if v.Type() == typeAny {
 			v.Set(reflect.ValueOf(s))
-			return nil
+		} else {
+			err = fmt.Errorf(ErrValueSetStringUnknownType, v.Type().String())
 		}
-		return setValueString(v.Elem(), s)
-	case reflect.Struct:
-		if v.Type().ConvertibleTo(typeTimeTime) {
-			return setTimeField(v, s)
-		}
-		return fmt.Errorf(ErrFormatValueSetStringUnknownType, v.Kind().String())
 	default:
-		return fmt.Errorf(ErrFormatValueSetStringUnknownType, v.Kind().String())
+		err = fmt.Errorf(ErrValueSetStringUnknownType, v.Type().String())
 	}
 
 	if err != nil {
-		p := reflect.New(v.Type())
-		e, ok := p.Interface().(encoding.TextUnmarshaler)
+		newValue := reflect.New(v.Type())
+		e, ok := newValue.Interface().(encoding.TextUnmarshaler)
 		if ok {
 			err = e.UnmarshalText([]byte(s))
-		}
-		if err == nil {
-			v.Set(p.Elem())
+			if err == nil {
+				v.Set(newValue.Elem())
+			}
 		}
 	}
 	return err
@@ -627,7 +418,8 @@ func setIntField(field reflect.Value, str string) error {
 
 func setUintField(field reflect.Value, str string) error {
 	if str == "" {
-		str = "0"
+		field.SetUint(0)
+		return nil
 	}
 	uintVal, err := strconv.ParseUint(str, 10, bitSizes[int(field.Kind())])
 	if err == nil {
@@ -649,7 +441,12 @@ func setBoolField(field reflect.Value, str string) error {
 }
 
 func setComplexField(field reflect.Value, str string) error {
-	str = strings.TrimSuffix(strings.TrimSuffix(strings.TrimPrefix(str, "("), "i"), ")")
+	if str == "" {
+		field.SetComplex(complex(0, 0))
+		return nil
+	} else if str[0] == '(' && str[len(str)-1] == ')' {
+		str = str[1 : len(str)-1]
+	}
 	pos := strings.Index(str, "+")
 	if pos == -1 {
 		pos = len(str)
@@ -671,7 +468,8 @@ func setComplexField(field reflect.Value, str string) error {
 
 func setFloatField(field reflect.Value, str string) error {
 	if str == "" {
-		str = "0.0"
+		field.SetFloat(0.0)
+		return nil
 	}
 	floatVal, err := strconv.ParseFloat(str, bitSizes[int(field.Kind())])
 	if err == nil {
@@ -680,7 +478,7 @@ func setFloatField(field reflect.Value, str string) error {
 	return err
 }
 
-// TimeParse 方法通过解析内置支持的时间格式。
+// The TimeParse method parses the time format supported by the built-in time format.
 func setTimeField(field reflect.Value, str string) (err error) {
 	var t time.Time
 	for i, f := range DefaultValueParseTimeFormats {

@@ -51,6 +51,17 @@ func HandlerRouter405(ctx Context) {
 	_ = ctx.Render(page405)
 }
 
+func HandlerMethodTrace(ctx Context) {
+	r := ctx.Request()
+	ctx.SetHeader(HeaderContentType, "message/http")
+	ctx.WriteHeader(StatusOK)
+	fmt.Fprintf(ctx, "%s %s %s\r\n", r.Method, r.URL.Path, r.Proto)
+	if r.Host != "" {
+		fmt.Fprintf(ctx, "Host: %s\r\n", r.Host)
+	}
+	_ = r.Header.Write(ctx)
+}
+
 // The NewHandlerFuncsFilter function filters out nil objects in [HandlerFuncs].
 func NewHandlerFuncsFilter(hs HandlerFuncs) HandlerFuncs {
 	var size int
@@ -149,14 +160,22 @@ func getHandlerAliasName(v reflect.Value) string {
 // Note: functions are not comparable, the method names of objects are
 // overwritten by other method names.
 func SetHandlerFuncName(i HandlerFunc, name string) {
+	ptr := getFuncPointer(reflect.ValueOf(i))
 	if name == "" {
+		delete(contextFuncName, ptr)
+		delete(contextSaveName, ptr)
 		return
 	}
-	contextSaveName[getFuncPointer(reflect.ValueOf(i))] = name
+	contextSaveName[ptr] = name
 }
 
 // String method implements the [fmt.Stringer] interface
 // and output [HandlerFunc] name.
+//
+// This name may be inaccurate.
+// If a HandlerFunc is released after setting its name,
+// the new HandlerFunc uses the same address to obtain an incorrect name,
+// but the HandlerFunc is usually not released.
 func (h HandlerFunc) String() string {
 	rh := reflect.ValueOf(h)
 	ptr := getFuncPointer(rh)

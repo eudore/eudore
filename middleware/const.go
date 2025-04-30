@@ -23,6 +23,16 @@ const (
 )
 
 var (
+	_ eudore.ResponseWriter = (*responseWriterCache)(nil)
+	_ eudore.ResponseWriter = (*responseWriterCompress)(nil)
+	_ eudore.ResponseWriter = (*responseWriterDump)(nil)
+	_ eudore.ResponseWriter = (*responseWriteFlush)(nil)
+	_ eudore.ResponseWriter = (*responseWriterRate)(nil)
+	_ eudore.ResponseWriter = (*responseWriterTimeout)(nil)
+	_ eudore.ResponseWriter = (*responseWriterTiming)(nil)
+)
+
+var (
 	DefaultCacheAllowAccept = map[string]struct{}{
 		eudore.MimeAll:                 {},
 		eudore.MimeApplicationJSON:     {},

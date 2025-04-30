@@ -17,7 +17,7 @@ type contextKey struct {
 	name string
 }
 
-// NewContextKey defines a custom context key.
+// NewContextKey defines a custom [context.Context] key.
 func NewContextKey(key string) any {
 	return contextKey{key}
 }
@@ -160,7 +160,8 @@ func NewGetWrapWithMapString(data map[string]any) GetWrap {
 // [GetAnyByPath] to get value.
 func NewGetWrapWithObject(obj any) GetWrap {
 	return func(key string) any {
-		return GetAnyByPath(obj, key)
+		v, _ := GetAnyByPath(obj, key, nil)
+		return v
 	}
 }
 
@@ -335,15 +336,8 @@ func (err *mulitError) Error() string {
 }
 
 // The GetError method returns the error, or null if there is no saved error.
-func (err *mulitError) Unwrap() error {
-	switch len(err.errs) {
-	case 0:
-		return nil
-	case 1:
-		return err.errs[0]
-	default:
-		return err
-	}
+func (err *mulitError) Unwrap() []error {
+	return err.errs
 }
 
 // The NewErrorWithStatusCode method combines [NewErrorWithStatus] and
@@ -419,13 +413,21 @@ func (err codeError) Code() int {
 	return err.code
 }
 
-func sliceClearAppend[T any](dst []T, src ...T) []T {
-	if src == nil {
-		return dst
-	}
-	dst = append(dst, src...)
-	l := len(dst)
-	return dst[:l:l]
+type wrappedError struct {
+	msg string
+	err error
+}
+
+func NewErrorWrapped(msg string, err error) error {
+	return &wrappedError{msg, err}
+}
+
+func (e *wrappedError) Error() string {
+	return e.msg
+}
+
+func (e *wrappedError) Unwrap() error {
+	return e.err
 }
 
 func cutOmit(s string) (string, bool) {
@@ -433,6 +435,15 @@ func cutOmit(s string) (string, bool) {
 		return s[:len(s)-10], true
 	}
 	return s, false
+}
+
+func sliceClearAppend[T any](dst []T, src ...T) []T {
+	if src == nil {
+		return dst
+	}
+	dst = append(dst, src...)
+	l := len(dst)
+	return dst[:l:l]
 }
 
 func sliceIndex[T comparable](vals []T, val T) int {

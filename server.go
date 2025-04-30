@@ -370,11 +370,13 @@ func (srv *serverFcgi) Serve(ln net.Listener) error {
 func (srv *serverFcgi) Shutdown(context.Context) error {
 	srv.Lock()
 	defer srv.Unlock()
-	var errs mulitError
+	var err error
 	for _, ln := range srv.listeners {
-		errs.Handle(ln.Close())
+		if cerr := ln.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
 	}
-	return errs.Unwrap()
+	return err
 }
 
 // The Listen method uses the port configuration to create a listener,
@@ -386,9 +388,9 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 	// set default port
 	if slc.Addr == "" {
 		if slc.HTTPS {
-			slc.Addr = ":80"
-		} else {
 			slc.Addr = ":443"
+		} else {
+			slc.Addr = ":80"
 		}
 	}
 	if !slc.HTTPS {

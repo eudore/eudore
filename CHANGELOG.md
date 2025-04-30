@@ -5,7 +5,16 @@ Next
 - FuncCreator
 - EventHub
 
-[2024年11月30日]
+[2025年4月30日]
+- HandlerFunc		修复String方法可能导致的单元测试不稳定panic，添加注释说明。
+- GetAnyByPath		修改实现方法，可以返回明确的error原因。
+- Protobuf			移除内置实现和相关支持。
+- HandlerMethodTrace	新增实现处理Trace方法请求。
+- HandlerDataRenderNotAcceptable 新增Render响应406。
+- mulitError		更新Unwrap方法实现，返回[]error。
+- middleware/skip	新增在满足条件时跳过下一个处理函数。
+
+[2024年11月30日](https://github.com/eudore/eudore/tree/e8c1fd0a0563cdc0e5e40ca732e5f268eed33bc2)
 - App		新增使用Mutex锁全部Values。
 - Logger	新增WriterAsync实现日志异步写入。
 - Config	移除NewConfigParseHelp实现，Parse添加timeout。
@@ -221,7 +230,7 @@ Next
 
 [2020年4月30日](https://github.com/eudore/eudore/tree/d283ed31f0579d4015bd141afd47936c9ad4ef28)
 - 主包代码行缩减至6195无依赖，单元测试覆盖率提升到98.4%剩余热重启和runtime部分。
-- 修改type定义使用，不再使用type(...)语法，方法grep查找定义
+- 修改type定义使用，不再使用type(...)语法，方便grep查找定义
 - App 重构app、删除core和eudore修改扩展方案
 - Config	重构配置加载函数
 - middleware/basicauth	新增保存验证通过的用户名

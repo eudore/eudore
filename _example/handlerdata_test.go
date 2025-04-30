@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	. "github.com/eudore/eudore"
+	. "github.com/eudore/eudore/middleware"
 )
 
 func TestHandlerDataFuncs(*testing.T) {
@@ -21,7 +23,7 @@ func TestHandlerDataFuncs(*testing.T) {
 	NewHandlerDataStatusCode(nil, 400, 1000)
 }
 
-func TestHandlerDataBind(*testing.T) {
+func TestHandlerDataBind(t *testing.T) {
 	type Data struct {
 		Name string `alias:"name" json:"name" xml:"name"`
 		Int  int    `alias:"int" json:"int" xml:"int"`
@@ -36,60 +38,64 @@ func TestHandlerDataBind(*testing.T) {
 	app.GetFunc("/hello", func(ctx Context) {
 		ctx.WriteString("hello eudore")
 	})
-	app.GetFunc("/bind/err", func(ctx Context) {
-		ctx.Request().URL.RawQuery = "tag=%\007"
-		var data Data
-		ctx.Bind(&data)
-	})
-	app.AnyFunc("/data/*", func(ctx Context) (interface{}, error) {
+
+	app.AddMiddleware(
+		NewLoggerLevelFunc(func(ctx Context) int {
+			return int(LoggerFatal)
+		}),
+		func(ctx Context) {
+			if ctx.GetHeader("Debug") != "" {
+				ctx.Request().URL.RawQuery = "tag=%\007"
+			}
+		},
+	)
+	app.GetFunc("/data/err", func(ctx Context) {
 		var datas []Data
+		ctx.Request().URL.RawQuery = "tag=err"
 		ctx.Bind(&datas)
+
+		ctx.Request().Header.Set(HeaderContentType, "pb")
+		ctx.Request().Method = "POST"
+		ctx.Bind(&datas)
+		ctx.Request().Method = "PATCH"
+		err := ctx.Bind(&datas)
+		if err != nil {
+			ctx.Fatal(err)
+		}
+	})
+	app.GetFunc("/data/*", func(ctx Context) {
 		var data Data
 		err := ctx.Bind(&data)
 		if err != nil {
-			return nil, err
+			ctx.Fatal(err)
 		}
-		return &data, nil
 	})
 
 	form := NewClientBodyForm(nil)
 	form.AddFile("file", "app", []byte("form body"))
-	pb := "\u0010\u0006eudore"
 
-	app.NewRequest("GET", "/hello", strings.NewReader("trace"))
-	app.NewRequest("GET", "/bind/err")
-	app.NewRequest("GET", "/bind/err",
-		http.Header{HeaderContentType: {MimeApplicationForm}},
-	)
-	app.NewRequest("GET", "/data/header", http.Header{"X-Name": {"eudore"}})
-	app.NewRequest("GET", "/data/get-url",
-		url.Values{"name": {"eudore"}, "int": {"str"}},
-	)
-	app.NewRequest("POST", "/data/post-url", url.Values{"name": {"eudore"}})
-	app.NewRequest("POST", "/data/post-mime", url.Values{"name": {"eudore"}},
-		http.Header{HeaderContentType: {"pb"}}, strings.NewReader(pb),
-	)
-	app.NewRequest("PATCH", "/data/patch-mime", url.Values{"name": {"eudore"}},
-		http.Header{HeaderContentType: {"pb"}}, strings.NewReader(pb),
-	)
-	app.NewRequest("DELETE", "/data/detele-mime", url.Values{"name": {"eudore"}},
-		http.Header{HeaderContentType: {"pb"}}, strings.NewReader(pb),
-	)
-	app.NewRequest("PUT", "/data/json",
-		NewClientBodyJSON(url.Values{"name": {"eudore"}}),
-	)
-	app.NewRequest("PUT", "/data/xml",
-		NewClientBodyXML(&Data{"eudore", 0}),
-	)
-	app.NewRequest("PUT", "/data/url",
-		NewClientBodyForm(url.Values{"name": {"eudore"}}),
-	)
-	app.NewRequest("PUT", "/data/form", form)
-	app.NewRequest("PUT", "/data/protobuf", strings.NewReader(pb))
-	app.NewRequest("PUT", "/data/protobuf",
-		http.Header{HeaderContentType: {MimeApplicationProtobuf}},
-		strings.NewReader(pb),
-	)
+	data := []struct {
+		data any
+		err  string
+	}{
+		{url.Values{}, ""},
+		{url.Values{"name": {"eudore"}, "int": {"str"}}, "strconv.ParseInt: parsing \"str\": invalid syntax"},
+		{NewClientBodyJSON(&Data{"eudore", 0}), ""},
+		{NewClientBodyXML(&Data{"eudore", 0}), ""},
+		{NewClientBodyForm(url.Values{"name": {"eudore"}}), ""},
+		{form, ""},
+		{http.Header{"Debug": []string{"1"}, HeaderContentType: []string{MimeApplicationForm}}, "invalid URL escape"},
+		{http.Header{"Debug": []string{"1"}}, "invalid URL escape"},
+		{func(r *http.Request) { r.URL.Path = "/data/err" }, "not support Content-Type: pb"},
+	}
+
+	options := []any{NewClientParseErr(), context.WithValue(app, ContextKeyLogger, DefaultLoggerNull)}
+	for i := 0; i < len(data); i++ {
+		err := app.GetRequest("/data/"+strconv.Itoa(i), data[i].data, options)
+		if err != nil && (data[i].err == "" || !strings.Contains(err.Error(), data[i].err)) {
+			t.Error(err)
+		}
+	}
 
 	app.CancelFunc()
 	app.Run()
@@ -108,7 +114,12 @@ func TestHandlerDataRender(*testing.T) {
 			}
 			return nil
 		},
-		NewHandlerDataRenders(nil),
+		NewHandlerDataRenders(map[string]HandlerDataFunc{
+			MimeText:            HandlerDataRenderText,
+			MimeTextPlain:       HandlerDataRenderText,
+			MimeTextHTML:        NewHandlerDataRenderTemplates(nil, nil),
+			MimeApplicationJSON: HandlerDataRenderJSON,
+		}),
 	))
 	app.SetValue(ContextKeyContextPool, NewContextBasePool(app))
 	app.AnyFunc("/data/*", func(ctx Context) interface{} {
@@ -257,64 +268,68 @@ func TestHandlerDataValidate(*testing.T) {
 	app.Run()
 }
 
-func TestHandlerDataValidateStruct(*testing.T) {
+func TestHandlerDataValidateStruct(t *testing.T) {
 	app := NewApp()
+	app.SetValue(ContextKeyLogger, DefaultLoggerNull)
 	app.SetValue(ContextKeyBind, NewHandlerDataFuncs(
 		NewHandlerDataBinds(nil),
 		NewHandlerDataValidateStruct(app),
 	))
 	app.SetValue(ContextKeyContextPool, NewContextBasePool(app))
 
-	app.AnyFunc("/data/struct1", func(ctx Context) {
+	app.AnyFunc("/data/struct1", func(ctx Context) error {
 		var data dataValidate01
-		ctx.Bind(&data)
+		return ctx.Bind(&data)
 	})
-	app.AnyFunc("/data/slice1", func(ctx Context) {
+	app.AnyFunc("/data/slice1", func(ctx Context) error {
 		var data []dataValidate01
-		ctx.Bind(&data)
+		return ctx.Bind(&data)
 	})
-	app.AnyFunc("/data/ptr1", func(ctx Context) {
+	app.AnyFunc("/data/ptr1", func(ctx Context) error {
 		var data []*dataValidate01
-		ctx.Bind(&data)
+		return ctx.Bind(&data)
 	})
-	app.AnyFunc("/data/any1", func(ctx Context) {
+	app.AnyFunc("/data/any1", func(ctx Context) error {
 		var data []any = []any{new(dataValidate01)}
-		ctx.Bind(&data)
+		return ctx.Bind(&data)
 	})
-	app.AnyFunc("/data/struct2", func(ctx Context) {
+	app.AnyFunc("/data/struct2", func(ctx Context) error {
 		var data dataValidate02
-		ctx.Bind(&data)
+		return ctx.Bind(&data)
 	})
-	app.AnyFunc("/data/struct3", func(ctx Context) {
+	app.AnyFunc("/data/struct3", func(ctx Context) error {
 		var data dataValidate03
-		ctx.Bind(&data)
+		return ctx.Bind(&data)
 	})
-	app.AnyFunc("/data/struct4", func(ctx Context) {
+	app.AnyFunc("/data/struct4", func(ctx Context) error {
 		var data dataValidate04
-		ctx.Bind(&data)
+		return ctx.Bind(&data)
 	})
-	app.AnyFunc("/data/struct5", func(ctx Context) {
+	app.AnyFunc("/data/struct5", func(ctx Context) error {
 		var data dataValidate05
-		ctx.Bind(&data)
+		return ctx.Bind(&data)
 	})
 
-	fn := func(name string, val any) {
-		app.NewRequest("POST", "/data/"+name, NewClientBodyJSON(val))
+	fn := func(name string, val any, msg string) {
+		err := app.NewRequest("POST", "/data/"+name, NewClientBodyJSON(val), NewClientParseErr())
+		if err != nil && (msg == "" || !strings.Contains(err.Error(), msg)) {
+			t.Error(name, err)
+		}
 	}
 
 	id := 4
-	fn("struct1", dataValidate01{})
-	fn("struct1", dataValidate01{ID: &id})
-	fn("slice1", []dataValidate01{{Name: "A1"}})
-	fn("slice1", []dataValidate01{{Name: "eudore", Child: []int{0, 0, 0}}})
-	fn("slice1", []dataValidate01{{Name: "eudore", Child: []int{1, 2, 3}}})
-	fn("ptr1", []dataValidate01{{Name: "eudore"}})
-	fn("any1", []dataValidate01{{Name: "eudore"}})
-	fn("struct2", dataValidate02{})
-	fn("struct5", dataValidate03{ID: 32})
-	fn("struct4", dataValidate04{})
-	fn("struct4", dataValidate04{})
-	fn("struct3", dataValidate05{})
+	fn("struct1", dataValidate01{}, "field Name check rule nozero fatal, value: \"\"")
+	fn("struct1", dataValidate01{ID: &id}, "field Name check rule nozero fatal, value: \"\"")
+	fn("slice1", []dataValidate01{{Name: "A1"}}, "field Name check rule len>4 fatal, value: \"A1\"")
+	fn("slice1", []dataValidate01{{Name: "eudore", Child: []int{0, 0, 0}}}, "field Child check rule nozero fatal, value: []int{0, 0, 0}")
+	fn("slice1", []dataValidate01{{Name: "eudore", Child: []int{1, 2, 3}}}, "")
+	fn("ptr1", []dataValidate01{{Name: "eudore"}}, "")
+	fn("any1", []dataValidate01{{Name: "eudore"}}, "")
+	fn("struct2", dataValidate02{}, "field ID check rule nozero fatal, value: (*int)(nil)")
+	fn("struct5", dataValidate03{ID: 32}, "field ID create rule not error: funcCreator create kind int func not err: not found or create func")
+	fn("struct4", dataValidate04{}, "field ID create rule not error: funcCreator create kind int func not err: not found or create func")
+	fn("struct4", dataValidate04{}, "field ID create rule not error: funcCreator create kind int func not err: not found or create func")
+	fn("struct3", dataValidate05{}, "field ID check rule nozero fatal, value: 0")
 
 	app.CancelFunc()
 	app.Run()
@@ -341,10 +356,6 @@ func TestHandlerDataFilterRule(*testing.T) {
 	app.SetValue(ContextKeyFuncCreator, fc)
 	app.SetValue(ContextKeyRender, NewHandlerDataFuncs(
 		NewHandlerDataFilter(app),
-		func(ctx Context, i any) error {
-			ctx.Debugf("%#v", i)
-			return nil
-		},
 	))
 	app.SetValue(ContextKeyContextPool, NewContextBasePool(app))
 
@@ -409,13 +420,8 @@ func TestHandlerDataFilterRule(*testing.T) {
 		}
 	})
 	app.NewRequest("GET", "/data")
+	fc.(interface{ Metadata() any }).Metadata()
 
-	meta, ok := fc.(interface{ Metadata() any }).Metadata().(MetadataFuncCreator)
-	if ok {
-		for _, err := range meta.Errors {
-			app.Debug("err:", err)
-		}
-	}
 	app.CancelFunc()
 	app.Run()
 }

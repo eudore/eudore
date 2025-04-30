@@ -135,24 +135,21 @@ var (
 	// DefaultHandlerDataBinds defines all [HandlerDataFuncs] processed
 	// by [NewHandlerDataBinds].
 	DefaultHandlerDataBinds = map[string]HandlerDataFunc{
+		"":                         HandlerDataBindURL,
 		MimeApplicationOctetStream: HandlerDataBindURL,
 		MimeApplicationJSON:        HandlerDataBindJSON,
 		MimeApplicationForm:        HandlerDataBindForm,
 		MimeMultipartForm:          HandlerDataBindForm,
-		MimeApplicationProtobuf:    HandlerDataBindProtobuf,
 		MimeApplicationXML:         HandlerDataBindXML,
 	}
-	// DefaultHandlerDataRenderFunc defines the default Render function used
-	// by [NewHandlerDataRenders].
-	DefaultHandlerDataRenderFunc = HandlerDataRenderJSON
 	// DefaultHandlerDataRenders defines all [HandlerDataFuncs] processed
 	// by [NewHandlerDataRenders].
 	DefaultHandlerDataRenders = map[string]HandlerDataFunc{
-		MimeText:                HandlerDataRenderText,
-		MimeTextPlain:           HandlerDataRenderText,
-		MimeTextHTML:            NewHandlerDataRenderTemplates(nil, nil),
-		MimeApplicationJSON:     HandlerDataRenderJSON,
-		MimeApplicationProtobuf: HandlerDataRenderProtobuf,
+		MimeAll:             HandlerDataRenderJSON,
+		MimeText:            HandlerDataRenderText,
+		MimeTextPlain:       HandlerDataRenderText,
+		MimeTextHTML:        NewHandlerDataRenderTemplates(nil, nil),
+		MimeApplicationJSON: HandlerDataRenderJSON,
 	}
 	// DefaultHandlerDataRenderTemplateAppend defines the non-existent template
 	// to be append when Render the template.
@@ -353,36 +350,27 @@ var (
 	ErrHandlerExtenderOutputParam  = "HandlerExtender: return type of the registered function %s must be of HandlerFunc type"
 	ErrHandlerFuncsCombineTooMany  = "NewHandlerFuncsCombine: too many handlers %d"
 
+	ErrValueNil                  = errors.New("value is nil")
+	ErrValueNotSet               = errors.New("value not can set")
+	ErrValueNotFound             = errors.New("value not found")
+	ErrValueStructNotField       = NewErrorWrapped("struct field not found", ErrValueNotFound)
+	ErrValueStructUnexported     = NewErrorWrapped("struct field unexported", ErrValueNotFound)
+	ErrValueMapIndexInvalid      = NewErrorWrapped("map index invalid", ErrValueNotFound)
+	ErrValueSliceIndexOutOfRange = NewErrorWrapped("slice index out of range", ErrValueNotFound)
+
+	ErrValueLookNil         = "look type %s value %s: %w"
+	ErrValueLookType        = "look value type %s path '%s': %w"
+	ErrValueLookStruct      = "look struct type %s field '%s': %w"
+	ErrValueLookMap         = "look map type %s key '%s': %w"
+	ErrValueLookSlice       = "look slice type %s index '%s', len is %d, error: %w"
+	ErrValueParseMapKey     = "parse map key '%s' error: %w"
+	ErrValueParseSliceIndex = "parse slice index '%s', len is %d error: %w"
+
+	ErrValueSetStringUnknownType = "SetValueString unknown type %s"
+	ErrValueSetValuePtr          = "the SetValuePtr method type %s cannot be assigned to type %s"
+
 	// ErrFuncCreatorNotFunc 定义FuncCreator无法获取或创建函数。
 	ErrFuncCreatorNotFunc = errors.New("not found or create func")
 	// ErrFormatFuncCreatorRegisterInvalidType fc注册函数类似是无效的。
 	ErrFormatFuncCreatorRegisterInvalidType = "Register func '%s' type is %T, must 'func(T) bool' or 'func(string) (func(T) bool, error)'"
-
-	ErrFormatProtobufDecodeNilInteface    = "protobuf decode %s interface %s is nil"
-	ErrFormatProtobufDecodeInvalidFlag    = "protobuf decode %s invalid flag %d"
-	ErrFormatProtobufDecodeInvalidKind    = "protobuf decode %s invalid kind %s"
-	ErrFormatProtobufDecodeReadError      = "protobuf decode %s read %s error: %w"
-	ErrFormatProtobufDecodeReadInvalid    = "protobuf decode %s read length %d invalid has data %d"
-	ErrFormatProtobufDecodeMessageNotRead = "protobuf decode message has %d not read"
-	ErrFormatProtobufTypeMustSturct       = "protobuf encdoe/decode kind must struct, current type %s"
-
-	// ErrValueInputDataNil 在Converter方法时，输出参数是空。
-	ErrValueInputDataNil = errors.New("converter input value is nil")
-	// ErrValueInputDataNotPtr 在Converter方法时，输出参数是空。
-	ErrValueInputDataNotPtr = errors.New("converter input value not is ptr")
-	// ErrFormatValueError 定义Value操作错误。
-	ErrFormatValueError = "value %s path '%s' error: %w"
-	// ErrFormatValueTypeNil 定义Value对象为空。
-	ErrFormatValueTypeNil           = "is nil"
-	ErrFormatValueAnonymousField    = " is anonymous field"
-	ErrFormatValueNotField          = "not found field '%s'"
-	ErrFormatValueArrayIndexInvalid = "parse index '%s' is invalid, length is %d"
-	ErrFormatValueMapIndexInvalid   = "parse index '%s' is invalid"
-	ErrFormatValueMapValueInvalid   = "get index '%s' value is invalid"
-	ErrFormatValueStructUnexported  = "field '%s' is unexported"
-	ErrFormatValueStructNotCanset   = "field '%s' is not canset "
-	// ErrFormatConverterSetStringUnknownType setWithString函数遇到未定义的反射类型。
-	ErrFormatValueSetStringUnknownType = "setWithString unknown type %s"
-	// ErrFormatConverterSetWithValue setWithValue函数中类型无法赋值。
-	ErrFormatValueSetWithValue = "the setWithValue method type %s cannot be assigned to type %s"
 )

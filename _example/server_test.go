@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,7 +17,11 @@ import (
 
 func TestServerStd(t *testing.T) {
 	NewServer(nil)
-	ln, _ := DefaultServerListen("tcp", ":8088")
+	ln, err := DefaultServerListen("tcp", ":8088")
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	ctx := context.WithValue(context.Background(),
 		ContextKeyHTTPHandler, http.NotFoundHandler(),
 	)
@@ -52,8 +59,20 @@ func TestServerStd(t *testing.T) {
 	srv.(interface{ Metadata() any }).Metadata()
 }
 
+type ListenerCloser struct {
+	net.Listener
+}
+
+func Close() error {
+	return context.Canceled
+}
+
 func TestServerCgi(t *testing.T) {
-	ln, _ := DefaultServerListen("tcp", ":8088")
+	ln, err := DefaultServerListen("tcp", ":8088")
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 	ctx := context.WithValue(context.Background(),
 		ContextKeyHTTPHandler, http.NotFoundHandler(),
@@ -63,6 +82,7 @@ func TestServerCgi(t *testing.T) {
 	srv.(interface{ Mount(context.Context) }).Mount(ctx)
 	srv.SetHandler(h)
 	go srv.Serve(ln)
+	go srv.Serve(&ListenerCloser{ln})
 	time.Sleep(time.Millisecond * 20)
 	srv.(interface{ Mount(context.Context) }).Mount(context.Background())
 	srv.(interface{ Unmount(context.Context) }).Unmount(context.Background())
@@ -116,12 +136,25 @@ func TestServerListen(t *testing.T) {
 			Trustfile: "ca.cer",
 		},
 	}
+	errs := []string{
+		"<nil> listen tcp :80: bind: permission denied",
+		"<nil> listen tcp :443: bind: permission denied",
+		"<nil>",
+		"listen tcp :8089: bind: address already in use",
+		"<nil>",
+		"open : no such file or directory",
+		"open not found.key: no such file or directory",
+	}
+	lns := []any{}
 	for i, c := range confs {
 		ln, err := c.Listen()
+		lns = append(lns, ln)
 		if err == nil && c.Addr != ":8089" {
 			ln.Close()
 		}
-		t.Log(i, err)
+		if !strings.Contains(errs[i], fmt.Sprint(err)) {
+			t.Error(i, err)
+		}
 	}
 }
 

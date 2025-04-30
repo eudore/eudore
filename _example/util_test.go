@@ -3,21 +3,22 @@ package eudore_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
 	. "github.com/eudore/eudore"
 )
 
-func TestUtilContextKey(t *testing.T) {
-	t.Log(
+func TestUtilContextKey(*testing.T) {
+	fmt.Sprint(
 		NewContextKey("debug-key"),
 		TimeDuration(0),
 		GetStringRandom(32),
 		GetStringDuration(0),
 		GetStringDuration(time.Second),
 		GetStringByAny(GetStringByAny),
-		NewRouter(nil).AddHandlerExtend(1, 2, 3),
 	)
 }
 
@@ -31,6 +32,8 @@ func TestUtilError(t *testing.T) {
 		NewErrorWithCode(nil, 1004),
 		NewErrorWithCode(context.Canceled, 0),
 		NewErrorWithCode(context.Canceled, 1004),
+		NewErrorWrapped("msg", context.Canceled),
+		NewRouter(nil).AddHandlerExtend(1, 2, 3),
 	}
 	for _, err := range errs {
 		if err == nil {
@@ -40,6 +43,10 @@ func TestUtilError(t *testing.T) {
 		u, ok := err.(interface{ Unwrap() error })
 		if ok {
 			u.Unwrap()
+		}
+		us, ok := err.(interface{ Unwrap() []error })
+		if ok {
+			us.Unwrap()
 		}
 		s, ok := err.(interface{ Status() int })
 		if ok {
@@ -80,15 +87,22 @@ func TestUtilGetWrap(t *testing.T) {
 	NewGetWrapWithObject(app)
 
 	w := NewGetWrapWithObject(map[string]any{"int": 1})
-	w.GetAny("")
-	w.GetBool("int")
-	w.GetInt("int")
-	w.GetInt64("int")
-	w.GetUint("int")
-	w.GetUint64("int")
-	w.GetFloat32("int")
-	w.GetFloat64("int")
-	w.GetString("int")
+	vals := []any{
+		w.GetAny("int"), 1,
+		w.GetBool("int"), true,
+		w.GetInt("int"), 1,
+		w.GetInt64("int"), int64(1),
+		w.GetUint("int"), uint(1),
+		w.GetUint64("int"), uint64(1),
+		w.GetFloat32("int"), float32(1),
+		w.GetFloat64("int"), float64(1),
+		w.GetString("int"), "1",
+	}
+	for i := 0; i < len(vals); i += 2 {
+		if vals[i] != vals[i+1] {
+			t.Error(i, vals[i])
+		}
+	}
 }
 
 func TestUtilGetAnyValue(t *testing.T) {
@@ -147,160 +161,124 @@ func TestUtilGetAnyValue(t *testing.T) {
 	}
 }
 
-func TestUtilGetSetValue(t *testing.T) {
-	type Field struct {
-		Index int    `alias:"index"`
-		Name  string `alias:"name"`
-	}
-	type config struct {
-		Name    string `alias:"name"`
-		int     int    `alias:"int`
-		ano     string
-		Ptr     *Field          `alias:"ptr"`
-		Array   [4]Field        `alias:"array"`
-		Slice   []Field         `alias:"slice"`
-		Map     map[int]string  `alias:"map"`
-		Any     any             `alias:"any"`
-		Context context.Context `alias:"context"`
-		*Field
-	}
-
-	get := func(i any, key string) any {
-		val, err := GetAnyByPathWithTag(i, key, nil, false)
-		if err != nil {
-			return err
-		}
-		return val
-	}
-	set := func(i any, key string, val any) error {
-		return SetAnyByPath(i, key, val)
-	}
-	data := new(config)
-
-	SetAnyByPathWithTag(data, "ano", "ano field", nil, true)
-	GetAnyByPathWithTag(data, "ano", nil, true)
-	GetAnyByPathWithTag(data, "int", nil, true)
-	GetAnyByPathWithValue(data, "int", nil, true)
-	GetAnyByPath(data, "int")
-
-	get(nil, "")
-	get(data, "ptr.key")
-	get(data, "name.num")
-	get(data, "null")
-	get(data, "int")
-	get(data, "map.0")
-	get(data, "slice.0")
-	get(data, "index")
-
-	set(data, "", 0)
-	set(*data, "name", 0)
-	set(data, "name.null", 0)
-	set(data, "ptr.null", 0)
-	set(data, "int", 0)
-	set(data, "context.4", 0)
-	set(data, "array.x", 0)
-	set(data, "slice.x", 0)
-	set(data, "map.xs", 0)
-	set(data, "index", "x")
-	set(data, "index", 11)
-
-	set(data, "ptr.index", 12)
-	set(data, "array.0.index", 13)
-	set(data, "array.-1.index", 14)
-	set(data, "slice.5.index", 15)
-	set(data, "slice.[].index", 16)
-	set(data, "slice.-1.index", 17)
-	set(data, "any.8", 18)
-	set(data, "any.9", 19)
-	set(data, "map.9", "map9 hello")
-	set(data, "map.9", "map9 hello")
-
-	get(data, "map.xs")
-	get(data, "map.0")
-	get(data, "map.9")
-	get(data, "array.x.index")
-	get(data, "array.-1.index")
-	get(data, "array.0.index")
-	get(data, "index")
-}
-
-func TestUtilSetWithValue(t *testing.T) {
+func TestUtilSetValue(t *testing.T) {
 	type time2 time.Time
-	type config struct {
-		Ptr     *time.Duration `alias:"ptr"`
-		Slice   []int          `alias:"slice"`
-		Int     int            `alias:"int"`
-		Uint    uint           `alias:"uint"`
-		Bool    bool           `alias:"bool"`
-		Float   float64        `alias:"float"`
-		Complex complex64      `alias:"complex"`
-		Time    time.Time      `alias:"time"`
-		Time2   time2          `alias:"time2"`
-		Struct  struct{}       `alias:"struct"`
-		Bytes   []byte         `alias:"bytes"`
-		Runes   []rune         `alias:"runes"`
-		Any     any            `alias:"any"`
-		Face    json.Marshaler `alias:"face"`
-		Chan    chan int       `alias:"chan"`
-		ano     string
+	type C struct {
+		name string
+	}
+	type S struct {
+		Int       int
+		Uint      uint
+		Bool      bool
+		Complex   complex64
+		Float     float64
+		Duration  time.Duration
+		Duration2 TimeDuration
+		Time      time.Time
+		Time2     time2
+		String    string
+		Struct    struct {
+			*C
+			anonymou int
+		} `alias:"struct"`
+		Func    func()
+		Ptr     *string
+		Any     any
+		Context context.Context
+		Slice   []int
+
+		MapS map[*string]string
+		MapE map[any]string
+		MapI map[fmt.Stringer]string
 	}
 
-	data := new(config)
-	SetAnyByPath(data, "ptr", t)
-	SetAnyByPath(data, "ptr", time.Second)
-	d := TimeDuration(time.Second)
-	SetAnyByPath(data, "ptr", &d)
-	SetAnyByPath(data, "ptr", "12x")
-	SetAnyByPath(data, "ptr", "12s")
+	vals := []any{
+		"Int", "", "0",
+		"Int", "1", "1",
+		"Int", "x", "strconv.ParseInt: parsing \"x\": invalid syntax",
+		"Uint", "", "0",
+		"Uint", "1", "1",
+		"Uint", "x", "strconv.ParseUint: parsing \"x\": invalid syntax",
+		"Bool", "", "true",
+		"Bool", "1", "true",
+		"Bool", "x", "strconv.ParseBool: parsing \"x\": invalid syntax",
+		"Complex", "", "(0+0i)",
+		"Complex", "(1+1)", "(1+1i)",
+		"Complex", "1", "(1+0i)",
+		"Complex", "0+x", "strconv.ParseFloat: parsing \"x\": invalid syntax",
+		"Complex", "x+0", "strconv.ParseFloat: parsing \"x\": invalid syntax",
+		"Float", "", "0",
+		"Float", "1", "1",
+		"Float", "x", "strconv.ParseFloat: parsing \"x\": invalid syntax",
+		"Duration", "", "0s",
+		"Duration", "100ns", "100ns",
+		"Duration", "x", "time: invalid duration \"x\"",
+		"Duration2", "", "0s",
+		"Duration2", "100ns", "100ns",
+		"Time", "20060102", "2006-01-02 00:00:00 +0000 UTC",
+		"Time", "20060102x", "parsing time \"20060102x\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"0102x\" as \"-\"",
+		"Time2", "20060102", "{0 63271756800 <nil>}",
+		"String", "String", "String",
+		"Struct", "String", "SetValueString unknown type struct { *eudore_test.C; anonymou int }",
+		"Func", "String", "SetValueString unknown type func()",
 
-	SetAnyByPath(data, "slice", "12s")
-	SetAnyByPath(data, "slice", "12")
-	SetAnyByPath(data, "slice", []string{"1", "2", "3"})
-	SetAnyByPath(data, "slice", []string{"a", "x", "c"})
+		"Int", 1, "1",
+		"Int", uint(1), "1",
+		"Slice", "1", "[1]",
+		"Slice", "x", "strconv.ParseInt: parsing \"x\": invalid syntax",
+		"String", true, "true",
+		"Int", true, "the SetValuePtr method type bool cannot be assigned to type int",
+		"Ptr.ptr", "String", "look value type string path 'ptr': value not found",
+		"Ptr", "String", "String",
+		"Ptr", &DefaultGodocServer, DefaultGodocServer,
+		"Any", &DefaultGodocServer, DefaultGodocServer,
 
-	SetAnyByPath(data, "int", "")
-	SetAnyByPath(data, "uint", "")
-	SetAnyByPath(data, "bool", "")
-	SetAnyByPath(data, "float", "")
-	SetAnyByPath(data, "complex", "")
-	SetAnyByPath(data, "complex", "0+x")
-	SetAnyByPath(data, "complex", "0i+x")
-	SetAnyByPath(data, "time", "2018")
-	SetAnyByPath(data, "chan", "2018")
-	SetAnyByPath(data, "int", "1")
-	SetAnyByPath(data, "uint", "1")
-	SetAnyByPath(data, "bool", "1")
-	SetAnyByPath(data, "float", "1")
-	SetAnyByPath(data, "complex", "1i")
-	SetAnyByPath(data, "time", "20180801")
-	SetAnyByPath(data, "time2", "20180801")
-	SetAnyByPath(data, "bytes", "bytes")
-	SetAnyByPath(data, "runes", "runes")
-	SetAnyByPath(data, "any", "any")
-	SetAnyByPath(data, "face", "any")
-	SetAnyByPath(data, "struct", "struct")
-	SetAnyByPathWithTag(data, "ano", time.Now(), nil, true)
+		"MapS.str", "String", "",
+		"MapE.str", "String", "String",
+		"MapI.str", "String", "parse map key 'str' error: SetValueString unknown type fmt.Stringer",
 
-	type M struct {
-		M1 map[string]any       `alias:"m1"`
-		M2 map[*string]any      `alias:"m2"`
-		M3 map[LoggerLevel]any  `alias:"m3"`
-		M4 map[TimeDuration]any `alias:"m4"`
-		M5 map[any]any          `alias:"m5"`
+		"Any", nil, "",
+		"Any.1", "1", "1",
+		"Any.2", "2", "2",
+		"Context.3", "3", "look type interface value context.Context: value is nil",
+		"Context", context.Background(), "context.Background",
+		"struct.anonymou", "1", "look struct type struct { *eudore_test.C; anonymou int } field 'anonymou': struct field unexported",
+		"struct.notfound", "1", "look struct type struct { *eudore_test.C; anonymou int } field 'notfound': struct field not found",
+		"struct.name", "name", "look struct type struct { *eudore_test.C; anonymou int } field 'name': struct field not found",
+		"Slice", nil, "[]",
+		"Slice.+", "1", "parse slice index '+', len is 0 error: strconv.Atoi: parsing \"+\": invalid syntax",
+		"Slice.-1", "2", "parse slice index '-1', len is 0 error: slice index out of range",
+		"Slice.[]", "3", "",
+		"Slice.-1", "4", "4",
+		"Slice.4", "xx", "strconv.ParseInt: parsing \"xx\": invalid syntax",
 	}
 
-	m := &M{}
-	SetAnyByPath(m, "m1.1", "1")
-	SetAnyByPath(m, "m2.3", "1")
-	SetAnyByPath(m, "m3.ERROR", "1")
-	SetAnyByPath(m, "m4.4s", "1")
-	SetAnyByPath(m, "m5.5", "1")
-
-	type Cycle struct {
-		*Cycle
+	s := &S{}
+	GetAnyByPath(nil, "Any", nil)
+	SetAnyByPath(nil, "Any", nil, nil)
+	SetAnyByPath(S{}, "Any", nil, nil)
+	GetAnyByPath(s, "Any.x", nil)
+	SetAnyByPath(reflect.ValueOf(s), "struct.name", "name", nil)
+	GetAnyByPath(reflect.ValueOf(s), "struct.name", nil)
+	for i := 0; i < len(vals); i += 3 {
+		err := SetAnyByPath(s, vals[i].(string), vals[i+1], nil)
+		if err == nil {
+			var str string
+			val, err := GetValueByPath(s, vals[i].(string), nil)
+			val = reflect.Indirect(val)
+			for val.Kind() == reflect.Interface || val.Kind() == reflect.Ptr {
+				val = val.Elem()
+			}
+			if err == nil && val.Kind() != reflect.Invalid {
+				str = fmt.Sprint(val.Interface())
+			}
+			if str != vals[i+2].(string) {
+				t.Log(i/3, vals[i], str, "!=", vals[i+2].(string))
+			}
+		} else {
+			if err.Error() != vals[i+2].(string) {
+				t.Log(i/3, vals[i], err)
+			}
+		}
 	}
-	c := &Cycle{}
-	c.Cycle = c
-	SetAnyByPathWithTag(c, "name", "eudore", nil, false)
-	GetAnyByPathWithTag(c, "name", nil, false)
 }

@@ -66,12 +66,13 @@ jobs:
       - name: Run Coverage
         if: matrix.go == '1.20'
         run: go tool cover -html coverage.out -o coverage.html
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v5
         if: matrix.go == '1.20'
         with:
           working-directory: ${{ env.WORKDIR }}
           files: coverage.out
           flags: ${{ matrix.os }},go-${{ matrix.go }}
+          token: ${{ secrets.CODECOV_TOKEN }}
       - uses: actions/upload-artifact@v4
         if: matrix.go == '1.20'
         with:

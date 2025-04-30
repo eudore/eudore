@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/textproto"
 	"reflect"
 	"strconv"
 	"strings"
@@ -581,5 +582,56 @@ func (w *responseWriterTiming) writeTiming() {
 		tims := w.Header()[eudore.HeaderServerTiming]
 		tims = append(tims, "total;dur="+strconv.FormatFloat(dura, 'f', 2, 64))
 		w.Header().Set(eudore.HeaderServerTiming, strings.Join(tims, ", "))
+	}
+}
+
+// The NewSkipHandlerFunc function creates middleware implement skips the next
+// processing function when the specified key matches.
+//
+// You can customize the condition matching and adjust the [Context.SetHandlers].
+//
+// Use some scenarios to ignore the next permission check middleware.
+func NewSkipHandlerFunc(key string, values map[string]struct{}) Middleware {
+	if values == nil {
+		return nil
+	}
+	switch {
+	case key == "path":
+		return func(ctx eudore.Context) {
+			_, ok := values[ctx.Path()]
+			if ok {
+				index, hs := ctx.GetHandlers()
+				ctx.SetHandlers(index+1, hs)
+			}
+		}
+	case strings.HasPrefix(key, "param:"):
+		key = strings.TrimPrefix(key, "param:")
+		return func(ctx eudore.Context) {
+			_, ok := values[ctx.GetParam(key)]
+			if ok {
+				index, hs := ctx.GetHandlers()
+				ctx.SetHandlers(index+1, hs)
+			}
+		}
+	case strings.HasPrefix(key, "cookie:"):
+		key = strings.TrimPrefix(key, "cookie:")
+		return func(ctx eudore.Context) {
+			_, ok := values[ctx.GetCookie(key)]
+			if ok {
+				index, hs := ctx.GetHandlers()
+				ctx.SetHandlers(index+1, hs)
+			}
+		}
+	case strings.HasPrefix(key, "request:"):
+		key = textproto.CanonicalMIMEHeaderKey(strings.TrimPrefix(key, "request:"))
+		return func(ctx eudore.Context) {
+			_, ok := values[ctx.GetHeader(key)]
+			if ok {
+				index, hs := ctx.GetHandlers()
+				ctx.SetHandlers(index+1, hs)
+			}
+		}
+	default:
+		return nil
 	}
 }

@@ -290,7 +290,6 @@ func TestClientBody(t *testing.T) {
 	app.GetRequest("/body/jsonstruct", NewClientBodyJSON(Body{"eudor"}))
 	app.GetRequest("/body/jsonmap", NewClientBodyJSON(map[string]interface{}{"name": "eudore"}))
 	app.GetRequest("/body/xml", NewClientBodyXML(Body{"eudor"}))
-	app.GetRequest("/body/protobuf", NewClientBodyProtobuf(Body{"eudor"}))
 	app.GetRequest("/body/form", NewClientBodyForm(url.Values{
 		"name": {"eudore"},
 	}))
@@ -385,11 +384,11 @@ func TestClientResponse(t *testing.T) {
 	app := NewApp()
 	app.SetValue(ContextKeyClient, app.NewClient(NewClientHookLogger(LoggerError, time.Millisecond*20)))
 	app.SetValue(ContextKeyRender, NewHandlerDataRenders(map[string]HandlerDataFunc{
-		MimeText:                HandlerDataRenderText,
-		MimeTextPlain:           HandlerDataRenderText,
-		MimeTextHTML:            NewHandlerDataRenderTemplates(nil, nil),
-		MimeApplicationJSON:     HandlerDataRenderJSON,
-		MimeApplicationProtobuf: HandlerDataRenderProtobuf,
+		MimeAll:             HandlerDataRenderJSON,
+		MimeText:            HandlerDataRenderText,
+		MimeTextPlain:       HandlerDataRenderText,
+		MimeTextHTML:        NewHandlerDataRenderTemplates(nil, nil),
+		MimeApplicationJSON: HandlerDataRenderJSON,
 		MimeApplicationXML: func(ctx Context, data any) error {
 			ctx.SetHeader(HeaderContentType, MimeApplicationXML)
 			return xml.NewEncoder(ctx).Encode(data)

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	. "github.com/eudore/eudore"
+	. "github.com/eudore/eudore/middleware"
 )
 
 //go:embed *.go
@@ -57,6 +58,9 @@ func TestHandlerRoute(t *testing.T) {
 
 	app := NewApp()
 	app.SetValue(ContextKeyHandlerExtender, NewHandlerExtender())
+	app.AddMiddleware(NewLoggerLevelFunc(func(ctx Context) int {
+		return int(LoggerFatal)
+	}))
 	NewHandlerExtenderWithContext(app)
 	NewHandlerExtenderWithContext(context.Background())
 
@@ -64,6 +68,7 @@ func TestHandlerRoute(t *testing.T) {
 	app.AddHandler("405", "", HandlerRouter405)
 	app.GetFunc("/403", HandlerRouter403)
 	app.GetFunc("/index", HandlerEmpty)
+	app.GetFunc("/trace", HandlerMethodTrace)
 	app.GetFunc("/static/dir/*", NewHandlerFileSystems(".", "."))
 	app.GetFunc("/static/index/* autoindex=true", NewHandlerFileSystems(".", "."))
 	app.GetFunc("/static/embed/*", root)
@@ -72,6 +77,7 @@ func TestHandlerRoute(t *testing.T) {
 
 	app.NewRequest("GET", "/index")
 	app.NewRequest("POST", "/index")
+	app.NewRequest("GET", "/trace")
 	app.NewRequest("GET", "/403")
 	app.NewRequest("GET", "/404")
 	app.NewRequest("GET", "/static/dir/app_test.go")
@@ -97,7 +103,7 @@ func BindTestErr(ctx Context, i any) error {
 }
 
 func RenderTestErr(ctx Context, i any) error {
-	if ctx.GetHeader("Debug") == "rendererr" {
+	if ctx.GetHeader("Debug") == "rendererr" && fmt.Sprintf("%T", i) != "eudore.contextMessage" {
 		return errors.New("test render error")
 	}
 	return HandlerDataRenderJSON(ctx, i)
@@ -115,6 +121,7 @@ func TestHandlerRegister(t *testing.T) {
 	app.SetValue(ContextKeyBind, BindTestErr)
 	app.SetValue(ContextKeyRender, RenderTestErr)
 	app.SetValue(ContextKeyContextPool, NewContextBasePool(app))
+	app.SetValue(ContextKeyRouter, NewRouter(nil).Group(" loggerkind=~all"))
 
 	app.AddController(new(handlerControler4))
 	app.AddHandlerExtend(
@@ -135,72 +142,145 @@ func TestHandlerRegister(t *testing.T) {
 	)
 
 	exts := []any{
+		0,
+		"Router: newHandlerFuncs path is '/1/1', 0th handler parameter type is 'int', this is the unregistered handler type",
 		[]HandlerFunc{HandlerEmpty},
+		"",
 		[3]HandlerFunc{HandlerEmpty, HandlerEmpty},
+		"",
 		http.NotFoundHandler(),
+		"",
 		http.RedirectHandler("/", 308),
+		"",
 		func(http.ResponseWriter, *http.Request) {},
+		"",
 		func(string) {},
+		"",
 		func(*testing.T) {},
+		"Router: newHandlerFuncs path is '/1/15', 0th handler parameter type is 'func(*testing.T)', this is the unregistered handler type",
 		func(Context, int) {},
+		"Router: newHandlerFuncs path is '/1/17', 0th handler parameter type is 'func(eudore.Context, int)', this is the unregistered handler type",
 		func(Context, int) (any, error) {
 			return nil, nil
 		},
+		"Router: newHandlerFuncs path is '/1/19', 0th handler parameter type is 'func(eudore.Context, int) (interface {}, error)', this is the unregistered handler type",
 	}
-	for i := range exts {
-		app.AnyFunc("/1/"+strconv.Itoa(i+1), exts[i])
-		app.NewRequest("GET", "/1/"+strconv.Itoa(i+1))
+
+	for i := 0; i < len(exts); i += 2 {
+		err := app.AddHandler("GET", "/1/"+strconv.Itoa(i+1), exts[i])
+		if err != nil && err.Error() != exts[i+1].(string) {
+			t.Log(i+1, err)
+		}
 	}
 
 	funcs := []any{
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
+		"",
+		"",
+		"",
+		func(http.ResponseWriter, *http.Request) {},
+		"",
+		"",
+		"",
+		http.FileServer(http.Dir(".")),
+		"Client: parse not suppert Content-Type: text/plain",
+		"Client: parse not suppert Content-Type: text/plain",
+		"Client: parse not suppert Content-Type: text/plain",
 		func() {},
+		"",
+		"",
+		"",
 		func() any {
 			return "hello"
 		},
+		"",
+		"",
+		"client request status is 500, error: test render error",
 		func() error {
-			return errors.New("test error")
+			return errors.New("test handler error")
 		},
+		"client request status is 500, error: test handler error",
+		"client request status is 500, error: test handler error",
+		"client request status is 500, error: test handler error",
 		func() (any, error) {
 			return "hello", nil
 		},
+		"",
+		"",
+		"client request status is 500, error: test render error",
 		func(Context) any {
 			return "test render"
 		},
+		"",
+		"",
+		"client request status is 500, error: test render error",
 		func(Context) error {
 			return errors.New("test handler error")
 		},
+		"client request status is 500, error: test handler error",
+		"client request status is 500, error: test handler error",
+		"client request status is 500, error: test handler error",
 		func(Context) (any, error) {
 			return "hello", nil
 		},
+		"",
+		"",
+		"client request status is 500, error: test render error",
 		func(Context) (any, error) {
-			return nil, errors.New("test error")
+			return nil, errors.New("test handler error")
 		},
+		"client request status is 500, error: test handler error",
+		"client request status is 500, error: test handler error",
+		"client request status is 500, error: test handler error",
 		func(Context, map[string]any) (any, error) {
 			return "hello", nil
 		},
+		"",
+		"client request status is 500, error: test bind error",
+		"client request status is 500, error: test render error",
 		func(Context, *request017) {},
+		"",
+		"client request status is 500, error: test bind error",
+		"",
 		func(Context, *request017) any { return nil },
+		"",
+		"client request status is 500, error: test bind error",
+		"client request status is 500, error: test render error",
 		func(Context, *request017) error {
 			return errors.New("test error")
 		},
+		"client request status is 500, error: test error",
+		"client request status is 500, error: test bind error",
+		"client request status is 500, error: test error",
 		func(Context, *request017) (any, error) {
 			return t, nil
 		},
-	}
-	for i := range funcs {
-		app.AnyFunc("/2/"+strconv.Itoa(i+1), funcs[i])
+		"",
+		"client request status is 500, error: test bind error",
+		"client request status is 500, error: test render error",
 	}
 
 	bindh := http.Header{"Debug": []string{"binderr"}}
-	renderh := http.Header{"Debug": []string{"rendererr"}}
-	for i := 0; i < len(funcs); i++ {
-		app.NewRequest("GET", "/2/"+strconv.Itoa(i+1))
-	}
-	for i := 0; i < len(funcs); i++ {
-		app.NewRequest("GET", "/2/"+strconv.Itoa(i+1), bindh)
-	}
-	for i := 0; i < len(funcs); i++ {
-		app.NewRequest("GET", "/2/"+strconv.Itoa(i+1), renderh)
+	renderh := http.Header{"Debug": []string{"rendererr"}, HeaderAccept: []string{MimeApplicationJSON}}
+	options := []any{NewClientParseErr(), context.WithValue(app, ContextKeyLogger, DefaultLoggerNull)}
+	app.AddMiddleware(NewLoggerLevelFunc(func(ctx Context) int {
+		return int(LoggerFatal)
+	}))
+
+	for i := 0; i < len(funcs); i += 4 {
+		app.GetFunc("/2/"+strconv.Itoa(i+1), funcs[i])
+		err := app.GetRequest("/2/"+strconv.Itoa(i+1), options)
+		if err != nil && err.Error() != funcs[i+1].(string) {
+			t.Log(i+1, err)
+		}
+		err = app.GetRequest("/2/"+strconv.Itoa(i+1), bindh, options)
+		if err != nil && err.Error() != funcs[i+2].(string) {
+			t.Log(i+2, err)
+		}
+		err = app.GetRequest("/2/"+strconv.Itoa(i+1), renderh, options)
+		if err != nil && err.Error() != funcs[i+3].(string) {
+			t.Log(i+3, err)
+		}
 	}
 
 	hes := []HandlerExtender{
@@ -220,6 +300,7 @@ func TestHandlerRegister(t *testing.T) {
 
 func TestHandlerList(t *testing.T) {
 	app := NewApp()
+	app.SetValue(ContextKeyLogger, DefaultLoggerNull)
 	app.AddHandlerExtend("/", func(any) HandlerFunc {
 		return nil
 	})
@@ -253,22 +334,25 @@ func TestHandlerRPC(t *testing.T) {
 	app.SetValue(ContextKeyRender, RenderTestErr)
 	app.SetValue(ContextKeyContextPool, NewContextBasePool(app))
 
-	app.AnyFunc("/1/0", 0)
-	app.AnyFunc("/1/1", func(Context, *rpcrequest) (rpcresponse, error) {
+	api := app.Group(" loggerkind=~handler|~middleware")
+	api.AddMiddleware(NewLoggerLevelFunc(func(ctx Context) int {
+		return int(LoggerFatal)
+	}))
+	api.AnyFunc("/1/1", func(Context, *rpcrequest) (rpcresponse, error) {
 		return rpcresponse{Messahe: "success"}, nil
 	})
-	app.AnyFunc("/1/2", func(Context, map[string]any) (*rpcresponse, error) {
+	api.AnyFunc("/1/2", func(Context, map[string]any) (*rpcresponse, error) {
 		return nil, errors.New("test rpc error")
 	})
 
-	app.NewRequest("PUT", "/1/1")
-	app.NewRequest("PUT", "/1/2", http.Header{HeaderAccept: {MimeApplicationJSON}})
+	app.NewRequest("PUT", "/1/1", NewClientCheckStatus(200))
+	app.NewRequest("PUT", "/1/2", http.Header{HeaderAccept: {MimeApplicationJSON}}, NewClientCheckStatus(500))
 	app.NewRequest("PUT", "/1/2", NewClientBodyJSON(map[string]any{
 		"name": "eudore",
-	}))
+	}), NewClientCheckStatus(500))
 
-	app.NewRequest("GET", "/1/1", http.Header{"Debug": []string{"binderr"}})
-	app.NewRequest("GET", "/1/1", http.Header{"Debug": []string{"rendererr"}})
+	app.NewRequest("GET", "/1/1", http.Header{"Debug": []string{"binderr"}}, NewClientCheckStatus(500))
+	app.NewRequest("GET", "/1/1", http.Header{"Debug": []string{"rendererr"}}, NewClientCheckStatus(500))
 
 	app.CancelFunc()
 	app.Run()
