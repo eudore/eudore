@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +22,88 @@ import (
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 )
+
+type signingMethod struct{}
+
+func (fn signingMethod) Verify(_ string, _ []byte, _ any) error {
+	return nil
+}
+
+func (fn signingMethod) Alg() string {
+	return "HS256"
+}
+
+func brarerSigned(claims any, salt ...string) string {
+	salt = append(salt, "", "", "")
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return err.Error()
+	}
+	payload = append(payload, []byte(salt[0])...)
+	unsigned := `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.` +
+		base64.RawURLEncoding.EncodeToString(payload) + salt[1]
+
+	h := hmac.New(sha256.New, []byte("secret"))
+	h.Write([]byte(unsigned))
+	return unsigned + "." + base64.RawURLEncoding.EncodeToString(h.Sum(nil)) + salt[2]
+}
+
+func TestMiddlewareBearerAuth(*testing.T) {
+	type user struct {
+		Userid     int    `json:"userid"`
+		Username   string `json:"username,omitempty"`
+		NotBefore  int64  `json:"nbf,omitempty"`
+		Expiration int64  `json:"exp,omitempty"`
+	}
+	type user2 struct {
+		Userid func()
+	}
+	app := NewApp()
+	app.AddMiddleware(
+		NewBearerAuthFunc("secret",
+			NewOptionBearerSignaturer(&signingMethod{}),
+			NewOptionBearerPayload[user2](NewContextKey("user")),
+		),
+		NewBearerAuthFunc(
+			[]byte("secret"),
+			NewOptionKeyFunc(func(ctx Context) string {
+				auth := ctx.GetHeader(HeaderAuthorization)
+				if auth != "" {
+					return auth
+				}
+
+				auth = ctx.GetQuery("access_token")
+				if auth != "" {
+					return "Bearer " + auth
+				}
+				return ""
+			}),
+			NewOptionBearerSignaturer(nil),
+			NewOptionBearerPayload[user](NewContextKey("user")),
+		),
+	)
+	app.GetFunc("/*", HandlerEmpty)
+
+	bearers := []string{
+		"",
+		"x." + brarerSigned(&user{Userid: 10000}),
+		"x" + brarerSigned(&user{Userid: 10000}),
+		brarerSigned(&user{Userid: 10000}) + "x",
+		brarerSigned(&user{Userid: 10000}, "00"),
+		brarerSigned(&user{Userid: 10000}, "", "=="),
+		brarerSigned(&user{Userid: 10000}, "", "", "=="),
+		brarerSigned(&user{Userid: 10000, NotBefore: time.Now().Add(10 * time.Hour).Unix()}),
+		brarerSigned(&user{Userid: 10000, Expiration: time.Now().Add(-10 * time.Hour).Unix()}),
+		brarerSigned(&user{Userid: 10000, Username: "eudoore"}),
+	}
+
+	for _, bearer := range bearers {
+		app.GetRequest("/", NewClientOptionBearer(bearer))
+	}
+
+	app.CancelFunc()
+	app.Run()
+}
 
 type metadatable func() any
 
@@ -65,10 +150,10 @@ func TestMiddlewareLoggerAccess(*testing.T) {
 	app := NewApp()
 	app.AddMiddleware("global",
 		NewLoggerFunc(log,
-			"remote-addr",
+			"remote_addr",
 			"scheme",
 			"querys",
-			"byte-in",
+			"byte_in",
 			"request:"+HeaderXForwardedFor,
 			"response:"+HeaderXRequestID,
 			"response:"+HeaderXTraceID,
@@ -221,7 +306,7 @@ func TestMiddlewareDump(*testing.T) {
 		ctx.Write([]byte("0123456789abcdef0123456789abcdef0123456789abcdefx"))
 		ctx.Write(make([]byte, 0xffff))
 	})
-	app.AnyFunc("/gzip", NewGzipFunc(), func(ctx Context) {
+	app.AnyFunc("/gzip", NewCompressionFunc(CompressionNameGzip, nil), func(ctx Context) {
 		ctx.WriteString("gzip body")
 		for i := 0; i < 40; i++ {
 			ctx.Write([]byte("0123456789abcdef0123456789abcdef0123456789abcdefxx"))
@@ -279,23 +364,31 @@ func (responseWriterNoHijack) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 
 func TestMiddlewareCompressGzip(*testing.T) {
 	longtext := "1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXY"
+	longdata := []byte(longtext)
 	app := NewApp()
-	app.AddMiddleware(NewGzipFunc())
-	app.AnyFunc("/*", func(ctx Context) {
+	app.AddMiddleware(
+		NewHeaderAddFunc(http.Header{HeaderVary: []string{"User-Agent"}}),
+		NewCompressionFunc(CompressionNameGzip, nil),
+	)
+	app.GetFunc("/*", func(ctx Context) {
 		w := ctx.Response()
+		w.WriteStatus(StatusOK)
 		w.WriteHeader(StatusOK)
+		w.Size()
+		w.Status()
 		w.Push("/stat", nil)
 		w.Push("/stat", &http.PushOptions{})
 		w.Push("/stat", &http.PushOptions{Header: make(http.Header)})
 		w.WriteString("compress")
 		w.Flush()
 	})
-	app.AnyFunc("/code", func(ctx Context) {
+	app.GetFunc("/empty", HandlerEmpty)
+	app.GetFunc("/code", func(ctx Context) {
 		ctx.SetHeader(HeaderContentLength, "6")
 		ctx.WriteHeader(200)
 		ctx.WriteString("eudore")
 	})
-	app.AnyFunc("/gzip", func(ctx Context) {
+	app.GetFunc("/gzip", func(ctx Context) {
 		ctx.SetHeader(HeaderContentType, "application/gzip;encoding=gzip")
 		w := ctx.Response()
 		for i := 0; i < 20; i++ {
@@ -303,30 +396,53 @@ func TestMiddlewareCompressGzip(*testing.T) {
 		}
 		w.Flush()
 	})
-	app.AnyFunc("/long", func(ctx Context) {
+	app.GetFunc("/long", func(ctx Context) {
 		ctx.SetHeader(HeaderVary, HeaderOrigin)
-		ctx.SetHeader(HeaderContentLength, "1220")
+		ctx.SetHeader(HeaderContentLength, "610")
 		w := ctx.Response()
-		data := []byte(longtext)
-		for i := 0; i < 20; i++ {
-			w.Write(data)
+		for i := 0; i < 5; i++ {
+			w.Write(longdata)
+			w.WriteString(longtext)
 		}
 		w.Flush()
 	})
-	app.AnyFunc("/longs", func(ctx Context) {
+	app.GetFunc("/longs", func(ctx Context) {
 		w := ctx.Response()
-		for i := 0; i < 20; i++ {
+		ctx.SetHeader(HeaderContentLength, "1220")
+		for i := 0; i < 10; i++ {
+			w.Write(longdata)
 			w.WriteString(longtext)
 		}
 		w.Flush()
 	})
 
-	app.GetRequest("/", NewClientCheckBody("compress"))
+	h := http.Header{HeaderAcceptEncoding: {CompressionNameGzip}}
 	app.GetRequest("/", http.Header{HeaderAcceptEncoding: {CompressionNameDeflate}})
-	app.GetRequest("/code", NewClientCheckBody("eudore"))
-	app.GetRequest("/gzip", NewClientCheckBody(longtext))
+	app.GetRequest("/empty", h)
+	app.GetRequest("/code", h, NewClientCheckBody("eudore"))
+	app.GetRequest("/gzip", h)
+	app.GetRequest("/", h)
+	app.GetRequest("/long", h)
+	app.GetRequest("/longs", h)
 	app.GetRequest("/long", NewClientCheckBody(longtext))
-	app.GetRequest("/longs")
+	app.GetRequest("/longs", NewClientCheckBody(longtext))
+	// app.GetRequest("/gzip", NewClientCheckBody(longtext))
+	// app.GetRequest("/long", NewClientCheckBody(longtext))
+
+	func() {
+		defer func() {
+			recover()
+		}()
+		NewCompressionFunc("miss", nil)
+	}()
+	func() {
+		defer func() {
+			recover()
+		}()
+		NewCompressionFunc("miss", func() any {
+			return nil
+		})
+	}()
 
 	app.CancelFunc()
 	app.Run()
@@ -343,7 +459,6 @@ func TestMiddlewareCompressMixins(*testing.T) {
 	app := NewApp()
 	app.AddMiddleware(NewCompressionMixinsFunc(nil))
 	app.AnyFunc("/*", func(ctx Context) {
-		ctx.Info("accept:", ctx.GetHeader(HeaderAcceptEncoding))
 		w := ctx.Response()
 		w.WriteString("mixins")
 		w.Size()
@@ -376,6 +491,8 @@ func TestMiddlewareLook(*testing.T) {
 	app2 := NewApp()
 	app2.SetValue(ContextKeyLogger, NewLoggerInit())
 	app2.Set("conf", config)
+	app2.Set("logger", app2.Logger)
+	app2.Set("router", app2.Router)
 
 	app := NewApp()
 	app.AddMiddleware(NewLoggerLevelFunc(func(Context) int { return 4 }))
@@ -459,10 +576,8 @@ func TestMiddlewareTimeout(*testing.T) {
 		ctx.SetHeader("Name", "eudore")
 		w := ctx.Response()
 		ctx.Info(
-			w.Status(),
-			w.Size(),
-			ctx.GetParam("route"),
-			ctx.Value("Name"),
+			w.Status(), w.Size(), ctx.GetParam("route"),
+			ctx.Value("Name"), ctx.FormValue("name"),
 		)
 		w.WriteStatus(200)
 		w.WriteHeader(200)
@@ -485,9 +600,14 @@ func TestMiddlewareTimeout(*testing.T) {
 		ctx.Response().Push("/", nil)
 	})
 
+	form := NewClientBodyForm(nil)
+	form.AddValue("name", "eudore")
+	form.AddFile("file", "bytes.txt", []byte("file bytes"))
+
 	app.GetRequest("/", NewClientBodyJSON(map[string]any{}))
 	app.GetRequest("/", NewClientCheckStatus(200))
 	app.GetRequest("/hello", NewClientCheckStatus(200))
+	app.GetRequest("/hello", NewClientCheckStatus(200), form)
 	app.GetRequest("/panic", NewClientCheckStatus(500), NewClientCheckBody("runtime.gopanic"))
 	app.GetRequest("/cancel", NewClientCheckStatus(503))
 	app.GetRequest("/timeout", NewClientCheckStatus(503))

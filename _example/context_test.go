@@ -418,19 +418,17 @@ func TestContextLogger(*testing.T) {
 		ctx.Fatal(NewErrorWithStatusCode(fmt.Errorf("test error"), 432, 10032))
 	})
 	app.AnyFunc("/err3", func(ctx Context) {
-		NewErrorWithStatus(fmt.Errorf("test error"), 0)
 		ctx.Fatal(NewErrorWithStatus(fmt.Errorf("test error"), 432))
 	})
 	app.AnyFunc("/err4", func(ctx Context) {
-		NewErrorWithCode(fmt.Errorf("test error"), 0)
 		ctx.Fatal(NewErrorWithCode(fmt.Errorf("test error"), 10032))
 	})
-	app.AnyFunc("/err4", func(ctx Context) {
+	app.AnyFunc("/err5", func(ctx Context) {
+		ctx.Fatal(NewErrorWithDepth(fmt.Errorf("test error"), 3))
+	})
+	app.AnyFunc("/err6", func(ctx Context) {
 		ctx.Fatal(&http.MaxBytesError{})
 	})
-	NewErrorWithStatusCode(nil, 0, 0)
-	NewErrorWithStatus(nil, 0)
-	NewErrorWithCode(nil, 0)
 
 	app.NewRequest("GET", "/index")
 	app.NewRequest("GET", "/field")
@@ -441,6 +439,7 @@ func TestContextLogger(*testing.T) {
 	app.NewRequest("GET", "/err3")
 	app.NewRequest("GET", "/err4")
 	app.NewRequest("GET", "/err5")
+	app.NewRequest("GET", "/err6")
 
 	app.CancelFunc()
 	app.Run()

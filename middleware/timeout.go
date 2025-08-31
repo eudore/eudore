@@ -11,17 +11,110 @@ Implementation issues:
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/eudore/eudore"
 )
+
+// NewTimeoutFunc function creates middleware to implement the given handler
+// request time limit.
+//
+// [eudore.ResponseWriter] body is written to memory buffer.
+// handle files is not recommended.
+//
+// Return [eudore.StatusServiceUnavailable] when the handler timeout.
+//
+// [responseWriterTimeout] implements the Body method,
+// which can return the written body.
+//
+// NewTimeoutFunc supports the [http.Pusher] interface but does not support
+// the [http.Hijacker] or [http.Flusher] interfaces.
+//
+// refer: [http.TimeoutHandler] [NewTimeoutSkipFunc].
+//
+//go:noinline
+//nolint:funlen
+func NewTimeoutFunc(pool *sync.Pool, timeout time.Duration) Middleware {
+	release := func(c2 eudore.Context, done chan stackError) {
+		r := recover()
+		if r != nil {
+			err, ok := r.(error)
+			if !ok {
+				err = fmt.Errorf(DefaultRecoveryErrorFormat, r)
+			}
+			done <- eudore.NewErrorWithDepth(err, 4).(stackError) //nolint:errorlint
+			c2.End()
+		}
+		if c2.Request().MultipartForm != nil {
+			_ = c2.Request().MultipartForm.RemoveAll()
+		}
+		close(done)
+		pool.Put(c2)
+	}
+	start := func(c2 eudore.Context, done chan stackError) {
+		defer release(c2, done)
+		c2.Next()
+	}
+	return func(c1 eudore.Context) {
+		done := make(chan stackError)
+		w := &responseWriterTimeout{c: 200, h: http.Header{}, p: c1.Response()}
+		ctx, cancel := context.WithTimeout(c1.Context(), timeout)
+		headerCopy(w.h, w.p.Header())
+		defer cancel()
+		defer c1.End()
+
+		c2 := pool.Get().(eudore.Context)
+		c2.Reset(nil, c1.Request().WithContext(c1.Request().Context()))
+		c2.SetContext(ctx)
+		c2.SetResponse(w)
+		c2.SetHandlers(c1.GetHandlers())
+		p2 := c2.Params()
+		*p2 = append((*p2)[0:0], *c1.Params()...)
+		go start(c2, done)
+
+		select {
+		case err, ok := <-done:
+			p1 := c1.Params()
+			*p1 = append((*p1)[0:0], *c2.Params()...)
+			if ok {
+				stack := eudore.GetCallerStacks(2)
+				stack[0] = strings.Replace(stack[0], ":87", ":80", 1)
+				panic(eudore.NewErrorWithStack(err.Unwrap(), append(err.Stack(), stack...)))
+			}
+
+			to := c1.Response()
+			th := to.Header()
+			size := w.Size()
+			for k, vv := range w.h {
+				th[k] = vv
+			}
+			// should HeaderContentLength be set?
+			to.WriteHeader(w.c)
+			if size > 0 {
+				_, _ = to.Write(w.buf)
+			}
+		case <-ctx.Done():
+			err := ctx.Err()
+			writePage(c1, eudore.StatusServiceUnavailable,
+				DefaultPageTimeout, timeout.String(),
+			)
+			w.Lock()
+			defer w.Unlock()
+			if errors.Is(err, context.DeadlineExceeded) {
+				w.e = http.ErrHandlerTimeout
+			} else {
+				w.e = err
+			}
+		}
+	}
+}
 
 // NewTimeoutSkipFunc function creates middleware to implement
 // conditional skip [NewTimeoutFunc].
@@ -49,103 +142,10 @@ func NewTimeoutSkipFunc(pool *sync.Pool, timeout time.Duration,
 	}
 }
 
-// NewTimeoutFunc function creates middleware to implement the given handler
-// request time limit.
-//
-// [eudore.ResponseWriter] after cannot get [http.Header], and body is written
-// to memory buffer.
-// handle files is not recommended.
-//
-// Return [eudore.StatusServiceUnavailable] when the handler timeout.
-//
-// [responseWriterTimeout] implements the Body method,
-// which can return the written body.
-//
-// NewTimeoutFunc supports the [http.Pusher] interface but does not support
-// the [http.Hijacker] or [http.Flusher] interfaces.
-//
-// refer: [http.TimeoutHandler] [NewTimeoutSkipFunc].
-//
-//go:noinline
-func NewTimeoutFunc(pool *sync.Pool, timeout time.Duration) Middleware {
-	release := func(c2 eudore.Context, done chan any) {
-		r := recover()
-		if r != nil {
-			err, ok := r.(error)
-			if !ok {
-				err = fmt.Errorf("%v", r)
-			}
-			done <- &panicMessage{eudore.GetCallerStacks(3), err}
-			c2.End()
-		}
-		close(done)
-		pool.Put(c2)
-	}
-	start := func(c2 eudore.Context, done chan any) {
-		defer release(c2, done)
-		c2.Next()
-	}
-	return func(c1 eudore.Context) {
-		done := make(chan any)
-		w := &responseWriterTimeout{c: 200, h: http.Header{}, p: c1.Response()}
-		ctx, cancel := context.WithTimeout(c1.Context(), timeout)
-		defer cancel()
-		defer c1.End()
-
-		c2 := pool.Get().(eudore.Context)
-		c2.Reset(nil, c1.Request().WithContext(c1.Request().Context()))
-		c2.SetContext(ctx)
-		c2.SetResponse(w)
-		c2.SetHandlers(c1.GetHandlers())
-		p2 := c2.Params()
-		*p2 = append((*p2)[0:0], *c1.Params()...)
-		go start(c2, done)
-
-		select {
-		case msg, ok := <-done:
-			p1 := c1.Params()
-			*p1 = append((*p1)[0:0], *c2.Params()...)
-			if ok {
-				panic(msg)
-			}
-			headerCopy(c1.Response().Header(), w.h)
-			c1.WriteHeader(w.c)
-			if w.w.Len() != 0 {
-				_, _ = c1.Write(w.w.Bytes())
-			}
-		case <-ctx.Done():
-			err := ctx.Err()
-			writePage(c1, eudore.StatusServiceUnavailable,
-				DefaultPageTimeout, timeout.String(),
-			)
-			w.Lock()
-			defer w.Unlock()
-			if errors.Is(err, context.DeadlineExceeded) {
-				w.e = http.ErrHandlerTimeout
-			} else {
-				w.e = err
-			}
-		}
-	}
-}
-
-type panicMessage struct {
-	stack []string
-	err   error
-}
-
-func (err *panicMessage) Unwrap() error {
-	return err.err
-}
-
-func (err *panicMessage) Stack() []string {
-	return err.stack
-}
-
 type responseWriterTimeout struct {
 	sync.Mutex
+	buffer
 	e error
-	w bytes.Buffer
 	c int
 	h http.Header
 	p eudore.ResponseWriter
@@ -161,7 +161,7 @@ func (w *responseWriterTimeout) Write(p []byte) (int, error) {
 	if w.e != nil {
 		return 0, w.e
 	}
-	return w.w.Write(p)
+	return w.buffer.Write(p)
 }
 
 func (w *responseWriterTimeout) WriteString(p string) (int, error) {
@@ -170,7 +170,7 @@ func (w *responseWriterTimeout) WriteString(p string) (int, error) {
 	if w.e != nil {
 		return 0, w.e
 	}
-	return w.w.WriteString(p)
+	return w.buffer.WriteString(p)
 }
 
 func (w *responseWriterTimeout) WriteStatus(code int) {
@@ -191,7 +191,7 @@ func (w *responseWriterTimeout) Header() http.Header { return w.h }
 //
 // I don't know the purpose.
 func (w *responseWriterTimeout) Body() []byte {
-	return w.w.Bytes()
+	return w.buf
 }
 
 // The Flush method is not supported.
@@ -217,7 +217,7 @@ func (w *responseWriterTimeout) Push(p string, opts *http.PushOptions) error {
 
 // The Size method returns the length of the data written.
 func (w *responseWriterTimeout) Size() int {
-	return w.w.Len()
+	return len(w.buf)
 }
 
 // The Status method returns the set http status code.

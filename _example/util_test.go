@@ -32,7 +32,9 @@ func TestUtilError(t *testing.T) {
 		NewErrorWithCode(nil, 1004),
 		NewErrorWithCode(context.Canceled, 0),
 		NewErrorWithCode(context.Canceled, 1004),
-		NewErrorWrapped("msg", context.Canceled),
+		NewErrorWithWrapped(context.Canceled, "msg"),
+		NewErrorWithStack(context.Canceled, nil),
+		NewErrorWithDepth(context.Canceled, 0),
 		NewRouter(nil).AddHandlerExtend(1, 2, 3),
 	}
 	for _, err := range errs {
@@ -40,21 +42,25 @@ func TestUtilError(t *testing.T) {
 			continue
 		}
 		err.Error()
-		u, ok := err.(interface{ Unwrap() error })
+		e1, ok := err.(interface{ Unwrap() error })
 		if ok {
-			u.Unwrap()
+			e1.Unwrap()
 		}
-		us, ok := err.(interface{ Unwrap() []error })
+		e2, ok := err.(interface{ Unwrap() []error })
 		if ok {
-			us.Unwrap()
+			e2.Unwrap()
 		}
-		s, ok := err.(interface{ Status() int })
+		e3, ok := err.(interface{ Status() int })
 		if ok {
-			s.Status()
+			e3.Status()
 		}
-		c, ok := err.(interface{ Code() int })
+		e4, ok := err.(interface{ Code() int })
 		if ok {
-			c.Code()
+			e4.Code()
+		}
+		e5, ok := err.(interface{ Stack() []string })
+		if ok {
+			e5.Stack()
 		}
 	}
 }
@@ -106,6 +112,10 @@ func TestUtilGetWrap(t *testing.T) {
 }
 
 func TestUtilGetAnyValue(t *testing.T) {
+	DefaultValueTimeLocation = time.UTC
+	defer func() {
+		DefaultValueTimeLocation = time.Local
+	}()
 	vals := []any{
 		GetAnyDefault("default", ""), "default",
 		GetAnyDefault("", "default"), "default",
@@ -162,6 +172,10 @@ func TestUtilGetAnyValue(t *testing.T) {
 }
 
 func TestUtilSetValue(t *testing.T) {
+	DefaultValueTimeLocation = time.UTC
+	defer func() {
+		DefaultValueTimeLocation = time.Local
+	}()
 	type time2 time.Time
 	type C struct {
 		name string
@@ -219,8 +233,8 @@ func TestUtilSetValue(t *testing.T) {
 		"Time", "20060102x", "parsing time \"20060102x\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"0102x\" as \"-\"",
 		"Time2", "20060102", "{0 63271756800 <nil>}",
 		"String", "String", "String",
-		"Struct", "String", "SetValueString unknown type struct { *eudore_test.C; anonymou int }",
-		"Func", "String", "SetValueString unknown type func()",
+		"Struct", "String", "the SetValueString unknown type struct { *eudore_test.C; anonymou int }",
+		"Func", "String", "the SetValueString unknown type func()",
 
 		"Int", 1, "1",
 		"Int", uint(1), "1",
@@ -235,7 +249,7 @@ func TestUtilSetValue(t *testing.T) {
 
 		"MapS.str", "String", "",
 		"MapE.str", "String", "String",
-		"MapI.str", "String", "parse map key 'str' error: SetValueString unknown type fmt.Stringer",
+		"MapI.str", "String", "parse map key 'str' error: the SetValueString unknown type fmt.Stringer",
 
 		"Any", nil, "",
 		"Any.1", "1", "1",

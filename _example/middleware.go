@@ -13,21 +13,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-/*
-NewCompressionMixinsFunc
-NewCompressionFunc
-NewGzipFunc
-
-HeaderCacheControl
-NewHeaderAddFunc
-
-NewRouterFunc
-NewRoutesFunc
-
-NewTimeoutFunc
-NewTimeoutSkipFunc
-*/
-
 //go:embed *.go
 var RootFS embed.FS
 
@@ -55,7 +40,7 @@ func main() {
 		}),
 		middleware.NewCompressionMixinsFunc(nil),
 
-		// rewrite
+		// rewrite, must be before the router
 		middleware.NewRewriteFunc(map[string]string{
 			"/api/v2/*": "/api/3/$0",
 		}),
@@ -74,7 +59,8 @@ func main() {
 	app.AddHandler("404", "", eudore.HandlerRouter404)
 	app.AddHandler("405", "", eudore.HandlerRouter405)
 
-	admin := app.Group("/eudore/debug")
+	// disable admin group logger
+	admin := app.Group("/eudore/debug loggerkind=~all")
 	admin.AddMiddleware(
 		middleware.NewBasicAuthFunc(map[string]string{
 			"username": "password",
@@ -85,12 +71,10 @@ func main() {
 	admin.GetFunc("/pprof/*", middleware.NewPProfFunc())
 	admin.GetFunc("/look/*", middleware.NewLookFunc(app))
 	admin.GetFunc("/metadata/*", middleware.NewMetadataFunc(app))
-	// disable admin group logger
-	admin = admin.Group(" loggerkind=~all")
 
 	static := app.Group("")
 	static.AddMiddleware(
-		middleware.NewHeaderAddSecureFunc(http.Header{
+		middleware.NewHeaderSecureFunc(http.Header{
 			eudore.HeaderCacheControl: []string{"no-cache"},
 		}),
 		middleware.NewRefererCheckFunc(map[string]bool{
@@ -100,7 +84,7 @@ func main() {
 			"*.eudore.cn": true,
 		}),
 		// 4MB/s
-		middleware.NewRateSpeedFunc(4<<20, 32<<32,
+		middleware.NewRateSpeedFunc(4<<20, 128<<20,
 			middleware.NewOptionRateCleanup(app, time.Second*1800, 64),
 		),
 	)
@@ -112,6 +96,7 @@ func main() {
 		middleware.NewBlackListFunc(
 			map[string]bool{
 				"0.0.0.0/0":      false,
+				"127.0.0.1":      true,
 				"10.0.0.0/8":     true,
 				"172.16.0.0/12":  true,
 				"192.168.0.0/16": true,
@@ -129,13 +114,33 @@ func main() {
 			"Access-Control-Max-Age":           "1000",
 		}),
 		middleware.NewCSRFFunc("_csrf"),
+		middleware.NewBearerAuthFunc("secret"),
 		middleware.NewRateRequestFunc(3, 30,
 			middleware.NewOptionRateCleanup(app, time.Second*600, 100),
+			middleware.NewOptionKeyFunc(func(ctx eudore.Context) string {
+				user := ctx.GetParam(eudore.ParamUserid)
+				if user != "" {
+					return user
+				}
+				return ctx.RealIP()
+			}),
 		),
-		middleware.NewCircuitBreakerFunc(
-			middleware.NewOptionRouter(admin),
+		middleware.NewCircuitBreakerFunc(middleware.NewOptionRouter(admin)),
+		middleware.NewSecurityPolicysFunc([]string{
+			`{"user": "<Guest User>", "policy": ["Guest"]}`,
+			`{"user": "10000", "policy": ["Local","Administrator"], "data":["Local"]}`,
+			`{"name":"Administrator", "statement": [{"effect": true, "action": ["*"]}]}`,
+			`{"name":"Guest", "statement": [{"effect": true, "action": ["*:*:Get*"]}]}`,
+			`{"name":"Local", "statement": [{"effect": true, "data": {"menu":["Get*"]}, "action": ["*"], "conditions": {
+				"method": ["GET", "POST", "OPTIONS","XX"],
+				"sourceip": ["127.0.0.1", "192.168.0.0/24", "43.227.0.0/16"],
+				"date": {"after": "2025-07-31", "before": "2025-08-31"},
+				"params": {
+					"Userid": ["1", "2", "10000"],
+					"group_id": ["1",""]
+				}
+			}}]}`}, middleware.NewOptionRouter(admin),
 		),
-
 		middleware.NewDumpFunc(admin),
 		middleware.NewBodySizeFunc(),
 		middleware.NewBodyLimitFunc(4<<20), // 4MB
@@ -144,14 +149,18 @@ func main() {
 		middleware.NewCacheFunc(time.Second*10),
 		middleware.NewRecoveryFunc(),
 		middleware.NewTimeoutFunc(app.ContextPool, time.Second*10),
-		middleware.NewContextWrapperFunc(func(ctx eudore.Context) eudore.Context {
-			return contextWraper{ctx}
-		}),
 	)
+	api.AddHandler(eudore.MethodOptions, "/", eudore.HandlerRouter403)
+
+	eudore.DefaultControllerParam = "Action={{Package}}:{{Name}}:{{Method}}"
 	apiv3 := api.Group("/v3 loggerkind=~handler")
 	apiv3.AddController(
 		NewUsersController(),
 	)
+
+	app.GetRequest("/api/v3/users/eudore")
+	app.GetRequest("/api/v3/users/zzz")
+	app.GetRequest("/api/v3/users/zzz/xi")
 
 	app.GetFunc("/custom",
 		NewPreFunc(eudore.HandlerEmpty),
@@ -162,12 +171,6 @@ func main() {
 	app.Listen(":8088")
 	app.Run()
 }
-
-type contextWraper struct {
-	contextBase
-}
-
-type contextBase = eudore.Context
 
 func NewPreFunc(pre eudore.HandlerFunc) eudore.HandlerFunc {
 	return func(ctx eudore.Context) {
@@ -198,7 +201,7 @@ func NewUsersController() eudore.Controller {
 	return &UsersController{}
 }
 
-func (ctl *UsersController) Get(eudore.Context) {
+func (ctl *UsersController) Get() {
 }
 
 func (ctl *UsersController) Any(eudore.Context) {

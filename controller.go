@@ -1,7 +1,6 @@
 package eudore
 
 import (
-	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -79,16 +78,15 @@ func (ctl controllerError) Unwrap() Controller {
 //	ANY              => ANY /*
 //	GetByID          => GET /:id
 //	PostGroupsByIDBy => POST /groups/:id/*
-func (ctl ControllerAutoRoute) Inject(controller Controller, router Router,
-) error {
-	return ControllerInjectAutoRoute(controller, router)
+func (ControllerAutoRoute) Inject(ctl Controller, router Router) error {
+	return ControllerInjectAutoRoute(ctl, router)
 }
 
 // The ControllerGroup method returns the [Router.Group] registered by
 // the [Controller]. If it returns null string, it is ignored.
 //
 // refer [getContrllerGroup].
-func (ctl ControllerAutoRoute) ControllerGroup(pkg, name string) string {
+func (ControllerAutoRoute) ControllerGroup(pkg, name string) string {
 	return controllerDefaultGroup(pkg, name)
 }
 
@@ -104,7 +102,7 @@ func (ctl ControllerAutoRoute) ControllerGroup(pkg, name string) string {
 //	GET /index
 //	GET /index action=GetIndex
 //	 name=GetIndex
-func (ctl ControllerAutoRoute) ControllerRoute() map[string]string {
+func (ControllerAutoRoute) ControllerRoute() map[string]string {
 	return nil
 }
 
@@ -112,8 +110,7 @@ func (ctl ControllerAutoRoute) ControllerRoute() map[string]string {
 // is converted into a route.
 //
 // The default format is: [DefaultControllerParam].
-func (ctl ControllerAutoRoute) ControllerParam(pkg, name, method string,
-) string {
+func (ControllerAutoRoute) ControllerParam(pkg, name, method string) string {
 	return controllerDefaultGroupParam(pkg, name, method)
 }
 
@@ -145,9 +142,8 @@ func controllerDefaultGroupParam(pkg, name, method string) string {
 // And register the [HandlerExtender] of typeParam T.
 //
 // refer [ControllerInjectAutoRoute].
-func (ctl ControllerAutoType[T]) Inject(controller Controller, router Router,
-) error {
-	router = router.Group(fmt.Sprintf(" %s=~extend", ParamLoggerKind))
+func (ControllerAutoType[T]) Inject(ctl Controller, router Router) error {
+	router = router.Group(" " + ParamLoggerKind + "=~extend")
 	_ = router.AddHandlerExtend(
 		NewHandlerFuncContextType[*T],
 		NewHandlerFuncContextTypeAny[*T],
@@ -158,7 +154,7 @@ func (ctl ControllerAutoType[T]) Inject(controller Controller, router Router,
 		NewHandlerFuncContextTypeError[[]T],
 		NewHandlerFuncContextTypeAnyError[[]T],
 	)
-	return ControllerInjectAutoRoute(controller, router)
+	return ControllerInjectAutoRoute(ctl, router)
 }
 
 // ControllerInjectAutoRoute implements controller method injection routes.
@@ -167,37 +163,36 @@ func (ctl ControllerAutoType[T]) Inject(controller Controller, router Router,
 // [ControllerAutoRoute.ControllerGroup]
 // [ControllerAutoRoute.ControllerRoute]
 // [ControllerAutoRoute.ControllerParam].
-func ControllerInjectAutoRoute(controller Controller, router Router) error {
-	iType := reflect.TypeOf(controller)
-	v := reflect.ValueOf(controller)
+func ControllerInjectAutoRoute(ctl Controller, router Router) error {
+	iType := reflect.TypeOf(ctl)
+	v := reflect.ValueOf(ctl)
 
 	// Add the controller group.
 	cname := getControllerName(v)
 	cpkg := reflect.Indirect(v).Type().PkgPath()
-	router = getContrllerGroup(router, controller, cpkg, cname)
+	router = getContrllerGroup(router, ctl, cpkg, cname)
 
 	// Get route parameter function
 	pfn := controllerDefaultGroupParam
-	p, ok := controller.(controllerParam)
+	p, ok := ctl.(controllerParam)
 	if ok {
 		pfn = p.ControllerParam
 	}
 
 	// Router registration controller method
-	names, paths := getSortRoutes(getControllerRoutes(controller))
+	names, paths := getSortRoutes(getControllerRoutes(ctl))
 	for i, name := range names {
 		m, ok := iType.MethodByName(name)
 		if !ok || paths[i] == "-" {
 			continue
 		}
 
-		h := v.Method(m.Index).Interface()
-		SetHandlerAliasName(h, fmt.Sprintf("%s.%s.%s", cpkg, cname, name))
 		method := getMethodByName(name)
 		if method == "" {
 			method = MethodAny
 		}
-		err := router.AddHandler(method, paths[i]+" "+pfn(cpkg, cname, name), h)
+		path := paths[i] + " " + pfn(cpkg, cname, name)
+		err := router.AddHandler(method, path, v.Method(m.Index).Interface())
 		if err != nil {
 			return err
 		}
@@ -205,17 +200,25 @@ func ControllerInjectAutoRoute(controller Controller, router Router) error {
 	return nil
 }
 
-func getContrllerGroup(router Router, controller Controller,
-	pkg, name string,
-) Router {
+func getControllerName(v reflect.Value) string {
+	name := reflect.Indirect(v).Type().Name()
+	// typeParam name
+	pos := strings.IndexByte(name, '[')
+	if pos != -1 {
+		name = name[:pos]
+	}
+	return name
+}
+
+func getContrllerGroup(router Router, ctl Controller, pkg, name string) Router {
 	var group string
-	ctl, ok := controller.(controllerGroup)
+	g, ok := ctl.(controllerGroup)
 	switch {
 	case router.Params().Get(ParamControllerGroup) != "":
 		group = router.Params().Get(ParamControllerGroup)
 		router.Params().Del(ParamControllerGroup)
 	case ok:
-		group = ctl.ControllerGroup(pkg, name)
+		group = g.ControllerGroup(pkg, name)
 	default:
 		group = controllerDefaultGroup(pkg, name)
 	}
@@ -260,7 +263,7 @@ func getSortMethodIndex(method string) int {
 // The getControllerRoutes function gets a mapping of all names and routes from
 // a [Controller] type.
 func getControllerRoutes(controller Controller) map[string]string {
-	routes := getContrllerAllowMethos(reflect.ValueOf(controller))
+	routes := getContrllerAllowMethos(controller)
 	for name := range routes {
 		if getMethodByName(name) != "" {
 			routes[name] = getRouteByName(name)
@@ -286,34 +289,29 @@ func getControllerRoutes(controller Controller) map[string]string {
 	return routes
 }
 
-func getContrllerAllowMethos(v reflect.Value) map[string]string {
+func getContrllerAllowMethos(ctl Controller) map[string]string {
+	t := reflect.TypeOf(ctl)
 	names := make(map[string]string)
-	for _, name := range getContrllerAllMethos(v) {
+	for _, name := range getContrllerAllMethos(t) {
 		names[name] = ""
 	}
 
-	v = reflect.Indirect(v)
-	iType := v.Type()
-	if v.Kind() == reflect.Struct {
+	for t.Kind() == reflect.Ptr || t.Kind() == reflect.Interface {
+		t = t.Elem()
+	}
+	if t.Kind() == reflect.Struct {
 		// Remove non-embedded controller methods
-		for i := 0; i < v.NumField(); i++ {
-			if iType.Field(i).Anonymous {
-				name := getControllerName(v.Field(i))
-				if !strings.HasSuffix(name, "Controller") {
-					for _, name := range getContrllerAllMethos(v.Field(i)) {
-						delete(names, name)
-					}
+		for i := 0; i < t.NumField(); i++ {
+			if !controllerField(t.Field(i)) {
+				for _, name := range getContrllerAllMethos(t.Field(i).Type) {
+					delete(names, name)
 				}
 			}
 		}
-		// Add embedded controller method
-		for i := 0; i < iType.NumField(); i++ {
-			if iType.Field(i).Anonymous {
-				name := getControllerName(v.Field(i))
-				if strings.HasSuffix(name, "Controller") {
-					for _, name := range getContrllerAllMethos(v.Field(i)) {
-						names[name] = ""
-					}
+		for i := 0; i < t.NumField(); i++ {
+			if controllerField(t.Field(i)) {
+				for _, name := range getContrllerAllMethos(t.Field(i).Type) {
+					names[name] = ""
 				}
 			}
 		}
@@ -323,30 +321,16 @@ func getContrllerAllowMethos(v reflect.Value) map[string]string {
 
 // The getContrllerAllMethos function get the names of all methods whose types
 // include pointer types.
-func getContrllerAllMethos(v reflect.Value) []string {
-	iType := v.Type()
-	if iType.Kind() != reflect.Ptr {
-		iType = reflect.New(iType).Type()
-	}
-	names := make([]string, iType.NumMethod())
-	for i := 0; i < iType.NumMethod(); i++ {
-		names[i] = iType.Method(i).Name
+func getContrllerAllMethos(t reflect.Type) []string {
+	names := make([]string, t.NumMethod())
+	for i := 0; i < t.NumMethod(); i++ {
+		names[i] = t.Method(i).Name
 	}
 	return names
 }
 
-func getControllerName(v reflect.Value) string {
-	if v.Kind() == reflect.Ptr && v.IsNil() {
-		v = reflect.New(v.Type().Elem())
-	}
-
-	name := reflect.Indirect(v).Type().Name()
-	// typeParam name
-	pos := strings.IndexByte(name, '[')
-	if pos != -1 {
-		name = name[:pos]
-	}
-	return name
+func controllerField(field reflect.StructField) bool {
+	return field.Anonymous && strings.HasSuffix(field.Name, "Controller")
 }
 
 // The getRouteByName function generates a route using the function name.

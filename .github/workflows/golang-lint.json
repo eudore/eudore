@@ -1,23 +1,29 @@
 {
-  "run": {"timeout": "2m"},
-  "issues": {
-    "max-same-issues": 10,
-    "exclude-files": [
-      "funccreator.go",
-      "funcdefine.go",
-      "protobuf.go",
-      "policy/.*.go"
-    ]
+  "formatters": {
+    "enable": [
+      "gci",
+      "gofmt",
+      "gofumpt",
+      "goimports",
+      "swaggo"
+    ],
+    "exclusions": {
+      "generated": "lax",
+      "paths": [
+        "third_party$",
+        "builtin$",
+        "examples$"
+      ]
+    }
   },
   "linters": {
-    "disable-all": true,
-    "enable":[
+    "default": "none",
+    "enable": [
       "asasalint",
       "asciicheck",
       "bidichk",
       "bodyclose",
       "canonicalheader",
-      "copyloopvar",
       "cyclop",
       "decorder",
       "depguard",
@@ -29,10 +35,10 @@
       "errchkjson",
       "errname",
       "errorlint",
+      "exptostd",
       "fatcontext",
       "forbidigo",
       "funlen",
-      "gci",
       "ginkgolinter",
       "gocheckcompilerdirectives",
       "gochecknoinits",
@@ -43,14 +49,11 @@
       "gocyclo",
       "godot",
       "godox",
-      "gofmt",
-      "gofumpt",
       "goheader",
-      "goimports",
       "gomoddirectives",
       "gomodguard",
       "goprintffuncname",
-      "gosimple",
+      "gosec",
       "gosmopolitan",
       "govet",
       "grouper",
@@ -65,9 +68,12 @@
       "misspell",
       "musttag",
       "nakedret",
+      "nestif",
       "nilerr",
+      "nilnesserr",
       "nilnil",
       "noctx",
+      "noinlineerr",
       "nolintlint",
       "nosprintfhostport",
       "paralleltest",
@@ -83,8 +89,7 @@
       "spancheck",
       "sqlclosecheck",
       "staticcheck",
-      "stylecheck",
-      "tenv",
+      "tagliatelle",
       "testableexamples",
       "testifylint",
       "testpackage",
@@ -94,48 +99,58 @@
       "unparam",
       "unused",
       "usestdlibvars",
+      "usetesting",
       "wastedassign",
       "whitespace",
       "zerologlint"
     ],
-    "disable-name":[
-      "containedctx",
-      "contextcheck",
-      "err113",
-      "exhaustive",
-      "exhaustruct",
-      "forcetypeassert",
-      "gochecknoglobals",
-      "gosec",
-      "ireturn",
-      "interfacebloat",
-      "intrange",
-      "lll",
-      "mnd",
-      "nestif",
-      "nlreturn",
-      "nonamedreturns",
-      "recvcheck",
-      "tagalign",
-      "tagliatelle",
-      "varnamelen",
-      "wrapcheck",
-      "wsl"
-    ]
-  },
-  "linters-settings": {
-    "funlen": {"statements": 50},
-    "gocyclo": {"min-complexity": 15},
-    "cyclop": {"max-complexity": 15},
-    "depguard": {
-      "rules": {
-        "main": {
-          "allow": [
-            "$gostd",
-            "github.com/eudore/eudore"
-          ]
+    "exclusions": {
+      "generated": "lax",
+      "paths": [
+        "daemon/.*.go",
+        "funccreator.go",
+        "funcdefine.go",
+        "third_party$",
+        "builtin$",
+        "examples$"
+      ],
+      "presets": [
+        "comments",
+        "common-false-positives",
+        "legacy",
+        "std-error-handling"
+      ]
+    },
+    "settings": {
+      "cyclop": {
+        "max-complexity": 15
+      },
+      "gocyclo": {
+        "min-complexity": 15
+      },
+      "funlen": {
+        "statements": 50
+      },
+      "depguard": {
+        "rules": {
+          "main": {
+            "allow": [
+              "$gostd",
+              "github.com/eudore/eudore"
+            ]
+          }
         }
+      },
+      "gosec": {
+        "excludes": ["G115", "G401", "G501", "G505"]
+      },
+      "staticcheck": {
+        "checks": ["all", "-QF1008"]
       }
     }
-  }
+  },
+  "issues": {
+    "max-same-issues": 10
+  },
+  "version": "2"
 }

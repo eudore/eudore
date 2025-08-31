@@ -1,7 +1,6 @@
 package eudore
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -11,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 )
 
 type contextKey struct {
@@ -87,16 +87,23 @@ func (p Params) Clone() Params {
 
 // The String method outputs Params as a string.
 func (p Params) String() string {
-	b := &bytes.Buffer{}
+	size := 0
 	for i := 0; i < len(p); i += 2 {
 		if (p[i] != "" && p[i+1] != "") || i == 0 {
-			if b.Len() != 0 {
-				b.WriteString(" ")
-			}
-			fmt.Fprintf(b, "%s=%s", p[i], p[i+1])
+			size += len(p[i]) + len(p[i+1]) + 2
 		}
 	}
-	return b.String()
+
+	buf := make([]byte, 0, size)
+	for i := 0; i < len(p); i += 2 {
+		if (p[i] != "" && p[i+1] != "") || i == 0 {
+			buf = append(buf, ' ')
+			buf = append(buf, p[i]...)
+			buf = append(buf, '=')
+			buf = append(buf, p[i+1]...)
+		}
+	}
+	return unsafe.String(unsafe.SliceData(buf[1:]), len(buf)-1)
 }
 
 // The Get method returns the first value of the specified key.
@@ -372,16 +379,16 @@ type statusError struct {
 	status int
 }
 
-func (err statusError) Error() string {
-	return err.err.Error()
+func (e statusError) Error() string {
+	return e.err.Error()
 }
 
-func (err statusError) Unwrap() error {
-	return err.err
+func (e statusError) Unwrap() error {
+	return e.err
 }
 
-func (err statusError) Status() int {
-	return err.status
+func (e statusError) Status() int {
+	return e.status
 }
 
 // The NewErrorWithCode function returns the wrap error implementation
@@ -401,33 +408,58 @@ type codeError struct {
 	code int
 }
 
-func (err codeError) Error() string {
-	return err.err.Error()
+func (e codeError) Error() string {
+	return e.err.Error()
 }
 
-func (err codeError) Unwrap() error {
-	return err.err
+func (e codeError) Unwrap() error {
+	return e.err
 }
 
-func (err codeError) Code() int {
-	return err.code
+func (e codeError) Code() int {
+	return e.code
 }
 
-type wrappedError struct {
-	msg string
+type warppedError struct {
 	err error
+	msg string
 }
 
-func NewErrorWrapped(msg string, err error) error {
-	return &wrappedError{msg, err}
+func NewErrorWithWrapped(err error, msg string) error {
+	return &warppedError{err, msg}
 }
 
-func (e *wrappedError) Error() string {
+func (e warppedError) Error() string {
 	return e.msg
 }
 
-func (e *wrappedError) Unwrap() error {
+func (e warppedError) Unwrap() error {
 	return e.err
+}
+
+type stackError struct {
+	err   error
+	stack []string
+}
+
+func NewErrorWithStack(err error, stack []string) error {
+	return &stackError{err, stack}
+}
+
+func NewErrorWithDepth(err error, depth int) error {
+	return &stackError{err, GetCallerStacks(depth)}
+}
+
+func (e stackError) Error() string {
+	return e.err.Error()
+}
+
+func (e stackError) Unwrap() error {
+	return e.err
+}
+
+func (e stackError) Stack() []string {
+	return e.stack
 }
 
 func cutOmit(s string) (string, bool) {
@@ -640,6 +672,7 @@ func GetStringRandom(length int) string {
 	return hex.EncodeToString(buf)
 }
 
+// The GetStringDuration function get [time.Duration] friendly visualization data.
 func GetStringDuration(n time.Duration) fmt.Stringer {
 	var result durationString
 	size := 7
@@ -674,6 +707,8 @@ func (d durationString) MarshalJSON() ([]byte, error) {
 }
 
 // The GetAnyByString function converts a string to T value.
+//
+// Refer: [GetAnyByStringWithError].
 func GetAnyByString[T string | bool | time.Time | time.Duration |
 	typeNumber](str string, defaults ...T) T {
 	val, _ := GetAnyByStringWithError(str, defaults...)
@@ -681,6 +716,10 @@ func GetAnyByString[T string | bool | time.Time | time.Duration |
 }
 
 // The GetAnyByStringWithError function converts a string to T value.
+//
+// The [time.Time] type attempts to be parsed using the
+// [DefaultValueParseTimeFormats] format, with the time zone
+// being [DefaultValueTimeLocation].
 //
 //nolint:cyclop,funlen,gocyclo
 func GetAnyByStringWithError[T string | bool | time.Time | time.Duration |
@@ -747,7 +786,7 @@ func GetAnyByStringWithError[T string | bool | time.Time | time.Duration |
 			if DefaultValueParseTimeFixed[i] && len(str) != len(f) {
 				continue
 			}
-			v, err = time.Parse(f, str)
+			v, err = time.ParseInLocation(f, str, DefaultValueTimeLocation)
 			if err == nil {
 				break
 			}

@@ -231,17 +231,18 @@ func (w *responseWriterHTTP) Status() int {
 }
 
 type contextMessage struct {
-	Time       string `json:"time" protobuf:"1,name=time" yaml:"time"`
-	Host       string `json:"host" protobuf:"2,name=host" yaml:"host"`
-	Method     string `json:"method" protobuf:"3,name=method" yaml:"method"`
-	Path       string `json:"path" protobuf:"4,name=path" yaml:"path"`
-	Route      string `json:"route" protobuf:"5,name=route" yaml:"route"`
-	Status     int    `json:"status" protobuf:"6,name=status" yaml:"status"`
-	Code       int    `json:"code,omitempty" protobuf:"7,name=code" yaml:"code,omitempty"`
-	XRequestID string `json:"x-request-id,omitempty" protobuf:"8,name=x-request-id" yaml:"xRequestId,omitempty"`
-	XTraceID   string `json:"x-trace-id,omitempty" protobuf:"9,name=x-trace-id" yaml:"xTraceId,omitempty"`
-	Error      string `json:"error,omitempty" protobuf:"10,name=error" yaml:"error,omitempty"`
-	Message    any    `json:"message,omitempty" protobuf:"11,name=message" yaml:"message,omitempty"`
+	Time       string   `json:"time" protobuf:"1,name=time" yaml:"time"`
+	Host       string   `json:"host" protobuf:"2,name=host" yaml:"host"`
+	Method     string   `json:"method" protobuf:"3,name=method" yaml:"method"`
+	Path       string   `json:"path" protobuf:"4,name=path" yaml:"path"`
+	Route      string   `json:"route" protobuf:"5,name=route" yaml:"route"`
+	Status     int      `json:"status" protobuf:"6,name=status" yaml:"status"`
+	Code       int      `json:"code,omitempty" protobuf:"7,name=code" yaml:"code,omitempty"`
+	XRequestID string   `json:"xRequestId,omitempty" protobuf:"8,name=xRequestId" yaml:"xRequestId,omitempty"`
+	XTraceID   string   `json:"xTraceId,omitempty" protobuf:"9,name=xTraceId" yaml:"xTraceId,omitempty"`
+	Error      string   `json:"error,omitempty" protobuf:"10,name=error" yaml:"error,omitempty"`
+	Message    any      `json:"message,omitempty" protobuf:"11,name=message" yaml:"message,omitempty"`
+	Stack      []string `json:"stack,omitempty" protobuf:"12,name=stack" yaml:"stack,omitempty"`
 }
 
 // The NewContextMessgae method creates a message of an error or object
@@ -265,6 +266,7 @@ func NewContextMessgae(ctx Context, err error, message any) any {
 	if err != nil {
 		msg.Code = getErrorCode(err)
 		msg.Error = err.Error()
+		msg.Stack = getErrorStack(err)
 	}
 	return msg
 }
@@ -291,8 +293,16 @@ func getErrorCode(err error) int {
 	return 0
 }
 
+func getErrorStack(err error) []string {
+	var StackErr interface{ Stack() []string }
+	if errors.As(err, &StackErr) {
+		return StackErr.Stack()
+	}
+	return nil
+}
+
 func (ctx *contextBase) wrapLogger() Logger {
-	return ctx.logger().WithField(ParamDepth, 1)
+	return ctx.logger().WithField(FieldDepth, 1)
 }
 
 func (ctx *contextBase) Debug(args ...any) {
@@ -308,26 +318,16 @@ func (ctx *contextBase) Warning(args ...any) {
 }
 
 func (ctx *contextBase) Error(args ...any) {
-	if hasMessagError(args) {
-		ctx.wrapLogger().Error(args...)
+	if len(args) == 1 && args[0] == nil {
+		return
 	}
+	ctx.wrapLogger().Error(args...)
 }
 
 func (ctx *contextBase) Fatal(args ...any) {
 	err := getMessagError(args)
 	ctx.writeFatal(err)
 	ctx.wrapLogger().Error(err.Error())
-}
-
-func hasMessagError(args []any) bool {
-	if len(args) == 1 {
-		err, ok := args[0].(error)
-		if ok {
-			return err != nil
-		}
-		return args[0] != nil
-	}
-	return true
 }
 
 func getMessagError(args []any) error {
@@ -448,7 +448,7 @@ func (ctx *contextBase) parseCookies() {
 				continue
 			}
 			name, val, _ := strings.Cut(part, "=")
-			if !isCookieNameValid(name) {
+			if name == "" || strings.IndexFunc(name, isNotToken) != -1 {
 				continue
 			}
 			val, ok := parseCookieValue(val)
@@ -505,16 +505,9 @@ func validCookieValueByte(b byte) bool {
 	return 0x20 <= b && b < 0x7f && b != '"' && b != ';' && b != '\\'
 }
 
-func isCookieNameValid(raw string) bool {
-	if raw == "" {
-		return false
-	}
-	return strings.IndexFunc(raw, isNotToken) < 0
-}
-
 func isNotToken(r rune) bool {
 	i := int(r)
-	return !(i < len(tableCookie) && tableCookie[i])
+	return i >= len(tableCookie) || !tableCookie[i]
 }
 
 var tableCookie = [127]bool{

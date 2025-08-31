@@ -4,8 +4,25 @@ Next
 - ClientOption
 - FuncCreator
 - EventHub
+- loggerWriterAsync time.After
+- middleware/useragent
 
-[2025年4月30日]
+2025年8月31日
+- github	修改action使用go版本和升级lint。
+- HandlerFunc		修改String方法名称使用unsafe读取。
+- Controller		简化控制器方法解析。
+- middleware/admin		更新后台样式。
+- middleware/bearer		新增bearar解析方法。
+- middleware/ctxwrap	废弃，使用其他等效方法实现改功能。
+- middleware/comporess	优化创建函数和WriteHeader延时处理。
+- middleware/logger		修改格式化日志字段格式。
+- middleware/look		修改函数和重复引用显示方式，改为广度优先展示。
+- middleware/policy		重构policy包实现pbac。
+- middleware/recover	修改错误日志输出字段名称和stack传递。
+- middleware/skip		添加反选模式和IP网段条件。
+- middleware/timeout	修复WithTimeout导致Form无法RemoveAll，修复Header无法读取，优化panic stack传递。
+
+[2025年4月30日](https://github.com/eudore/eudore/tree/bbd2c91bf73a0390fd7d43b97e89c16aa985b01c)
 - HandlerFunc		修复String方法可能导致的单元测试不稳定panic，添加注释说明。
 - GetAnyByPath		修改实现方法，可以返回明确的error原因。
 - Protobuf			移除内置实现和相关支持。
@@ -13,6 +30,7 @@ Next
 - HandlerDataRenderNotAcceptable 新增Render响应406。
 - mulitError		更新Unwrap方法实现，返回[]error。
 - middleware/skip	新增在满足条件时跳过下一个处理函数。
+
 
 [2024年11月30日](https://github.com/eudore/eudore/tree/e8c1fd0a0563cdc0e5e40ca732e5f268eed33bc2)
 - App		新增使用Mutex锁全部Values。

@@ -31,7 +31,7 @@ import (
 // This middleware does not support cluster mode.
 func NewDumpFunc(router eudore.Router) Middleware {
 	var d dump
-	router.GetFunc("/dump/connect", d.handler)
+	router.GetFunc("/dump/connect Action=middleware:dump:GetConnect", d.GetConnect)
 	release := func(ctx eudore.Context, w *responseWriterDump) {
 		req := ctx.Request()
 		body, _ := ctx.Body()
@@ -101,7 +101,7 @@ func (d *dump) number() int {
 	return len(d.conns)
 }
 
-func (d *dump) handler(ctx eudore.Context) {
+func (d *dump) GetConnect(ctx eudore.Context) {
 	conn, buf, err := ctx.Response().Hijack()
 	if err != nil {
 		ctx.Fatal(err)
@@ -156,7 +156,7 @@ type dumpMessage struct {
 	RemoteAddr     string      `json:"remoteAddr"`
 	Proto          string      `json:"proto"`
 	Method         string      `json:"method"`
-	RequestURI     string      `json:"requestURI"`
+	RequestURI     string      `json:"requestUri"`
 	RequestHeader  http.Header `json:"requestHeader"`
 	RequestBody    []byte      `json:"requestBody"`
 	Status         int         `json:"status"`
@@ -177,7 +177,7 @@ func getContextHandlerName(ctx eudore.Context) []string {
 
 type responseWriterDump struct {
 	eudore.ResponseWriter
-	w bytes.Buffer
+	buffer
 }
 
 // The Unwrap method is not used yet.
@@ -186,33 +186,116 @@ func (w *responseWriterDump) Unwrap() http.ResponseWriter {
 }
 
 func (w *responseWriterDump) Write(data []byte) (int, error) {
-	w.w.Write(data)
+	_, _ = w.buffer.Write(data)
 	return w.ResponseWriter.Write(data)
 }
 
 func (w *responseWriterDump) WriteString(data string) (int, error) {
-	w.w.WriteString(data)
+	_, _ = w.buffer.WriteString(data)
 	return w.ResponseWriter.WriteString(data)
 }
 
 // refer: [responseWriterTimeout.Body].
 func (w *responseWriterDump) Body() []byte {
-	return w.w.Bytes()
+	return w.buf
 }
 
 // The GetBodyData method gets the written body content
 // and decodes it if it is gzip encoded.
 func (w *responseWriterDump) GetBodyData() []byte {
 	if w.ResponseWriter.Header().Get(eudore.HeaderContentEncoding) == "gzip" {
-		reader, err := gzip.NewReader(&w.w)
+		reader, err := gzip.NewReader(bytes.NewReader(w.buf))
 		if err != nil {
 			return fmt.Appendf(nil, "Reader gzip body size %d error: %s",
-				w.w.Len(), err.Error(),
+				len(w.buf), err.Error(),
 			)
 		}
 		body, _ := io.ReadAll(reader)
 		reader.Close()
 		return body
 	}
-	return w.w.Bytes()
+	return w.buf
 }
+
+const dumpScript = `
+function NewHandlerDump() {
+function b64DecodeUnicode(str) {
+	try {
+		return decodeURIComponent(atob(str).split("").map(function(c) {
+			return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)
+		}).join(""), )
+	} catch {
+		return str
+	}
+}
+return {
+	ws: null,
+	Messages: [],
+	Mount(ctx) {
+		this.Messages = [];
+		this.ws = new WebSocket("ws://" + location.host + ctx.Config.App.FetchGroup + "dump/connect",);
+		try {
+			this.ws.onopen = () => {
+				fetch("/hello", {method: "PUT", body: "request hello body", cache: "no-cache"})
+			}
+			this.ws.onmessage = (e) => {
+				let data = JSON.parse(e.data) || {};
+				data.display = false;
+				data.info = "basic";
+				this.Messages.push(data)
+			}
+			this.ws.onclose = () => {this.Unmount() }
+			this.ws.onerror = (e) => {
+				ctx.Error("dump server error:", e);
+				this.Unmount()
+			}
+		} catch (e) {ctx.Error(e.message) }
+		return true
+	},
+	Unmount() {if (this.ws) {this.ws.close(); this.ws = null}},
+	View() {
+		if(!this.ws)return["eudore server not support dump"]
+		return this.Messages.map((data) => {
+		return {type: 'div', class: 'dump-node', child:[
+			{type: 'div', class: this.getState(data["status"]), onclick: ()=>{data.display=!data.display; }, child: [
+				{type: 'span', text: data["method"]},
+				{type: 'span', text: data["host"]+data["path"]},
+				{type: 'span', text: data["status"]}
+			]},
+			{type: 'div', class: 'dump-info', if: data.display, child: [
+				{type: 'ul', li: [
+					{text: 'Basic Info', onclick: ()=>{data.info="basic"; }},
+					{text: 'Request Info', onclick: ()=>{data.info="request"; }},
+					{text: 'Response Info', onclick: ()=>{data.info="response"; }},
+				]},
+				{type: 'div', class:"dump-info-basic", if: data.info=="basic",
+					table: {tbody: {tr: [
+						{td: [{text:"Time"},	{text:data["time"]}]},
+						{td: [{text:"Method"},	{text:data["method"]}]},
+						{td: [{text:"URI"},		{text:data["requestUri"]}]},
+						{td: [{text:"Proto"},	{text:data["proto"]}]},
+						{td: [{text:"Host"},	{text:data["host"]}]},
+						{td: [{text:"Remote"},	{text:data["remoteAddr"]}]},
+						{td: [{text:"Status"},	{text:data["status"]}]},
+						{td: [{text:"Params"},	{text: this.getParams(data["params"])}]},
+						{td: [{text:"Handlers"},{p: this.getHandlerDom(data["handlers"])}]},
+					]}}
+				},
+				{type: 'div', class: 'dump-info-request', if: data.info=="request", child: [
+					{type: 'table', tr: this.getHeaderDom(data["requestHeader"]) },
+					{type: 'div', pre: {code: {text: b64DecodeUnicode(data['requestBody'])||""}}}
+				]},
+				{type: 'div', class: 'dump-info-response', if: data.info=="response", child: [
+					{type: 'table', tr: this.getHeaderDom(data["responseHeader"]) },
+					{type: 'div', pre: {code: {text: b64DecodeUnicode(data['responseBody'])||""}}}
+				]}
+			]}
+		]}
+	})},
+	getState(status){if(status<400){return"state state-info"}if(status<500){return"state state-warning"}return"state state-error"},
+	getParams(p){return p.reduce((t,c,i)=>{if (i%2===0){t.push("${0}=${1}".format(c,p[i+1])||"")}return t},[]).join(" ")},
+	getHeaderDom(data){return Object.keys(data).map((k)=>({td:[{text:k},{text:data[k].toString()}]}))},
+	getParamsDom(data){return Object.entries(data).map(([key,v])=>({text:"${0}=${1}".format(k,v)}))},
+	getHandlerDom(data){return data.map((item)=>({text:item}))},
+}}
+`

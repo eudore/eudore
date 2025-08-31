@@ -8,11 +8,12 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v3
+          cache: false
+      - uses: golangci/golangci-lint-action@v8
         continue-on-error: true
         with:
           args: --verbose --config .github/workflows/golang-lint.json
@@ -21,7 +22,7 @@ jobs:
       max-parallel: 16
       matrix:
         os: [macos, ubuntu]
-        go: ["1.20", "1.21"]
+        go: ["1.20", "1.22", "1.24"]
         include:
           - os: macos
             gopath: /Users/runner/go
@@ -29,10 +30,10 @@ jobs:
           - os: ubuntu
             gopath: /home/runner/go
             gocache: /home/runner/.cache/go-build
-    name: ${{ matrix.os }} @ Go ${{ matrix.go }}
+    name: ${{ matrix.os }}@Go${{ matrix.go }}
     runs-on: ${{ matrix.os }}-latest
     env:
-      GO111MODULE: off
+      GO111MODULE: ${{ matrix.go < '1.22' && 'off' || 'on' }}
       GOPATH: ${{ matrix.gopath }}:${{ github.workspace }}
       GOARCH: amd64
       CGO_ENABLED: 1
@@ -42,25 +43,26 @@ jobs:
       run:
         working-directory: ${{ env.WORKDIR }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           path: ${{ env.WORKDIR }}
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
-      - uses: actions/cache@v3
+          cache: false
+      - uses: actions/cache@v4
         with:
-          key: ${{ runner.os }}-go-${{ hashFiles('src/github.com/eudore/eudore/go.mod') }}
+          key: ${{ runner.os }}-go${{ matrix.go }}-${{ hashFiles('src/github.com/eudore/eudore/go.mod') }}
           restore-keys: ${{ runner.os }}-go-
           path: |
             ${{ matrix.gopath }}
             ${{ matrix.gocache }}
-      - name: Run Go Get 
-        run: for pkg in $(go list -json _example/*_test.go | jq -r '.XTestImports[]' | grep -E "github.com|golang.org|monkey" | grep -v eudore); do go get -v $pkg; done
+      - name: Run Go Get
+        run: mv _example/*_test.go . && for pkg in $(go list -json *_test.go | jq -r '.XTestImports[]' | grep -E "github.com|golang.org|monkey" | grep -v eudore); do go get -v $pkg; done
       - name: Run Bench
-        run: go test -run=^$ -bench=. -cpu=1 _example/*_test.go
+        run: go test -run=^$ -bench=. -cpu=1 *_test.go
       - name: Run Tests
-        run: go test -v -timeout=1m -race -cover -coverprofile=coverage.out -coverpkg='${{ env.PACKAGES }}' _example/*_test.go
+        run: go test -v -timeout=1m -race -cover -coverprofile=coverage.out -coverpkg='${{ env.PACKAGES }}' *_test.go
       - name: Run Notice
         run: go run _example/otherCover.go
       - name: Run Coverage

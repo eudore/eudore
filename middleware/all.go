@@ -23,10 +23,11 @@ type Middleware = eudore.HandlerFunc
 //
 //go:noinline
 func NewAdminFunc() Middleware {
+	size := strconv.Itoa(len(DefaultPageAdmin))
 	return func(ctx eudore.Context) {
 		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
-		http.ServeContent(
-			ctx.Response(), ctx.Request(), "",
+		ctx.SetHeader(eudore.HeaderContentLength, size)
+		http.ServeContent(ctx.Response(), ctx.Request(), "",
 			eudore.DefaultHandlerEmbedTime,
 			strings.NewReader(DefaultPageAdmin),
 		)
@@ -39,15 +40,19 @@ func NewAdminFunc() Middleware {
 // names is a map that stores user passwords.
 //
 // Note: BasicAuth needs to be placed after [NewCORSFunc].
+//
+// RFC 7617: The 'Basic' HTTP Authentication Scheme.
 func NewBasicAuthFunc(names map[string]string) Middleware {
 	checks := make(map[string]string, len(names))
 	for name, pass := range names {
-		checks[base64.StdEncoding.EncodeToString([]byte(name+":"+pass))] = name
+		// save BasicAuth data
+		auth := base64.StdEncoding.EncodeToString([]byte(name + ":" + pass))
+		checks[valueBasicAuth+auth] = name
 	}
 	return func(ctx eudore.Context) {
 		auth := ctx.GetHeader(eudore.HeaderAuthorization)
-		if len(auth) > 5 && auth[:6] == "Basic " {
-			name, ok := checks[auth[6:]]
+		if len(auth) > 5 && auth[:6] == valueBasicAuth {
+			name, ok := checks[auth]
 			if ok {
 				ctx.SetParam(eudore.ParamBasicAuth, name)
 				return
@@ -87,7 +92,7 @@ func NewBodyLimitFunc(size int64) Middleware {
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, size)
 		case r.ContentLength > size:
-			ctx.SetHeader(eudore.HeaderConnection, "close")
+			ctx.SetHeader(eudore.HeaderConnection, eudore.HeaderValueClose)
 			writePage(ctx, eudore.StatusRequestEntityTooLarge,
 				DefaultPageBodyLimit, strconv.FormatInt(size, 10),
 			)
@@ -178,60 +183,6 @@ func NewCSRFFunc(key string, options ...Option) Middleware {
 	}
 }
 
-// The NewContextWrapperFunc function creates middleware to implement
-// modify the [eudore.Context] used by Next [eudore.HandlerFunc].
-//
-// [eudore.Context] will be reset in [NewTimeoutFunc].
-//
-// This middleware is a supplement to the middleware execution mechanism.
-//
-//go:noinline
-func NewContextWrapperFunc(fn func(eudore.Context) eudore.Context) Middleware {
-	return func(ctx eudore.Context) {
-		wrap := &contextWraper{contextBase: fn(ctx)}
-		wrap.index, wrap.handlers = ctx.GetHandlers()
-		defer wrap.release()
-		wrap.Next()
-	}
-}
-
-type contextWraper struct {
-	contextBase
-	index    int
-	handlers []eudore.HandlerFunc
-}
-
-type contextBase = eudore.Context
-
-func (ctx *contextWraper) release() {
-	ctx.contextBase.SetHandlers(ctx.index, ctx.handlers)
-}
-
-// The SetHandler method sets all [HandlerFunc] for the request context.
-func (ctx *contextWraper) SetHandlers(index int, hs []eudore.HandlerFunc) {
-	ctx.index, ctx.handlers = index, hs
-}
-
-// The GetHandler method gets the current processing index
-// and all [HandlerFunc] of the request context.
-func (ctx *contextWraper) GetHandlers() (int, []eudore.HandlerFunc) {
-	return ctx.index, ctx.handlers
-}
-
-// The Next method modifies the [eudore.Context] used by [HandlerFunc].
-func (ctx *contextWraper) Next() {
-	ctx.index++
-	for ctx.index < len(ctx.handlers) {
-		ctx.handlers[ctx.index](ctx)
-		ctx.index++
-	}
-}
-
-// End Ends processing of the request context.
-func (ctx *contextWraper) End() {
-	ctx.index = eudore.DefaultContextMaxHandler
-}
-
 // The NewHealthCheckFunc function creates [eudore.HandlerFunc] to check
 // metadata health.
 //
@@ -251,7 +202,7 @@ func NewHealthCheckFunc(app context.Context) Middleware {
 				return
 			}
 		}
-		_, _ = ctx.WriteString("OK")
+		_, _ = ctx.WriteString(http.StatusText(eudore.StatusOK))
 	}
 }
 
@@ -335,14 +286,11 @@ func NewHeaderAddFunc(h http.Header) Middleware {
 		return nil
 	}
 	return func(ctx eudore.Context) {
-		header := ctx.Response().Header()
-		for k, v := range h {
-			header[k] = append(header[k], v...)
-		}
+		headerAppend(ctx.Response().Header(), h)
 	}
 }
 
-// The NewHeaderAddSecureFunc function creates middleware to implement
+// The NewHeaderSecureFunc function creates middleware to implement
 // add a response [http.Header],
 // and additionally appends a basic security [http.Header].
 //
@@ -350,7 +298,7 @@ func NewHeaderAddFunc(h http.Header) Middleware {
 // [eudore.HeaderXFrameOptions] [eudore.HeaderXContentTypeOptions].
 //
 //go:noinline
-func NewHeaderAddSecureFunc(h http.Header) Middleware {
+func NewHeaderSecureFunc(h http.Header) Middleware {
 	header := http.Header{
 		eudore.HeaderXContentTypeOptions: []string{"nosniff"},
 		eudore.HeaderXFrameOptions:       []string{"SAMEORIGIN"},
@@ -411,15 +359,18 @@ func NewHeaderDeleteFunc(iplist, names []string) Middleware {
 	}
 }
 
+type stackError interface {
+	error
+	Unwrap() error
+	Stack() []string
+}
+
 // The NewRecoveryFunc function creates middleware to implement recover errors
 // and return 500 and a detailed message.
 //
 //go:noinline
 func NewRecoveryFunc() Middleware {
-	type m interface {
-		Unwrap() error
-		Stack() []string
-	}
+	fields := []string{eudore.FieldStack, eudore.FieldError}
 	release := func(ctx eudore.Context) {
 		r := recover()
 		if r == nil {
@@ -427,21 +378,31 @@ func NewRecoveryFunc() Middleware {
 		}
 
 		var err error
-		stack := eudore.GetCallerStacks(3)
+		var stack []string
 		switch v := r.(type) {
+		case stackError:
+			err = v.Unwrap()
+			stack = v.Stack()
 		case error:
 			err = v
-		case m:
-			err = v.Unwrap()
-			stack = append(v.Stack(), stack[1:]...)
+			stack = eudore.GetCallerStacks(3)
 		default:
-			err = fmt.Errorf("%v", r)
+			err = fmt.Errorf(DefaultRecoveryErrorFormat, r)
+			stack = eudore.GetCallerStacks(3)
 		}
+
+		s := make([]string, 0, len(stack))
+		for _, line := range stack {
+			if !strings.HasSuffix(line, " eudore.(*contextBase).Next") {
+				s = append(s, line)
+			}
+		}
+
 		if ctx.Response().Size() == 0 {
 			ctx.WriteStatus(eudore.StatusInternalServerError)
-			_ = ctx.Render(eudore.NewContextMessgae(ctx, err, stack))
+			_ = ctx.Render(eudore.NewContextMessgae(ctx, eudore.NewErrorWithStack(err, s), nil))
 		}
-		ctx.WithField("stack", stack).Error(err)
+		ctx.WithFields(fields, []any{s, err}).Error()
 		ctx.End()
 	}
 	return func(ctx eudore.Context) {
@@ -452,7 +413,7 @@ func NewRecoveryFunc() Middleware {
 
 // The NewRequestIDFunc function creates middleware to implement
 // setting [eudore.HeaderXRequestID]
-// and appends x-request-id to the log field.
+// and appends x_request_id to the log field.
 //
 // Timestamp and random number are used by default.
 //
@@ -466,15 +427,16 @@ func NewRequestIDFunc(fn func(eudore.Context) string) Middleware {
 		}
 	}
 	return func(ctx eudore.Context) {
-		requestID := ctx.GetHeader(eudore.HeaderXRequestID)
-		if requestID == "" {
-			requestID = fn(ctx)
+		id := ctx.GetHeader(eudore.HeaderXRequestID)
+		if id == "" {
+			id = fn(ctx)
 		}
-		ctx.SetHeader(eudore.HeaderXRequestID, requestID)
-
-		log := ctx.Value(eudore.ContextKeyLogger).(eudore.Logger)
-		log = log.WithField("x-request-id", requestID).WithField("logger", true)
-		ctx.SetValue(eudore.ContextKeyLogger, log)
+		ctx.SetHeader(eudore.HeaderXRequestID, id)
+		ctx.SetValue(eudore.ContextKeyLogger,
+			ctx.Value(eudore.ContextKeyLogger).(eudore.Logger).
+				WithField(eudore.FieldXRequestID, id).
+				WithField(eudore.FieldLogger, true),
+		)
 	}
 }
 
@@ -482,8 +444,8 @@ func NewRequestIDFunc(fn func(eudore.Context) string) Middleware {
 // uses Routes to create [NewRouterFunc] middleware.
 func NewRoutesFunc(routes map[string]any) Middleware {
 	router := eudore.NewRouterCoreMux()
-	router.HandleFunc("404", "", []eudore.HandlerFunc{})
-	router.HandleFunc("405", "", []eudore.HandlerFunc{})
+	router.HandleFunc(eudore.MethodNotFound, "", []eudore.HandlerFunc{})
+	router.HandleFunc(eudore.MethodNotAllowed, "", []eudore.HandlerFunc{})
 	for k, v := range routes {
 		h := eudore.DefaultHandlerExtender.CreateHandlers(k, v)
 		pos := strings.IndexByte(k, '/')
@@ -551,7 +513,7 @@ func NewServerTimingFunc() Middleware {
 
 type responseWriterTiming struct {
 	eudore.ResponseWriter
-	Now    time.Time
+	now    time.Time
 	timing bool
 }
 
@@ -578,28 +540,45 @@ func (w *responseWriterTiming) Flush() {
 func (w *responseWriterTiming) writeTiming() {
 	if w.timing {
 		w.timing = false
-		dura := float64(time.Since(w.Now)) / float64(time.Millisecond)
+		dura := float64(time.Since(w.now)) / float64(time.Millisecond)
 		tims := w.Header()[eudore.HeaderServerTiming]
 		tims = append(tims, "total;dur="+strconv.FormatFloat(dura, 'f', 2, 64))
 		w.Header().Set(eudore.HeaderServerTiming, strings.Join(tims, ", "))
 	}
 }
 
-// The NewSkipHandlerFunc function creates middleware implement skips the next
+// The NewSkipNextFunc function creates middleware implement skips the next
 // processing function when the specified key matches.
 //
 // You can customize the condition matching and adjust the [Context.SetHandlers].
 //
 // Use some scenarios to ignore the next permission check middleware.
-func NewSkipHandlerFunc(key string, values map[string]struct{}) Middleware {
+func NewSkipNextFunc(key string, values map[string]struct{}) Middleware {
 	if values == nil {
 		return nil
 	}
+
+	exclude := strings.HasPrefix(key, "!")
+	key = strings.TrimPrefix(key, "!")
 	switch {
 	case key == "path":
 		return func(ctx eudore.Context) {
 			_, ok := values[ctx.Path()]
-			if ok {
+			if ok != exclude {
+				index, hs := ctx.GetHandlers()
+				ctx.SetHandlers(index+1, hs)
+			}
+		}
+	case key == "realip":
+		list := &subnetListMixin{
+			V4: &subnetListV4{},
+			V6: &subnetListV6{},
+		}
+		for ip := range values {
+			list.Insert(ip)
+		}
+		return func(ctx eudore.Context) {
+			if list.Look(ctx.RealIP()) != exclude {
 				index, hs := ctx.GetHandlers()
 				ctx.SetHandlers(index+1, hs)
 			}
@@ -608,7 +587,7 @@ func NewSkipHandlerFunc(key string, values map[string]struct{}) Middleware {
 		key = strings.TrimPrefix(key, "param:")
 		return func(ctx eudore.Context) {
 			_, ok := values[ctx.GetParam(key)]
-			if ok {
+			if ok != exclude {
 				index, hs := ctx.GetHandlers()
 				ctx.SetHandlers(index+1, hs)
 			}
@@ -617,7 +596,7 @@ func NewSkipHandlerFunc(key string, values map[string]struct{}) Middleware {
 		key = strings.TrimPrefix(key, "cookie:")
 		return func(ctx eudore.Context) {
 			_, ok := values[ctx.GetCookie(key)]
-			if ok {
+			if ok != exclude {
 				index, hs := ctx.GetHandlers()
 				ctx.SetHandlers(index+1, hs)
 			}
@@ -626,7 +605,7 @@ func NewSkipHandlerFunc(key string, values map[string]struct{}) Middleware {
 		key = textproto.CanonicalMIMEHeaderKey(strings.TrimPrefix(key, "request:"))
 		return func(ctx eudore.Context) {
 			_, ok := values[ctx.GetHeader(key)]
-			if ok {
+			if ok != exclude {
 				index, hs := ctx.GetHandlers()
 				ctx.SetHandlers(index+1, hs)
 			}

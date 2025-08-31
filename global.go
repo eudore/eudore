@@ -210,6 +210,7 @@ var (
 		NewHandlerHTTPFunc2,
 		NewHandlerHTTPHandler,
 		NewHandlerFileEmbed,
+		NewHandlerFileIOFS,
 		NewHandlerFileSystem,
 		NewHandlerAnyContextTypeAnyError,
 	}
@@ -302,12 +303,14 @@ var (
 		"20060102",
 		"15:04:05",
 	}
-	// DefaultValueParseTimeFixed defines [GetAnyByString] whether the length of
-	// the predefined time format is fixed
+	// DefaultValueParseTimeFixed global defines [GetAnyByString] whether the
+	// length of the predefined time format is fixed
 	// and ignores time formats with different lengths.
 	DefaultValueParseTimeFixed = []bool{ // non-fixed
 		true, false, true, true, true, true,
 	}
+	// DefaultValueTimeLocation global defines the timezone used for parsing times.
+	DefaultValueTimeLocation = time.Local //nolint:gosmopolitan
 	// DefaultDaemonPidfile defines the default pid file
 	// used by [daemon.Command].
 	DefaultDaemonPidfile = "/var/run/eudore.pid"
@@ -323,7 +326,7 @@ var (
 	ErrRouterAddController              = "Router: AddController inject %s error: %w"
 	ErrRouterAddHandlerExtender         = "Router: AddHandlerExtender path is '%s' RegisterHandlerExtender error: %w"
 	ErrRouterAddHandlerMethodInvalid    = "Router: addHandler method '%s' is invalid, add fullpath: '%s'"
-	ErrRouterAddHandlerRecover          = "Router: addHandler method is '%s' and path is '%s', recover error: %w"
+	ErrRouterAddHandlerRecover          = "Router: addHandler method is '%s' and path is '%s', recover error: %v"
 	ErrRouterHandlerFuncsUnregisterType = "Router: newHandlerFuncs path is '%s', %dth handler parameter type is '%s', this is the unregistered handler type"
 	ErrRouterMuxLoadInvalidFunc         = "routerCoreMux: load path '%s' is invalid, error: %w"
 
@@ -337,11 +340,11 @@ var (
 	ErrContextRedirectInvalid                = "Context: invalid redirect status code %d"
 	ErrContextNotHijacker                    = errors.New("ResponseWriter: http.Hijacker interface is not supported")
 
-	ErrHandlerDataBindNotSupportContentType = "HandlerData bind: not support Content-Type: %s"
-	ErrHandlerDataBindMustSturct            = "HandlerData bind: value type %s must be a struct"
-	ErrHandlerDataRenderTemplateNotFound    = "HandlerData render: not found template %s"
+	ErrHandlerDataBindNotSupportContentType = "HandlerData: bind not support Content-Type: %s"
+	ErrHandlerDataBindMustSturct            = "HandlerData: bind value type %s must be a struct"
+	ErrHandlerDataRenderTemplateNotFound    = "HandlerData: render not found template %s"
 	ErrHandlerDataRenderTemplateNotLoad     = "Unable to load template at %s: patterns: %v"
-	ErrHandlerDataRenderTemplateNeedName    = errors.New("HandlerData render: template need eudore.Context param 'template'")
+	ErrHandlerDataRenderTemplateNeedName    = errors.New("HandlerData: render template need eudore.Context param 'template'")
 	ErrHandlerDataValidateCheckFormat       = "Validate: %s.%s field %s check rule %s fatal, value: %%#v"
 	ErrHandlerDataValidateCreateRule        = "Validate: %s.%s field %s create rule %s error: %w"
 
@@ -353,10 +356,10 @@ var (
 	ErrValueNil                  = errors.New("value is nil")
 	ErrValueNotSet               = errors.New("value not can set")
 	ErrValueNotFound             = errors.New("value not found")
-	ErrValueStructNotField       = NewErrorWrapped("struct field not found", ErrValueNotFound)
-	ErrValueStructUnexported     = NewErrorWrapped("struct field unexported", ErrValueNotFound)
-	ErrValueMapIndexInvalid      = NewErrorWrapped("map index invalid", ErrValueNotFound)
-	ErrValueSliceIndexOutOfRange = NewErrorWrapped("slice index out of range", ErrValueNotFound)
+	ErrValueStructNotField       = NewErrorWithWrapped(ErrValueNotFound, "struct field not found")
+	ErrValueStructUnexported     = NewErrorWithWrapped(ErrValueNotFound, "struct field unexported")
+	ErrValueMapIndexInvalid      = NewErrorWithWrapped(ErrValueNotFound, "map index invalid")
+	ErrValueSliceIndexOutOfRange = NewErrorWithWrapped(ErrValueNotFound, "slice index out of range")
 
 	ErrValueLookNil         = "look type %s value %s: %w"
 	ErrValueLookType        = "look value type %s path '%s': %w"
@@ -366,7 +369,7 @@ var (
 	ErrValueParseMapKey     = "parse map key '%s' error: %w"
 	ErrValueParseSliceIndex = "parse slice index '%s', len is %d error: %w"
 
-	ErrValueSetStringUnknownType = "SetValueString unknown type %s"
+	ErrValueSetStringUnknownType = "the SetValueString unknown type %s"
 	ErrValueSetValuePtr          = "the SetValuePtr method type %s cannot be assigned to type %s"
 
 	// ErrFuncCreatorNotFunc 定义FuncCreator无法获取或创建函数。

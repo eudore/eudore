@@ -1,6 +1,7 @@
 package eudore
 
 import (
+	"embed"
 	"errors"
 	"fmt"
 	iofs "io/fs"
@@ -12,6 +13,8 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
+	"sync"
 	"unsafe"
 )
 
@@ -108,66 +111,16 @@ func NewHandlerFuncsCombine(hs1, hs2 HandlerFuncs) HandlerFuncs {
 	return hs
 }
 
-type reflectValue struct {
-	_    *uintptr
-	ptr  uintptr
-	flag uintptr
-}
+var (
+	handlerFuncLocker   = sync.RWMutex{}
+	handlerFuncCreator  = make(map[uintptr]reflect.Type)
+	handlerNameFormater = strings.NewReplacer("*", "", "(", "", ")", "")
+	handlerParamsName   = "[...]"
+	handlerPackageName  = typeHandlerFunc.PkgPath() + "."
+	handlerCallName     = runtime.FuncForPC(reflect.ValueOf(embed.FS{}).Method(0).Pointer()).Name()
+)
 
-// The getFuncPointer function get the address of [HandlerFunc]
-// as the unique identifier id.
-func getFuncPointer(v reflect.Value) uintptr {
-	val := *(*reflectValue)(unsafe.Pointer(&v))
-	return val.ptr
-}
-
-// The SetHandlerAliasName function sets the original name of extension object.
-//
-// Used in the [NewHandlerExtenderBase] object and [ControllerInjectAutoRoute]
-// function to pass the controller function name.
-func SetHandlerAliasName(i any, name string) {
-	if name == "" {
-		return
-	}
-	v, ok := i.(reflect.Value)
-	if !ok {
-		v = reflect.ValueOf(i)
-	}
-	val := *(*reflectValue)(unsafe.Pointer(&v))
-	names := contextAliasName[val.ptr]
-	index := int(val.flag >> 10)
-	if len(names) <= index {
-		newnames := make([]string, index+1)
-		copy(newnames, names)
-		names = newnames
-		contextAliasName[val.ptr] = names
-	}
-	names[index] = name
-}
-
-func getHandlerAliasName(v reflect.Value) string {
-	val := *(*reflectValue)(unsafe.Pointer(&v))
-	names := contextAliasName[val.ptr]
-	index := int(val.flag >> 10)
-	if index < len(names) {
-		return names[index]
-	}
-	return ""
-}
-
-// SetHandlerFuncName function sets the name of a [HandlerFunc].
-//
-// Note: functions are not comparable, the method names of objects are
-// overwritten by other method names.
-func SetHandlerFuncName(i HandlerFunc, name string) {
-	ptr := getFuncPointer(reflect.ValueOf(i))
-	if name == "" {
-		delete(contextFuncName, ptr)
-		delete(contextSaveName, ptr)
-		return
-	}
-	contextSaveName[ptr] = name
-}
+const sizeofUintptr = unsafe.Sizeof(uintptr(0))
 
 // String method implements the [fmt.Stringer] interface
 // and output [HandlerFunc] name.
@@ -177,17 +130,86 @@ func SetHandlerFuncName(i HandlerFunc, name string) {
 // the new HandlerFunc uses the same address to obtain an incorrect name,
 // but the HandlerFunc is usually not released.
 func (h HandlerFunc) String() string {
-	rh := reflect.ValueOf(h)
-	ptr := getFuncPointer(rh)
-	name, ok := contextFuncName[ptr]
-	if ok {
-		return name
+	ptr := reflect.ValueOf(h).Pointer()
+	handlerFuncLocker.RLock()
+	t, ok := handlerFuncCreator[ptr]
+	handlerFuncLocker.RUnlock()
+
+	ext := ""
+	name := runtime.FuncForPC(ptr).Name()
+	switch {
+	case name == handlerCallName:
+		name = getReflectMethodName(unsafe.Pointer(&h))
+	case !ok:
+		name = strings.TrimSuffix(name, "-fm")
+	case t.Kind() == reflect.Func:
+		ext = name
+		offset := sizeofUintptr
+		if strings.Contains(ext, handlerParamsName) {
+			offset *= 3
+		}
+
+		addr := unsafe.Add(*(*unsafe.Pointer)(unsafe.Pointer(&h)), offset)
+		name = runtime.FuncForPC(**(**uintptr)(addr)).Name()
+		if name == handlerCallName {
+			name = getReflectMethodName(addr)
+		}
+	default:
+		ext = name
+		name = t.String()
+		pkg := t.PkgPath()
+		pos := strings.LastIndexByte(pkg, '/')
+		if pos != -1 {
+			name = pkg[:pos+1] + name
+		}
 	}
-	name, ok = contextSaveName[ptr]
-	if ok {
-		return name
+
+	if ext != "" {
+		pos := strings.LastIndex(ext, ".func")
+		if pos != -1 {
+			ext = ext[:pos]
+		}
+		ext = strings.TrimPrefix(ext, handlerPackageName)
+		ext = strings.ReplaceAll(ext, handlerParamsName, "")
+		ext = "(" + ext + ")"
 	}
-	return runtime.FuncForPC(rh.Pointer()).Name()
+	return handlerNameFormater.Replace(name) + ext
+}
+
+type methodValue struct {
+	_ [4]uintptr
+	m int
+	r reflect.Value
+}
+
+func getReflectMethodName(addr unsafe.Pointer) string {
+	ptr := *(**methodValue)(addr)
+	name := runtime.FuncForPC(ptr.r.Type().Method(ptr.m).Func.Pointer()).Name()
+	if strings.Contains(name, handlerParamsName) {
+		tname := ptr.r.Type().String()
+		start := strings.IndexByte(tname, '[')
+		end := strings.LastIndexByte(tname, ']')
+		if start != -1 && start < end {
+			name = strings.ReplaceAll(name, handlerParamsName, tname[start:end+1])
+		}
+	}
+	return name
+}
+
+// The NewHandlerFileEmbed function creates the [embed.FS] extension function.
+//
+// Same function as [NewHandlerFileIOFS], but with a different display name.
+//
+// refer [NewHandlerFileSystem].
+func NewHandlerFileEmbed(fs embed.FS) HandlerFunc {
+	return NewHandlerFileSystem(NewFileSystems(fs))
+}
+
+// The NewHandlerFileIOFS function creates the [iofs.FS] extension function.
+//
+// refer [NewHandlerFileSystem].
+func NewHandlerFileIOFS(fs iofs.FS) HandlerFunc {
+	return NewHandlerFileSystem(NewFileSystems(fs))
 }
 
 // The NewHandlerFileSystems function uses multiple any values to create
@@ -196,13 +218,6 @@ func (h HandlerFunc) String() string {
 // refer [NewHandlerFileSystem] and [NewFileSystems].
 func NewHandlerFileSystems(dirs ...any) HandlerFunc {
 	return NewHandlerFileSystem(NewFileSystems(dirs...))
-}
-
-// The NewHandlerFileEmbed function creates the [iofs.FS] extension function.
-//
-// refer [NewHandlerFileSystem].
-func NewHandlerFileEmbed(fs iofs.FS) HandlerFunc {
-	return NewHandlerFileSystem(NewFileSystems(fs))
 }
 
 // The NewHandlerFileSystem function creates an [http.FileSystem] extension
@@ -216,7 +231,7 @@ func NewHandlerFileSystem(fs http.FileSystem) HandlerFunc {
 	embedTime := DefaultHandlerEmbedTime
 	cacheControl := DefaultHandlerEmbedCacheControl
 	return func(ctx Context) {
-		path := filepath.Join(ctx.GetParam(ParamPrefix), ctx.GetParam("*"))
+		path := ctx.GetParam("*")
 		if path == "" {
 			path = "."
 		}
@@ -357,4 +372,27 @@ func (fs fileSystems) Open(name string) (file http.File, err error) {
 		}
 	}
 	return
+}
+
+type fileSystemPrefix struct {
+	http.FileSystem
+	prefix string
+	trim   string
+}
+
+func NewFileSystemPrefix(prefix, trim string, fs http.FileSystem) http.FileSystem {
+	if prefix == "" && trim == "" {
+		return fs
+	}
+	return &fileSystemPrefix{fs, prefix, trim}
+}
+
+func (fs *fileSystemPrefix) Open(name string) (file http.File, err error) {
+	if fs.trim != "" {
+		name = strings.TrimPrefix(name, fs.trim)
+	}
+	if fs.prefix != "" {
+		name = filepath.Join(fs.prefix, name)
+	}
+	return fs.FileSystem.Open(name)
 }

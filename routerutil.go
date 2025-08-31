@@ -20,10 +20,10 @@ var routerLoggerKinds = [...]string{
 func getRouterLoggerKind(kind int, str string) int {
 	str = strings.ReplaceAll(strings.ToLower(str), " ", "")
 	for _, k := range strings.Split(str, "|") {
-		switch {
-		case k == "all":
+		switch k {
+		case "all":
 			kind = 0x3f
-		case k == "~all":
+		case "~all":
 			kind = 0
 		default:
 			pos := sliceIndex(routerLoggerKinds[:], strings.TrimPrefix(k, "~"))
@@ -259,16 +259,19 @@ func (node *routerHostNode) lookNode(path string) string {
 	}
 
 	if path != "" {
+		char := path[0]
 		for _, child := range node.child {
-			if child.path[0] >= path[0] {
-				length := len(child.path)
-				if len(path) >= length && path[:length] == child.path {
-					if data := child.lookNode(path[length:]); data != "" {
-						return data
-					}
-				}
-				break
+			if child.path[0] < char {
+				continue
 			}
+
+			if child.path[0] == char && strings.HasPrefix(path, child.path) {
+				data := child.lookNode(path[len(child.path):])
+				if data != "" {
+					return data
+				}
+			}
+			break
 		}
 	}
 

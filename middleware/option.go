@@ -17,11 +17,14 @@ type Option func(any)
 // If GetKeyFunc returns an empty string,
 // the corresponding middleware will be skipped.
 //
-// middleware: [NewCSRFFunc] [NewCircuitBreakerFunc] [NewCacheFunc]
+// middleware: [NewBearerAuthFunc] [NewCSRFFunc]
+// [NewCircuitBreakerFunc] [NewCacheFunc]
 // [NewRateRequestFunc] [NewRateSpeedFunc].
 func NewOptionKeyFunc(fn func(eudore.Context) string) Option {
 	return func(data any) {
 		switch v := data.(type) {
+		case *bearer:
+			v.GetKeyFunc = fn
 		case *breaker:
 			v.GetKeyFunc = fn
 		case *rate:
@@ -38,24 +41,13 @@ func NewOptionKeyFunc(fn func(eudore.Context) string) Option {
 //
 // NewBlackFunc middleware will add [sync.RWMutex].
 //
-// middleware: [NewCircuitBreakerFunc] [NewBlackListFunc].
+// middleware: [NewCircuitBreakerFunc] [NewBlackListFunc]
+// [NewSecurityPolicysFunc].
 func NewOptionRouter(router eudore.Router) Option {
 	return func(data any) {
-		switch v := data.(type) {
-		case *breaker:
-			router.GetFunc("/breaker/data", v.data)
-			router.GetFunc("/breaker/:id", v.get)
-			router.PutFunc("/breaker/:id/state/:state", v.putState)
-		case *black:
-			v.White4 = &subnetListMutex{subnetList: v.White4}
-			v.Black4 = &subnetListMutex{subnetList: v.Black4}
-			v.White6 = &subnetListMutex{subnetList: v.White6}
-			v.Black6 = &subnetListMutex{subnetList: v.Black6}
-			router.GetFunc("/black/data", v.data)
-			router.PutFunc("/black/allow/:ip list=white", v.putIP)
-			router.PutFunc("/black/deny/:ip list=black", v.putIP)
-			router.DeleteFunc("/black/allow/:ip list=white", v.deleteIP)
-			router.DeleteFunc("/black/deny/:ip list=black", v.deleteIP)
+		ctl, ok := data.(eudore.Controller)
+		if ok {
+			_ = ctl.Inject(ctl, router)
 		}
 	}
 }
@@ -112,6 +104,15 @@ func NewOptionRateCleanup(ctx context.Context, t time.Duration, less int,
 	}
 }
 
+func NewOptionRateState() Option {
+	return func(data any) {
+		v, ok := data.(*rate)
+		if ok {
+			v.state = true
+		}
+	}
+}
+
 func applyOption(data any, options []Option) {
 	for i := range options {
 		options[i](data)
@@ -127,9 +128,15 @@ func writePage(ctx eudore.Context, code int, msg, value string) {
 	}
 }
 
-func headerCopy(dst, src map[string][]string) {
+func headerAppend(dst, src map[string][]string) {
 	for key, vals := range src {
 		dst[key] = append(dst[key], vals...)
+	}
+}
+
+func headerCopy(dst, src map[string][]string) {
+	for key, vals := range src {
+		dst[key] = vals
 	}
 }
 
@@ -140,4 +147,33 @@ func headerVary(h http.Header, vary string) {
 	} else {
 		v[0] = v[0] + ", " + vary
 	}
+}
+
+type buffer struct {
+	buf []byte
+}
+
+func (b *buffer) Write(p []byte) (n int, err error) {
+	return copy(b.buf[b.grow(len(p)):], p), nil
+}
+
+func (b *buffer) WriteString(s string) (n int, err error) {
+	return copy(b.buf[b.grow(len(s)):], s), nil
+}
+
+func (b *buffer) grow(n int) int {
+	l := len(b.buf)
+	if l+n <= cap(b.buf) {
+		b.buf = b.buf[:l+n]
+		return l
+	}
+
+	c := l + n
+	if c < 2*l {
+		c = 2 * l
+	}
+	buf2 := append([]byte(nil), make([]byte, c)...)
+	copy(buf2, b.buf)
+	b.buf = buf2[:l+n]
+	return l
 }

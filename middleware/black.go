@@ -70,6 +70,51 @@ func NewBlackListFunc(data map[string]bool, options ...Option) Middleware {
 	}
 }
 
+func (b *black) Inject(_ eudore.Controller, router eudore.Router) error {
+	b.White4 = &subnetListMutex{subnetList: b.White4}
+	b.Black4 = &subnetListMutex{subnetList: b.Black4}
+	b.White6 = &subnetListMutex{subnetList: b.White6}
+	b.Black6 = &subnetListMutex{subnetList: b.Black6}
+
+	router.GetFunc("/black Action=middleware:black:Get", b.Get)
+	router.PutFunc("/black/allow/:ip Action=middleware:black:PutIP list=white", b.PutIP)
+	router.PutFunc("/black/deny/:ip Action=middleware:black:PutIP list=black", b.PutIP)
+	router.DeleteFunc("/black/allow/:ip Action=middleware:black:DeleteIP list=white", b.DeleteIP)
+	router.DeleteFunc("/black/deny/:ip Action=middleware:black:DeleteIP list=black", b.DeleteIP)
+	return nil
+}
+
+func (b *black) Get(ctx eudore.Context) {
+	_ = ctx.Render(map[string]any{
+		"white4": b.White4.List(),
+		"black4": b.Black4.List(),
+		"white6": b.White6.List(),
+		"black6": b.Black6.List(),
+	})
+}
+
+func (b *black) PutIP(ctx eudore.Context) {
+	ip := getAddrMask(ctx.GetParam("ip"), ctx.GetQuery("mask"))
+	ctx.Infof("%s Insert %s ip: %s", ctx.RealIP(), ctx.GetParam("list"), ip)
+	list, err := b.find(ip, ctx.GetParam("list") == "white")
+	if err != nil {
+		ctx.Fatal(err)
+		return
+	}
+	list.Insert(ip)
+}
+
+func (b *black) DeleteIP(ctx eudore.Context) {
+	ip := getAddrMask(ctx.GetParam("ip"), ctx.GetQuery("mask"))
+	ctx.Infof("%s Delete %s ip: %s", ctx.RealIP(), ctx.GetParam("list"), ip)
+	list, err := b.find(ip, ctx.GetParam("list") == "white")
+	if err != nil {
+		ctx.Fatal(err)
+		return
+	}
+	list.Delete(ip)
+}
+
 func (b *black) find(cidr string, allow bool) (subnetList, error) {
 	if strings.LastIndexByte(cidr, '/') == -1 {
 		if strings.IndexByte(cidr, '.') == -1 {
@@ -93,37 +138,6 @@ func (b *black) find(cidr string, allow bool) (subnetList, error) {
 	}
 
 	return nil, err
-}
-
-func (b *black) data() any {
-	return map[string]any{
-		"white4": b.White4.List(),
-		"black4": b.Black4.List(),
-		"white6": b.White6.List(),
-		"black6": b.Black6.List(),
-	}
-}
-
-func (b *black) putIP(ctx eudore.Context) {
-	ip := getAddrMask(ctx.GetParam("ip"), ctx.GetQuery("mask"))
-	ctx.Infof("%s Insert %s ip: %s", ctx.RealIP(), ctx.GetParam("list"), ip)
-	list, err := b.find(ip, ctx.GetParam("list") == "white")
-	if err != nil {
-		ctx.Fatal(err)
-		return
-	}
-	list.Insert(ip)
-}
-
-func (b *black) deleteIP(ctx eudore.Context) {
-	ip := getAddrMask(ctx.GetParam("ip"), ctx.GetQuery("mask"))
-	ctx.Infof("%s Delete %s ip: %s", ctx.RealIP(), ctx.GetParam("list"), ip)
-	list, err := b.find(ip, ctx.GetParam("list") == "white")
-	if err != nil {
-		ctx.Fatal(err)
-		return
-	}
-	list.Delete(ip)
 }
 
 func getAddrMask(ip, mask string) string {
@@ -208,7 +222,6 @@ type subnetListV4 struct {
 	Childrens [2]*subnetListV4
 	Data      bool
 	Count     uint64
-	Value     any
 }
 
 // The Insert method adds a CIDR to the blacklist node.
@@ -530,3 +543,78 @@ func (u uint128) right(n int) uint128 {
 		return uint128{0, u[0] >> (n - 64)}
 	}
 }
+
+const blackScript = `
+function NewHandlerBlack() {
+	const classs = {allow: "state-info", deny: "state-error"};
+	const h = {
+	Data: {white4: [], white6: [], black4: [], black6: []}, Input: false,
+	Mount(ctx) {ctx.Fetch({url: "black", success: (data) => {this.Data=data;}})},
+	View(ctx) {
+		let doms = [{type: "div", class: "black-nav", child: [
+			{class: "dialog-container", if: this.Input,div: { class: "dialog", child:[
+				{type: "textarea", id: "black-insert", oninput:onTextareaAuth},
+				{class: "black-buton", child:[
+					{type:"button",class:"button",text:"Cancel", onclick: ()=>{this.Input=false}},
+					{type:"button",class:"button",text:"Commit WhiteList",onclick: this.insertWhile},
+					{type:"button",class:"button",text:"Commit BlackList",onclick: this.insertBlack},
+				]}
+			]}},
+			{type: "div", text: "black list manager has ${0} while rule and ${1} black rule.".format(
+				this.Data.white4.length + this.Data.white6.length, this.Data.black4.length + this.Data.black6.length)},
+			{type:"button",class:"button",text:"Create rule", onclick: ()=>{this.Input=true}},
+		]}];
+		for (let i of this.Data.white4) {
+			doms.push(this.blackCreateList(ctx, "white4", "allow", i));
+		}
+		for (let i of this.Data.white6) {
+			doms.push(this.blackCreateList(ctx, "white6", "allow", i));
+		}
+		for (let i of this.Data.black4) {
+			doms.push(this.blackCreateList(ctx, "black4", "deny", i));
+		}
+		for (let i of this.Data.black6) {
+			doms.push(this.blackCreateList(ctx, "black6", "deny", i));
+		}
+		return doms;
+	},
+	blackCreateList(ctx, list, state, data) {
+		let addr = data["addr"] + "/" + data["mask"];
+		return {type: "div", id: state + "-" + addr, class: "black-node state " + classs[state], child: [
+			{type: "span", text: addr},
+			{type: "span", text: 'hit '+data["count"]},
+			{type: "span", html: svgDelete, onclick: (e) => {ctx.Fetch({
+				method: "DELETE",
+				url: "black/${0}/${1}?mask=${2}".format(state, data.addr, data.mask),
+				success: () => {
+					this.Data[list] = this.Data[list].filter((i) => i != data);
+					ctx.Info("delete ${0} ${1} success".format(state, addr));
+				},
+			})}}
+		]};
+	},
+	insertWhile(){
+		let list = document.querySelector(".black-nav textarea").value.toString().split(/,|\n/).filter(item => item !== '');
+		for(let ip of list){if(!checkIP(ip)){app.Context.Error("invalid whilelist ip: "+ip);return}}
+		for(let ip of list){h.insert(ip,"white")}
+	},
+	insertBlack(){
+		let list = document.querySelector(".black-nav textarea").value.toString().split(/,|\n/).filter(item => item !== '');
+		for(let ip of list){if(!checkIP(ip)){app.Context.Error("invalid blacklist ip: "+ip);return}}
+		for(let ip of list){h.insert(ip,"black")}
+	}}
+	h.insert=(ip, list)=>{
+		let [addr,mask=""] = ip.split("/");
+		if (addr=="") {return;}
+		let state = list=="white"?"allow":"deny"
+		if (addr.includes(".")) {list+="4";if(mask==""){mask=32;}}else{list+="6";if(mask==""){mask=128;}}
+		app.Context.Fetch({method:"PUT",url:"black/${0}/${1}?mask=${2}".format(state,addr,mask),success:()=>{
+			if (h.Data[list].find((e) => e.mask == mask && e.addr == addr) == undefined) {
+				h.Data[list].push({addr:addr,mask:mask,count:0});
+			}
+			app.Context.Info("insert ${0} ${1}/${2} success".format(state, addr, mask));
+		}});
+	}
+	return h
+}
+`

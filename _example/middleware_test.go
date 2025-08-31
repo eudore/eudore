@@ -6,6 +6,7 @@ package eudore_test
 // middleware4_test.go midd radix
 
 import (
+	"compress/gzip"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -28,13 +29,12 @@ func TestMiddlewareBasicAuth(*testing.T) {
 	app.GetRequest("/", http.Header{HeaderAuthorization: {"eudore"}}, NewClientCheckStatus(401))
 
 	app.CancelFunc()
-	app.Run()
 }
 
 func TestMiddlewareBodyLimit(*testing.T) {
 	app := NewApp()
 	app.AddMiddleware("global",
-		NewGzipFunc(),
+		NewCompressionFunc(CompressionNameGzip, nil),
 		NewBodySizeFunc(),
 		NewBodyLimitFunc(32),
 		NewLoggerLevelFunc(func(Context) int { return 4 }),
@@ -64,50 +64,11 @@ func TestMiddlewareBodyLimit(*testing.T) {
 	app.GetRequest("/form", NewClientBodyForm(data), NewClientCheckStatus(413))
 
 	app.CancelFunc()
-	app.Run()
-}
-
-func TestMiddlewareContextWrap(*testing.T) {
-	app := NewApp()
-	app.AddMiddleware(NewContextWrapperFunc(newContextParams))
-	app.AnyFunc("/ctx", func(ctx Context) {
-		index, handler := ctx.GetHandlers()
-		ctx.SetHandlers(index, handler)
-		if ctx.GetParam("") != "none" {
-			panic("ContextWrap")
-		}
-	})
-	app.AnyFunc("/*", func(ctx Context) {
-		ctx.Debug("hello eudore")
-		ctx.Info("hello eudore")
-		ctx.End()
-	})
-
-	app.GetRequest("/")
-	app.GetRequest("/ctx")
-
-	app.CancelFunc()
-	app.Run()
-}
-
-func newContextParams(ctx Context) Context {
-	return contextParams{ctx}
-}
-
-type contextParams struct {
-	contextBase
-}
-
-type contextBase = Context
-
-// GetParam 方法获取一个参数的值。
-func (ctx contextParams) GetParam(key string) string {
-	return "none"
 }
 
 func TestMiddlewareHeader(*testing.T) {
 	app := NewApp()
-	app.AddMiddleware("global", NewHeaderAddSecureFunc(http.Header{"Server": {"eudore"}}))
+	app.AddMiddleware("global", NewHeaderSecureFunc(http.Header{"Server": {"eudore"}}))
 	app.AddMiddleware("global", NewHeaderAddFunc(nil))
 	app.AddMiddleware(func(ctx Context) {
 		addr := ctx.GetQuery("addr")
@@ -128,7 +89,6 @@ func TestMiddlewareHeader(*testing.T) {
 	app.GetRequest("/?addr=[::1]:50424")
 
 	app.CancelFunc()
-	app.Run()
 }
 
 func TestMiddlewareRecover(*testing.T) {
@@ -161,7 +121,6 @@ func TestMiddlewareRecover(*testing.T) {
 	app.GetRequest("/nil", NewClientCheckStatus(200))
 
 	app.CancelFunc()
-	app.Run()
 }
 
 func TestMiddlewareRoutes(*testing.T) {
@@ -184,20 +143,21 @@ func TestMiddlewareRoutes(*testing.T) {
 	app.GetRequest("/500", NewClientCheckStatus(200))
 
 	app.CancelFunc()
-	app.Run()
 }
 
 func TestMiddlewareSkipHandler(*testing.T) {
-	NewSkipHandlerFunc("", nil)
-	NewSkipHandlerFunc("", map[string]struct{}{})
+	NewSkipNextFunc("", nil)
+	NewSkipNextFunc("", map[string]struct{}{})
 	app := NewApp()
-	app.GetFunc("/path/*", NewSkipHandlerFunc("path", map[string]struct{}{"/path/200": {}}), HandlerRouter403)
-	app.GetFunc("/param", NewSkipHandlerFunc("param:route", map[string]struct{}{"/param": {}}), HandlerRouter403)
-	app.GetFunc("/cookie", NewSkipHandlerFunc("cookie:name", map[string]struct{}{"eudore": {}}), HandlerRouter403)
-	app.GetFunc("/request", NewSkipHandlerFunc("request:name", map[string]struct{}{"eudore": {}}), HandlerRouter403)
+	app.GetFunc("/path/*", NewSkipNextFunc("path", map[string]struct{}{"/path/200": {}}), HandlerRouter403)
+	app.GetFunc("/realip", NewSkipNextFunc("realip", map[string]struct{}{"127.0.0.1": {}}), HandlerRouter403)
+	app.GetFunc("/param", NewSkipNextFunc("param:route", map[string]struct{}{"/param": {}}), HandlerRouter403)
+	app.GetFunc("/cookie", NewSkipNextFunc("cookie:name", map[string]struct{}{"eudore": {}}), HandlerRouter403)
+	app.GetFunc("/request", NewSkipNextFunc("request:name", map[string]struct{}{"eudore": {}}), HandlerRouter403)
 
 	app.GetRequest("/path/200", NewClientCheckStatus(200))
 	app.GetRequest("/path/201", NewClientCheckStatus(403))
+	app.GetRequest("/realip", NewClientCheckStatus(200))
 	app.GetRequest("/param", NewClientCheckStatus(200))
 	app.GetRequest("/cookie", &Cookie{"name", "eudore"}, NewClientCheckStatus(200))
 	app.GetRequest("/cookie", NewClientCheckStatus(403))
@@ -205,7 +165,6 @@ func TestMiddlewareSkipHandler(*testing.T) {
 	app.GetRequest("/request", NewClientCheckStatus(403))
 
 	app.CancelFunc()
-	app.Run()
 }
 
 func TestMiddlewareOption(*testing.T) {
@@ -228,13 +187,12 @@ func TestMiddlewareName(t *testing.T) {
 		NewCSRFFunc("_csrf"),
 		NewCacheFunc(time.Second),
 		NewCircuitBreakerFunc(),
-		NewCompressionFunc("gz", func() any { return nil }),
+		NewCompressionFunc("gz", func() any { return gzip.NewWriter(nil) }),
+		NewCompressionFunc(CompressionNameGzip, nil),
 		NewCompressionMixinsFunc(nil),
-		NewContextWrapperFunc(nil),
 		NewDumpFunc(app.Group(" loggerkind=~all")),
-		NewGzipFunc(),
 		NewHeaderAddFunc(http.Header{"X": []string{"x"}}),
-		NewHeaderAddSecureFunc(http.Header{}),
+		NewHeaderSecureFunc(http.Header{}),
 		NewHeaderDeleteFunc(nil, nil),
 		NewHealthCheckFunc(app),
 		NewLoggerFunc(app),
@@ -252,7 +210,7 @@ func TestMiddlewareName(t *testing.T) {
 		NewRouterFunc(app),
 		NewRoutesFunc(map[string]any{}),
 		NewServerTimingFunc(),
-		NewSkipHandlerFunc("path", map[string]struct{}{"/": {}}),
+		NewSkipNextFunc("path", map[string]struct{}{"/": {}}),
 		NewTimeoutFunc(app.ContextPool, time.Second),
 		NewTimeoutSkipFunc(app.ContextPool, time.Second, nil),
 	}

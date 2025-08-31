@@ -9,13 +9,6 @@ import (
 	"github.com/eudore/eudore"
 )
 
-var (
-	stateTrue   = []byte{0}
-	stateFalse  = []byte{}
-	schemeHTTP  = "http://"
-	schemeHTTPS = "https://"
-)
-
 // NewCORSFunc function creates middleware to implement handle CORS.
 //
 // pattens is the allowed origins, and headers is the headers added
@@ -41,18 +34,18 @@ var (
 // * matches the next character . or / or :, last * matches to the end.
 func NewCORSFunc(patterns []string, headers map[string]string) Middleware {
 	corsHeaders := make(http.Header, len(headers))
-	corsHeaders[eudore.HeaderAccessControlAllowMethods] = []string{"*"}
-	corsHeaders[eudore.HeaderAccessControlAllowHeaders] = []string{"*"}
+	corsHeaders[eudore.HeaderAccessControlAllowMethods] = []string{valueStar}
+	corsHeaders[eudore.HeaderAccessControlAllowHeaders] = []string{valueStar}
 	for k, v := range headers {
 		corsHeaders[textproto.CanonicalMIMEHeaderKey(k)] = []string{v}
 	}
 
-	node := new(radixNode[byte])
+	node := new(radixNode[struct{}, *struct{}])
 	if patterns == nil {
-		patterns = []string{"*"}
+		patterns = []string{valueStar}
 	}
 	for _, pattern := range patterns {
-		node.insert(pattern, stateTrue)
+		node.insert(pattern, &valueStruct)
 	}
 	return func(ctx eudore.Context) {
 		origin := ctx.GetHeader(eudore.HeaderOrigin)
@@ -83,9 +76,9 @@ func NewCORSFunc(patterns []string, headers map[string]string) Middleware {
 // can inline with cost 49.
 func trimScheme(host string) string {
 	switch {
-	case strings.HasPrefix(host, schemeHTTP):
+	case strings.HasPrefix(host, valueSchemeHTTP):
 		return host[7:]
-	case strings.HasPrefix(host, schemeHTTPS):
+	case strings.HasPrefix(host, valueSchemeHTTPS):
 		return host[8:]
 	}
 	return host
@@ -102,26 +95,30 @@ func trimScheme(host string) string {
 // no Header, any value, or the Host has the same origin.
 //
 // * matches the next character . or / or :, last * matches to the end.
+//
+// Note: The browser may need to set <meta name="referrer" content="always"> to
+// always send [eudore.HeaderReferer], or set [eudore.HeaderReferrerPolicy].
 func NewRefererCheckFunc(data map[string]bool) Middleware {
 	originvalue, origin := data["origin"]
 	delete(data, "origin")
 
-	node := new(radixNode[byte])
+	node := new(radixNode[bool, *bool])
+	ptrTrue := &valueBoolTrue
 	for k, v := range data {
-		var state []byte
+		var state *bool
 		if v {
-			state = stateTrue
+			state = &valueBoolTrue
 		} else {
-			state = stateFalse
+			state = &valueBoolFalse
 		}
 
-		if strings.HasPrefix(k, schemeHTTP) ||
-			strings.HasPrefix(k, schemeHTTPS) ||
-			k == "" || k == "*" {
+		if strings.HasPrefix(k, valueSchemeHTTP) ||
+			strings.HasPrefix(k, valueSchemeHTTPS) ||
+			k == "" || k == valueStar {
 			node.insert(k, state)
 		} else {
-			node.insert(schemeHTTP+k, state)
-			node.insert(schemeHTTPS+k, state)
+			node.insert(valueSchemeHTTP+k, state)
+			node.insert(valueSchemeHTTPS+k, state)
 		}
 	}
 
@@ -131,7 +128,7 @@ func NewRefererCheckFunc(data map[string]bool) Middleware {
 			if originvalue {
 				return
 			}
-		} else if len(node.lookNode(referer)) == 1 {
+		} else if node.lookNode(referer) == ptrTrue {
 			return
 		}
 		writePage(ctx, eudore.StatusForbidden, DefaultPageReferer, referer)
@@ -158,9 +155,9 @@ func refererCheckOrigin(ctx eudore.Context, referer string) bool {
 //
 // * matches the next character /, last * matches to the end.
 func NewRewriteFunc(data map[string]string) Middleware {
-	node := new(radixNode[string])
+	node := new(radixNode[string, []string])
 	for k, v := range data {
-		node.insert(k, splitRewritePattern(v, strings.Count(k, "*")))
+		node.insert(k, splitRewritePattern(v, strings.Count(k, valueStar)))
 	}
 	return func(ctx eudore.Context) {
 		params := []string{}
@@ -183,29 +180,33 @@ func NewRewriteFunc(data map[string]string) Middleware {
 	}
 }
 
-type radixNode[T comparable] struct {
-	path     string
-	data     []T
-	child    []*radixNode[T]
-	wildcard *radixNode[T]
+type canNil[T any] interface {
+	*T | ~[]T
 }
 
-func (node *radixNode[T]) insert(path string, data []T) {
-	for i, route := range strings.Split(path, "*") {
+type radixNode[T any, P canNil[T]] struct {
+	path     string
+	data     P
+	child    []*radixNode[T, P]
+	wildcard *radixNode[T, P]
+}
+
+func (node *radixNode[T, P]) insert(path string, data P) {
+	for i, route := range strings.Split(path, valueStar) {
 		if i != 0 {
-			node = node.insertNode(&radixNode[T]{path: "*"})
+			node = node.insertNode(&radixNode[T, P]{path: valueStar})
 		}
-		node = node.insertNode(&radixNode[T]{path: route})
+		node = node.insertNode(&radixNode[T, P]{path: route})
 	}
 	node.data = data
 }
 
-func (node *radixNode[T]) insertNode(next *radixNode[T]) *radixNode[T] {
+func (node *radixNode[T, P]) insertNode(next *radixNode[T, P]) *radixNode[T, P] {
 	if next.path == "" {
 		return node
 	}
 
-	if next.path == "*" {
+	if next.path == valueStar {
 		if node.wildcard == nil {
 			node.wildcard = next
 		}
@@ -217,9 +218,9 @@ func (node *radixNode[T]) insertNode(next *radixNode[T]) *radixNode[T] {
 		if find {
 			if prefix != node.child[i].path {
 				node.child[i].path = node.child[i].path[len(prefix):]
-				node.child[i] = &radixNode[T]{
+				node.child[i] = &radixNode[T, P]{
 					path:  prefix,
-					child: []*radixNode[T]{node.child[i]},
+					child: []*radixNode[T, P]{node.child[i]},
 				}
 			}
 			next.path = next.path[len(prefix):]
@@ -235,23 +236,25 @@ func (node *radixNode[T]) insertNode(next *radixNode[T]) *radixNode[T] {
 	return next
 }
 
-func (node *radixNode[T]) lookNode(path string) []T {
+func (node *radixNode[T, P]) lookNode(path string) P {
 	if path == "" && node.data != nil {
 		return node.data
 	}
 
 	if path != "" {
+		char := path[0]
 		for _, child := range node.child {
-			if child.path[0] >= path[0] {
-				length := len(child.path)
-				if len(path) >= length && path[:length] == child.path {
-					data := child.lookNode(path[length:])
-					if data != nil {
-						return data
-					}
-				}
-				break
+			if child.path[0] < char {
+				continue
 			}
+
+			if child.path[0] == char && strings.HasPrefix(path, child.path) {
+				data := child.lookNode(path[len(child.path):])
+				if data != nil {
+					return data
+				}
+			}
+			break
 		}
 	}
 
@@ -271,32 +274,31 @@ func (node *radixNode[T]) lookNode(path string) []T {
 	return nil
 }
 
-func (node *radixNode[T]) lookNodeParams(path string, params *[]string) []T {
+func (node *radixNode[T, P]) lookNodeParams(path string, params *[]string) P {
 	if path == "" && node.data != nil {
 		return node.data
 	}
 
 	if path != "" {
+		char := path[0]
 		for _, child := range node.child {
-			if child.path[0] >= path[0] {
-				length := len(child.path)
-				if len(path) >= length && path[:length] == child.path {
-					data := child.lookNodeParams(path[length:], params)
-					if data != nil {
-						return data
-					}
-				}
-				break
+			if child.path[0] < char {
+				continue
 			}
+
+			if child.path[0] == char && strings.HasPrefix(path, child.path) {
+				data := child.lookNodeParams(path[len(child.path):], params)
+				if data != nil {
+					return data
+				}
+			}
+			break
 		}
 	}
 
 	if node.wildcard != nil {
 		if node.wildcard.child != nil {
-			pos := strings.IndexByte(path, '/')
-			if pos == -1 {
-				pos = len(path)
-			}
+			pos := indexByte(path)
 			data := node.wildcard.lookNodeParams(path[pos:], params)
 			if data != nil {
 				*params = append(*params, path[:pos])
@@ -317,11 +319,20 @@ func indexBytes(path string) int {
 	pos := len(path)
 	for i := range splitCharsURL {
 		p := strings.IndexByte(path[:pos], splitCharsURL[i])
-		if p != -1 && p < pos {
+		if p != -1 {
 			pos = p
 		}
 	}
 	return pos
+}
+
+// can inline with cost 79.
+func indexByte(path string) int {
+	pos := strings.IndexByte(path, '/')
+	if pos != -1 {
+		return pos
+	}
+	return len(path)
 }
 
 func splitRewritePattern(pattern string, count int) []string {

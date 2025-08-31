@@ -12,11 +12,11 @@ import (
 
 // rate defines the rate limiter.
 type rate struct {
-	mu         sync.RWMutex
-	visitors   map[string]*rateBucket
+	visitors   sync.Map
 	GetKeyFunc func(eudore.Context) string
 	speed      int64
 	total      int64
+	state      bool
 }
 
 type rateBucket struct {
@@ -34,7 +34,7 @@ type rateBucket struct {
 //
 // This middleware does not support cluster mode.
 //
-// options: [NewOptionKeyFunc] [NewOptionRateCleanup].
+// options: [NewOptionKeyFunc] [NewOptionRateCleanup] [NewOptionRateState].
 func NewRateRequestFunc(speed, total int64, options ...Option) Middleware {
 	r := newRate(speed, total, options)
 	return func(ctx eudore.Context) {
@@ -43,19 +43,23 @@ func NewRateRequestFunc(speed, total int64, options ...Option) Middleware {
 			return
 		}
 		now, at, ok := r.GetVisitor(key).Allow()
-		state := now - at
-		ctx.SetHeader(eudore.HeaderXRateLimit, fi64(r.total/r.speed))
-		ctx.SetHeader(eudore.HeaderXRateReset, fi64((at+r.total)/1000000000))
-		if ok {
-			ctx.SetHeader(eudore.HeaderXRateRemaining, fi64(state/r.speed))
+		if r.state {
+			state := now - at
+			ctx.SetHeader(eudore.HeaderXRateLimit, fi64(r.total/r.speed))
+			ctx.SetHeader(eudore.HeaderXRateReset, fi64((at+r.total)/1000000000))
+			if ok {
+				ctx.SetHeader(eudore.HeaderXRateRemaining, fi64(state/r.speed))
+				return
+			}
+
+			retry := int((r.speed - state) / 1000000000)
+			if retry < DefaultRateRetryMin {
+				retry = DefaultRateRetryMin
+			}
+			ctx.SetHeader(eudore.HeaderRetryAfter, strconv.Itoa(retry))
+		} else if ok {
 			return
 		}
-
-		retry := int((r.speed - state) / 1000000000)
-		if retry < DefaultRateRetryMin {
-			retry = DefaultRateRetryMin
-		}
-		ctx.SetHeader(eudore.HeaderRetryAfter, strconv.Itoa(retry))
 		writePage(ctx, eudore.StatusTooManyRequests, DefaultPageRate, key)
 		ctx.End()
 	}
@@ -105,7 +109,6 @@ func NewRateSpeedFunc(speed, total int64, options ...Option) Middleware {
 
 func newRate(speed, total int64, options []Option) *rate {
 	r := &rate{
-		visitors: make(map[string]*rateBucket),
 		GetKeyFunc: func(ctx eudore.Context) string {
 			return ctx.RealIP()
 		},
@@ -119,49 +122,49 @@ func newRate(speed, total int64, options []Option) *rate {
 
 // The GetVisitor method gets the rateBucket through the key.
 func (r *rate) GetVisitor(key string) *rateBucket {
-	r.mu.RLock()
-	v, exists := r.visitors[key]
-	r.mu.RUnlock()
-	if !exists {
+	v, ok := r.visitors.Load(key)
+	if !ok {
 		limiter := &rateBucket{
 			speed: r.speed,
 			max:   r.total,
 			last:  time.Now().UnixNano() - r.total,
 		}
-		r.mu.Lock()
-		r.visitors[key] = limiter
-		r.mu.Unlock()
+		r.visitors.Store(key, limiter)
 		return limiter
 	}
-	return v
+	return v.(*rateBucket)
 }
 
 // The cleanupVisitors method periodically clears unactive rates.
-func (r *rate) cleanupVisitors(ctx context.Context, t time.Duration, less int) {
-	last := time.Duration(r.total) * 10
-	if time.Millisecond < t && t < last {
-		t = last
+func (r *rate) cleanupVisitors(ctx context.Context, ttl time.Duration, less int) {
+	interval := time.Duration(r.total) * 10
+	if time.Millisecond < ttl && ttl < interval {
+		ttl = interval
 	}
+
 	for {
 		select {
-		case now := <-time.After(t):
-			r.mu.RLock()
-			if len(r.visitors) < less {
-				r.mu.RUnlock()
+		case now := <-time.After(ttl):
+			num := 0
+			r.visitors.Range(func(any, any) bool {
+				num++
+				return true
+			})
+			if num < less {
 				break
 			}
-			r.mu.RUnlock()
 
-			dead := now.UnixNano() - int64(last)
-			r.mu.Lock()
-			for key, v := range r.visitors {
+			dead := now.UnixNano() - int64(interval)
+			r.visitors.Range(func(key, value any) bool {
+				v := value.(*rateBucket)
 				v.Lock()
-				if v.last < dead {
-					delete(r.visitors, key)
-				}
+				last := v.last
 				v.Unlock()
-			}
-			r.mu.Unlock()
+				if last < dead {
+					r.visitors.Delete(key)
+				}
+				return true
+			})
 		case <-ctx.Done():
 			return
 		}
@@ -210,7 +213,7 @@ func (r *rateBucket) WaitN(ctx context.Context, n int64) bool {
 	}
 
 	// prepay token and wait for it to become available
-	ticker := time.NewTicker(time.Duration(n - now))
+	ticker := time.NewTimer(time.Duration(n - now))
 	defer ticker.Stop()
 	r.last = n
 	r.Unlock()

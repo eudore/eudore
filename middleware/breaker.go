@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"sort"
 	"sync"
 	"time"
 
@@ -18,12 +19,9 @@ const (
 var breakerStatues = []string{"closed", "half-open", "open"}
 
 type breaker struct {
-	sync.RWMutex
-	Index              int
-	Routes             map[string]breakerEntry
-	Mapping            map[int]string
+	Entrys             sync.Map
 	GetKeyFunc         func(eudore.Context) string
-	GetBreakrEntryFunc func(int, string) breakerEntry
+	GetBreakrEntryFunc func(string) breakerEntry
 }
 
 type breakerEntry interface {
@@ -42,8 +40,6 @@ type breakerEntry interface {
 // [NewOptionCircuitBreakerConfig] [NewOptionRouter].
 func NewCircuitBreakerFunc(options ...Option) Middleware {
 	b := &breaker{
-		Routes:  make(map[string]breakerEntry),
-		Mapping: make(map[int]string),
 		GetKeyFunc: func(ctx eudore.Context) string {
 			return ctx.GetParam(eudore.ParamRoute)
 		},
@@ -53,71 +49,93 @@ func NewCircuitBreakerFunc(options ...Option) Middleware {
 	}
 	applyOption(b, options)
 
+	release := func(ctx eudore.Context, entry breakerEntry, name string) {
+		if ctx.Response().Status() < eudore.StatusInternalServerError {
+			if entry.OnSucceed() {
+				ctx.Infof("Breaker route %s change state to %s",
+					name, breakerStatues[breakerStatueClosed],
+				)
+			}
+		} else if entry.OnFailed() {
+			ctx.Infof("Breaker route %s change state to %s", name, breakerStatues[breakerStatueOpen])
+		}
+	}
 	return func(ctx eudore.Context) {
-		name := b.GetKeyFunc(ctx)
-		if name == "" {
+		key := b.GetKeyFunc(ctx)
+		if key == "" {
 			return
 		}
 
-		b.RLock()
-		entry, ok := b.Routes[name]
-		b.RUnlock()
+		val, ok := b.Entrys.Load(key)
 		if !ok {
-			b.Lock()
-			b.Index++
-			entry = b.GetBreakrEntryFunc(b.Index, name)
-			b.Routes[name] = entry
-			b.Mapping[b.Index] = name
-			b.Unlock()
+			val = b.GetBreakrEntryFunc(key)
+			b.Entrys.Store(key, val)
+		}
+		entry := val.(breakerEntry)
+		if !entry.OnAccess() {
+			writePage(ctx, eudore.StatusServiceUnavailable, DefaultPageCircuitBreaker, key)
+			ctx.End()
+			return
 		}
 
-		if entry.OnAccess() {
-			// ignore panic
-			ctx.Next()
-			if ctx.Response().Status() < eudore.StatusInternalServerError {
-				if entry.OnSucceed() {
-					ctx.Infof("Breaker route %s change state to %s",
-						name, breakerStatues[breakerStatueClosed],
-					)
-				}
-			} else {
-				if entry.OnFailed() {
-					ctx.Infof("Breaker route %s change state to %s",
-						name, breakerStatues[breakerStatueOpen],
-					)
-				}
-			}
-		} else {
-			writePage(ctx, eudore.StatusServiceUnavailable,
-				DefaultPageCircuitBreaker, name,
-			)
-			ctx.End()
-		}
+		defer release(ctx, entry, key)
+		ctx.Next()
 	}
 }
 
-func (b *breaker) data(ctx eudore.Context) {
-	b.RLock()
-	_ = ctx.Render(b.Routes)
-	b.RUnlock()
+func (b *breaker) Inject(_ eudore.Controller, router eudore.Router) error {
+	router.GetFunc("/breaker Action=middleware:breaker:GetBreaker", b.GetBreaker)
+	router.GetFunc("/breaker/:key Action=middleware:breaker:GetBreakerByKey", b.GetBreakerByKey)
+	router.PutFunc("/breaker/:key/state/:state Action=middleware:breaker:PutBreakerByKeyStateByState", b.PutBreakerByKeyStateByState)
+	return nil
 }
 
-func (b *breaker) get(ctx eudore.Context) {
-	id := eudore.GetAnyByString(ctx.GetParam("id"), -1)
-	if id < 0 || id > b.Index {
-		ctx.Fatal("id is invalid")
+func (b *breaker) GetBreaker(ctx eudore.Context) {
+	type pair struct {
+		K string
+		V any
+	}
+	var data []pair
+	b.Entrys.Range(func(key, value any) bool {
+		data = append(data, pair{key.(string), value})
+		return true
+	})
+	sort.Slice(data, func(i, j int) bool {
+		return data[i].K < data[j].K
+	})
+
+	entrys := make([]any, len(data))
+	for i := range data {
+		entrys[i] = data[i].V
+	}
+	_ = ctx.Render(entrys)
+}
+
+func (b *breaker) GetBreakerByKey(ctx eudore.Context) {
+	key := ctx.GetParam("key")
+	key64, err := base64Encoding.DecodeString(key)
+	if err == nil {
+		key = string(key64)
+	}
+
+	entry, ok := b.Entrys.Load(key)
+	if !ok {
+		ctx.Fatalf("key is invalid %s", key)
 		return
 	}
-	b.RLock()
-	entry := b.Routes[b.Mapping[id]]
 	_ = ctx.Render(entry)
-	b.RUnlock()
 }
 
-func (b *breaker) putState(ctx eudore.Context) {
-	id := eudore.GetAnyByString(ctx.GetParam("id"), -1)
-	if id < 0 || id > b.Index {
-		ctx.Fatal("id is invalid")
+func (b *breaker) PutBreakerByKeyStateByState(ctx eudore.Context) {
+	key := ctx.GetParam("key")
+	key64, err := base64Encoding.DecodeString(key)
+	if err == nil {
+		key = string(key64)
+	}
+
+	entry, ok := b.Entrys.Load(key)
+	if !ok {
+		ctx.Fatalf("key is inval %s", key)
 		return
 	}
 	state := eudore.GetAnyByString[int](ctx.GetParam("state"))
@@ -125,18 +143,14 @@ func (b *breaker) putState(ctx eudore.Context) {
 		ctx.Fatal("state is invalid")
 		return
 	}
-	b.RLock()
-	name := b.Mapping[id]
-	entry := b.Routes[name]
-	b.RUnlock()
-	entry.SetState(state)
-	ctx.Infof("Breaker route %s set state to %s", name, breakerStatues[state])
+	entry.(breakerEntry).SetState(state)
+	ctx.Infof("Breaker route %s set state to %s", key, breakerStatues[state])
+	_ = ctx.Render(entry)
 }
 
 // breakerEntryDefault defines the breaker data for a single entry.
 type breakerEntryDefault struct {
 	sync.Mutex `json:"-"`
-	ID         int    `json:"id"`
 	State      int    `json:"state"`
 	Name       string `json:"name"`
 	// config
@@ -154,10 +168,9 @@ type breakerEntryDefault struct {
 }
 
 func newBreakerEntryfunc(maxSuccesses, maxFailures int, t, wait time.Duration,
-) func(id int, name string) breakerEntry {
-	return func(id int, name string) breakerEntry {
+) func(name string) breakerEntry {
+	return func(name string) breakerEntry {
 		return &breakerEntryDefault{
-			ID:                      id,
 			Name:                    name,
 			MaxConsecutiveSuccesses: maxSuccesses,
 			MaxConsecutiveFailures:  maxFailures,
@@ -237,3 +250,82 @@ func (c *breakerEntryDefault) RetryClose() {
 		}()
 	}
 }
+
+const breakerScript = `
+function NewHandlerBreaker() {
+	const states = ["closed", "half-open", "open"];
+	const classs = ["state-info", "state-warning", "state-error"];
+	const reservedChars = ['/', '?', '&', '#', ':', ' '];
+	function encodeKey(key) {
+		if(reservedChars.some(char => key.includes(char))){
+			return btoa(key).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+		}
+		return key
+	}
+	const h = {
+	Entrys: [],
+	Mount(ctx) {
+		ctx.Fetch({url: "breaker", success: (data) => {
+			this.Entrys = data.map((b) => {return {...b, display: false}})
+		}})
+	},
+	View(ctx) {
+		let state = {totalSuccesses: 0, totalFailures: 0, closed: 0, open: 0, "half-open": 0};
+		let child = this.Entrys.map((data, index)=>{
+			state[states[data.state]]++;
+			state.totalSuccesses += data.totalSuccesses;
+			state.totalFailures += data.totalFailures;
+			return {type: "div", class: "breaker-node", props: {index:index},
+				div: {class: "state " + classs[data.state], onclick:()=>{data.display = !data.display}, span: [
+					{text: data.name},
+					{text:(data.totalSuccesses.toFixed(2)/(data.totalSuccesses+data.totalFailures).toFixed(2)*100).toFixed(2)+"%"},
+					{html: svgFlush, onclick: this.onFlush}
+				]},
+				table: {
+					style: "display: "+(data.display?"block":"none"), tbody: {tr: [
+						{td: [{text: 'state'}, {select: {
+							class: "breaker-select",
+							props: {name:'breaker-select'},
+							child: [
+								{type: 'option', text: "closed", props: (data.state==0?{selected: 'selected'}:{})},
+								{type: 'option', text: "half-open", props: (data.state==1?{selected: 'selected'}:{})},
+								{type: 'option', text: "open", props: (data.state==2?{selected: 'selected'}:{})},
+							],
+							onchange: this.onChange,
+						}}]},
+						{td: [{text: 'lastTime'}, {text: data.lastTime.slice(0, 19).replace("T", " ")}]},
+						{td: [{text: 'totalSuccesses'}, {text: data.totalSuccesses}]},
+						{td: [{text: 'totalFailures'}, {text: data.totalFailures}]},
+						{td: [{text: 'consecutiveSuccesses'}, {text: data.consecutiveSuccesses}]},
+						{td: [{text: 'consecutiveFailures'}, {text: data.consecutiveFailures}]},
+					]}
+				}
+			}
+		});
+		child.unshift({type: 'div', id:"breaker-state", child: [
+			{type: 'p', text: 'totalSuccesses: ' + state.totalSuccesses + " totalFailures: " + state.totalFailures},
+			{type: 'p', text: "closed: " + state.closed + " half-open: " + state['half-open'] + " open: " + state.open}
+		]})
+		return child
+	}}
+	h.onFlush = (e) => {
+		e.stopPropagation();
+		const index = getEventIndex(e); 
+		const entry = h.Entrys[index];
+		app.Context.Fetch({url: "breaker/"+encodeKey(entry.name), success: (data)=>{
+			h.Entrys.set(index, {...data, display: entry.display});
+			app.Context.Info("flush state ${0}".format(entry.name))
+		}})
+	}
+	h.onChange = (e) => {
+		const index = getEventIndex(e); 
+		const entry = h.Entrys[index];
+		let state = e.target.selectedIndex;
+		app.Context.Fetch({method: 'PUT', url: "breaker/"+ encodeKey(entry.name) + "/state/" + state, success: (data)=>{
+			h.Entrys.set(index, {...data, display: entry.display});
+			app.Context.Info("change state ${0} to ${1}".format(entry.name, states[state]))
+		}})
+	}
+	return h
+}
+`

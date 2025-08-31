@@ -147,30 +147,31 @@ func (v *value) lookInterface(val reflect.Value, path []string) error {
 
 func (v *value) lookStruct(val reflect.Value, path []string) error {
 	field := getStructFieldOfTags(val, path[0], v.tags)
-	if field.Kind() == reflect.Invalid {
-		iType := val.Type()
-		for i := 0; i < iType.NumField(); i++ {
-			if iType.Field(i).Anonymous && sliceIndex(v.anonymous[len(path)], iType.Field(i).Type) == -1 {
-				if v.anonymous == nil {
-					v.anonymous = make(map[int][]reflect.Type)
-				}
-				v.anonymous[len(path)] = append(v.anonymous[len(path)], iType.Field(i).Type)
-				if v.lookValue(val.Field(i), path) == nil {
-					return nil
-				}
+	if field.Kind() != reflect.Invalid {
+		if field.CanInterface() {
+			return v.lookValue(field, path[1:])
+		}
+		if v.allowAll {
+			return v.lookValue(reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem(), path[1:])
+		}
+		return fmt.Errorf(ErrValueLookStruct, val.Type(), path[0], ErrValueStructUnexported)
+	}
+
+	// find anonymous fields
+	iType := val.Type()
+	for i := 0; i < iType.NumField(); i++ {
+		if iType.Field(i).Anonymous && sliceIndex(v.anonymous[len(path)], iType.Field(i).Type) == -1 {
+			if v.anonymous == nil {
+				v.anonymous = make(map[int][]reflect.Type)
+			}
+			v.anonymous[len(path)] = append(v.anonymous[len(path)], iType.Field(i).Type)
+			if v.lookValue(val.Field(i), path) == nil {
+				return nil
 			}
 		}
-
-		return fmt.Errorf(ErrValueLookStruct, val.Type(), path[0], ErrValueStructNotField)
 	}
 
-	if field.CanInterface() {
-		return v.lookValue(field, path[1:])
-	}
-	if v.allowAll {
-		return v.lookValue(reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem(), path[1:])
-	}
-	return fmt.Errorf(ErrValueLookStruct, val.Type(), path[0], ErrValueStructUnexported)
+	return fmt.Errorf(ErrValueLookStruct, val.Type(), path[0], ErrValueStructNotField)
 }
 
 // Get the index of the struct property through the string.
@@ -408,10 +409,11 @@ func setIntField(field reflect.Value, str string) error {
 	if err == nil {
 		field.SetInt(intVal)
 	} else if field.Type() == typeTimeDuration {
-		var t time.Duration
-		if t, err = time.ParseDuration(str); err == nil {
+		t, err := time.ParseDuration(str)
+		if err == nil {
 			field.SetInt(int64(t))
 		}
+		return err
 	}
 	return err
 }
@@ -485,7 +487,7 @@ func setTimeField(field reflect.Value, str string) (err error) {
 		if DefaultValueParseTimeFixed[i] && len(str) != len(f) {
 			continue
 		}
-		t, err = time.Parse(f, str)
+		t, err = time.ParseInLocation(f, str, DefaultValueTimeLocation)
 		if err == nil {
 			if field.Type() != typeTimeTime {
 				field.Set(reflect.ValueOf(t).Convert(field.Type()))

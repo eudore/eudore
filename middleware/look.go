@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"text/template"
@@ -42,7 +43,8 @@ func NewLookFunc(data any) Middleware {
 				Depth:   eudore.GetAnyByString(ctx.GetQuery("d"), 10),
 				ShowAll: eudore.GetAnyByString(ctx.GetQuery("all"), false),
 				Godoc:   eudore.GetAnyByString(doc, eudore.DefaultGodocServer),
-				Refs:    make(map[uintptr]struct{}),
+				Refs:    make(map[uintptr]*lookValue),
+				Depths:  make(map[uintptr]int),
 			},
 		}
 
@@ -58,7 +60,10 @@ func NewLookFunc(data any) Middleware {
 			ctx.Fatal(err)
 			return
 		}
-		look.Scan(val)
+		if val.CanAddr() {
+			val = val.Addr()
+		}
+		look.Scan(val, 0)
 
 		path := strings.TrimSuffix(ctx.Path(), "/")
 		raw := ctx.Request().URL.RawQuery
@@ -161,7 +166,7 @@ var lookTemplate, _ = template.New("look").Funcs(template.FuncMap{
 	</style>
 </head>
 <body><div>{{- template "html" .Data -}}</div><script>
-console.log('d=10 Depth display the maximum number of layers\n' +
+console.log('d=10 Data depth display the maximum number of layers\n' +
 	'all=false Whether to display the non-export attribute\n' +
 	'format=html/json/text Set the data display format\n' +
 	'godoc=https://golang.org Set html format linked godoc address\n' +
@@ -180,14 +185,14 @@ for(var i of document.getElementsByTagName('span')){
 	{{- if and (ne .Package "") (ne .Name "") -}}
 		<a href="{{.Godoc}}/pkg/{{.Package}}#{{.Name}}" target="_Blank">{{.Package}}.{{.Name}}</a>
 	{{- else -}}
-		{{- if ne .Package ""}}{{.Package}}. {{end}}{{if ne .Name ""}}{{.Name}}{{end -}}
+		{{- if ne .Package ""}}{{.Package}}.{{end}}{{if ne .Name ""}}{{.Name}}{{end -}}
 	{{- end -}}
 	{{- if eq .Kind "bool" "int" "string" "float" "uint" "complex" -}}
 		{{- if eq .String ""}}({{printf "%#v" .Value}}){{else}}("{{.String}}"){{end -}}
 	{{- else if eq .Kind "struct" "map" -}}
 		{{- printf "{" -}}
 		{{- if ne (len .Keys ) 0 -}}
-			<span>-</span><pre>
+			<span{{if ne .Pointer 0}} id="ref-0x{{printf "%x" .Pointer}}"{{end}}>-</span><pre>
 			{{- range $index, $elem := .Keys -}}
 				{{- addpath (print $elem) -}}
 				<a href="{{getpath}}">{{$elem}}</a>: {{template "html" index $.Vals $index -}},
@@ -199,7 +204,7 @@ for(var i of document.getElementsByTagName('span')){
 	{{- else if eq .Kind "slice" "array" -}}
 		{{- printf "[" -}}
 		{{- if ne (len .Vals ) 0 -}}
-			<span>-</span><pre>
+			<span{{if ne .Pointer 0}} id="ref-0x{{printf "%x" .Pointer}}"{{end}}>-</span><pre>
 			{{- range $index, $elem := .Vals -}}
 				{{- addpath (print $index) -}}
 				<a href="{{getpath}}">{{$index}}</a>: {{template "html" $elem -}},
@@ -209,11 +214,15 @@ for(var i of document.getElementsByTagName('span')){
 		{{- end -}}
 		{{- printf "]" -}}
 	{{- else if eq .Kind "interface"}}{{if isnil .Elem}}(nil){{else}} {{template "html" .Elem}}{{end -}}
-	{{- else if eq .Kind "func" "chan"}}{{if eq .Pointer 0}}(nil){{else}}(0x{{printf "%x" .Pointer}}){{end -}}
-	{{- else -}}
-		{{- if eq .Pointer 0}}(nil){{else if isnil .Elem}}(CYCLIC REFERENCE 0x{{printf "%x" .Pointer -}})
-		{{- else}}{{if eq .Kind "ptr"}}&{{template "html" .Elem}}{{end}}{{end -}}
-	{{end -}}
+	{{- else if eq .Kind "ptr"}}
+		{{- if isnil .Elem}}(nil)
+		{{- else if eq .Pointer 0}}&{{template "html" .Elem}}
+		{{- else}}<span id="ref-0x{{printf "%x" .Pointer}}">&</span>{{template "html" .Elem}}
+		{{- end}}
+	{{- else if eq .Kind "ref-ptr" "ref-map" "ref-slice"}}(CYCLIC REFERENCE <a href="#ref-0x{{printf "%x" .Pointer -}}">0x{{printf "%x" .Pointer -}}</a>)
+	{{- else if eq .Kind "func"}}{{if eq .String ""}}(nil){{else}}({{.String}}){{end -}}
+	{{- else if eq .Kind "chan" "unsafe.Pointer"}}{{if eq .Pointer 0}}(nil){{else}}(0x{{printf "%x" .Pointer}}){{end -}}
+	{{- else -}}Unknown kind {{.Kind}}{{end -}}
 {{- end -}}
 
 {{- define "text" -}}
@@ -248,11 +257,14 @@ for(var i of document.getElementsByTagName('span')){
 			{{- subtab}}{{printf "]" -}}
 		{{- end -}}
 	{{- else if eq .Kind "interface"}}{{if isnil .Elem}}(nil){{else}} {{template "text" .Elem}}{{end -}}
-	{{- else if eq .Kind "func" "chan"}}{{if eq .Pointer 0}}(nil){{else}}(0x{{ printf "%x" .Pointer}}){{end -}}
-	{{- else -}}
-		{{- if eq .Pointer 0 }}(nil){{else if isnil .Elem}}(CYCLIC REFERENCE 0x{{ printf "%x" .Pointer -}})
-		{{- else}}{{if eq .Kind "ptr"}}&{{template "text" .Elem}}{{end}}{{end -}}
-	{{- end -}}
+		{{- else if eq .Kind "ptr"}}
+		{{- if isnil .Elem}}(nil)
+		{{- else}}{{template "text" .Elem}}
+		{{- end}}
+	{{- else if eq .Kind "ref-ptr" "ref-map" "ref-slice"}}(CYCLIC REFERENCE 0x{{printf "%x" .Pointer -}})
+	{{- else if eq .Kind "func"}}{{if eq .String ""}}(nil){{else}}({{.String}}){{end -}}
+	{{- else if eq .Kind "chan" "unsafe.Pointer"}}{{if eq .Pointer 0}}(nil){{else}}(0x{{ printf "%x" .Pointer}}){{end -}}
+	{{- else -}}Unknown kind {{.Kind}}{{end -}}
 {{- end -}}`)
 
 // lookConfig defines the configuration for attribute traversal.
@@ -260,7 +272,8 @@ type lookConfig struct {
 	Depth   int
 	ShowAll bool
 	Godoc   string
-	Refs    map[uintptr]struct{}
+	Refs    map[uintptr]*lookValue
+	Depths  map[uintptr]int
 }
 
 // lookValue defines each attribute of the data.
@@ -272,21 +285,22 @@ type lookValue struct {
 	Value       any         `json:"value,omitempty"`
 	String      string      `json:"string,omitempty"`
 	Pointer     uintptr     `json:"pointer,omitempty"`
-	Elem        *lookValue  `json:"elem,omitempty"`
-	Keys        []string    `json:"keys,omitempty"`
-	Vals        []lookValue `json:"vals,omitempty"`
+	Ref         uintptr     `json:"ref,omitempty"`
+	Elem        *lookValue  `json:"elem,omitempty"` // ptr interface
+	Keys        []string    `json:"keys,omitempty"` // struct map
+	Vals        []lookValue `json:"vals,omitempty"` // struct map slice array
 }
 
 // The Scan method scans the attributes and saves them.
-func (look *lookValue) Scan(iValue reflect.Value) {
+func (look *lookValue) Scan(iValue reflect.Value, depth int) {
 	look.Kind = iValue.Kind().String()
 	look.Name = iValue.Type().Name()
 	look.Package = iValue.Type().PkgPath()
-	if look.Name == "" && iValue.Kind() != reflect.Ptr {
+	if look.Name == "" {
 		look.Name = iValue.Type().String()
 	}
-	// check ref Chan, Func, Interface, Map, Ptr, Slice, UnsafePointer
-	if look.isRef(iValue) {
+	// check ref Interface, Map, Ptr, Slice
+	if look.isRef(iValue, depth) {
 		return
 	}
 
@@ -314,59 +328,90 @@ func (look *lookValue) Scan(iValue reflect.Value) {
 	case reflect.String:
 		look.Value = iValue.String()
 	case reflect.Slice, reflect.Array:
-		look.scanSlice(iValue)
+		look.scanSlice(iValue, depth)
 	case reflect.Struct:
-		look.scanStruct(iValue)
+		look.scanStruct(iValue, depth)
 	case reflect.Map:
-		look.scanMap(iValue)
+		look.scanMap(iValue, depth)
 	case reflect.Ptr, reflect.Interface:
 		look.Elem = new(lookValue)
 		look.Elem.lookConfig = look.lookConfig
-		look.Elem.Scan(iValue.Elem())
-	case reflect.Func, reflect.Chan, reflect.UnsafePointer:
+		look.Elem.Scan(iValue.Elem(), depth)
+	case reflect.Func:
+		look.String = runtime.FuncForPC(iValue.Pointer()).Name()
+	case reflect.Chan, reflect.UnsafePointer:
+		look.Pointer = iValue.Pointer()
 	}
 }
 
-func (look *lookValue) isRef(iValue reflect.Value) bool {
+func (look *lookValue) isRef(iValue reflect.Value, depth int) bool {
 	switch iValue.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Map, reflect.Interface,
-		reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
+	case reflect.Interface:
+		return iValue.IsNil()
+	case reflect.Ptr, reflect.Map, reflect.Slice:
 		if iValue.IsNil() {
 			return true
 		}
-		if iValue.Kind() != reflect.Interface {
-			look.Pointer = iValue.Pointer()
-			_, ok := look.Refs[look.Pointer]
-			if ok {
-				look.Name = iValue.Type().String()
-				return true
+		if iValue.Kind() == reflect.Ptr {
+			look.Name = ""
+			ekind := iValue.Elem().Kind()
+			if ekind < reflect.Array || ekind == reflect.String {
+				return false
 			}
-			look.Refs[look.Pointer] = struct{}{}
 		}
+		ptr := iValue.Pointer()
+
+		ref := look.Refs[ptr]
+		d := look.Depths[ptr]
+		if ref == nil {
+			look.Refs[ptr] = look
+			look.Depths[ptr] = depth
+			return false
+		}
+
+		if depth < d {
+			look.Depths[look.Pointer] = depth
+			*look = *ref
+			look.Pointer = ptr
+			ref.Kind = "ref-" + ref.Kind
+			ref.Name = iValue.Type().String()
+			ref.Pointer = ptr
+			// ref.Ref = iValue.Pointer()
+			ref.Elem = nil
+			ref.Keys = nil
+			ref.Vals = nil
+			return true
+		}
+
+		look.Kind = "ref-" + look.Kind
+		look.Name = iValue.Type().String()
+		look.Pointer = ptr
+		ref.Pointer = ptr
+		return true
 	}
 	return false
 }
 
-func (look *lookValue) scanSlice(iValue reflect.Value) {
+func (look *lookValue) scanSlice(iValue reflect.Value, depth int) {
 	look.Depth--
 	if look.Depth > 0 {
 		look.Vals = make([]lookValue, iValue.Len())
 		for i := 0; i < iValue.Len(); i++ {
 			look.Vals[i].lookConfig = look.lookConfig
-			look.Vals[i].Scan(iValue.Index(i))
+			look.Vals[i].Scan(iValue.Index(i), depth+1)
 		}
 	}
 	look.Depth++
 }
 
-func (look *lookValue) scanStruct(iValue reflect.Value) {
+func (look *lookValue) scanStruct(iValue reflect.Value, depth int) {
 	look.Depth--
 	if look.Depth > 0 {
 		iType := iValue.Type()
 		for i := 0; i < iValue.NumField(); i++ {
 			if iValue.Field(i).CanInterface() || look.ShowAll {
 				l := lookValue{lookConfig: look.lookConfig}
-				l.Scan(iValue.Field(i))
+				l.Scan(iValue.Field(i), depth+1)
 				look.Keys = append(look.Keys, iType.Field(i).Name)
 				look.Vals = append(look.Vals, l)
 			}
@@ -375,7 +420,7 @@ func (look *lookValue) scanStruct(iValue reflect.Value) {
 	look.Depth++
 }
 
-func (look *lookValue) scanMap(iValue reflect.Value) {
+func (look *lookValue) scanMap(iValue reflect.Value, depth int) {
 	look.Depth--
 	if look.Depth > 0 {
 		look.Keys = make([]string, iValue.Len())
@@ -383,7 +428,7 @@ func (look *lookValue) scanMap(iValue reflect.Value) {
 		for i, key := range iValue.MapKeys() {
 			look.Keys[i] = getKeyString(key)
 			look.Vals[i].lookConfig = look.lookConfig
-			look.Vals[i].Scan(iValue.MapIndex(key))
+			look.Vals[i].Scan(iValue.MapIndex(key), depth+1)
 		}
 	}
 	look.Depth++
@@ -422,3 +467,125 @@ func getKeyString(iValue reflect.Value) string {
 		return "noprint(" + iValue.Type().String() + ")"
 	}
 }
+
+const lookScript = `
+function NewHandlerLook() {
+	let paths = [];let querys = "";
+	return {
+	Data:{},Godoc:"https://golang.org",Depth:10,Showall:false,Review:0,
+	Mount(ctx) {
+		if(ctx.Config.Look.Godoc){this.Godoc=ctx.Config.Look.Godoc;}
+		this.Depth = ctx.Config.Look.Depth;
+		this.Showall = ctx.Config.Look.Showall;
+		paths=[("/look/" + ctx.Params.path).trimSuffix("/")];
+		this.getData(ctx);
+	},
+	View(ctx) {
+		if(this.Depth!==ctx.Config.Look.Depth){this.Depth=ctx.Config.Look.Depth;this.getData(ctx);}
+		if(this.Showall!==ctx.Config.Look.Showall){this.Showall=ctx.Config.Look.Showall;this.getData(ctx);}
+		return [
+			{type:"div",class:"look-nav",child: [
+				{type: "input", class:"input",bind:[ctx.Config.Look,"Depth"],props:{type:"text",id:"look-depth"}},
+				{type: "input", bind:[ctx.Config.Look,"Showall"],props:{type:"checkbox",id:"look-showall"}},
+				{type: "label", props:{for:"look-showall"},text:"show all"},
+			]},
+			{type:"pre",class:"look-node",child: this.getTemplate(this.Data)},
+		];
+	},
+	getData(ctx) {
+		ctx.Fetch({url: "look/${0}?format=json&all=${1}&d=${2}".format(ctx.Params.path, this.Showall, this.Depth),success:(data)=>{this.Data=data}});
+	},
+	addpath(path) {paths.push(path);},
+	subpath() {paths.pop();},
+	getpath() {return paths.join("/");},
+	toRef(e) {
+		const dom = document.getElementById("ref-"+e.srcElement.text);
+		if (dom) {
+			dom.scrollIntoView({behavior: "smooth"});
+		}
+	},
+	getTemplate(data) {
+		let doms = [];
+		if (data.package && data.name) {
+			doms.push({type: "a", text: data.package+"."+data.name,
+				props: {target:"_Blank",href:"${0}/pkg/${1}#${2}".format(this.Godoc,data.package,data.name)}
+			});
+		}else{
+			let name=""; if(data.package){name=data.package+"."} if(data.name){name=name+data.name} if(name){doms.push(name)}
+		}
+		switch (data.kind) {
+			case "bool": case "int": case "string": case "float": case "uint": case "complex":
+				if (data.string) {doms.push('("${0}")'.format(data.string));
+				} else if (data.kind == "string") {doms.push('("${0}")'.format(data.value));
+				}else{doms.push("(${0})".format(data.value));}
+				break;
+			case "struct": case "map":
+				doms.push("{");
+				if (data.keys) {
+					doms.push({type:"span",text:data.fold?"+":"-",onclick:()=>{data.fold=!data.fold;this.Review++;},
+						props:data.pointer>0?{id:"ref-(0x${0}".format((data.pointer||0).toString(16))}:{},
+					});
+					let fields = [];
+					for (let i in data.keys) {
+						this.addpath(data.keys[i]);
+						fields.push({type: "a",text:data.keys[i],props:{href:this.getpath()}});
+						fields.push(": ");
+						fields = fields.concat(this.getTemplate(data.vals[i]));
+						this.subpath();
+						fields.push("\n");
+					}
+					doms.push({type:"pre",style:"display: "+(data.fold?"none":"block"),child:fields});
+				}
+				doms.push("}");
+				break;
+			case "slice": case "array":
+				doms.push("[");
+				if (data.vals) {
+					doms.push({type: "span",text: data.fold ? "+" : "-",
+						props:data.pointer>0?{id:"ref-(0x${0}".format((data.pointer||0).toString(16))}:{},
+						onclick:()=>{data.fold=!data.fold; this.Review++;},
+					});
+					let fields = [];
+					for (let i in data.vals) {
+						this.addpath("${0}".format(i));
+						fields.push({type: "a", text: i, props: {href: this.getpath(), target: "_Blank"}});
+						fields.push(": ");
+						fields = fields.concat(this.getTemplate(data.vals[i]));
+						this.subpath();
+						fields.push("\n");
+					}
+					doms.push({type:"pre",style:"display: "+(data.fold?"none":"block"),child:fields});
+				}
+				doms.push("]");
+				break;
+			case "interface":
+				if (data.elem) {
+					doms.push(" "); doms=doms.concat(this.getTemplate(data.elem));
+				}else{doms.push("(nil)")}
+				break;
+			case "ptr":
+				if (data.elem) {
+					if (data.pointer===0) {
+						doms.push("&");doms=doms.concat(this.getTemplate(data.elem));
+					}else{
+						doms.push({type:"span",text:"&",id:"ref-0x${0}".format((data.pointer||0).toString(16))});
+						doms=doms.concat(this.getTemplate(data.elem));
+					}
+				}else{doms.push("(nil)")}
+				break;
+			case "ref-ptr": case "ref-map": case "ref-slice":
+				doms.push("(CYCLIC REFERENCE ");
+				doms.push({type:"a",onclick:this.toRef,text:"0x${0}".format((data.pointer||0).toString(16))});
+				doms.push(")");
+				break;
+			case "func":
+				if(data.string){doms.push("(${0})".format(data.string))}else{doms.push("(nil)")}break;
+			case "unsafe.Pointer": case "chan":
+				if(data.pointer){doms.push("(0x${0})".format((data.pointer||0).toString(16)))}else{doms.push("(nil)")}break;
+			default:
+				doms.push("(Unknown)");
+		}
+		return doms;
+	},
+}}
+`

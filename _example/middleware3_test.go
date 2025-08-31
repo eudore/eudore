@@ -51,7 +51,7 @@ func TestMiddlewareBlack(*testing.T) {
 	app.SetValue(ContextKeyClient, app.NewClient(
 		NewClientOptionURL("/eudore/debug/black"),
 	))
-	app.GetRequest("data", NewClientCheckStatus(200))
+	app.GetRequest("/eudore/debug/black", NewClientCheckStatus(200))
 	app.PutRequest("allow/10.127.87.0?mask=32", NewClientCheckStatus(200))
 	app.PutRequest("allow/10:127:87::?mask=128", NewClientCheckStatus(200))
 	app.PutRequest("deny/10.127.87.0?mask=24", NewClientCheckStatus(200))
@@ -208,12 +208,12 @@ func TestMiddlewareBreaker(*testing.T) {
 		time.Sleep(time.Millisecond * 15)
 	}
 
-	app.GetRequest("/eudore/debug/breaker/data", http.Header{HeaderAccept: {MimeApplicationJSON}})
-	app.GetRequest("/eudore/debug/breaker/1", NewClientCheckStatus(200))
+	app.GetRequest("/eudore/debug/breaker", http.Header{HeaderAccept: {MimeApplicationJSON}})
+	app.GetRequest("/eudore/debug/breaker/L3NraXA", NewClientCheckStatus(200))
 	app.GetRequest("/eudore/debug/breaker/100", NewClientCheckStatus(500))
-	app.PutRequest("/eudore/debug/breaker/3/state/3", NewClientCheckStatus(500))
-	app.PutRequest("/eudore/debug/breaker/1/state/3", NewClientCheckStatus(500))
-	app.PutRequest("/eudore/debug/breaker/1/state/0", NewClientCheckStatus(200))
+	app.PutRequest("/eudore/debug/breaker/100/state/3", NewClientCheckStatus(500))
+	app.PutRequest("/eudore/debug/breaker/L3NraXA/state/3", NewClientCheckStatus(500))
+	app.PutRequest("/eudore/debug/breaker/L3NraXA/state/0", NewClientCheckStatus(200))
 
 	time.Sleep(time.Microsecond * 100)
 	app.CancelFunc()
@@ -275,7 +275,7 @@ func TestMiddlewareCacheData(*testing.T) {
 
 func TestMiddlewareRateRequest(*testing.T) {
 	app := NewApp()
-	app.AnyFunc("/*", NewRateRequestFunc(1, 3))
+	app.AnyFunc("/*", NewRateRequestFunc(1, 3, NewOptionRateState()))
 	app.AnyFunc("/skip", NewRateRequestFunc(1, 3,
 		NewOptionKeyFunc(func(ctx Context) string {
 			if ctx.Path() == "/skip" {

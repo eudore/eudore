@@ -299,7 +299,7 @@ func TestClientBody(t *testing.T) {
 	bodyForm.AddFile("file", "buffer.txt", bytes.NewBufferString("file buffer"))
 	bodyForm.AddFile("file", "rc.txt", io.NopCloser(bytes.NewBufferString("file rc")))
 	bodyForm.AddFile("file", "none.txt", nil)
-	bodyForm.AddFile("file", "", "appNew.go")
+	bodyForm.AddFile("file", "", "README.md")
 	bodyForm.Close()
 	app.GetRequest("/body/formfile", bodyForm)
 
@@ -307,7 +307,7 @@ func TestClientBody(t *testing.T) {
 	bodyForm.AddValue("name", "eudore")
 	bodyJSON := NewClientBodyJSON(nil)
 	bodyJSON.AddValue("name", "eudore")
-	bodyJSON.AddFile("file", "", "appNew.go")
+	bodyJSON.AddFile("file", "", "notexist.go")
 	bodyJSON = NewClientBodyJSON(&Body{})
 	bodyJSON.AddValue("name", "eudore")
 	bodyJSON.Close()

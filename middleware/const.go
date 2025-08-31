@@ -1,25 +1,13 @@
 package middleware
 
 import (
+	"encoding/base64"
+	"errors"
 	"expvar"
 	"net/http"
 	"net/http/pprof"
 
 	"github.com/eudore/eudore"
-)
-
-const (
-	CompressionBufferLength  = 1024
-	CompressionNameGzip      = "gzip"
-	CompressionNameBrotli    = "br"
-	CompressionNameZstandard = "zstd"
-	CompressionNameDeflate   = "deflate"
-	CompressionNameIdentity  = "identity"
-	QueryFormatJSON          = "json"
-	QueryFormatHTML          = "html"
-	QueryFormatText          = "text"
-
-	headerContentType = eudore.HeaderContentType
 )
 
 var (
@@ -33,11 +21,42 @@ var (
 )
 
 var (
+	base64Encoding    = base64.RawURLEncoding.Strict()
+	headerContentType = eudore.HeaderContentType
+	valueBasicAuth    = "Basic "
+	valueBearerAuth   = "Bearer "
+	valueStar         = "*"
+	valueBoolTrue     = true
+	valueBoolFalse    = false
+	valueStruct       = struct{}{}
+	valueSchemeHTTP   = "http://"
+	valueSchemeHTTPS  = "https://"
+)
+
+const (
+	CompressionBufferLength  = 1024
+	CompressionNameGzip      = "gzip"
+	CompressionNameBrotli    = "br"
+	CompressionNameZstandard = "zstd"
+	CompressionNameDeflate   = "deflate"
+	CompressionNameIdentity  = "identity"
+	QueryFormatJSON          = "json"
+	QueryFormatHTML          = "html"
+	QueryFormatText          = "text"
+)
+
+var (
+	// DefaultCacheAllowAccept global defines the [HeaderAccept] allowed
+	// by Cache to distinguish response formats.
 	DefaultCacheAllowAccept = map[string]struct{}{
-		eudore.MimeAll:                 {},
-		eudore.MimeApplicationJSON:     {},
-		eudore.MimeApplicationProtobuf: {},
-		eudore.MimeApplicationXML:      {},
+		eudore.MimeAll:                    {},
+		eudore.MimeText:                   {},
+		eudore.MimeTextPlain:              {},
+		eudore.MimeTextHTML:               {},
+		eudore.MimeApplicationJSON:        {},
+		eudore.MimeApplicationProtobuf:    {},
+		eudore.MimeApplicationXML:         {},
+		eudore.MimeApplicationOctetStream: {},
 	}
 	// DefaultCompressionDisableMime global defines the Mime type that disables
 	// compression. The data is in compressed format.
@@ -60,7 +79,7 @@ var (
 		CompressionNameGzip:    compressionWriterGzip,
 		CompressionNameDeflate: compressionWriterFlate,
 	}
-	// DefaultCompressionOrder global  defines the priority order of available
+	// DefaultCompressionOrder global defines the priority order of available
 	// compression,
 	// compression methods outside the list have the lowest priority.
 	DefaultCompressionOrder = []string{
@@ -69,24 +88,46 @@ var (
 		CompressionNameGzip,
 		CompressionNameDeflate,
 	}
+	// DefaultLoggerFixedFields global defines fixed access log fields.
 	DefaultLoggerFixedFields = [...]string{
 		"host", "method", "path", "proto", "realip", "route",
-		"status", "bytes-out", "duration",
+		"status", "bytes_out", "duration",
 	}
+	// DefaultLoggerOptionalFields global defines optional access log fields.
 	DefaultLoggerOptionalFields = [...]string{
-		"remote-addr", "scheme", "querys", "byte-in",
+		"remote_addr", "scheme", "querys", "byte_in",
 	}
-	DefaultPageAdmin          = adminStatic
-	DefaultPageBasicAuth      = "401 Unauthorized"
-	DefaultPageBodyLimit      = "413 Request Entity Too Large: body limit {{value}} bytes."
-	DefaultPageBlack          = "403 Forbidden: your IP is blacklisted {{value}}."
-	DefaultPageCircuitBreaker = "503 Service Unavailable: breaker triggered {{value}}."
-	DefaultPageCORS           = ""
-	DefaultPageCSRF           = "403 Forbidden: invalid CSRF token {{value}}."
-	DefaultPageHealth         = "unhealthy: {{value}}"
-	DefaultPageRate           = "429 Too Many Requests: rate limit exceeded {{value}}."
-	DefaultPageReferer        = "403 Forbidden: invalid Referer header {{value}}."
-	DefaultPageTimeout        = "503 Service Unavailable"
+	// DefaultLoggerLevelQueryName defines the query name for change the default log level.
+	DefaultLoggerLevelQueryName = "eudore_debug"
+	DefaultPageAdmin            = adminStatic
+	DefaultPageBasicAuth        = "401 Unauthorized"
+	DefaultPageBearerAuth       = "401 Unauthorized: error {{value}}"
+	DefaultPageBodyLimit        = "413 Request Entity Too Large: body limit {{value}} bytes."
+	DefaultPageBlack            = "403 Forbidden: your IP is blacklisted {{value}}."
+	DefaultPageCircuitBreaker   = "503 Service Unavailable: breaker triggered {{value}}."
+	DefaultPageCORS             = ""
+	DefaultPageCSRF             = "403 Forbidden: invalid CSRF token {{value}}."
+	DefaultPageHealth           = "unhealthy: {{value}}"
+	DefaultPageRate             = "429 Too Many Requests: rate limit exceeded {{value}}."
+	DefaultPageReferer          = "403 Forbidden: invalid Referer header {{value}}."
+	DefaultPageTimeout          = "503 Service Unavailable"
+	// DefaultPolicyConditions global defines the conditions that policy parsing allows.
+	//
+	// Returns any object that implements the 'Match(ctx eudore.Context) bool' method.
+	DefaultPolicyConditions = map[string]func() any{
+		"and":      func() any { return &conditionAnd{} },
+		"or":       func() any { return &conditionOr{} },
+		"sourceip": func() any { return &conditionSourceIP{} },
+		"date":     func() any { return &conditionDate{} },
+		"time":     func() any { return &conditionTime{} },
+		"method":   func() any { return &conditionMethod{} },
+		"path":     func() any { return &conditionPath{} },
+		"params":   func() any { return &conditionParams{} },
+		"rate":     func() any { return &conditionRate{} },
+		"version":  func() any { return &conditionVersion{} },
+	}
+	// DefaultPolicyGuestUser global defines the Guest user for Policy access.
+	DefaultPolicyGuestUser = "<Guest User>"
 	// DefaultPProfHandlers global defines pprof route.
 	DefaultPProfHandlers = map[string]http.Handler{
 		"cmdline":      http.HandlerFunc(pprof.Cmdline),
@@ -100,5 +141,17 @@ var (
 		"threadcreate": pprof.Handler("threadcreate"),
 		"expvar":       expvar.Handler(),
 	}
-	DefaultRateRetryMin = 3
+	// DefaultRecoveryErrorFormat global defines the format of the recover data.
+	DefaultRecoveryErrorFormat = "%v"
+	DefaultRateRetryMin        = 3
+
+	ErrBearerTokenInvalid             = errors.New("bearer token is invalid")
+	ErrBearerTokenNotValid            = "bearer token not valid before %v"
+	ErrBearerTokenExpired             = "bearer token expired at %v" // #nosec G101
+	ErrBearerSignatureInvalid         = errors.New("bearer signature is invalid")
+	ErrCompressMissingEncoder         = "compress missing encoder function for compression '%s'"
+	ErrCompressInvalidEncoder         = "compress invalid encoder function for compression '%s'"
+	ErrPolicyConditionsUnmarshalError = "policy conditions unmarshal json %s error: %v"
+	ErrPolicyConditionsParseError     = "policy conditions parse %s error: %v"
+	ErrPolicyConditionParseError      = "policy conditions %s parse %s error: %v"
 )

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/eudore/eudore"
 )
@@ -85,22 +86,18 @@ func (w *responseWriteFlush) flush() {
 }
 
 func loggerInit(log eudore.Logger, params []string) func(eudore.Context, time.Time) {
-	log = log.WithField(
-		eudore.ParamDepth,
-		eudore.DefaultLoggerDepthKindDisable,
-	).WithField("logger", true)
+	log = log.WithField(eudore.FieldDepth, eudore.DefaultLoggerDepthKindDisable).
+		WithField(eudore.FieldLogger, true)
 	if params == nil {
 		params = []string{"response:X-Request-Id", "response:X-Trace-Id"}
 	}
 	return func(ctx eudore.Context, now time.Time) {
 		r, w := ctx.Request(), ctx.Response()
-		status := w.Status()
 		// const fields
-		out := log.WithField("time", now).
+		out := log.WithField(eudore.FieldTime, now).
 			WithFields(DefaultLoggerFixedFields[:], []any{
-				r.Host, r.Method, r.URL.Path, r.Proto,
-				ctx.RealIP(), ctx.GetParam(eudore.ParamRoute),
-				status, w.Size(),
+				r.Host, r.Method, r.URL.Path, r.Proto, ctx.RealIP(),
+				ctx.GetParam(eudore.ParamRoute), w.Status(), w.Size(),
 				eudore.GetStringDuration(time.Since(now) / 1000),
 			})
 
@@ -109,13 +106,17 @@ func loggerInit(log eudore.Logger, params []string) func(eudore.Context, time.Ti
 			pos := strings.IndexByte(key, ':')
 			switch pos {
 			case 5: // param:
-				out = loggerValue(out, key[6:], ctx.GetParam(key[6:]))
+				key = key[6:]
+				out = loggerValue(out, loggerName(key), ctx.GetParam(key))
 			case 7: // request:
-				out = loggerValue(out, strings.ToLower(key[8:]), rh.Get(key[8:]))
+				key = key[8:]
+				out = loggerValue(out, loggerName(key), rh.Get(key))
 			case 8: // response:
-				out = loggerValue(out, strings.ToLower(key[9:]), wh.Get(key[9:]))
+				key = key[9:]
+				out = loggerValue(out, loggerName(key), wh.Get(key))
 			case 6: // cookie:
-				out = loggerValue(out, key[7:], ctx.GetCookie(key[7:]))
+				key = key[7:]
+				out = loggerValue(out, loggerName(key), ctx.GetCookie(key))
 			default:
 				fields := DefaultLoggerOptionalFields
 				switch key {
@@ -131,15 +132,32 @@ func loggerInit(log eudore.Logger, params []string) func(eudore.Context, time.Ti
 			}
 		}
 
-		if status < 500 {
+		if w.Status() < 500 {
 			out.Info()
 		} else {
-			if err := ctx.Err(); err != nil {
-				out = out.WithField("error", err.Error())
+			err := ctx.Err()
+			if err != nil {
+				out = out.WithField(eudore.FieldError, err.Error())
 			}
 			out.Error()
 		}
 	}
+}
+
+func loggerName(name string) string {
+	buf := make([]byte, 0, len(name))
+	for i := range name {
+		c := name[i]
+		switch {
+		case 0x40 < c && c < 0x5B:
+			buf = append(buf, c+0x20)
+		case c == '-':
+			buf = append(buf, '_')
+		default:
+			buf = append(buf, c)
+		}
+	}
+	return unsafe.String(unsafe.SliceData(buf), len(buf))
 }
 
 // can inline with cost 70.
@@ -174,7 +192,7 @@ func loggerRemote(addr string) string {
 // set the request [eudore.LoggerLevel].
 //
 // The conversion function returns a 0-4 show the log level
-// [eudore.LoggerDebug]-[eudore.LoggerFatal].
+// [eudore.LoggerDebug] - [eudore.LoggerFatal].
 //
 // The default processing function uses the uri parameter 'eudore_debug'
 // to convert it into a log level.
@@ -182,8 +200,9 @@ func loggerRemote(addr string) string {
 //go:noinline
 func NewLoggerLevelFunc(fn func(ctx eudore.Context) int) Middleware {
 	if fn == nil {
+		name := DefaultLoggerLevelQueryName
 		fn = func(ctx eudore.Context) int {
-			level := ctx.GetQuery("eudore_debug")
+			level := ctx.GetQuery(name)
 			if level != "" {
 				return eudore.GetAnyByString[int](level)
 			}
@@ -196,7 +215,7 @@ func NewLoggerLevelFunc(fn func(ctx eudore.Context) int) Middleware {
 			log := ctx.Value(eudore.ContextKeyLogger).(eudore.Logger)
 			level := eudore.LoggerLevel(l)
 			if log.GetLevel() != level {
-				log = log.WithField("logger", true)
+				log = log.WithField(eudore.FieldLogger, true)
 				log.SetLevel(level)
 				ctx.SetValue(eudore.ContextKeyLogger, log)
 			}

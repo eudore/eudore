@@ -76,16 +76,19 @@ const (
 
 	// default http method by rfc2616.
 
-	MethodAny     = "ANY"
-	MethodGet     = "GET"
-	MethodPost    = "POST"
-	MethodPut     = "PUT"
-	MethodDelete  = "DELETE"
-	MethodHead    = "HEAD"
-	MethodPatch   = "PATCH"
-	MethodOptions = "OPTIONS"
-	MethodConnect = "CONNECT"
-	MethodTrace   = "TRACE"
+	MethodAny        = "ANY"
+	MethodTest       = "TEST"
+	MethodNotFound   = "NOTFOUND"
+	MethodNotAllowed = "NOTALLOWED"
+	MethodGet        = "GET"
+	MethodPost       = "POST"
+	MethodPut        = "PUT"
+	MethodDelete     = "DELETE"
+	MethodHead       = "HEAD"
+	MethodPatch      = "PATCH"
+	MethodOptions    = "OPTIONS"
+	MethodConnect    = "CONNECT"
+	MethodTrace      = "TRACE"
 
 	// Status.
 
@@ -238,7 +241,7 @@ const (
 	HeaderWWWAuthenticate                 = "Www-Authenticate"
 	HeaderWarning                         = "Warning"
 	HeaderXContentTypeOptions             = "X-Content-Type-Options"
-	HeaderXCSRFToken                      = "X-Csrf-Token"
+	HeaderXCSRFToken                      = "X-Csrf-Token" // #nosec G101
 	HeaderXDNSPrefetchControl             = "X-Dns-Prefetch-Control"
 	HeaderXForwardedFor                   = "X-Forwarded-For"
 	HeaderXForwardedHost                  = "X-Forwarded-Host"
@@ -289,24 +292,40 @@ const (
 	MimeApplicationXMLCharsetUtf8  = MimeApplicationXML + "; " + MimeCharsetUtf8
 	MimeApplicationJSONCharsetUtf8 = MimeApplicationJSON + "; " + MimeCharsetUtf8
 	MimeApplicationFormCharsetUtf8 = MimeApplicationForm + "; " + MimeCharsetUtf8
-	// Param.
 
-	ParamAction          = "action"
-	ParamAllow           = "allow"
-	ParamAutoIndex       = "autoindex"
-	ParamBasicAuth       = "basicauth"
-	ParamCaller          = "caller"
-	ParamControllerGroup = "controllergroup"
-	ParamDepth           = "depth"
-	ParamLoggerKind      = "loggerkind"
-	ParamPrefix          = "prefix"
-	ParamTemplate        = "template"
-	ParamRoute           = "route"
-	ParamRouteHost       = "route-host"
-	ParamUserid          = "Userid"
-	ParamUsername        = "Username"
+	// Router Param.
+
+	ParamAction          = "Action"
 	ParamPolicy          = "Policy"
 	ParamResource        = "Resource"
+	ParamUserid          = "Userid"
+	ParamUsername        = "Username"
+	ParamAllow           = "allow"           // HandlerRouter405
+	ParamAutoIndex       = "autoindex"       // NewHandlerFileSystem
+	ParamBasicAuth       = "basicauth"       // middlewae.NewBasicAuthFunc
+	ParamControllerGroup = "controllergroup" // ControllerInjectAutoRoute
+	ParamLoggerKind      = "loggerkind"      // Router.Group
+	ParamRouteHost       = "route-host"      // NewRouterCoreHost
+	ParamRoute           = "route"           // NewRouter
+	ParamTemplate        = "template"        // NewHandlerDataRenderTemplates
+
+	// Deprecated: This parameter is no longer recommended for use.
+	ParamCaller = "caller"
+	// Deprecated: This parameter is no longer recommended for use.
+	ParamDepth = "depth"
+
+	// Logger Field.
+
+	FieldCaller     = "caller"
+	FieldDepth      = "depth"
+	FieldError      = "error"
+	FieldFile       = "file"
+	FieldFunc       = "func"
+	FieldLogger     = "logger"
+	FieldStack      = "stack"
+	FieldTime       = "time"
+	FieldXRequestID = "x_request_id"
+	FieldXTraceID   = "x_trace_id"
 )
 
 var templateEmbedIndex = `<!DOCTYPE html><html>

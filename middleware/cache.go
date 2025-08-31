@@ -43,8 +43,6 @@ type cacheResponse struct {
 //
 // Skip non-Get methods, Websocket and SSE by default.
 //
-// Cannot get response headers before this middleware.
-//
 // This middleware does not support cluster mode.
 // Cache requests are idempotent and do not rely on the cluster.
 //
@@ -80,6 +78,7 @@ func NewCacheFunc(dura time.Duration, options ...Option) Middleware {
 				eudore.HeaderLastModified: {now.UTC().Format(http.TimeFormat)},
 			},
 		}
+		headerCopy(w.h, w.ResponseWriter.Header())
 		ctx.SetResponse(w)
 		defer ctx.SetResponse(w.ResponseWriter)
 		ctx.Next()
@@ -228,10 +227,10 @@ func (c *cacheMap) SaveData(key string, val *cacheResponse) {
 	c.Map.Store(key, val)
 }
 
-func (c *cacheMap) cleanupExpired(ctx context.Context, t time.Duration) {
+func (c *cacheMap) cleanupExpired(ctx context.Context, ttl time.Duration) {
 	for {
 		select {
-		case now := <-time.After(t):
+		case now := <-time.After(ttl):
 			c.Map.Range(func(key, value any) bool {
 				item := value.(*cacheResponse)
 				if now.After(item.Expired) {

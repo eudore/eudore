@@ -3,6 +3,7 @@ package middleware
 import (
 	"compress/flate"
 	"compress/gzip"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -29,23 +30,21 @@ func compressionWriterFlate() any {
 	return w
 }
 
-// The NewGzipFunc function creates middleware to implement [gzip] compress of
-// response body.
-//
-// refer: [NewCompressionFunc].
-//
-//go:noinline
-func NewGzipFunc() Middleware {
-	return NewCompressionFunc(CompressionNameGzip, compressionWriterGzip)
-}
-
 // The NewCompressionFunc function creates middleware to implement specify
 // method response body compress.
 // It is necessary to specify the compress name and [compressor] constructor.
+// The actual type of parameter fn is [func() compressor].
+// If compressor is not passed the value in [DefaultCompressionEncoder] is used.
+//
+//	type compressor interface {
+//		Reset(w io.Writer)
+//		Write(b []byte) (int, error)
+//		Flush() error
+//		Close() error
+//	}
 //
 // Use [eudore.HeaderAcceptEncoding] to negotiate whether to compress the
 // response body.
-//
 // Disable compression in the following cases.
 //
 // 1. Websocket	The [net.Conn] used does not have a response body.
@@ -62,6 +61,12 @@ func NewGzipFunc() Middleware {
 func NewCompressionFunc(name string, fn func() any) Middleware {
 	const ae = eudore.HeaderAcceptEncoding
 	const conn = eudore.HeaderConnection
+	if fn == nil {
+		fn = DefaultCompressionEncoder[name]
+	}
+	if fn == nil {
+		panic(fmt.Errorf(ErrCompressMissingEncoder, name))
+	}
 	pool := newCompressPool(name, fn)
 	return func(ctx eudore.Context) {
 		// check enable compression
@@ -86,7 +91,7 @@ func NewCompressionFunc(name string, fn func() any) Middleware {
 // [eudore.HeaderAcceptEncoding] value ignores non-zero weight values,
 // and the order is based on [DefaultCompressionOrder].
 //
-// refer: [NewCompressionFunc] [NewGzipFunc].
+// refer: [NewCompressionFunc].
 func NewCompressionMixinsFunc(compresss map[string]func() any) Middleware {
 	names, pools := initCompress(compresss)
 	return func(ctx eudore.Context) {
@@ -111,8 +116,9 @@ func handlerCompress(ctx eudore.Context, pool *sync.Pool) {
 	// init ResponseWriter
 	w := pool.Get().(*responseWriterCompress)
 	w.ResponseWriter = ctx.Response()
-	w.Buffer = w.Buffer[0:0]
-	w.State = compressionStateUnknown
+	w.buffer = w.buffer[0:0]
+	w.state = compressionStateUnknown
+	w.code = eudore.StatusOK
 	defer w.Close(pool)
 
 	ctx.SetResponse(w)
@@ -149,12 +155,16 @@ func getCompresssOrder(val string) int {
 }
 
 func newCompressPool(name string, fn func() any) *sync.Pool {
+	_, ok := fn().(compressor)
+	if !ok {
+		panic(fmt.Errorf(ErrCompressInvalidEncoder, name))
+	}
 	return &sync.Pool{
 		New: func() any {
 			return &responseWriterCompress{
-				Name:   name,
+				name:   name,
 				Writer: fn().(compressor),
-				Buffer: make([]byte, CompressionBufferLength),
+				buffer: make([]byte, CompressionBufferLength),
 			}
 		},
 	}
@@ -165,9 +175,10 @@ func newCompressPool(name string, fn func() any) *sync.Pool {
 type responseWriterCompress struct {
 	eudore.ResponseWriter
 	Writer compressor
-	State  int
-	Buffer []byte
-	Name   string
+	state  int
+	buffer []byte
+	code   int
+	name   string
 }
 
 type compressor interface {
@@ -178,12 +189,16 @@ type compressor interface {
 }
 
 func (w *responseWriterCompress) Close(pool *sync.Pool) {
-	switch w.State {
+	switch w.state {
 	case compressionStateEnable:
 		w.Writer.Close()
 		w.Writer.Reset(nil)
+	case compressionStateDisable:
 	case compressionStateBuffer:
-		_, _ = w.ResponseWriter.Write(w.Buffer)
+		w.writeHeader()
+		_, _ = w.ResponseWriter.Write(w.buffer)
+	case compressionStateUnknown:
+		w.writeHeader()
 	}
 	pool.Put(w)
 }
@@ -193,15 +208,15 @@ func (w *responseWriterCompress) Unwrap() http.ResponseWriter {
 }
 
 func (w *responseWriterCompress) Write(data []byte) (int, error) {
-	switch w.State {
+	switch w.state {
 	case compressionStateEnable:
 		return w.Writer.Write(data)
 	case compressionStateDisable:
 		return w.ResponseWriter.Write(data)
 	default:
-		if len(data)+len(w.Buffer) <= CompressionBufferLength {
-			w.State = compressionStateBuffer
-			w.Buffer = append(w.Buffer, data...)
+		if len(data)+len(w.buffer) <= CompressionBufferLength {
+			w.state = compressionStateBuffer
+			w.buffer = append(w.buffer, data...)
 			return len(data), nil
 		}
 
@@ -211,16 +226,16 @@ func (w *responseWriterCompress) Write(data []byte) (int, error) {
 }
 
 func (w *responseWriterCompress) WriteString(data string) (int, error) {
-	switch w.State {
+	switch w.state {
 	case compressionStateEnable:
 		// WriteString method only gzip
 		return io.WriteString(w.Writer, data)
 	case compressionStateDisable:
 		return w.ResponseWriter.WriteString(data)
 	default:
-		if len(data)+len(w.Buffer) <= CompressionBufferLength {
-			w.State = compressionStateBuffer
-			w.Buffer = append(w.Buffer, data...)
+		if len(data)+len(w.buffer) <= CompressionBufferLength {
+			w.state = compressionStateBuffer
+			w.buffer = append(w.buffer, data...)
 			return len(data), nil
 		}
 
@@ -229,21 +244,32 @@ func (w *responseWriterCompress) WriteString(data string) (int, error) {
 	}
 }
 
-func (w *responseWriterCompress) WriteHeader(code int) {
-	switch w.State {
-	case compressionStateUnknown, compressionStateBuffer:
-		w.init()
+func (w *responseWriterCompress) writeHeader() {
+	if w.code > 0 {
+		w.ResponseWriter.WriteHeader(w.code)
+		w.code = -w.code
 	}
-	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *responseWriterCompress) WriteStatus(code int) {
+	if w.code > 0 && code > 0 {
+		w.code = code
+	}
+}
+
+func (w *responseWriterCompress) WriteHeader(code int) {
+	if w.code > 0 && code > 0 {
+		w.code = code
+	}
 }
 
 func (w *responseWriterCompress) Flush() {
-	switch w.State {
+	switch w.state {
 	case compressionStateEnable:
 		w.Writer.Flush()
-	case compressionStateBuffer:
+	case compressionStateDisable:
+	default:
 		w.init()
-		w.Writer.Flush()
 	}
 	w.ResponseWriter.Flush()
 }
@@ -258,15 +284,16 @@ func (w *responseWriterCompress) init() {
 
 	_, ok := DefaultCompressionDisableMime[contenttype]
 	if ok || skipCompress(h) || h.Get(eudore.HeaderContentEncoding) != "" {
-		w.State = compressionStateDisable
+		w.state = compressionStateDisable
 	} else {
-		w.State = compressionStateEnable
+		w.state = compressionStateEnable
 		w.Writer.Reset(w.ResponseWriter)
-		h.Set(eudore.HeaderContentEncoding, w.Name)
+		h.Set(eudore.HeaderContentEncoding, w.name)
 		headerVary(h, eudore.HeaderAcceptEncoding)
 	}
-	if len(w.Buffer) > 0 {
-		_, _ = w.Write(w.Buffer)
+	w.writeHeader()
+	if len(w.buffer) > 0 {
+		_, _ = w.Write(w.buffer)
 	}
 }
 
@@ -290,12 +317,12 @@ func (w *responseWriterCompress) Push(p string, opts *http.PushOptions) error {
 	switch {
 	case opts == nil:
 		opts = &http.PushOptions{
-			Header: http.Header{eudore.HeaderAcceptEncoding: {w.Name}},
+			Header: http.Header{eudore.HeaderAcceptEncoding: {w.name}},
 		}
 	case opts.Header == nil:
-		opts.Header = http.Header{eudore.HeaderAcceptEncoding: {w.Name}}
+		opts.Header = http.Header{eudore.HeaderAcceptEncoding: {w.name}}
 	case opts.Header.Get(eudore.HeaderAcceptEncoding) == "":
-		opts.Header.Add(eudore.HeaderAcceptEncoding, w.Name)
+		opts.Header.Add(eudore.HeaderAcceptEncoding, w.name)
 	}
 	return w.ResponseWriter.Push(p, opts)
 }
@@ -303,8 +330,15 @@ func (w *responseWriterCompress) Push(p string, opts *http.PushOptions) error {
 // The Size method returns the response size,
 // otherwise the StateBuffer size is 0.
 func (w *responseWriterCompress) Size() int {
-	if w.State == compressionStateBuffer {
-		return len(w.Buffer)
+	if w.state == compressionStateBuffer {
+		return len(w.buffer)
 	}
 	return w.ResponseWriter.Size()
+}
+
+// The Status method returns the set http status code.
+func (w *responseWriterCompress) Status() int {
+	// abs
+	m := w.code >> 31
+	return (w.code + m) ^ m
 }

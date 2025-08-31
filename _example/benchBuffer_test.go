@@ -3,41 +3,82 @@ package eudore_test
 import (
 	"bytes"
 	"testing"
-	"unsafe"
 )
 
-func BenchmarkAppendBuff(b *testing.B) {
-	buf := bytes.NewBuffer(make([]byte, 2048))
+func init() {
+	for i := range strs {
+		for n := 0; n < 4; n++ {
+			strs[i] = strs[i] + strs[i]
+		}
+	}
+}
+
+func BenchmarkBytesAppend(b *testing.B) {
+	buf := make([]byte, 64)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		buf = buf[:0]
+		for i := 0; i < 100; i++ {
+			for _, s := range strs {
+				buf = append(buf, s...)
+			}
+		}
+	}
+}
+
+func BenchmarkBytesBuferr(b *testing.B) {
+	buf := bytes.NewBuffer(make([]byte, 64))
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		buf.Reset()
-		for _, s := range strs {
-			buf.WriteString(s)
+		for i := 0; i < 100; i++ {
+			for _, s := range strs {
+				buf.WriteString(s)
+			}
 		}
 	}
 }
 
-func BenchmarkAppendCopy(b *testing.B) {
-	en := &encoder{make([]byte, 2048)}
+func BenchmarkBytesBuferr2(b *testing.B) {
+	buf := &Buffer{make([]byte, 64)}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		en.data = en.data[0:0]
-		for _, s := range strs {
-			en.WriteString(s)
+		buf.buf = buf.buf[:0]
+		for i := 0; i < 100; i++ {
+			for _, s := range strs {
+				buf.WriteString(s)
+			}
 		}
 	}
 }
 
-type encoder struct {
-	data []byte
+type Buffer struct {
+	buf []byte
 }
 
-func (en *encoder) WriteString(s string) {
-	b := *(*[]byte)(unsafe.Pointer(&struct {
-		string
-		Cap int
-	}{s, len(s)}))
-	en.data = append(en.data, b...)
+func (b *Buffer) Write(p []byte) (n int, err error) {
+	return copy(b.buf[b.grow(len(p)):], p), nil
+}
+
+func (b *Buffer) WriteString(s string) (n int, err error) {
+	return copy(b.buf[b.grow(len(s)):], s), nil
+}
+
+func (b *Buffer) grow(n int) int {
+	l := len(b.buf)
+	if l+n <= cap(b.buf) {
+		b.buf = b.buf[:l+n]
+		return l
+	}
+
+	c := l + n
+	if c < 2*l {
+		c = 2 * l
+	}
+	buf2 := append([]byte(nil), make([]byte, c)...)
+	copy(buf2, b.buf)
+	b.buf = buf2[:l+n]
+	return l
 }
 
 var strs = []string{
