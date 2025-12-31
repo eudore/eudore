@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"strings"
 )
 
 // HandlerExtender defines the extension management that converts any func into
@@ -15,9 +16,9 @@ import (
 //
 // Generally, [NewHandlerExtender] and [DefaultHandlerExtender] can be used.
 type HandlerExtender interface {
-	// The RegisterExtender method registers the converts func of HanderFunc.
+	// RegisterExtender method registers the converts func of HanderFunc.
 	//
-	// The converts function type must be func(Type) [HandlerFunc] or
+	// converts function type must be func(Type) [HandlerFunc] or
 	// func(string, Type) HandlerFunc,
 	// Type is a func or interface.
 	//
@@ -25,20 +26,21 @@ type HandlerExtender interface {
 	// [CreateHandlers] will determine the implementation interface.
 	RegisterExtender(path string, fn any) error
 
-	// The CreateHandlers method converts any func to [HandlerFuncs]
+	// CreateHandlers method converts any func to [HandlerFuncs]
 	CreateHandlers(path string, data any) []HandlerFunc
 
 	// List method displays all registered extensions
 	List() []string
 }
 
+// MetadataHandlerExtender records all registered extension functions.
 type MetadataHandlerExtender struct {
 	Health   bool     `json:"health" protobuf:"1,name=health" yaml:"health"`
 	Name     string   `json:"name" protobuf:"2,name=name" yaml:"name"`
 	Extender []string `json:"extender" protobuf:"3,name=extender" yaml:"extender"`
 }
 
-// The NewHandlerExtender function creates [NewHandlerExtenderBase]
+// NewHandlerExtender function creates [NewHandlerExtenderBase]
 // and loads the extended functions in [DefaultHandlerExtenderFuncs].
 func NewHandlerExtender() HandlerExtender {
 	he := NewHandlerExtenderBase()
@@ -48,7 +50,7 @@ func NewHandlerExtender() HandlerExtender {
 	return he
 }
 
-// The NewHandlerExtenderWithContext function gets [ContextKeyHandlerExtender]
+// NewHandlerExtenderWithContext function gets [ContextKeyHandlerExtender]
 // from [context.Context], otherwise returns [DefaultHandlerExtender].
 func NewHandlerExtenderWithContext(ctx context.Context) HandlerExtender {
 	he, ok := ctx.Value(ContextKeyHandlerExtender).(HandlerExtender)
@@ -67,7 +69,7 @@ type handlerExtenderBase struct {
 	allowKinds map[reflect.Kind]struct{}
 }
 
-// The NewHandlerExtenderBase method creates a basic [HandlerExtender].
+// NewHandlerExtenderBase method creates a basic [HandlerExtender].
 //
 // Implement registration and creation of [HandlerFunc].
 func NewHandlerExtenderBase() HandlerExtender {
@@ -179,7 +181,7 @@ func (he *handlerExtenderBase) find(p string, v reflect.Value) HandlerFunc {
 	return nil
 }
 
-// The newHandlerFunc function uses an extension function to
+// newHandlerFunc function uses an extension function to
 // convert any into [HandlerFunc].
 func (he *handlerExtenderBase) exec(p string, fn, v reflect.Value) HandlerFunc {
 	var args []reflect.Value
@@ -193,15 +195,20 @@ func (he *handlerExtenderBase) exec(p string, fn, v reflect.Value) HandlerFunc {
 		return nil
 	}
 
-	handlerFuncLocker.Lock()
-	handlerFuncCreator[result.Pointer()] = fn.Type().In(0)
-	handlerFuncLocker.Unlock()
-	return result.Interface().(HandlerFunc)
+	h := result.Interface().(HandlerFunc)
+	ptr := reflect.ValueOf(h).Pointer()
+	name := runtime.FuncForPC(ptr).Name()
+	if name == handlerCallName || strings.Contains(name, ".func") {
+		handlerFuncLocker.Lock()
+		handlerFuncCreator[ptr] = fn.Type().In(0)
+		handlerFuncLocker.Unlock()
+	}
+	return h
 }
 
 const extenderNameFormat = "%s(%s)"
 
-// The List method returns all registered [HandlerFunc] names.
+// List method returns all registered [HandlerFunc] names.
 func (he *handlerExtenderBase) List() []string {
 	names := make([]string, 0, len(he.NewFunc))
 	for i := range he.NewType {
@@ -272,17 +279,25 @@ func (he *handlerExtenderWrap) Metadata() any {
 	}
 }
 
-// handlerExtenderTree defines [HandlerExtender] based on path matching.
-type handlerExtenderTree struct {
-	root handlerExtenderNode
-}
 type handlerExtenderNode = radixNode[*handlerExtenderData, handlerExtenderData]
 
 type handlerExtenderData struct {
 	HandlerExtender
 }
 
-// The NewHandlerExtenderTree function creates a [HandlerExtender] based
+func (data *handlerExtenderData) Insert(vals ...any) error {
+	if data.HandlerExtender == nil {
+		data.HandlerExtender = NewHandlerExtenderBase()
+	}
+	return data.RegisterExtender(vals[0].(string), vals[1])
+}
+
+// handlerExtenderTree defines [HandlerExtender] based on path matching.
+type handlerExtenderTree struct {
+	root handlerExtenderNode
+}
+
+// NewHandlerExtenderTree function creates a [HandlerExtender] based
 // on path matching.
 //
 // Group the extension functions by registering the path
@@ -290,13 +305,6 @@ type handlerExtenderData struct {
 // longest path.
 func NewHandlerExtenderTree() HandlerExtender {
 	return &handlerExtenderTree{}
-}
-
-func (data *handlerExtenderData) Insert(vals ...any) error {
-	if data.HandlerExtender == nil {
-		data.HandlerExtender = NewHandlerExtenderBase()
-	}
-	return data.HandlerExtender.RegisterExtender(vals[0].(string), vals[1])
 }
 
 func (he *handlerExtenderTree) RegisterExtender(path string, fn any) error {
@@ -314,18 +322,18 @@ func (he *handlerExtenderTree) CreateHandlers(path string, data any) []HandlerFu
 	return nil
 }
 
+// List method recursively adds path prefixes
+// and returns extension function names.
+func (he *handlerExtenderTree) List() []string {
+	return handlerExtenderList(&he.root, "")
+}
+
 func (he *handlerExtenderTree) Metadata() any {
 	return MetadataHandlerExtender{
 		Health:   true,
 		Name:     "eudore.handlerExtenderTree",
 		Extender: he.List(),
 	}
-}
-
-// The List method recursively adds path prefixes
-// and returns extension function names.
-func (he *handlerExtenderTree) List() []string {
-	return handlerExtenderList(&he.root, "")
 }
 
 func handlerExtenderList(node *handlerExtenderNode, prefix string) []string {

@@ -98,8 +98,32 @@ func TestMiddlewareBearerAuth(*testing.T) {
 	}
 
 	for _, bearer := range bearers {
-		app.GetRequest("/", NewClientOptionBearer(bearer))
+		app.GetRequest("/", NewClientOptionBearerAuth(bearer))
 	}
+
+	app.CancelFunc()
+	app.Run()
+}
+
+func TestMiddlewareDigestAuth(*testing.T) {
+	users := map[string]string{"root": "1"}
+	app := NewApp()
+	app.AddMiddleware(NewLoggerLevelFunc(func(Context) int { return 4 }))
+	app.AddMiddleware(func(ctx Context) {
+		if ctx.GetQuery("nobody") != "" {
+			ctx.Request().Body = io.NopCloser(bodyNoreader{})
+		}
+	})
+	app.GetFunc("/auth", NewDigestAuthFunc(nil, users))
+	app.GetFunc("/auth-int", NewDigestAuthFunc(&ClientDigest{Algorithm: "MD5"}, users))
+	app.GetFunc("/auth-int", NewDigestAuthFunc(&ClientDigest{Qop: "auth-int"}, users))
+
+	client := app.NewClient(NewClientHookDigestAuth("root", "1"))
+	client.GetRequest("/auth?d=1", strings.NewReader("digest body"))
+	client.GetRequest("/auth-int?d=1", strings.NewReader("digest body"))
+	client.GetRequest("/auth-int?nobody=1", strings.NewReader("digest body"))
+	app.GetRequest("/auth", NewClientHeader(HeaderAuthorization, `Digest uri="/miss"`))
+	app.GetRequest("/auth", NewClientHeader(HeaderAuthorization, `Digest uri="/auth"`))
 
 	app.CancelFunc()
 	app.Run()
@@ -504,6 +528,7 @@ func TestMiddlewareLook(*testing.T) {
 	app.GetRequest("/eudore/debug/data")
 	app.GetRequest("/eudore/debug/look/?d=3")
 	app.GetRequest("/eudore/debug/look/?all=1")
+	app.GetRequest("/eudore/debug/look/?omit=1")
 	app.GetRequest("/eudore/debug/look/?format=text")
 	app.GetRequest("/eudore/debug/look/?format=json")
 	app.GetRequest("/eudore/debug/look/?format=t2")

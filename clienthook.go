@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/md5"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 )
@@ -26,8 +29,8 @@ type clientHookCookie struct {
 	cookie http.CookieJar
 }
 
-// The NewClientHookCookie function creates [ClientHook] and
-// uses [http.CookieJar] to manage the cookies sent.
+// NewClientHookCookie function creates [ClientHook] and uses [http.CookieJar]
+// to manage the cookies sent.
 func NewClientHookCookie(jar http.CookieJar) ClientHook {
 	if jar == nil {
 		jar, _ = cookiejar.New(nil)
@@ -71,8 +74,8 @@ type clientHookTimeout struct {
 	timeout time.Duration
 }
 
-// The NewClientHookTimeout function creates [ClientHook] to implement
-// request timeout, using [context.WithTimeout].
+// NewClientHookTimeout function creates [ClientHook] to implement request
+// timeout, using [context.WithTimeout].
 func NewClientHookTimeout(timeout time.Duration) ClientHook {
 	return &clientHookTimeout{timeout: timeout}
 }
@@ -121,8 +124,8 @@ type cancelTimerBody struct {
 	deadline time.Time
 }
 
-func (b *cancelTimerBody) Read(p []byte) (n int, err error) {
-	n, err = b.rc.Read(p)
+func (b *cancelTimerBody) Read(p []byte) (int, error) {
+	n, err := b.rc.Read(p)
 	if err == nil {
 		return n, nil
 	}
@@ -130,8 +133,8 @@ func (b *cancelTimerBody) Read(p []byte) (n int, err error) {
 		return n, err
 	}
 	if time.Now().After(b.deadline) {
-		err = errors.New(err.Error() +
-			" (Client.Timeout or context cancellation while reading body)")
+		msg := " (Client.Timeout or context cancellation while reading body)"
+		err = NewErrorWithWrapped(err, err.Error()+msg)
 	}
 	return n, err
 }
@@ -147,8 +150,8 @@ type clientHookRedirect struct {
 	check func(req *http.Request, via []*http.Request) error
 }
 
-// NewClientHookRedirect function creates [ClientHook] to implement
-// response redirection processing.
+// NewClientHookRedirect function creates [ClientHook] to implement response
+// redirection processing.
 //
 // If the Body is not empty, the request must mean [http.Request.GetBody] to
 // redirect.
@@ -178,23 +181,19 @@ func (hook *clientHookRedirect) RoundTrip(req *http.Request) (*http.Response, er
 		}
 
 		switch resp.StatusCode {
-		case StatusMovedPermanently, StatusFound, StatusSeeOther:
-		case StatusPermanentRedirect, StatusTemporaryRedirect:
-			if notGetBody(req) {
-				return resp, nil
-			}
+		case StatusMovedPermanently, StatusFound, StatusSeeOther,
+			StatusPermanentRedirect, StatusTemporaryRedirect:
 		default:
 			return resp, nil
 		}
 
-		closeBody(req.Body)
 		loc := resp.Header.Get(HeaderLocation)
 		if loc == "" {
 			return resp, nil
 		}
 		req, err = newRequest(req, loc, resp.StatusCode)
 		if err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, &url.Error{
 				Op:  strings.ToTitle(reqs[0].Method),
 				URL: stripPassword(resp.Request.URL),
@@ -213,20 +212,7 @@ func (hook *clientHookRedirect) RoundTrip(req *http.Request) (*http.Response, er
 				Err: err,
 			}
 		}
-		resp.Body.Close()
-	}
-}
-
-func notGetBody(r *http.Request) bool {
-	if r.Body == nil || r.Body == http.NoBody {
-		return false
-	}
-	return r.ContentLength != 0 && r.GetBody == nil
-}
-
-func closeBody(b io.ReadCloser) {
-	if b != nil {
-		b.Close()
+		_ = resp.Body.Close()
 	}
 }
 
@@ -253,12 +239,11 @@ func newRequest(req *http.Request, loc string, code int) (*http.Request, error) 
 			r.Method = MethodGet
 		}
 	case StatusPermanentRedirect, StatusTemporaryRedirect:
-		if r.GetBody != nil {
-			r.Body, err = r.GetBody()
-			if err != nil {
-				return nil, err
-			}
-			r.ContentLength = req.ContentLength
+		r.Body = req.Body
+		r.ContentLength = req.ContentLength
+		err := resetBody(r)
+		if err != nil {
+			return nil, err
 		}
 	}
 	// Host
@@ -295,8 +280,8 @@ type clientHookRetry struct {
 	status    map[int]struct{}
 }
 
-// The NewClientHookRetry function creates [ClientHook] to implement
-// multiple request retries.
+// NewClientHookRetry function creates [ClientHook] to implement multiple
+// request retries.
 //
 // If error is not empty or StatusCode is in status, resend the request.
 //
@@ -342,7 +327,7 @@ func (hook *clientHookRetry) Wrap(rt http.RoundTripper) http.RoundTripper {
 }
 
 func (hook *clientHookRetry) RoundTrip(req *http.Request) (*http.Response, error) {
-	for i := 0; i < hook.num; i++ {
+	for i := 0; i <= hook.num; i++ {
 		resp, err := hook.next.RoundTrip(req)
 		if hook.condition(resp, err) {
 			return resp, err
@@ -350,18 +335,12 @@ func (hook *clientHookRetry) RoundTrip(req *http.Request) (*http.Response, error
 
 		// reset body
 		if !isNetError(err) {
-			if notGetBody(req) {
+			err := resetBody(req)
+			if err != nil {
 				return resp, err
 			}
-			closeBody(req.Body)
 			if resp != nil {
-				resp.Body.Close()
-			}
-			if req.GetBody != nil {
-				req.Body, err = req.GetBody()
-				if err != nil {
-					return resp, err
-				}
+				_ = resp.Body.Close()
 			}
 		}
 		if i < hook.max {
@@ -403,8 +382,8 @@ type clientHookLogger struct {
 	params []string
 }
 
-// NewClientHookLogger function creates [ClientHook] to implement
-// request logger output.
+// NewClientHookLogger function creates [ClientHook] to implement request
+// logger output.
 //
 // Output [LoggerError] when the response error is not empty;
 // output [LoggerWarning] when the request time is greater than slow;
@@ -532,15 +511,18 @@ func loggerValues(log Logger, key string, vals ...string) Logger {
 }
 
 type clientHookDigest struct {
-	next               http.RoundTripper
-	username, password string
+	next         http.RoundTripper
+	DomainDigest sync.Map
+	username     string
+	password     string
+	count        int64
 }
 
-// NewClientRetryDigest function creates [ClientHook] to implement digest
+// NewClientHookDigestAuth function creates [ClientHook] to implement digest
 // authentication.
 //
 // When [StatusUnauthorized], calculate the digest and re-initiate the request.
-func NewClientHookDigest(username, password string) ClientHook {
+func NewClientHookDigestAuth(username, password string) ClientHook {
 	return &clientHookDigest{
 		username: username,
 		password: password,
@@ -560,77 +542,115 @@ func (hook *clientHookDigest) Wrap(rt http.RoundTripper) http.RoundTripper {
 }
 
 func (hook *clientHookDigest) RoundTrip(req *http.Request) (*http.Response, error) {
-	resp, err := hook.next.RoundTrip(req)
-	if err != nil || resp.StatusCode != StatusUnauthorized {
-		return resp, err
-	}
-
-	if notGetBody(req) {
-		return resp, ErrClientBodyNotGetBody
-	}
-	dig := newclientDigest(resp.Header.Get(HeaderWWWAuthenticate))
-	if dig == nil || dig.invalid() {
-		return resp, err
-	}
-
-	resp.Body.Close()
-	if req.GetBody != nil {
-		closeBody(req.Body)
-		req.Body, err = req.GetBody()
-		if err != nil {
-			return resp, err
-		}
-		if dig.Qop == httpDigestQopAuthInt {
+	val, ok := hook.DomainDigest.Load(req.Host)
+	if ok {
+		// signature
+		dig := val.(*ClientDigest).Clone()
+		dig.Username = hook.username
+		dig.Password = hook.password
+		dig.Method = req.Method
+		dig.URI = req.URL.RequestURI()
+		if dig.Qop == httpDigestQopAuthInt && req.GetBody != nil {
 			dig.Body, _ = req.GetBody()
+		} else if strings.Contains(dig.Qop, ",") {
+			dig.Qop = httpDigestQopAuth
 		}
+		dig.Nc = fmt.Sprintf("%08x", atomic.AddInt64(&hook.count, 1)&0xffffffff)
+		dig.Cnonce = GetStringRandom(8)
+		dig.Response = dig.Digest()
+		req.Header.Set(HeaderAuthorization, dig.Encode())
+	}
+	resp, err := hook.next.RoundTrip(req)
+	if resp == nil || resp.StatusCode != StatusUnauthorized {
+		return resp, err
 	}
 
-	dig.Nc = "00000001"
-	dig.Username = hook.username
-	dig.Password = hook.password
-	dig.Method = req.Method
-	dig.URI = req.URL.Path
-	req.Header.Set(HeaderAuthorization, dig.Encode())
-	return hook.next.RoundTrip(req)
+	auth := resp.Header.Get(HeaderWWWAuthenticate)
+	dig := NewClientDigest(auth)
+	if dig == nil || dig.invalid() || (ok && !strings.Contains(auth, "stale=true")) {
+		return resp, err
+	}
+
+	// svae host digest
+	domainw := GetAnyDefault(dig.Domain, req.Host)
+	dig.Domain = ""
+	for _, domain := range strings.Fields(domainw) {
+		hook.DomainDigest.Store(domain, dig)
+	}
+
+	// try next
+	err = resetBody(req)
+	if err != nil {
+		return resp, err
+	}
+	_ = resp.Body.Close()
+	return hook.RoundTrip(req)
+}
+
+func resetBody(req *http.Request) error {
+	if req.Body == nil || req.Body == http.NoBody {
+		return nil
+	}
+	_ = req.Body.Close()
+	if req.ContentLength != 0 && req.GetBody == nil {
+		return ErrClientBodyNotGetBody
+	}
+	if req.GetBody != nil {
+		body, err := req.GetBody()
+		if err != nil {
+			return err
+		}
+		req.Body = body
+	}
+	return nil
 }
 
 var (
 	digestKeys = [...]string{
-		"username", "uri",
-		"realm", "algorithm", "nonce", "qop",
-		"nc", "cnonce", "response", "opaque",
+		"", "domain", "", "uri", "username", "",
+		"realm", "algorithm", "qop", "opaque",
+		"nonce", "cnonce", "nc", "response",
 	}
 	httpDigestQopAuth    = "auth"
 	httpDigestQopAuthInt = "auth-int"
 )
 
-type clientDigest struct {
-	Hash     hash.Hash
-	Body     io.ReadCloser
-	Password string
-	Method   string
-	Username string
-	URI      string
-
+// ClientDigest defines the HTTP Digest data.
+//
+// Userhash and Authorization-Info are not supported.
+//
+// RFC 2069: An Extension to HTTP : Digest Access Authentication
+//
+// RFC 2617: HTTP Authentication: Basic and Digest Access Authentication
+//
+// RFC 7616: HTTP Digest Access Authentication.
+type ClientDigest struct {
+	Body      io.ReadCloser // Request.Body
+	Domain    string        // Request.Host
+	Method    string        // Request.Method
+	URI       string        // Request.RequestURI
+	Username  string
+	Password  string
 	Realm     string
 	Algorithm string
-	Nonce     string
-	Qop       string
-
-	Nc       string
-	Cnonce   string
-	Response string
-	Opaque   string
+	Qop       string // allow: ""/auth/auth-int/auth,auth-int
+	Opaque    string
+	Nonce     string // server-specified string
+	Cnonce    string // client-specified string
+	Nc        string // client nonce count
+	Response  string // it proves that the user knows a password.
 }
 
-func newclientDigest(req string) *clientDigest {
+// NewClientDigest function parses the Digest string and creates [ClientDigest].
+//
+//nolint:cyclop,gocyclo
+func NewClientDigest(req string) *ClientDigest {
 	if !strings.HasPrefix(req, "Digest ") {
 		return nil
 	}
-	req = req[7:]
 
-	dig := &clientDigest{}
-	for _, s := range splitDigestString(req) {
+	dig := &ClientDigest{}
+	for _, s := range splitDigestString(req[7:]) {
 		k, v, ok := strings.Cut(s, "=")
 		if !ok {
 			return nil
@@ -640,21 +660,30 @@ func newclientDigest(req string) *clientDigest {
 		}
 
 		switch k {
+		case "domain":
+			dig.Domain = v
+		case "uri":
+			dig.URI = v
+		case "username":
+			dig.Username = v
 		case "realm":
 			dig.Realm = v
 		case "algorithm":
 			dig.Algorithm = strings.ToUpper(v)
-		case "nonce":
-			dig.Nonce = v
 		case "qop":
-			dig.Qop = strings.TrimSpace(strings.SplitN(v, ",", 2)[0])
+			dig.Qop = v
 		case "opaque":
 			dig.Opaque = v
-		default:
-			return nil
+		case "nonce":
+			dig.Nonce = v
+		case "cnonce":
+			dig.Cnonce = v
+		case "nc":
+			dig.Nc = v
+		case "response":
+			dig.Response = v
 		}
 	}
-
 	return dig
 }
 
@@ -678,71 +707,41 @@ func splitDigestString(str string) []string {
 	return strs
 }
 
-func (dig *clientDigest) invalid() bool {
+func (dig *ClientDigest) invalid() bool {
 	switch dig.Algorithm {
-	case "MD5", "MD5-SESS", "SHA-256", "SHA-256-SESS":
+	case "", "MD5", "MD5-SESS", "SHA-256", "SHA-256-SESS", "SHA-512-256", "SHA-512-256-SESS":
 	default:
-		return true
+		return true // rfc7616 - 3.3
 	}
 	switch dig.Qop {
 	case "", httpDigestQopAuth, httpDigestQopAuthInt:
 	default:
-		return true
+		for _, s := range strings.Split(dig.Qop, ",") {
+			s = strings.TrimSpace(s)
+			if s != httpDigestQopAuth && s != httpDigestQopAuthInt {
+				return true
+			}
+		}
 	}
 	return false
 }
 
-func (dig *clientDigest) Encode() string {
-	dig.Cnonce = GetStringRandom(40)
-	var ha1, ha2 string
-	switch dig.Algorithm {
-	case "MD5", "MD5-SESS":
-		dig.Hash = md5.New()
-		ha1 = dig.digestHash(fmt.Sprintf("%s:%s:%s",
-			dig.Username, dig.Realm, dig.Password,
-		))
-	case "SHA-256", "SHA-256-SESS":
-		dig.Hash = sha256.New()
-		ha1 = dig.digestHash(fmt.Sprintf("%s:%s:%s",
-			dig.Username, dig.Realm, dig.Password,
-		))
-	}
-	if strings.HasSuffix(dig.Algorithm, "-SESS") {
-		ha1 = dig.digestHash(fmt.Sprintf("%s:%s:%s",
-			ha1, dig.Nonce, dig.Cnonce,
-		))
-	}
+// Clone method copy new [ClientDigest].
+func (dig *ClientDigest) Clone() *ClientDigest {
+	d := new(ClientDigest)
+	*d = *dig
+	return d
+}
 
-	switch dig.Qop {
-	case httpDigestQopAuth, "":
-		ha2 = dig.digestHash(fmt.Sprintf("%s:%s", dig.Method, dig.URI))
-	case httpDigestQopAuthInt:
-		if dig.Body != nil {
-			dig.Hash.Reset()
-			_, _ = io.Copy(dig.Hash, dig.Body)
-			ha2 = hex.EncodeToString(dig.Hash.Sum(nil))
-			dig.Body.Close()
-		}
-		ha2 = dig.digestHash(fmt.Sprintf("%s:%s:%s", dig.Method, dig.URI, ha2))
-	}
-
-	switch dig.Qop {
-	case httpDigestQopAuth, httpDigestQopAuthInt:
-		dig.Response = dig.digestHash(fmt.Sprintf("%s:%s:00000001:%s:%s:%s",
-			ha1, dig.Nonce, dig.Cnonce, dig.Qop, ha2,
-		))
-	case "":
-		dig.Response = dig.digestHash(fmt.Sprintf("%s:%s:%s",
-			ha1, dig.Nonce, ha2,
-		))
-	}
-
+// Encode method formats the Digest message to set the
+// [HeaderAuthorization] and [HeaderWWWAuthenticate].
+func (dig *ClientDigest) Encode() string {
 	buf := bytes.NewBufferString("Digest ")
 	data := *(*[14]string)(unsafe.Pointer(dig))
-	for i, s := range data[4:] {
-		if s != "" {
+	for i, s := range data {
+		if digestKeys[i] != "" && s != "" {
 			switch i {
-			case 3, 5, 6:
+			case 7, 8, 11:
 				fmt.Fprintf(buf, "%s=%s, ", digestKeys[i], s)
 			default:
 				fmt.Fprintf(buf, "%s=\"%s\", ", digestKeys[i], s)
@@ -753,8 +752,53 @@ func (dig *clientDigest) Encode() string {
 	return buf.String()
 }
 
-func (dig *clientDigest) digestHash(s string) string {
-	dig.Hash.Reset()
-	_, _ = io.WriteString(dig.Hash, s)
-	return hex.EncodeToString(dig.Hash.Sum(nil))
+// Digest method calculates the current data's Digest value.
+func (dig *ClientDigest) Digest() string {
+	var h hash.Hash
+	var ha1, ha2 string
+	switch dig.Algorithm {
+	case "MD5", "MD5-SESS", "":
+		h = md5.New()
+	case "SHA-256", "SHA-256-SESS":
+		h = sha256.New()
+	case "SHA-512-256", "SHA-512-256-SESS":
+		h = sha512.New512_256()
+	}
+	ha1 = digestHash(h, fmt.Sprintf("%s:%s:%s", dig.Username, dig.Realm, dig.Password))
+	// Session variant
+	if strings.HasSuffix(dig.Algorithm, "-SESS") {
+		ha1 = digestHash(h, fmt.Sprintf("%s:%s:%s",
+			ha1, dig.Nonce, dig.Cnonce,
+		))
+	}
+
+	switch dig.Qop {
+	case httpDigestQopAuth, "":
+		ha2 = digestHash(h, fmt.Sprintf("%s:%s", dig.Method, dig.URI))
+	case httpDigestQopAuthInt:
+		if dig.Body != nil {
+			h.Reset()
+			_, _ = io.Copy(h, dig.Body)
+			ha2 = hex.EncodeToString(h.Sum(nil))
+			_ = dig.Body.Close()
+		}
+		ha2 = digestHash(h, fmt.Sprintf("%s:%s:%s", dig.Method, dig.URI, ha2))
+	}
+
+	if dig.Qop == "" && dig.Algorithm == "" {
+		// rfc2069
+		return digestHash(h, fmt.Sprintf("%s:%s:%s",
+			ha1, dig.Nonce, ha2,
+		))
+	}
+	// rfc7616
+	return digestHash(h, fmt.Sprintf("%s:%s:%s:%s:%s:%s",
+		ha1, dig.Nonce, dig.Nc, dig.Cnonce, dig.Qop, ha2,
+	))
+}
+
+func digestHash(h hash.Hash, s string) string {
+	h.Reset()
+	_, _ = io.WriteString(h, s)
+	return hex.EncodeToString(h.Sum(nil))
 }

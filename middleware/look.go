@@ -11,7 +11,7 @@ import (
 	"github.com/eudore/eudore"
 )
 
-// The NewHandlerMetadata function creates [eudore.HandlerFunc] to access object
+// NewHandlerMetadata function creates [eudore.HandlerFunc] to access object
 // all data.
 //
 // If the data type is func(eudore.Context) any, the data to be rendered
@@ -42,6 +42,7 @@ func NewLookFunc(data any) Middleware {
 			lookConfig: &lookConfig{
 				Depth:   eudore.GetAnyByString(ctx.GetQuery("d"), 10),
 				ShowAll: eudore.GetAnyByString(ctx.GetQuery("all"), false),
+				Omit:    eudore.GetAnyByString(ctx.GetQuery("omit"), false),
 				Godoc:   eudore.GetAnyByString(doc, eudore.DefaultGodocServer),
 				Refs:    make(map[uintptr]*lookValue),
 				Depths:  make(map[uintptr]int),
@@ -168,6 +169,7 @@ var lookTemplate, _ = template.New("look").Funcs(template.FuncMap{
 <body><div>{{- template "html" .Data -}}</div><script>
 console.log('d=10 Data depth display the maximum number of layers\n' +
 	'all=false Whether to display the non-export attribute\n' +
+	'omit=false Whether to display the zeor-value attribute\n' +
 	'format=html/json/text Set the data display format\n' +
 	'godoc=https://golang.org Set html format linked godoc address\n' +
 	'width=60 Set html format indentation width');
@@ -271,6 +273,7 @@ for(var i of document.getElementsByTagName('span')){
 type lookConfig struct {
 	Depth   int
 	ShowAll bool
+	Omit    bool
 	Godoc   string
 	Refs    map[uintptr]*lookValue
 	Depths  map[uintptr]int
@@ -279,16 +282,21 @@ type lookConfig struct {
 // lookValue defines each attribute of the data.
 type lookValue struct {
 	*lookConfig `json:"-"`
-	Kind        string      `json:"kind"`
-	Package     string      `json:"package,omitempty"`
-	Name        string      `json:"name,omitempty"`
-	Value       any         `json:"value,omitempty"`
-	String      string      `json:"string,omitempty"`
-	Pointer     uintptr     `json:"pointer,omitempty"`
-	Ref         uintptr     `json:"ref,omitempty"`
-	Elem        *lookValue  `json:"elem,omitempty"` // ptr interface
-	Keys        []string    `json:"keys,omitempty"` // struct map
-	Vals        []lookValue `json:"vals,omitempty"` // struct map slice array
+	Kind        string       `json:"kind"`
+	Package     string       `json:"package,omitempty"`
+	Name        string       `json:"name,omitempty"`
+	Value       any          `json:"value,omitempty"`
+	String      string       `json:"string,omitempty"`
+	Pointer     uintptr      `json:"pointer,omitempty"`
+	Ref         uintptr      `json:"ref,omitempty"`
+	Elem        *lookValue   `json:"elem,omitempty"` // ptr interface
+	Keys        []string     `json:"keys,omitempty"` // struct map
+	Vals        []*lookValue `json:"vals,omitempty"` // struct map slice array
+}
+
+func (look *lookValue) IsZero() bool {
+	return (look.Value == nil || look.Value == "") && look.Elem == nil &&
+		look.Pointer == 0 && len(look.Vals) == 0
 }
 
 // The Scan method scans the attributes and saves them.
@@ -362,21 +370,22 @@ func (look *lookValue) isRef(iValue reflect.Value, depth int) bool {
 		ptr := iValue.Pointer()
 
 		ref := look.Refs[ptr]
-		d := look.Depths[ptr]
 		if ref == nil {
 			look.Refs[ptr] = look
 			look.Depths[ptr] = depth
 			return false
 		}
 
+		d := look.Depths[ptr]
 		if depth < d {
-			look.Depths[look.Pointer] = depth
 			*look = *ref
 			look.Pointer = ptr
+			look.Depths[look.Pointer] = depth
+			look.Refs[ptr] = look
+
 			ref.Kind = "ref-" + ref.Kind
 			ref.Name = iValue.Type().String()
 			ref.Pointer = ptr
-			// ref.Ref = iValue.Pointer()
 			ref.Elem = nil
 			ref.Keys = nil
 			ref.Vals = nil
@@ -395,10 +404,16 @@ func (look *lookValue) isRef(iValue reflect.Value, depth int) bool {
 func (look *lookValue) scanSlice(iValue reflect.Value, depth int) {
 	look.Depth--
 	if look.Depth > 0 {
-		look.Vals = make([]lookValue, iValue.Len())
+		if !look.Omit {
+			look.Vals = make([]*lookValue, 0, iValue.Len())
+		}
 		for i := 0; i < iValue.Len(); i++ {
-			look.Vals[i].lookConfig = look.lookConfig
-			look.Vals[i].Scan(iValue.Index(i), depth+1)
+			l := &lookValue{lookConfig: look.lookConfig}
+			l.Scan(iValue.Index(i), depth+1)
+			if l.Omit && l.IsZero() {
+				continue
+			}
+			look.Vals = append(look.Vals, l)
 		}
 	}
 	look.Depth++
@@ -410,8 +425,12 @@ func (look *lookValue) scanStruct(iValue reflect.Value, depth int) {
 		iType := iValue.Type()
 		for i := 0; i < iValue.NumField(); i++ {
 			if iValue.Field(i).CanInterface() || look.ShowAll {
-				l := lookValue{lookConfig: look.lookConfig}
+				l := &lookValue{lookConfig: look.lookConfig}
 				l.Scan(iValue.Field(i), depth+1)
+				if l.Omit && l.IsZero() {
+					continue
+				}
+
 				look.Keys = append(look.Keys, iType.Field(i).Name)
 				look.Vals = append(look.Vals, l)
 			}
@@ -424,9 +443,10 @@ func (look *lookValue) scanMap(iValue reflect.Value, depth int) {
 	look.Depth--
 	if look.Depth > 0 {
 		look.Keys = make([]string, iValue.Len())
-		look.Vals = make([]lookValue, iValue.Len())
+		look.Vals = make([]*lookValue, iValue.Len())
 		for i, key := range iValue.MapKeys() {
 			look.Keys[i] = getKeyString(key)
+			look.Vals[i] = &lookValue{}
 			look.Vals[i].lookConfig = look.lookConfig
 			look.Vals[i].Scan(iValue.MapIndex(key), depth+1)
 		}

@@ -62,7 +62,7 @@ func NewOptionCSRFCookie(cookie http.Cookie) Option {
 	}
 }
 
-// NewOptionRateCleanup function creates Cache option to clean up expired data.
+// NewOptionCacheCleanup function creates Cache option to clean up expired data.
 func NewOptionCacheCleanup(ctx context.Context, t time.Duration) Option {
 	return func(data any) {
 		v, ok := data.(*cache)
@@ -104,6 +104,8 @@ func NewOptionRateCleanup(ctx context.Context, t time.Duration, less int,
 	}
 }
 
+// NewOptionRateState function creates options allow [NewRateRequestFunc] use
+// [http.Header] record current limit status.
 func NewOptionRateState() Option {
 	return func(data any) {
 		v, ok := data.(*rate)
@@ -153,11 +155,11 @@ type buffer struct {
 	buf []byte
 }
 
-func (b *buffer) Write(p []byte) (n int, err error) {
+func (b *buffer) Write(p []byte) (int, error) {
 	return copy(b.buf[b.grow(len(p)):], p), nil
 }
 
-func (b *buffer) WriteString(s string) (n int, err error) {
+func (b *buffer) WriteString(s string) (int, error) {
 	return copy(b.buf[b.grow(len(s)):], s), nil
 }
 

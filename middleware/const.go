@@ -99,18 +99,21 @@ var (
 	}
 	// DefaultLoggerLevelQueryName defines the query name for change the default log level.
 	DefaultLoggerLevelQueryName = "eudore_debug"
-	DefaultPageAdmin            = adminStatic
-	DefaultPageBasicAuth        = "401 Unauthorized"
-	DefaultPageBearerAuth       = "401 Unauthorized: error {{value}}"
-	DefaultPageBodyLimit        = "413 Request Entity Too Large: body limit {{value}} bytes."
-	DefaultPageBlack            = "403 Forbidden: your IP is blacklisted {{value}}."
-	DefaultPageCircuitBreaker   = "503 Service Unavailable: breaker triggered {{value}}."
-	DefaultPageCORS             = ""
-	DefaultPageCSRF             = "403 Forbidden: invalid CSRF token {{value}}."
-	DefaultPageHealth           = "unhealthy: {{value}}"
-	DefaultPageRate             = "429 Too Many Requests: rate limit exceeded {{value}}."
-	DefaultPageReferer          = "403 Forbidden: invalid Referer header {{value}}."
-	DefaultPageTimeout          = "503 Service Unavailable"
+	// All page content.
+
+	DefaultPageAdmin          = adminStatic
+	DefaultPageBasicAuth      = "401 Unauthorized"
+	DefaultPageBearerAuth     = "401 Unauthorized: bearer error {{value}}"
+	DefaultPageBodyLimit      = "413 Request Entity Too Large: body limit {{value}} bytes."
+	DefaultPageBlack          = "403 Forbidden: your IP is blacklisted {{value}}."
+	DefaultPageCircuitBreaker = "503 Service Unavailable: breaker triggered {{value}}."
+	DefaultPageCORS           = ""
+	DefaultPageCSRF           = "403 Forbidden: invalid CSRF token {{value}}."
+	DefaultPageDigestAuth     = "401 Unauthorized: {{value}}"
+	DefaultPageHealth         = "unhealthy: {{value}}"
+	DefaultPageRate           = "429 Too Many Requests: rate limit exceeded {{value}}."
+	DefaultPageReferer        = "403 Forbidden: invalid Referer header {{value}}."
+	DefaultPageTimeout        = "503 Service Unavailable"
 	// DefaultPolicyConditions global defines the conditions that policy parsing allows.
 	//
 	// Returns any object that implements the 'Match(ctx eudore.Context) bool' method.
@@ -144,6 +147,27 @@ var (
 	// DefaultRecoveryErrorFormat global defines the format of the recover data.
 	DefaultRecoveryErrorFormat = "%v"
 	DefaultRateRetryMin        = 3
+	// DefaultUserAgentMapping defines the mapping to replace device codes
+	// with normalized names during User-Agent analysis.
+	DefaultUserAgentMapping = userAgentMapping
+	// DefaultUserAgentRules defines the parsing and analysis rules for
+	// [eudore.HeaderUserAgent] strings.
+	//
+	// The rules are stored as a string slice in the format [pattern, path, ...]:
+	// pattern (User-Agent Name): Used to name the matched User-Agent type and its version.
+	//   - $N: Replaced by the N-th matched value of '$' in the path (counting starts from 1).
+	//   - $$: Replaced by the result matched by the next node.
+	//
+	// path (Matching Path): Used to match a segment of the User-Agent string.
+	//   - ${char...}: Matches until any character within the braces is encountered, then returns the current matched value.
+	//   - $char: Is the shorthand for '${char}char'.
+	//   - $ at the end of the path: Is the shorthand for '${ }', indicating a match until a space or the end of the string.
+	//   - Next Node Logic: If the character set matched by the last '$' in the path has a corresponding child node,
+	//     that child node is used as the next node for subsequent matching.
+	//
+	// Note: If your User-Agent information cannot be parsed, please add the
+	// necessary rules data yourself. Do not create an issue or pull request.
+	DefaultUserAgentRules = userAgentRules
 
 	ErrBearerTokenInvalid             = errors.New("bearer token is invalid")
 	ErrBearerTokenNotValid            = "bearer token not valid before %v"

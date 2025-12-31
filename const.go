@@ -62,7 +62,7 @@ var (
 
 // Define global constants.
 const (
-	// EnvEudoreListeners defines the address of listen fd.
+	// EnvEudoreDaemonListeners defines the address of listen fd.
 	EnvEudoreDaemonListeners = "EUDORE_DAEMON_LISTENERS"
 	// EnvEudoreDaemonParentPID defines the pid of the parent process that the
 	// child process kills when restarting.
@@ -302,17 +302,12 @@ const (
 	ParamUsername        = "Username"
 	ParamAllow           = "allow"           // HandlerRouter405
 	ParamAutoIndex       = "autoindex"       // NewHandlerFileSystem
-	ParamBasicAuth       = "basicauth"       // middlewae.NewBasicAuthFunc
+	ParamBrowser         = "browser"         // middlewae.NewUaserAgentFunc
 	ParamControllerGroup = "controllergroup" // ControllerInjectAutoRoute
 	ParamLoggerKind      = "loggerkind"      // Router.Group
 	ParamRouteHost       = "route-host"      // NewRouterCoreHost
 	ParamRoute           = "route"           // NewRouter
 	ParamTemplate        = "template"        // NewHandlerDataRenderTemplates
-
-	// Deprecated: This parameter is no longer recommended for use.
-	ParamCaller = "caller"
-	// Deprecated: This parameter is no longer recommended for use.
-	ParamDepth = "depth"
 
 	// Logger Field.
 
@@ -331,6 +326,8 @@ const (
 var templateEmbedIndex = `<!DOCTYPE html><html>
 <head>
 	<meta charset="utf-8">
+	<meta name="referrer" content="always">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="color-scheme" content="light dark">
 	<meta name="google" value="notranslate">
 	<title id="title">Index of {{.Path}}</title>
@@ -347,11 +344,12 @@ var templateEmbedIndex = `<!DOCTYPE html><html>
 		<tr><td data-value="{{$file.Name}}"><a class="icon file" draggable="true" href="{{$file.Name}}">{{$file.Name}}</a></td><td data-value="{{$file.Size}}" class="column">{{$file.SizeFormat}}</td><td data-value="{{$file.UnixTime}}" class="column">{{$file.ModTime}}</td></tr>
 		{{- end }}{{end}}
 	</tbody>
-</table><style>h1 {border-bottom: 1px solid #c0c0c0; margin-bottom: 10px; padding-bottom: 10px; white-space: nowrap; }
-table {border-collapse: collapse; }
-th {cursor: pointer; }
-td.column {padding-inline-start: 2em; text-align: end; white-space: nowrap; }
-a.icon {padding-inline-start: 1.5em; text-decoration: none; user-select: auto; }
+</table><style>
+h1 {margin-bottom: 10px; padding-bottom: 10px;color: #000; border-bottom: 1px solid #c0c0c0; white-space: nowrap;}
+table {border-collapse: collapse;color: #000;}
+th {cursor: pointer;}
+td.column {padding-inline-start: 2em; text-align: end; white-space: nowrap;}
+a.icon {padding-inline-start: 1.5em; text-decoration: none; user-select: auto; color: #00e;}
 a.icon:hover {text-decoration: underline; }
 a.file {background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAABnRSTlMAAAAAAABupgeRAAABEElEQVR42nRRx3HDMBC846AHZ7sP54BmWAyrsP588qnwlhqw/k4v5ZwWxM1hzmGRgV1cYqrRarXoH2w2m6qqiqKIR6cPtzc3xMSML2Te7XZZlnW7Pe/91/dX47WRBHuA9oyGmRknzGDjab1ePzw8bLfb6WRalmW4ip9FDVpYSWZgOp12Oh3nXJ7nxoJSGEciteP9y+fH52q1euv38WosqA6T2gGOT44vry7BEQtJkMAMMpa6JagAMcUfWYa4hkkzAc7fFlSjwqCoOUYAF5RjHZPVCFBOtSBGfgUDji3c3jpibeEMQhIMh8NwshqyRsBJgvF4jMs/YlVR5KhgNpuBLzk0OcUiR3CMhcPaOzsZiAAA/AjmaB3WZIkAAAAASUVORK5CYII=") left top no-repeat; }
 a.dir {background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABt0lEQVR42oxStZoWQRCs2cXdHTLcHZ6EjAwnQWIkJyQlRt4Cd3d3d1n5d7q7ju1zv/q+mh6taQsk8fn29kPDRo87SDMQcNAUJgIQkBjdAoRKdXjm2mOH0AqS+PlkP8sfp0h93iu/PDji9s2FzSSJVg5ykZqWgfGRr9rAAAQiDFoB1OfyESZEB7iAI0lHwLREQBcQQKqo8p+gNUCguwCNAAUQAcFOb0NNGjT+BbUC2YsHZpWLhC6/m0chqIoM1LKbQIIBwlTQE1xAo9QDGDPYf6rkTpPc92gCUYVJAZjhyZltJ95f3zuvLYRGWWCUNkDL2333McBh4kaLlxg+aTmyL7c2xTjkN4Bt7oE3DBP/3SRz65R/bkmBRPGzcRNHYuzMjaj+fdnaFoJUEdTSXfaHbe7XNnMPyqryPcmfY+zURaAB7SHk9cXSH4fQ5rojgCAVIuqCNWgRhLYLhJB4k3iZfIPtnQiCpjAzeBIRXMA6emAqoEbQSoDdGxFUrxS1AYcpaNbBgyQBGJEOnYOeENKR/iAd1npusI4C75/c3539+nbUjOgZV5CkAU27df40lH+agUdIuA/EAgDmZnwZlhDc0wAAAABJRU5ErkJggg==") left top no-repeat; }

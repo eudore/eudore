@@ -20,6 +20,8 @@ import (
 )
 
 const (
+	// Command and Output.
+
 	CommandStart   = "start"
 	CommandDaemon  = "daemon"
 	CommandStatus  = "status"
@@ -50,6 +52,7 @@ type Command struct {
 	execpid int
 }
 
+// NewCommand function creates [Command] to manage startup commands and pid.
 func NewCommand(cmd, pid string) *Command {
 	return &Command{
 		Command: cmd,
@@ -57,15 +60,17 @@ func NewCommand(cmd, pid string) *Command {
 	}
 }
 
+// Unmount method cleans up the pidfile.
 func (cmd *Command) Unmount(context.Context) {
 	pid, err := cmd.readpid()
 	if err == nil && pid == os.Getpid() {
-		os.Remove(cmd.Pidfile)
+		_ = os.Remove(cmd.Pidfile)
 	}
 }
 
-// The Run method executes the Command.
-func (cmd *Command) Run() (err error) {
+// Run method executes the Command.
+func (cmd *Command) Run() error {
+	var err error
 	switch cmd.Command {
 	case CommandStart:
 		return cmd.Start()
@@ -115,7 +120,7 @@ func (cmd *Command) Run() (err error) {
 	return context.Canceled
 }
 
-// The Wait method reads the PID file to determine the execution status.
+// Wait method reads the PID file to determine the execution status.
 //
 // [CommandStop] waits for PID file to be deleted.
 //
@@ -171,7 +176,7 @@ func (cmd *Command) output(out string, pid int, wait time.Duration) {
 		out = fn(out, "{{pidfile}}", cmd.Pidfile)
 		out = fn(out, "{{pid}}", strconv.Itoa(pid))
 		out = fn(out, "{{time}}", wait.String())
-		fmt.Fprint(os.Stdout, out+"\r\n")
+		_, _ = fmt.Fprint(os.Stdout, out+"\r\n")
 	}
 }
 
@@ -206,7 +211,8 @@ func (cmd *Command) Daemon() error {
 		return fmt.Errorf("process exites pid %d", pid)
 	}
 
-	fork := exec.Command(os.Args[0], os.Args[1:]...)
+	// #nosec G204
+	fork := exec.CommandContext(context.Background(), os.Args[0], os.Args[1:]...)
 	fork.Args = append(fork.Args, cmd.Args...)
 	fork.Env = append(os.Environ(), fmt.Sprintf("%s=%d",
 		eudore.EnvEudoreDaemonEnable, 1,
@@ -236,7 +242,7 @@ func (cmd *Command) Stop() error {
 	return cmd.ExecSignal(syscall.Signal(0x0f))
 }
 
-// The ExecSignal function sends the specified signal to the process
+// ExecSignal function sends the specified signal to the process
 // in the pidfile.
 func (cmd *Command) ExecSignal(sig os.Signal) error {
 	pid, err := cmd.readpid()
@@ -251,7 +257,7 @@ func (cmd *Command) ExecSignal(sig os.Signal) error {
 
 	err = process.Signal(sig)
 	if errors.Is(err, os.ErrProcessDone) {
-		os.Remove(cmd.Pidfile)
+		_ = os.Remove(cmd.Pidfile)
 		return err
 	}
 	cmd.execpid = pid
@@ -260,7 +266,7 @@ func (cmd *Command) ExecSignal(sig os.Signal) error {
 
 // Read the value in the pid file.
 func (cmd *Command) readpid() (int, error) {
-	file, err := os.OpenFile(cmd.Pidfile, os.O_RDONLY, 0o644)
+	file, err := os.Open(cmd.Pidfile)
 	if err != nil {
 		return 0, err
 	}
@@ -275,7 +281,7 @@ func (cmd *Command) readpid() (int, error) {
 
 // Open and lock the pid file and write the value of pid.
 func (cmd *Command) writepid() error {
-	file, err := os.OpenFile(cmd.Pidfile, os.O_WRONLY|os.O_CREATE, 0o644)
+	file, err := os.OpenFile(cmd.Pidfile, os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		return err
 	}

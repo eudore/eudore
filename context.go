@@ -21,6 +21,9 @@ import (
 // Included: Context data, *[http.Request], Request params, [ResponseWriter],
 // and log output.
 //
+// You can create [Context] or sync.Pool using [NewContextBaseFunc] or
+// [NewContextBasePool].
+//
 // You can modify or add Context methods through
 // [App.ContextPool] [HandlerExtender]
 // [github.com/eudore/eudore/middleware.NewContextWrapFunc].
@@ -59,7 +62,7 @@ type Context interface {
 
 	// request
 
-	// The Read method implements [io.Reader] to read http requests.
+	// Read method implements [io.Reader] to read http requests.
 	Read(b []byte) (int, error)
 	Host() string
 	Method() string
@@ -73,7 +76,7 @@ type Context interface {
 	// prevent forgery of real-ip.
 	RealIP() string
 	// Body returns the request body and saves it to the cache.
-	// The Body method can be called repeatedly.
+	// Body method can be called repeatedly.
 	// Each call will reset the ctx.Request().Body object to a body reader.
 	//
 	// ctx.bodyContent will not be reused with memory.
@@ -95,10 +98,10 @@ type Context interface {
 	Params() *Params
 	GetParam(key string) string
 	SetParam(key string, val string)
-	// The Query method returns the uri parameter get
+	// Query method returns the uri parameter get
 	// by parsing ctx.Request().URL.RawQuery.
 	//
-	// The parsed data is saved in Request().Form, and the body is not parsed.
+	// parsed data is saved in Request().Form, and the body is not parsed.
 	Querys() (url.Values, error)
 	// refer Querys
 	GetQuery(key string) string
@@ -116,12 +119,12 @@ type Context interface {
 	SetCookie(cookie *CookieSet)
 	// SetCookieValue sets [HeaderSetCookie] key and value.
 	SetCookieValue(name string, value string, age int)
-	// The FormValue method returns the parsed body data in
+	// FormValue method returns the parsed body data in
 	// MimeApplicationForm/MimeMultipartForm/MimeMultipartMixed format.
 	//
-	// The uri parameter is used only when the body is empty.
+	// uri parameter is used only when the body is empty.
 	//
-	// The parsed data is saved in Request().PostForm or MultipartForm.
+	// parsed data is saved in Request().PostForm or MultipartForm.
 	FormValue(key string) string
 	// refer FormValue
 	FormValues() (map[string][]string, error)
@@ -142,8 +145,8 @@ type Context interface {
 	// [http.Header] cannot be set after calling.
 	WriteHeader(code int)
 	// WriteFile opens the file and responds using [http.ServeContent].
-	WriteFile(path string) error
-	// The Redirect method uses [http.Redirect] to redirect url.
+	WriteFile(name string) error
+	// Redirect method uses [http.Redirect] to redirect url.
 	Redirect(code int, url string) error
 	// Render uses the [ContextKeyRender] function loaded
 	// in [NewContextBaseFunc] to Render data.
@@ -160,7 +163,7 @@ type Context interface {
 	Info(args ...any)
 	Warning(args ...any)
 	Error(args ...any)
-	// The Fatal method outputs the [LoggerError] logger, returns a message,
+	// Fatal method outputs the [LoggerError] logger, returns a message,
 	// and ends request processing.
 	//
 	// Use the [WriteStatus] to write the status code of the render Message.
@@ -173,7 +176,7 @@ type Context interface {
 	Errorf(format string, args ...any)
 	// refer Fatal
 	Fatalf(format string, args ...any)
-	// The WithField method uses [Logger.WithField] to return the [Logger]
+	// WithField method uses [Logger.WithField] to return the [Logger]
 	// associated with the [Context].
 	// It is not allowed to be used after the HandlerFunc ends.
 	//
@@ -210,31 +213,31 @@ type contextBaseConfig struct {
 	MaxMultipartFormMemory int64
 }
 
-// The ResponseWriter interface writes the http response body status, header,
+// ResponseWriter interface writes the http response body status, header,
 // and body.
 //
 // Combines [http.ResponseWriter], [http.Flusher], [http.Hijacker],
 // and [http.Pusher] interfaces.
 type ResponseWriter interface {
-	// The Write method implements the [io.Writer] interface.
+	// Write method implements the [io.Writer] interface.
 	Write(b []byte) (int, error)
-	// The WriteString method implements the [io.StringWriter] interface.
+	// WriteString method implements the [io.StringWriter] interface.
 	WriteString(s string) (int, error)
-	// The WriteHeader method implements writing status code and [http.Header],
+	// WriteHeader method implements writing status code and [http.Header],
 	// which will be written only at the first Write.
 	WriteHeader(code int)
-	// The WriteStatus method records the status code set by [Context] and
+	// WriteStatus method records the status code set by [Context] and
 	// will not be written automatically.
 	WriteStatus(code int)
 
 	Header() http.Header
-	// The Flush method implements the [http.Flusher] interface,
+	// Flush method implements the [http.Flusher] interface,
 	// refreshes and sends the buffer.
 	Flush()
-	// The Hijack method implements the [http.Hijacker] interface,
+	// Hijack method implements the [http.Hijacker] interface,
 	// used for websocket.
 	Hijack() (net.Conn, *bufio.ReadWriter, error) // Only http1
-	// The Push method implements the [http.Pusher] interface.
+	// Push method implements the [http.Pusher] interface.
 	//
 	// support of HTTP/2 Server Push will be disabled by default in
 	// Chrome 106 and other Chromium-based browsers.
@@ -254,7 +257,7 @@ type Cookie struct {
 	Value string
 }
 
-// The NewContextBasePool function creates a [Context] [sync.Pool] from the
+// NewContextBasePool function creates a [Context] [sync.Pool] from the
 // [context.Context].
 //
 // refer: [NewContextBaseFunc].
@@ -270,7 +273,7 @@ func NewContextBasePool(ctx context.Context) *sync.Pool {
 	}
 }
 
-// The NewContextBaseFunc function uses [context.Context] to create a [Context]
+// NewContextBaseFunc function uses [context.Context] to create a [Context]
 // constructor.
 //
 // Load [ContextKeyApp] implement the [Logger] interface from the
@@ -309,7 +312,7 @@ func newContextBaseConfig(ctx context.Context) *contextBaseConfig {
 	}
 }
 
-// The Reset function resets the Context data.
+// Reset function resets the Context data.
 func (ctx *contextBase) Reset(w http.ResponseWriter, r *http.Request) {
 	ctx.context = &ctx.contextValues
 	ctx.ResponseWriter = &ctx.httpResponse
@@ -318,7 +321,7 @@ func (ctx *contextBase) Reset(w http.ResponseWriter, r *http.Request) {
 	ctx.params[1] = ""
 	ctx.contextValues.Reset(r.Context(), ctx.config)
 	ctx.httpResponse.Reset(w)
-	ctx.wantStatus = StatusOK
+	ctx.wantStatus = 0
 	ctx.cookies = ctx.cookies[:0]
 	ctx.bodyContent = nil
 }
@@ -540,7 +543,7 @@ func (ctx *contextBase) SetCookie(cookie *CookieSet) {
 	}
 }
 
-// The SetCookieValue method sets [HeaderSetCookie] and
+// SetCookieValue method sets [HeaderSetCookie] and
 // sets the Max-Age attribute if age is non-zero.
 func (ctx *contextBase) SetCookieValue(name, value string, age int) {
 	ctx.SetCookie(&CookieSet{
@@ -624,23 +627,23 @@ func (ctx *contextBase) FormFiles() map[string][]*multipart.FileHeader {
 }
 
 // Write implements [io.Writer] and writes data to the response.
-func (ctx *contextBase) Write(b []byte) (n int, err error) {
+func (ctx *contextBase) Write(b []byte) (int, error) {
 	ctx.writeStatus()
-	n, err = ctx.ResponseWriter.Write(b)
+	n, err := ctx.ResponseWriter.Write(b)
 	if err != nil {
 		ctx.internalError("Context.Write", err)
 	}
-	return
+	return n, err
 }
 
 // WriteString implements [io.StringWriter] and writes a string to the response.
-func (ctx *contextBase) WriteString(s string) (n int, err error) {
+func (ctx *contextBase) WriteString(s string) (int, error) {
 	ctx.writeStatus()
-	n, err = ctx.ResponseWriter.WriteString(s)
+	n, err := ctx.ResponseWriter.WriteString(s)
 	if err != nil {
 		ctx.internalError("Context.WriteString", err)
 	}
-	return
+	return n, err
 }
 
 func (ctx *contextBase) writeStatus() {
@@ -650,9 +653,9 @@ func (ctx *contextBase) writeStatus() {
 	}
 }
 
-// The WriteStatus method set the response status code.
+// WriteStatus method set the response status code.
 func (ctx *contextBase) WriteStatus(code int) {
-	if ctx.wantStatus > 0 {
+	if ctx.ResponseWriter.Size() == 0 {
 		ctx.wantStatus = code
 		ctx.ResponseWriter.WriteStatus(code)
 	}
@@ -662,9 +665,9 @@ func (ctx *contextBase) WriteHeader(code int) {
 	ctx.ResponseWriter.WriteHeader(code)
 }
 
-// WriteFile 使用HandlerFile处理一个静态文件。
-func (ctx *contextBase) WriteFile(path string) error {
-	file, err := os.Open(path)
+// WriteFile uses [http.ServeContent] to process static file.
+func (ctx *contextBase) WriteFile(name string) error {
+	file, err := os.Open(name)
 	if err != nil {
 		return err
 	}
@@ -704,7 +707,7 @@ func (ctx *contextBase) Render(data any) error {
 	return nil
 }
 
-// The writeFatal method returns error data.
+// writeFatal method returns error data.
 //
 // If the response is not written, return error; and end request processing.
 //
@@ -734,20 +737,20 @@ func (ctx *contextBase) logger() Logger {
 	return ctx.config.Logger
 }
 
-// The loggerDebug method outputs the error caused by the client data.
+// loggerDebug method outputs the error caused by the client data.
 func (ctx *contextBase) loggerDebug(call string, err error) {
 	log := ctx.logger()
 	if log.GetLevel() > LoggerDebug {
 		return
 	}
-	log.WithField(ParamDepth, 2).
-		WithField(ParamCaller, call).
+	log.WithField(FieldDepth, 2).
+		WithField(FieldCaller, call).
 		Error(err)
 }
 
-// The internalError method outputs the error caused by the server data.
+// internalError method outputs the error caused by the server data.
 func (ctx *contextBase) internalError(call string, err error) {
-	ctx.logger().WithField(ParamDepth, 2).
-		WithField(ParamCaller, call).
+	ctx.logger().WithField(FieldDepth, 2).
+		WithField(FieldCaller, call).
 		Error(err)
 }

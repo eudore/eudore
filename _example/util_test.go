@@ -35,6 +35,8 @@ func TestUtilError(t *testing.T) {
 		NewErrorWithWrapped(context.Canceled, "msg"),
 		NewErrorWithStack(context.Canceled, nil),
 		NewErrorWithDepth(context.Canceled, 0),
+		NewErrorWithStack(nil, nil),
+		NewErrorWithDepth(nil, 0),
 		NewRouter(nil).AddHandlerExtend(1, 2, 3),
 	}
 	for _, err := range errs {

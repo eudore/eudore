@@ -4,10 +4,18 @@ Next
 - ClientOption
 - FuncCreator
 - EventHub
-- loggerWriterAsync time.After
-- middleware/useragent
 
-2025年8月31日
+2025年12月31日
+- github			修改action使用go版本和升级lint。
+- Logger			分离Caller为Hook实现，Writer添加关闭文件写入。
+- NewClientHookDigest	优化客户端摘要计算和摘要缓存。
+- NewHandlerFileSystem	优化查看目录的样式。
+- middleware/digestauth	新增摘要认证服务端实现。
+- middleware/look		修复广度优先数据异常，添加omit选项。
+- middleware/skipgroup	新增中间件条件组，请求任意处理通过则忽略其他。
+- middleware/useragent	新增UserAgent解析。
+
+[2025年8月31日](https://github.com/eudore/eudore/tree/05cce5fced8366b1333e386a451e93c5194253af)
 - github	修改action使用go版本和升级lint。
 - HandlerFunc		修改String方法名称使用unsafe读取。
 - Controller		简化控制器方法解析。
@@ -30,7 +38,6 @@ Next
 - HandlerDataRenderNotAcceptable 新增Render响应406。
 - mulitError		更新Unwrap方法实现，返回[]error。
 - middleware/skip	新增在满足条件时跳过下一个处理函数。
-
 
 [2024年11月30日](https://github.com/eudore/eudore/tree/e8c1fd0a0563cdc0e5e40ca732e5f268eed33bc2)
 - App		新增使用Mutex锁全部Values。
@@ -66,7 +73,6 @@ Next
 - middleware/rate		新增RateRequest返回限流状态Header。
 - daemon		修改daemon配置函数参数。
 - \_example		更新并合并减少example内容。
-
 
 [2023年8月31日](https://github.com/eudore/eudore/tree/b68a5f9199b93ce260d14ce0b1f1b30d56ce2359)
 - go.mod	升级go版本依赖从1.9到1.20，增加error embed 泛型等新版本特性支持。
@@ -108,7 +114,6 @@ Next
 - Server	实现ServeConn方法
 - ConvertTo	重构实现
 - example	重写单位测试，不将example转换成测试文件。
-
 
 [2021年10月31日](https://github.com/eudore/eudore/tree/46e8a335592dfd8b498d5f681f2f385204b80a1a)
 - RouterStd			添加others方法，清理deleteRoute参数。

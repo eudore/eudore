@@ -2,8 +2,8 @@ package middleware
 
 import (
 	"context"
+	"crypto/md5"
 	"crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,13 +19,15 @@ import (
 // Middleware is [eudore.HandlerFunc] alias, show handler sort in godoc.
 type Middleware = eudore.HandlerFunc
 
-// The NewAdminFunc function returns the Admin UI interface.
+// NewAdminFunc function returns the Admin UI interface.
 //
 //go:noinline
 func NewAdminFunc() Middleware {
 	size := strconv.Itoa(len(DefaultPageAdmin))
+	etag := fmt.Sprintf("\"%x\"", md5.Sum([]byte(DefaultPageAdmin)))
 	return func(ctx eudore.Context) {
 		ctx.SetHeader(eudore.HeaderContentType, eudore.MimeTextHTMLCharsetUtf8)
+		ctx.SetHeader(eudore.HeaderETag, etag)
 		ctx.SetHeader(eudore.HeaderContentLength, size)
 		http.ServeContent(ctx.Response(), ctx.Request(), "",
 			eudore.DefaultHandlerEmbedTime,
@@ -34,37 +36,7 @@ func NewAdminFunc() Middleware {
 	}
 }
 
-// NewBasicAuthFunc function creates middleware to implement
-// Basic auth authentication.
-//
-// names is a map that stores user passwords.
-//
-// Note: BasicAuth needs to be placed after [NewCORSFunc].
-//
-// RFC 7617: The 'Basic' HTTP Authentication Scheme.
-func NewBasicAuthFunc(names map[string]string) Middleware {
-	checks := make(map[string]string, len(names))
-	for name, pass := range names {
-		// save BasicAuth data
-		auth := base64.StdEncoding.EncodeToString([]byte(name + ":" + pass))
-		checks[valueBasicAuth+auth] = name
-	}
-	return func(ctx eudore.Context) {
-		auth := ctx.GetHeader(eudore.HeaderAuthorization)
-		if len(auth) > 5 && auth[:6] == valueBasicAuth {
-			name, ok := checks[auth]
-			if ok {
-				ctx.SetParam(eudore.ParamBasicAuth, name)
-				return
-			}
-		}
-		ctx.SetHeader(eudore.HeaderWWWAuthenticate, "Basic")
-		writePage(ctx, eudore.StatusUnauthorized, DefaultPageBasicAuth, "")
-		ctx.End()
-	}
-}
-
-// The NewBodyLimitFunc function creates middleware to implement
+// NewBodyLimitFunc function creates middleware to implement
 // that limits the request body length.
 //
 // If the body length exceeds the limit,
@@ -101,7 +73,7 @@ func NewBodyLimitFunc(size int64) Middleware {
 	}
 }
 
-// The NewBodySizeFunc function creates the middleware implement
+// NewBodySizeFunc function creates the middleware implement
 // update the request Body Size.
 //
 // If ctx.Request().ContentLength == -1, update ContentLength on Close.
@@ -125,7 +97,7 @@ type readerLength struct {
 }
 
 func (r *readerLength) release(ctx eudore.Context) {
-	r.Close()
+	_ = r.Close()
 	ctx.Request().ContentLength = r.Length
 }
 
@@ -146,7 +118,7 @@ type csrf struct {
 	Cookie     http.Cookie
 }
 
-// The NewCSRFFunc function creates middleware to implement CSRF double
+// NewCSRFFunc function creates middleware to implement CSRF double
 // verification.
 //
 // key specifies the GetQuery parameter for get the CSRF value.
@@ -183,7 +155,7 @@ func NewCSRFFunc(key string, options ...Option) Middleware {
 	}
 }
 
-// The NewHealthCheckFunc function creates [eudore.HandlerFunc] to check
+// NewHealthCheckFunc function creates [eudore.HandlerFunc] to check
 // metadata health.
 //
 // Get metadata for [eudore.ContextKeyAppValues] from [context.Context],
@@ -206,7 +178,7 @@ func NewHealthCheckFunc(app context.Context) Middleware {
 	}
 }
 
-// The NewMetadataFunc function creates [eudore.HandlerFunc] to gets all
+// NewMetadataFunc function creates [eudore.HandlerFunc] to gets all
 // metadata.
 //
 // Get metadata for [eudore.ContextKeyAppValues] from [context.Context].
@@ -277,8 +249,7 @@ func handlerHealthValue(i any) bool {
 	}
 }
 
-// The NewHeaderAddFunc function creates middleware to implement
-// add response [http.Header].
+// NewHeaderAddFunc function creates middleware to implement add response [http.Header].
 //
 //go:noinline
 func NewHeaderAddFunc(h http.Header) Middleware {
@@ -290,7 +261,7 @@ func NewHeaderAddFunc(h http.Header) Middleware {
 	}
 }
 
-// The NewHeaderSecureFunc function creates middleware to implement
+// NewHeaderSecureFunc function creates middleware to implement
 // add a response [http.Header],
 // and additionally appends a basic security [http.Header].
 //
@@ -308,7 +279,7 @@ func NewHeaderSecureFunc(h http.Header) Middleware {
 	return NewHeaderAddFunc(header)
 }
 
-// The NewHeaderDeleteFunc function creates middleware to implement
+// NewHeaderDeleteFunc function creates middleware to implement
 // delete request [http.Header].
 // If the IP is not in the sets, it delete the specified header to
 // prevent forgery of internal headers.
@@ -365,7 +336,7 @@ type stackError interface {
 	Stack() []string
 }
 
-// The NewRecoveryFunc function creates middleware to implement recover errors
+// NewRecoveryFunc function creates middleware to implement recover errors
 // and return 500 and a detailed message.
 //
 //go:noinline
@@ -411,9 +382,8 @@ func NewRecoveryFunc() Middleware {
 	}
 }
 
-// The NewRequestIDFunc function creates middleware to implement
-// setting [eudore.HeaderXRequestID]
-// and appends x_request_id to the log field.
+// NewRequestIDFunc function creates middleware to implement setting
+// [eudore.HeaderXRequestID] and appends x_request_id to the log field.
 //
 // Timestamp and random number are used by default.
 //
@@ -440,7 +410,7 @@ func NewRequestIDFunc(fn func(eudore.Context) string) Middleware {
 	}
 }
 
-// The NewRoutesFunc function creates middleware to implement
+// NewRoutesFunc function creates middleware to implement
 // uses Routes to create [NewRouterFunc] middleware.
 func NewRoutesFunc(routes map[string]any) Middleware {
 	router := eudore.NewRouterCoreMux()
@@ -458,7 +428,7 @@ func NewRoutesFunc(routes map[string]any) Middleware {
 	return NewRouterFunc(router)
 }
 
-// The NewRouterFunc function creates middleware to implement execution Router.
+// NewRouterFunc function creates middleware to implement execution Router.
 //
 // It can be used as a front [eudore.Router] of the [App.Router],
 // or as a sub [eudore.Router] of the [App.Router].
@@ -499,7 +469,7 @@ func NewRouterFunc(router eudore.RouterCore) Middleware {
 	}
 }
 
-// The NewServerTimingFunc function creates middleware to implement writing
+// NewServerTimingFunc function creates middleware to implement writing
 // [eudore.HeaderServerTiming].
 //
 // Record the time from the start to the first message written.
@@ -547,7 +517,69 @@ func (w *responseWriterTiming) writeTiming() {
 	}
 }
 
-// The NewSkipNextFunc function creates middleware implement skips the next
+// NewSkipGroupFunc function creates middleware to implement attempts to check
+// multiple [eudore.HandlerFunc].
+//
+// It executes the next count [eudore.HandlerFunc]. If any handler completes
+// with a 200 OK status, it is successful and skips the remaining check handlers.
+//
+// Note: If all checks fail, the response content of the last check will be returned.
+// [NewBasicAuthFunc] and [NewDigestAuthFunc] should be placed at the end of the
+// check sequence, as their next request state may depend on the current header.
+//
+// Built-in checks for the following middleware:
+//
+//	NewBasicAuthFunc: User password authentication
+//	NewBearerAuthFunc: User token authentication
+//	NewDigestAuthFunc: User password authentication
+//	NewBlackListFunc: IP address blocking
+//	NewCircuitBreakerFunc: API status and resilience
+//	NewRateRequestFunc: Request rate limiting
+//	NewRefererCheckFunc: Client Referer header validation
+//	NewSecurityPolicysFunc: User permission
+//
+//go:noinline
+func NewSkipGroupFunc(count int) Middleware {
+	// restoring the ResponseWriter and writing the buffered and status
+	release := func(ctx eudore.Context, dst eudore.ResponseWriter, src *responseWriterTimeout) {
+		ctx.SetResponse(dst)
+		headerCopy(dst.Header(), src.h)
+		if src.c != eudore.StatusOK {
+			ctx.WriteHeader(src.c)
+		}
+		if len(src.buf) > 0 {
+			_, _ = ctx.Write(src.buf)
+		}
+	}
+	return func(ctx eudore.Context) {
+		index, hs := ctx.GetHandlers()
+		tmp := &responseWriterTimeout{h: http.Header{}, p: ctx.Response()}
+		w := ctx.Response()
+		defer release(ctx, w, tmp)
+
+		ctx.SetResponse(tmp)
+		for i := 1; i <= count; i++ {
+			// reset Temporary Response Buffer for the next check
+			tmp.c = eudore.StatusOK
+			if len(tmp.h) != len(w.Header()) {
+				tmp.h = make(http.Header)
+				headerCopy(tmp.h, w.Header())
+			}
+			if len(tmp.buf) > 0 {
+				tmp.buf = tmp.buf[0:0]
+			}
+
+			// execute the check handler
+			hs[index+i](ctx)
+			if tmp.Status() == eudore.StatusOK {
+				ctx.SetHandlers(index+count, hs)
+				break
+			}
+		}
+	}
+}
+
+// NewSkipNextFunc function creates middleware implement skips the next
 // processing function when the specified key matches.
 //
 // You can customize the condition matching and adjust the [Context.SetHandlers].

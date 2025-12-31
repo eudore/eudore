@@ -56,7 +56,7 @@ import (
 	"github.com/eudore/eudore"
 )
 
-// The NewParseCommand function creates the [eudore.ConfigParseFunc] that
+// NewParseCommand function creates the [eudore.ConfigParseFunc] that
 // executes the startup Command.
 //
 // If the command is not [CommandStart] or [CommandDaemon],
@@ -91,7 +91,7 @@ func NewParseCommand() eudore.ConfigParseFunc {
 	}
 }
 
-// The NewParseSignal function creates [eudore.ConfigParseFunc] for initializing
+// NewParseSignal function creates [eudore.ConfigParseFunc] for initializing
 // signal management.
 //
 // Default registered signals: [syscall.SIGINT]
@@ -140,7 +140,7 @@ func NewParseSignal() eudore.ConfigParseFunc {
 	}
 }
 
-// The AppDaemon function directly starts the daemon process.
+// AppDaemon function directly starts the daemon process.
 //
 // After the daemon process is started, it may exit with an error.
 func AppDaemon(envs ...string) {
@@ -148,10 +148,9 @@ func AppDaemon(envs ...string) {
 		return
 	}
 
-	cmd := exec.Command(os.Args[0], os.Args[1:]...)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d",
-		eudore.EnvEudoreDaemonEnable, 1,
-	))
+	// #nosec G204
+	cmd := exec.CommandContext(context.Background(), os.Args[0], os.Args[1:]...)
+	cmd.Env = append(os.Environ(), eudore.EnvEudoreDaemonEnable+"=1")
 	cmd.Env = append(cmd.Env, envs...)
 	cmd.Stdout = os.Stdout
 	_ = cmd.Start()

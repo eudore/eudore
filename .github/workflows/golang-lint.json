@@ -1,156 +1,133 @@
 {
-  "formatters": {
-    "enable": [
-      "gci",
-      "gofmt",
-      "gofumpt",
-      "goimports",
-      "swaggo"
-    ],
-    "exclusions": {
-      "generated": "lax",
-      "paths": [
-        "third_party$",
-        "builtin$",
-        "examples$"
-      ]
-    }
-  },
-  "linters": {
-    "default": "none",
-    "enable": [
-      "asasalint",
-      "asciicheck",
-      "bidichk",
-      "bodyclose",
-      "canonicalheader",
-      "cyclop",
-      "decorder",
-      "depguard",
-      "dogsled",
-      "dupl",
-      "dupword",
-      "durationcheck",
-      "errcheck",
-      "errchkjson",
-      "errname",
-      "errorlint",
-      "exptostd",
-      "fatcontext",
-      "forbidigo",
-      "funlen",
-      "ginkgolinter",
-      "gocheckcompilerdirectives",
-      "gochecknoinits",
-      "gochecksumtype",
-      "gocognit",
-      "goconst",
-      "gocritic",
-      "gocyclo",
-      "godot",
-      "godox",
-      "goheader",
-      "gomoddirectives",
-      "gomodguard",
-      "goprintffuncname",
-      "gosec",
-      "gosmopolitan",
-      "govet",
-      "grouper",
-      "iface",
-      "importas",
-      "inamedparam",
-      "ineffassign",
-      "loggercheck",
-      "maintidx",
-      "makezero",
-      "mirror",
-      "misspell",
-      "musttag",
-      "nakedret",
-      "nestif",
-      "nilerr",
-      "nilnesserr",
-      "nilnil",
-      "noctx",
-      "noinlineerr",
-      "nolintlint",
-      "nosprintfhostport",
-      "paralleltest",
-      "perfsprint",
-      "prealloc",
-      "predeclared",
-      "promlinter",
-      "protogetter",
-      "reassign",
-      "revive",
-      "rowserrcheck",
-      "sloglint",
-      "spancheck",
-      "sqlclosecheck",
-      "staticcheck",
-      "tagliatelle",
-      "testableexamples",
-      "testifylint",
-      "testpackage",
-      "thelper",
-      "tparallel",
-      "unconvert",
-      "unparam",
-      "unused",
-      "usestdlibvars",
-      "usetesting",
-      "wastedassign",
-      "whitespace",
-      "zerologlint"
-    ],
-    "exclusions": {
-      "generated": "lax",
-      "paths": [
-        "daemon/.*.go",
-        "funccreator.go",
-        "funcdefine.go",
-        "third_party$",
-        "builtin$",
-        "examples$"
-      ],
-      "presets": [
-        "comments",
-        "common-false-positives",
-        "legacy",
-        "std-error-handling"
-      ]
-    },
-    "settings": {
-      "cyclop": {
-        "max-complexity": 15
-      },
-      "gocyclo": {
-        "min-complexity": 15
-      },
-      "funlen": {
-        "statements": 50
-      },
-      "depguard": {
-        "rules": {
-          "main": {
-            "allow": [
-              "$gostd",
-              "github.com/eudore/eudore"
-            ]
-          }
-        }
-      },
-      "gosec": {
-        "excludes": ["G115", "G401", "G501", "G505"]
-      },
-      "staticcheck": {
-        "checks": ["all", "-QF1008"]
-      }
-    }
-  },
-  "issues": {
-    "max-same-issues": 10
-  },
-  "version": "2"
+	"formatters": {
+		"enable": [
+			"gci",
+			"gofmt",
+			"gofumpt",
+			"goimports",
+			"swaggo"
+		]
+	},
+	"linters": {
+		"default": "none",
+		"enable": [
+			"asasalint",
+			"asciicheck",
+			"bidichk",
+			"bodyclose",
+			"canonicalheader",
+			"cyclop",
+			"decorder",
+			"depguard",
+			"dogsled",
+			"dupl",
+			"dupword",
+			"durationcheck",
+			"errcheck",
+			"errchkjson",
+			"errname",
+			"errorlint",
+			"exptostd",
+			"fatcontext",
+			"forbidigo",
+			"funlen",
+			"ginkgolinter",
+			"gocheckcompilerdirectives",
+			"gochecknoinits",
+			"gochecksumtype",
+			"gocognit",
+			"goconst",
+			"gocritic",
+			"gocyclo",
+			"godot",
+			"godox",
+			"goheader",
+			"gomoddirectives",
+			"gomodguard",
+			"goprintffuncname",
+			"gosec",
+			"gosmopolitan",
+			"govet",
+			"grouper",
+			"iface",
+			"importas",
+			"inamedparam",
+			"ineffassign",
+			"iotamixing",
+			"loggercheck",
+			"maintidx",
+			"makezero",
+			"mirror",
+			"misspell",
+			"modernize",
+			"musttag",
+			"nakedret",
+			"nestif",
+			"nilerr",
+			"nilnesserr",
+			"nilnil",
+			"noctx",
+			"noinlineerr",
+			"nolintlint",
+			"nonamedreturns",
+			"nosprintfhostport",
+			"paralleltest",
+			"perfsprint",
+			"prealloc",
+			"predeclared",
+			"promlinter",
+			"protogetter",
+			"reassign",
+			"recvcheck",
+			"revive",
+			"rowserrcheck",
+			"sloglint",
+			"spancheck",
+			"sqlclosecheck",
+			"staticcheck",
+			"tagliatelle",
+			"testableexamples",
+			"testifylint",
+			"testpackage",
+			"thelper",
+			"tparallel",
+			"unconvert",
+			"unparam",
+			"unqueryvet",
+			"unused",
+			"usestdlibvars",
+			"usetesting",
+			"wastedassign",
+			"whitespace",
+			"zerologlint"
+		],
+		"exclusions": {
+			"presets": [
+				"comments",
+				"common-false-positives",
+				"legacy",
+				"std-error-handling"
+			]
+		},
+		"settings": {
+			"cyclop": {"max-complexity": 15},
+			"gocyclo": {"min-complexity": 15},
+			"funlen": {"statements": 50},
+			"gosec": {"excludes": ["G103", "G115", "G401", "G501", "G505"]},
+			"recvcheck": {"exclusions": ["*.String", "*.MarshalText"]},
+			"staticcheck": {"checks": ["all", "-QF1008"]},
+			"depguard": {
+				"rules": {
+					"main": {
+						"allow": ["$gostd", "github.com/eudore/eudore"]
+					}
+				}
+			}
+		}
+	},
+	"issues": {
+		"max-issues-per-linter": 0,
+		"max-same-issues": 0
+	},
+	"version": "2"
 }

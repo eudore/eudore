@@ -10,11 +10,11 @@ import (
 	"unsafe"
 )
 
-// The GetAnyByPath function gets the specified attribute of the object.
+// GetAnyByPath function gets the specified attribute of the object.
 //
-// The path will be separated by '.' and then searched for in sequence.
+// path will be separated by '.' and then searched for in sequence.
 //
-// The structure uses the tag 'alias' to match the field by default.
+// structure uses the tag 'alias' to match the field by default.
 func GetAnyByPath(data any, key string, tags []string) (any, error) {
 	v := &value{tags: tags}
 	err := v.Look(data, strings.Split(key, ".")...)
@@ -24,7 +24,7 @@ func GetAnyByPath(data any, key string, tags []string) (any, error) {
 	return v.value.Interface(), nil
 }
 
-// The GetAnyByPath function gets the specified attribute of the object and
+// GetValueByPath function gets the specified attribute of the object and
 // returns the [reflect.Value] type.
 //
 // refer: [GetAnyByPath].
@@ -37,7 +37,7 @@ func GetValueByPath(data any, key string, tags []string) (reflect.Value, error) 
 	return v.value, nil
 }
 
-// The GetAnyByPath function sets the specified attribute of the object.
+// SetAnyByPath function sets the specified attribute of the object.
 //
 // If the value type is string, it will be converted according to the dta type.
 //
@@ -267,19 +267,21 @@ func (v *value) lookSlice(val reflect.Value, path []string) error {
 	return nil
 }
 
-// The function obtains the full type and value of the dereference.
-func getIndirectAllValue(iValue reflect.Value) (types []reflect.Type, values []reflect.Value) {
+// getIndirectAllValue function obtains the full type and value of the dereference.
+func getIndirectAllValue(iValue reflect.Value) ([]reflect.Type, []reflect.Value) {
+	var types []reflect.Type
+	var values []reflect.Value
 	for {
 		types = append(types, iValue.Type())
 		values = append(values, iValue)
 		switch iValue.Kind() {
 		case reflect.Ptr, reflect.Interface:
 			if iValue.IsNil() {
-				return
+				return types, values
 			}
 			iValue = iValue.Elem()
 		default:
-			return
+			return types, values
 		}
 	}
 }
@@ -480,22 +482,25 @@ func setFloatField(field reflect.Value, str string) error {
 	return err
 }
 
-// The TimeParse method parses the time format supported by the built-in time format.
-func setTimeField(field reflect.Value, str string) (err error) {
-	var t time.Time
+// setTimeField parses the time format supported by the built-in time format.
+func setTimeField(field reflect.Value, str string) error {
+	var errl error
 	for i, f := range DefaultValueParseTimeFormats {
 		if DefaultValueParseTimeFixed[i] && len(str) != len(f) {
 			continue
 		}
-		t, err = time.ParseInLocation(f, str, DefaultValueTimeLocation)
-		if err == nil {
-			if field.Type() != typeTimeTime {
-				field.Set(reflect.ValueOf(t).Convert(field.Type()))
-			} else {
-				field.Set(reflect.ValueOf(t))
-			}
-			return
+		t, err := time.ParseInLocation(f, str, DefaultValueTimeLocation)
+		if err != nil {
+			errl = err
+			continue
 		}
+
+		if field.Type() != typeTimeTime {
+			field.Set(reflect.ValueOf(t).Convert(field.Type()))
+		} else {
+			field.Set(reflect.ValueOf(t))
+		}
+		return nil
 	}
-	return
+	return errl
 }

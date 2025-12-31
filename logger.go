@@ -3,7 +3,6 @@ package eudore
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,13 +22,13 @@ const (
 
 // Logger defines the Logger interface to implement structured logging.
 //
-// The default implementation uses [NewLogger].
+// default implementation uses [NewLogger].
 type Logger interface {
 	Debug(args ...any)
 	Info(args ...any)
 	Warning(args ...any)
 	Error(args ...any)
-	// The Fatal method outputs the [LoggerFatal] log,
+	// Fatal method outputs the [LoggerFatal] log,
 	// but does not stop the App.
 	//
 	// If [NewLoggerHookFatal] is enabled,
@@ -41,24 +40,23 @@ type Logger interface {
 	Errorf(format string, args ...any)
 	Fatalf(format string, args ...any)
 
-	// The WithField method sets a logging field.
+	// WithField method sets a logging field.
 	//
 	// If the key is "logger" and "depth",
 	// modify the Logger data but do not save the field.
 	WithField(key string, val any) Logger
-	// The WithFields method sets multiple properties,
-	// but key will not modify Logger data.
+	// WithFields method sets multiple properties, but key will not modify Logger data.
 	WithFields(keys []string, vals []any) Logger
 
-	// The GetLevel method obtains the current Logger output level
-	// and determines the level to cancel log generation.
+	// GetLevel method obtains the current Logger output level and determines
+	// the level to cancel log generation.
 	GetLevel() LoggerLevel
-	// The SetLevel method sets the current Logger output level.
+	// SetLevel method sets the current Logger output level.
 	SetLevel(level LoggerLevel)
 }
 
 // LoggerLevel defines the [Logger] level.
-type LoggerLevel int
+type LoggerLevel int32
 
 // loggerStd defines the default Logger implementation.
 type loggerStd struct {
@@ -66,12 +64,12 @@ type loggerStd struct {
 	Handlers []LoggerHandler
 	Pool     *sync.Pool
 	Logger   bool
-	Depth    int32
 }
 
 // LoggerEntry defines logger entry data and buffer.
 type LoggerEntry struct {
 	Level   LoggerLevel
+	Depth   int32
 	Time    time.Time
 	Message string
 	Keys    []string
@@ -81,11 +79,11 @@ type LoggerEntry struct {
 
 // LoggerHandler defines how to process [LoggerEntry].
 type LoggerHandler interface {
-	// The HandlerPriority method returns the Handler processing order,
+	// HandlerPriority method returns the Handler processing order,
 	// with smaller values taking priority.
 	HandlerPriority() int
-	// The HandlerEntry method processes the Entry data
-	// and ends subsequent processing after setting Level=LoggerDiscard.
+	// HandlerEntry method processes the Entry data and ends subsequent
+	// processing after setting Level=LoggerDiscard.
 	HandlerEntry(entry *LoggerEntry)
 }
 
@@ -114,16 +112,16 @@ type LoggerConfig struct {
 	// Custom LoggerHandler
 	Handlers     []LoggerHandler `alias:"handlers" json:"-" yaml:"-"`
 	Level        LoggerLevel     `alias:"level" json:"level" yaml:"level"`
-	AsyncSize    int             `alias:"asyncSize" json:"asyncSize" yaml:"asyncSize"`
-	AsyncTimeout time.Duration   `alias:"asyncTimeout" json:"asyncTimeout" yaml:"asyncTimeout"`
-	Caller       bool            `alias:"caller" json:"caller" yaml:"caller"`
 	Stdout       bool            `alias:"stdout" json:"stdout" yaml:"stdout"`
 	StdColor     bool            `alias:"stdColor" json:"stdColor" yaml:"stdColor"`
+	Caller       bool            `alias:"caller" json:"caller" yaml:"caller"`
 	Formatter    string          `alias:"formater" json:"formater" yaml:"formater"`
 	TimeFormat   string          `alias:"timeFormat" json:"timeFormat" yaml:"timeFormat"`
 	HookFilter   [][]string      `alias:"hookFilter" json:"hookFilter" yaml:"hookFilter"`
 	HookFatal    bool            `alias:"hookFatal" json:"hookFatal" yaml:"hookFatal"`
 	HookMeta     bool            `alias:"hookMeta" json:"hookMeta" yaml:"hookMeta"`
+	AsyncSize    int             `alias:"asyncSize" json:"asyncSize" yaml:"asyncSize"`
+	AsyncTimeout time.Duration   `alias:"asyncTimeout" json:"asyncTimeout" yaml:"asyncTimeout"`
 	Path         string          `alias:"path" json:"path" yaml:"path"`
 	Link         string          `alias:"link" json:"link" yaml:"link"`
 	MaxSize      uint64          `alias:"maxSize" json:"maxSize" yaml:"maxSize"`
@@ -131,6 +129,7 @@ type LoggerConfig struct {
 	MaxCount     int             `alias:"maxCount" json:"maxCount" yaml:"maxCount"`
 }
 
+// MetadataLogger records the coun and size of writes made by the [Logger].
 type MetadataLogger struct {
 	Health     bool      `json:"health" protobuf:"1,name=health" yaml:"health"`
 	Name       string    `json:"name" protobuf:"2,name=name" yaml:"name"`
@@ -139,7 +138,7 @@ type MetadataLogger struct {
 	SizeFormat string    `json:"sizeFormat" protobuf:"5,name=sizeFormat" yaml:"sizeFormat"`
 }
 
-// The NewLogger function creates default [Logger] using [LoggerConfig].
+// NewLogger function creates default [Logger] using [LoggerConfig].
 func NewLogger(config *LoggerConfig) Logger {
 	if config == nil {
 		config = &LoggerConfig{
@@ -159,6 +158,7 @@ func NewLogger(config *LoggerConfig) Logger {
 			Pool:     pool,
 			LoggerEntry: LoggerEntry{
 				Level:  config.Level,
+				Depth:  0x100,
 				Keys:   make([]string, 0, size),
 				Vals:   make([]any, 0, size),
 				Buffer: make([]byte, 0, buff),
@@ -168,11 +168,6 @@ func NewLogger(config *LoggerConfig) Logger {
 
 	log := pool.New().(*loggerStd)
 	log.Logger = true
-	log.Depth = 4
-	if config.Caller {
-		log.Depth |= 0x100
-	}
-
 	return log
 }
 
@@ -211,6 +206,9 @@ func (c *LoggerConfig) getFormatter() []LoggerHandler {
 func (c *LoggerConfig) getHooks() []LoggerHandler {
 	// hook
 	var hooks []LoggerHandler
+	if c.Caller {
+		hooks = append(hooks, NewLoggerHookCaller())
+	}
 	if len(c.HookFilter) > 0 {
 		hooks = append(hooks, NewLoggerHookFilter(c.HookFilter))
 	}
@@ -261,7 +259,7 @@ func (c *LoggerConfig) getWriters() []LoggerHandler {
 	return writers
 }
 
-// The NewLoggerInit function creates an initial log processor that only
+// NewLoggerInit function creates an initial log processor that only
 // records logs.
 //
 // Used before [LoggerConfig] is parsed.
@@ -289,7 +287,7 @@ func NewLoggerNull() Logger {
 	})
 }
 
-// The NewLoggerWithContext method gets the Logger from the
+// NewLoggerWithContext method gets the Logger from the
 // [context.Context] [ContextKeyLogger].
 //
 // If the Logger cannot be get, the [DefaultLoggerNull] object is returned.
@@ -301,7 +299,7 @@ func NewLoggerWithContext(ctx context.Context) Logger {
 	return DefaultLoggerNull
 }
 
-// The Mount method causes LoggerStd to mount the [context.Context],
+// Mount method causes LoggerStd to mount the [context.Context],
 // which is passed to [LoggerHandler].
 func (log *loggerStd) Mount(ctx context.Context) {
 	for i := range log.Handlers {
@@ -309,7 +307,7 @@ func (log *loggerStd) Mount(ctx context.Context) {
 	}
 }
 
-// The Unmount method causes LoggerStd to unload the [context.Context],
+// Unmount method causes LoggerStd to unload the [context.Context],
 // which is passed to [LoggerHandler].
 func (log *loggerStd) Unmount(ctx context.Context) {
 	for i := len(log.Handlers) - 1; i > -1; i-- {
@@ -317,7 +315,7 @@ func (log *loggerStd) Unmount(ctx context.Context) {
 	}
 }
 
-// The Metadata method find the first anyMetadata object from [Handlers] and
+// Metadata method find the first anyMetadata object from [Handlers] and
 // returns meta.
 func (log *loggerStd) Metadata() any {
 	for i := range log.Handlers {
@@ -377,8 +375,7 @@ func (log *loggerStd) Fatalf(format string, args ...any) {
 	log.formatf(LoggerFatal, format, args...)
 }
 
-// The WithFields method sets multiple properties, but does not set the
-// Field property.
+// WithFields method sets multiple properties, but does not set the Field property.
 func (log *loggerStd) WithFields(key []string, value []any) Logger {
 	if log.Logger {
 		log = log.getLogger()
@@ -388,7 +385,7 @@ func (log *loggerStd) WithFields(key []string, value []any) Logger {
 	return log
 }
 
-// The WithField method sets a logging field.
+// WithField method sets a logging field.
 //
 // If the key is "logger" and the value is bool(true), LoggerEntry will be set
 // to Logger.
@@ -408,15 +405,15 @@ func (log *loggerStd) WithField(key string, value any) Logger {
 		log = log.getLogger()
 	}
 	switch key {
-	case "logger":
+	case FieldLogger:
 		val, ok := value.(bool)
 		if ok && val {
 			log.Logger = true
 			return log
 		}
-	case ParamDepth:
+	case FieldDepth:
 		return log.withFieldDepth(key, value)
-	case "time":
+	case FieldTime:
 		val, ok := value.(time.Time)
 		if ok {
 			log.Time = val
@@ -428,7 +425,7 @@ func (log *loggerStd) WithField(key string, value any) Logger {
 	return log
 }
 
-// The withFieldDepth method handles the withDepth attribute,
+// withFieldDepth method handles the withDepth attribute,
 // can inline with cost 53.
 func (log *loggerStd) withFieldDepth(key string, value any) Logger {
 	switch val := value.(type) {
@@ -436,11 +433,11 @@ func (log *loggerStd) withFieldDepth(key string, value any) Logger {
 		log.Depth += int32(val)
 	case string:
 		switch val {
-		case "enable":
+		case DefaultLoggerDepthKindEnable:
 			log.Depth |= 0x100
-		case "stack":
+		case DefaultLoggerDepthKindStack:
 			log.Depth |= 0x200
-		case "disable":
+		case DefaultLoggerDepthKindDisable:
 			log.Depth &^= 0x300
 		}
 	default:
@@ -452,13 +449,13 @@ func (log *loggerStd) withFieldDepth(key string, value any) Logger {
 
 func (log *loggerStd) getLogger() *loggerStd {
 	entry := log.Pool.Get().(*loggerStd)
+	entry.Level = log.Level
+	entry.Depth = log.Depth
 	entry.Time = time.Now()
 	entry.Message = ""
 	entry.Keys = entry.Keys[:0]
 	entry.Vals = entry.Vals[:0]
 	entry.Buffer = entry.Buffer[:0]
-	entry.Level = log.Level
-	entry.Depth = log.Depth
 	if len(log.Keys) > 0 {
 		entry.Keys = append(entry.Keys, log.Keys...)
 		entry.Vals = append(entry.Vals, log.Vals...)
@@ -494,33 +491,13 @@ func (log *loggerStd) formatf(level LoggerLevel, format string, args ...any) {
 func (log *loggerStd) handler() {
 	if len(log.Keys) > len(log.Vals) {
 		log.Keys = log.Keys[0:len(log.Vals)]
-		log.Keys = append(log.Keys, "error")
+		log.Keys = append(log.Keys, FieldError)
 		log.Vals = append(log.Vals,
 			"Logger: The number of field keys and values are not equal",
 		)
 	}
 
 	if len(log.Message) > 0 || len(log.Keys) > 0 {
-		switch log.Depth >> 8 {
-		case 1:
-			fname, file := GetCallerFuncFile(int(log.Depth) & 0xff)
-			if fname != "" {
-				log.Keys = append(log.Keys, "func")
-				log.Vals = append(log.Vals, fname)
-			}
-			if file != "" {
-				log.Keys = append(log.Keys, "file")
-				log.Vals = append(log.Vals, file)
-			}
-		case 2, 3:
-			if sliceIndex(log.Keys, "stack") == -1 {
-				log.Keys = append(log.Keys, "stack")
-				log.Vals = append(log.Vals,
-					GetCallerStacks(int(log.Depth&0xff)+1),
-				)
-			}
-		}
-
 		for _, h := range log.Handlers {
 			if log.Level < LoggerDiscard {
 				h.HandlerEntry(&log.LoggerEntry)
@@ -529,17 +506,17 @@ func (log *loggerStd) handler() {
 	}
 }
 
-// The String method implements the [fmt.Stringer] interface and formats level.
+// String method implements the [fmt.Stringer] interface and formats level.
 func (l LoggerLevel) String() string {
 	return DefaultLoggerLevelStrings[l]
 }
 
-// The MarshalText method implements [the encoding.TextMarshaler] interface.
+// MarshalText method implements [the encoding.TextMarshaler] interface.
 func (l LoggerLevel) MarshalText() ([]byte, error) {
 	return []byte(l.String()), nil
 }
 
-// The UnmarshalText method implements the [encoding.TextUnmarshaler] interface.
+// UnmarshalText method implements the [encoding.TextUnmarshaler] interface.
 func (l *LoggerLevel) UnmarshalText(text []byte) error {
 	str := strings.ToUpper(string(text))
 	for i, s := range DefaultLoggerLevelStrings {
@@ -554,64 +531,4 @@ func (l *LoggerLevel) UnmarshalText(text []byte) error {
 		return nil
 	}
 	return fmt.Errorf(ErrLoggerLevelUnmarshalText, text)
-}
-
-var works = [...]string{"/pkg/mod/", "/src/"}
-
-func trimFileName(name string) string {
-	for _, w := range works {
-		pos := strings.Index(name, w)
-		if pos != -1 {
-			name = name[pos+len(w):]
-		}
-	}
-	return name
-}
-
-func trimFuncName(name string) string {
-	pos := strings.LastIndexByte(name, '/')
-	if pos != -1 {
-		name = name[pos+1:]
-	}
-	return name
-}
-
-// The GetCallerFuncFile function obtains the called file location and
-// function name.
-//
-// func name does not retain the package path, file name ignores the
-// $GOPATH path.
-func GetCallerFuncFile(depth int) (string, string) {
-	var pcs [1]uintptr
-	runtime.Callers(depth+1, pcs[:])
-	fs := runtime.CallersFrames(pcs[:])
-	f, _ := fs.Next()
-
-	return trimFuncName(f.Function),
-		trimFileName(f.File + ":" + strconv.Itoa(f.Line))
-}
-
-// The GetCallerStacks function returns the caller stack information.
-//
-// func name does not retain the package path, file name ignores the
-// $GOPATH path.
-func GetCallerStacks(depth int) []string {
-	pc := make([]uintptr, DefaultLoggerDepthMaxStack)
-	n := runtime.Callers(depth, pc)
-	if n == 0 {
-		return nil
-	}
-
-	stack := make([]string, 0, n)
-	fs := runtime.CallersFrames(pc[:n])
-	f, more := fs.Next()
-	for more {
-		stack = append(stack,
-			trimFileName(f.File+":"+strconv.Itoa(f.Line))+
-				" "+
-				trimFuncName(f.Function),
-		)
-		f, more = fs.Next()
-	}
-	return stack
 }

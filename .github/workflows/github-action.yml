@@ -8,12 +8,12 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: false
-      - uses: golangci/golangci-lint-action@v8
+      - uses: golangci/golangci-lint-action@v9
         continue-on-error: true
         with:
           args: --verbose --config .github/workflows/golang-lint.json
@@ -21,48 +21,28 @@ jobs:
     strategy:
       max-parallel: 16
       matrix:
-        os: [macos, ubuntu]
+        os: [macos, ubuntu, windows]
         go: ["1.20", "1.22", "1.24"]
-        include:
-          - os: macos
-            gopath: /Users/runner/go
-            gocache: /Users/runner/Library/Caches/go-build
-          - os: ubuntu
-            gopath: /home/runner/go
-            gocache: /home/runner/.cache/go-build
-    name: ${{ matrix.os }}@Go${{ matrix.go }}
+    name: ${{ matrix.os }} @ Go ${{ matrix.go }}
     runs-on: ${{ matrix.os }}-latest
     env:
-      GO111MODULE: ${{ matrix.go < '1.22' && 'off' || 'on' }}
-      GOPATH: ${{ matrix.gopath }}:${{ github.workspace }}
-      GOARCH: amd64
+      GO111MODULE: on
       CGO_ENABLED: 1
-      WORKDIR: src/github.com/eudore/eudore/
       PACKAGES: github.com/eudore/eudore,github.com/eudore/eudore/middleware
-    defaults:
-      run:
-        working-directory: ${{ env.WORKDIR }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          path: ${{ env.WORKDIR }}
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
-          cache: false
-      - uses: actions/cache@v4
-        with:
-          key: ${{ runner.os }}-go${{ matrix.go }}-${{ hashFiles('src/github.com/eudore/eudore/go.mod') }}
-          restore-keys: ${{ runner.os }}-go-
-          path: |
-            ${{ matrix.gopath }}
-            ${{ matrix.gocache }}
+          cache-dependency-path: go.mod
+      - name: Run move
+        run: cp _example/*_test.go .
       - name: Run Go Get
-        run: mv _example/*_test.go . && for pkg in $(go list -json *_test.go | jq -r '.XTestImports[]' | grep -E "github.com|golang.org|monkey" | grep -v eudore); do go get -v $pkg; done
+        run: go mod tidy && go get golang.org/x/tools/cover@v0.24.1
       - name: Run Bench
-        run: go test -run=^$ -bench=. -cpu=1 *_test.go
+        run: go test -run='^$' -bench='.' .
       - name: Run Tests
-        run: go test -v -timeout=1m -race -cover -coverprofile=coverage.out -coverpkg='${{ env.PACKAGES }}' *_test.go
+        run: go test -v -timeout=1m -race -cover -coverprofile='coverage.out' -coverpkg='${{ env.PACKAGES }}' .
       - name: Run Notice
         run: go run _example/otherCover.go
       - name: Run Coverage
@@ -71,12 +51,11 @@ jobs:
       - uses: codecov/codecov-action@v5
         if: matrix.go == '1.20'
         with:
-          working-directory: ${{ env.WORKDIR }}
           files: coverage.out
           flags: ${{ matrix.os }},go-${{ matrix.go }}
           token: ${{ secrets.CODECOV_TOKEN }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: matrix.go == '1.20'
         with:
           name: Coverage-eudore-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.go }}
-          path: ${{ env.WORKDIR }}/coverage.html
+          path: coverage.html

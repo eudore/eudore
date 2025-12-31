@@ -145,7 +145,7 @@ func TestMiddlewareRoutes(*testing.T) {
 	app.CancelFunc()
 }
 
-func TestMiddlewareSkipHandler(*testing.T) {
+func TestMiddlewareSkipCondition(*testing.T) {
 	NewSkipNextFunc("", nil)
 	NewSkipNextFunc("", map[string]struct{}{})
 	app := NewApp()
@@ -163,6 +163,16 @@ func TestMiddlewareSkipHandler(*testing.T) {
 	app.GetRequest("/cookie", NewClientCheckStatus(403))
 	app.GetRequest("/request", http.Header{"Name": []string{"eudore"}}, NewClientCheckStatus(200))
 	app.GetRequest("/request", NewClientCheckStatus(403))
+
+	app.CancelFunc()
+}
+
+func TestMiddlewareSkipNext(*testing.T) {
+	app := NewApp()
+	app.GetFunc("/1", NewSkipGroupFunc(2), NewBasicAuthFunc(nil), HandlerEmpty)
+	app.GetFunc("/2", NewSkipGroupFunc(1), NewBasicAuthFunc(nil))
+	app.GetRequest("/1", NewClientCheckStatus(200))
+	app.GetRequest("/2", NewClientCheckStatus(401))
 
 	app.CancelFunc()
 }
@@ -190,6 +200,7 @@ func TestMiddlewareName(t *testing.T) {
 		NewCompressionFunc("gz", func() any { return gzip.NewWriter(nil) }),
 		NewCompressionFunc(CompressionNameGzip, nil),
 		NewCompressionMixinsFunc(nil),
+		NewDigestAuthFunc(nil, nil),
 		NewDumpFunc(app.Group(" loggerkind=~all")),
 		NewHeaderAddFunc(http.Header{"X": []string{"x"}}),
 		NewHeaderSecureFunc(http.Header{}),
@@ -211,8 +222,10 @@ func TestMiddlewareName(t *testing.T) {
 		NewRoutesFunc(map[string]any{}),
 		NewServerTimingFunc(),
 		NewSkipNextFunc("path", map[string]struct{}{"/": {}}),
+		NewSkipGroupFunc(1),
 		NewTimeoutFunc(app.ContextPool, time.Second),
 		NewTimeoutSkipFunc(app.ContextPool, time.Second, nil),
+		NewUserAgentFunc(nil),
 	}
 	for _, h := range hs {
 		rh := reflect.ValueOf(h)

@@ -22,12 +22,15 @@ func NewContextKey(key string) any {
 	return contextKey{key}
 }
 
+// String method output [contextKey].
 func (key contextKey) String() string {
 	return key.name
 }
 
+// Unmounter converts fn to [interface].
 type Unmounter func(ctx context.Context)
 
+// Unmount method implements the [anyUnmount] interface.
 func (fn Unmounter) Unmount(ctx context.Context) {
 	fn(ctx)
 }
@@ -35,7 +38,7 @@ func (fn Unmounter) Unmount(ctx context.Context) {
 // Params defines [Context] and [Router] to save key-value data.
 type Params []string
 
-// The NewParamsRoute method creates [Params] based on a route and supports
+// NewParamsRoute method creates [Params] based on a route and supports
 // routing path block mode.
 func NewParamsRoute(path string) Params {
 	route := getRoutePath(path)
@@ -78,14 +81,14 @@ func getRoutePath(path string) string {
 	return path
 }
 
-// The Clone method deeply copies a Param object.
+// Clone method deeply copies a Param object.
 func (p Params) Clone() Params {
 	params := make(Params, len(p))
 	copy(params, p)
 	return params
 }
 
-// The String method outputs Params as a string.
+// String method outputs Params as a string.
 func (p Params) String() string {
 	size := 0
 	for i := 0; i < len(p); i += 2 {
@@ -106,7 +109,7 @@ func (p Params) String() string {
 	return unsafe.String(unsafe.SliceData(buf[1:]), len(buf)-1)
 }
 
-// The Get method returns the first value of the specified key.
+// Get method returns the first value of the specified key.
 func (p Params) Get(key string) string {
 	for i := 0; i < len(p); i += 2 {
 		if p[i] == key {
@@ -116,12 +119,12 @@ func (p Params) Get(key string) string {
 	return ""
 }
 
-// The Add method adds a parameter.
+// Add method adds a parameter.
 func (p Params) Add(vals ...string) Params {
 	return append(p, vals...)
 }
 
-// The Set method sets the first value of the specified key or appends it.
+// Set method sets the first value of the specified key or appends it.
 func (p Params) Set(key, val string) Params {
 	for i := 0; i < len(p); i += 2 {
 		if p[i] == key {
@@ -132,7 +135,7 @@ func (p Params) Set(key, val string) Params {
 	return append(p, key, val)
 }
 
-// The Del method clears the first value of the specified key.
+// Del method clears the first value of the specified key.
 func (p Params) Del(key string) {
 	for i := 0; i < len(p); i += 2 {
 		if p[i] == key {
@@ -144,12 +147,12 @@ func (p Params) Del(key string) {
 // GetWrap object Wrap func(string) any provides type conversion function.
 type GetWrap func(string) any
 
-// The NewGetWrapWithConfig function creates [GetWrap] using [Config].Get.
+// NewGetWrapWithConfig function creates [GetWrap] using [Config].Get.
 func NewGetWrapWithConfig(c Config) GetWrap {
 	return c.Get
 }
 
-// The NewGetWrapWithApp function creates [GetWrap] using [App].
+// NewGetWrapWithApp function creates [GetWrap] using [App].
 func NewGetWrapWithApp(app *App) GetWrap {
 	return func(key string) any {
 		return app.Get(key)
@@ -163,7 +166,7 @@ func NewGetWrapWithMapString(data map[string]any) GetWrap {
 	}
 }
 
-// The NewGetWrapWithObject function uses object to create [GetWrap] and uses
+// NewGetWrapWithObject function uses object to create [GetWrap] and uses
 // [GetAnyByPath] to get value.
 func NewGetWrapWithObject(obj any) GetWrap {
 	return func(key string) any {
@@ -172,47 +175,47 @@ func NewGetWrapWithObject(obj any) GetWrap {
 	}
 }
 
-// The GetAny method returns the any type.
+// GetAny method returns the any type.
 func (fn GetWrap) GetAny(key string) any {
 	return fn(key)
 }
 
-// The GetBool method returns the bool type.
+// GetBool method returns the bool type.
 func (fn GetWrap) GetBool(key string) bool {
 	return GetAny[bool](fn(key))
 }
 
-// The GetInt method returns the int type.
+// GetInt method returns the int type.
 func (fn GetWrap) GetInt(key string, vals ...int) int {
 	return GetAny(fn(key), vals...)
 }
 
-// The GetUint method returns the uint type.
+// GetUint method returns the uint type.
 func (fn GetWrap) GetUint(key string, vals ...uint) uint {
 	return GetAny(fn(key), vals...)
 }
 
-// The GetInt64 method returns the int64 type.
+// GetInt64 method returns the int64 type.
 func (fn GetWrap) GetInt64(key string, vals ...int64) int64 {
 	return GetAny(fn(key), vals...)
 }
 
-// The GetUint64 method returns the uint64 type.
+// GetUint64 method returns the uint64 type.
 func (fn GetWrap) GetUint64(key string, vals ...uint64) uint64 {
 	return GetAny(fn(key), vals...)
 }
 
-// The GetFloat32 method returns the float32 type.
+// GetFloat32 method returns the float32 type.
 func (fn GetWrap) GetFloat32(key string, vals ...float32) float32 {
 	return GetAny(fn(key), vals...)
 }
 
-// The GetFloat64 method returns the float64 type.
+// GetFloat64 method returns the float64 type.
 func (fn GetWrap) GetFloat64(key string, vals ...float64) float64 {
 	return GetAny(fn(key), vals...)
 }
 
-// The GetString method returns the string type.
+// GetString method returns the string type.
 // If the string is empty, it returns another non-empty string.
 func (fn GetWrap) GetString(key string, vals ...string) string {
 	return GetStringByAny(fn(key), vals...)
@@ -227,13 +230,13 @@ func (d TimeDuration) String() string {
 	return time.Duration(d).String()
 }
 
-// The MarshalText method implements [encoding.MarshalText] and
+// MarshalText method implements [encoding.MarshalText] and
 // [json.Marshaler].
 func (d TimeDuration) MarshalText() ([]byte, error) {
 	return []byte(time.Duration(d).String()), nil
 }
 
-// The UnmarshalJSON method implements [json.UnmarshalJSON].
+// UnmarshalJSON method implements [json.UnmarshalJSON].
 func (d *TimeDuration) UnmarshalJSON(b []byte) error {
 	if len(b) > 0 && b[0] == '"' && b[len(b)-1] == '"' {
 		b = b[1 : len(b)-1]
@@ -241,8 +244,7 @@ func (d *TimeDuration) UnmarshalJSON(b []byte) error {
 	return d.UnmarshalText(b)
 }
 
-// The UnmarshalJSON method implements [encoding.UnmarshalText] and parse
-// [time.Duration].
+// UnmarshalText method implements [encoding.UnmarshalText] and parse [time.Duration].
 func (d *TimeDuration) UnmarshalText(b []byte) error {
 	str := string(b)
 	// parse int64
@@ -333,7 +335,7 @@ func (err *mulitError) Handle(errs ...error) {
 	}
 }
 
-// The Error method implements the error interface and returns an error.
+// Error method implements the error interface and returns an error.
 func (err *mulitError) Error() string {
 	errs := make([]string, len(err.errs))
 	for i := range err.errs {
@@ -342,12 +344,12 @@ func (err *mulitError) Error() string {
 	return strings.Join(errs, ", ")
 }
 
-// The GetError method returns the error, or null if there is no saved error.
+// Unwrap method returns the error, or null if there is no saved error.
 func (err *mulitError) Unwrap() []error {
 	return err.errs
 }
 
-// The NewErrorWithStatusCode method combines [NewErrorWithStatus] and
+// NewErrorWithStatusCode method combines [NewErrorWithStatus] and
 // [NewErrorWithCode].
 func NewErrorWithStatusCode(err error, status, code int) error {
 	if err == nil {
@@ -362,7 +364,7 @@ func NewErrorWithStatusCode(err error, status, code int) error {
 	return err
 }
 
-// The NewErrorWithStatus function returns the wrap error implementation
+// NewErrorWithStatus function returns the wrap error implementation
 // Status method.
 func NewErrorWithStatus(err error, status int) error {
 	if err == nil {
@@ -391,8 +393,7 @@ func (e statusError) Status() int {
 	return e.status
 }
 
-// The NewErrorWithCode function returns the wrap error implementation
-// Code method.
+// NewErrorWithCode function returns the wrap error implementation Code method.
 func NewErrorWithCode(err error, code int) error {
 	if err == nil {
 		return nil
@@ -425,6 +426,8 @@ type warppedError struct {
 	msg string
 }
 
+// NewErrorWithWrapped returns a new error that wraps the given 'err',
+// using 'msg' as the primary output when Error() is called.
 func NewErrorWithWrapped(err error, msg string) error {
 	return &warppedError{err, msg}
 }
@@ -442,11 +445,21 @@ type stackError struct {
 	stack []string
 }
 
+// NewErrorWithStack returns a new error that wraps the given 'err' and
+// attaches a predefined stack trace.
 func NewErrorWithStack(err error, stack []string) error {
+	if err == nil {
+		return nil
+	}
 	return &stackError{err, stack}
 }
 
+// NewErrorWithDepth returns a new error that wraps the given 'err' and
+// captures the call stack starting from a specified depth.
 func NewErrorWithDepth(err error, depth int) error {
+	if err == nil {
+		return nil
+	}
 	return &stackError{err, GetCallerStacks(depth)}
 }
 
@@ -526,7 +539,7 @@ func mapClone[K comparable, V any](d map[K]V) map[K]V {
 	return n
 }
 
-// The GetAnyDefault function returns a non-NULL value.
+// GetAnyDefault function returns a non-NULL value.
 func GetAnyDefault[T comparable](arg1, arg2 T) T {
 	var zero T
 	if arg1 != zero {
@@ -535,7 +548,7 @@ func GetAnyDefault[T comparable](arg1, arg2 T) T {
 	return arg2
 }
 
-// The GetAnyDefaults function returns the first non-null value.
+// GetAnyDefaults function returns the first non-null value.
 func GetAnyDefaults[T comparable](args ...T) T {
 	var zero T
 	for i := range args {
@@ -665,14 +678,14 @@ func GetStringByAny(i any, strs ...string) string {
 	return ""
 }
 
-// The GetStringRandom function returns a random string of the specified length.
+// GetStringRandom function returns a random string of the specified length.
 func GetStringRandom(length int) string {
 	buf := make([]byte, length)
 	_, _ = io.ReadFull(rand.Reader, buf)
 	return hex.EncodeToString(buf)
 }
 
-// The GetStringDuration function get [time.Duration] friendly visualization data.
+// GetStringDuration function get [time.Duration] friendly visualization data.
 func GetStringDuration(n time.Duration) fmt.Stringer {
 	var result durationString
 	size := 7
@@ -706,7 +719,7 @@ func (d durationString) MarshalJSON() ([]byte, error) {
 	return []byte(d), nil
 }
 
-// The GetAnyByString function converts a string to T value.
+// GetAnyByString function converts a string to T value.
 //
 // Refer: [GetAnyByStringWithError].
 func GetAnyByString[T string | bool | time.Time | time.Duration |
@@ -715,7 +728,7 @@ func GetAnyByString[T string | bool | time.Time | time.Duration |
 	return val
 }
 
-// The GetAnyByStringWithError function converts a string to T value.
+// GetAnyByStringWithError function converts a string to T value.
 //
 // The [time.Time] type attempts to be parsed using the
 // [DefaultValueParseTimeFormats] format, with the time zone

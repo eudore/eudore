@@ -25,7 +25,7 @@ type HandlerFunc func(Context)
 // request processing functions.
 type HandlerFuncs = []HandlerFunc
 
-// The HandlerEmpty function is an empty handler.
+// HandlerEmpty function is an empty handler.
 func HandlerEmpty(Context) {
 	// Do nothing because empty handler does not process entries.
 }
@@ -38,6 +38,8 @@ func HandlerRouter403(ctx Context) {
 }
 
 // HandlerRouter404 function defines the [StatusNotFound] processing.
+//
+// You can use [middleware.NewRouterFunc] to create route-based 404 HandlerFunc.
 func HandlerRouter404(ctx Context) {
 	const page404 = "404 Not Found"
 	ctx.WriteStatus(StatusNotFound)
@@ -54,18 +56,20 @@ func HandlerRouter405(ctx Context) {
 	_ = ctx.Render(page405)
 }
 
+// HandlerMethodTrace function processes MethodTrace request, echoing the
+// received request headers and body back to the client as the response body.
 func HandlerMethodTrace(ctx Context) {
 	r := ctx.Request()
-	ctx.SetHeader(HeaderContentType, "message/http")
+	ctx.SetHeader(HeaderContentType, "message/http") // rfc7231 - 4.3.8
 	ctx.WriteHeader(StatusOK)
-	fmt.Fprintf(ctx, "%s %s %s\r\n", r.Method, r.URL.Path, r.Proto)
+	_, _ = fmt.Fprintf(ctx, "%s %s %s\r\n", r.Method, r.URL.Path, r.Proto)
 	if r.Host != "" {
-		fmt.Fprintf(ctx, "Host: %s\r\n", r.Host)
+		_, _ = fmt.Fprintf(ctx, "Host: %s\r\n", r.Host)
 	}
 	_ = r.Header.Write(ctx)
 }
 
-// The NewHandlerFuncsFilter function filters out nil objects in [HandlerFuncs].
+// NewHandlerFuncsFilter function filters out nil objects in [HandlerFuncs].
 func NewHandlerFuncsFilter(hs HandlerFuncs) HandlerFuncs {
 	var size int
 	for _, h := range hs {
@@ -122,8 +126,8 @@ var (
 
 const sizeofUintptr = unsafe.Sizeof(uintptr(0))
 
-// String method implements the [fmt.Stringer] interface
-// and output [HandlerFunc] name.
+// String method implements the [fmt.Stringer] interface and output
+// [HandlerFunc] name.
 //
 // This name may be inaccurate.
 // If a HandlerFunc is released after setting its name,
@@ -176,6 +180,7 @@ func (h HandlerFunc) String() string {
 	return handlerNameFormater.Replace(name) + ext
 }
 
+// methodValue from src/reflect/makefunc.go .
 type methodValue struct {
 	_ [4]uintptr
 	m int
@@ -196,7 +201,7 @@ func getReflectMethodName(addr unsafe.Pointer) string {
 	return name
 }
 
-// The NewHandlerFileEmbed function creates the [embed.FS] extension function.
+// NewHandlerFileEmbed function creates the [embed.FS] extension function.
 //
 // Same function as [NewHandlerFileIOFS], but with a different display name.
 //
@@ -205,14 +210,14 @@ func NewHandlerFileEmbed(fs embed.FS) HandlerFunc {
 	return NewHandlerFileSystem(NewFileSystems(fs))
 }
 
-// The NewHandlerFileIOFS function creates the [iofs.FS] extension function.
+// NewHandlerFileIOFS function creates the [iofs.FS] extension function.
 //
 // refer [NewHandlerFileSystem].
 func NewHandlerFileIOFS(fs iofs.FS) HandlerFunc {
 	return NewHandlerFileSystem(NewFileSystems(fs))
 }
 
-// The NewHandlerFileSystems function uses multiple any values to create
+// NewHandlerFileSystems function uses multiple any values to create
 // an [http.FileSystem] handler for static files.
 //
 // refer [NewHandlerFileSystem] and [NewFileSystems].
@@ -220,8 +225,7 @@ func NewHandlerFileSystems(dirs ...any) HandlerFunc {
 	return NewHandlerFileSystem(NewFileSystems(dirs...))
 }
 
-// The NewHandlerFileSystem function creates an [http.FileSystem] extension
-// function.
+// NewHandlerFileSystem function creates an [http.FileSystem] extension function.
 //
 // Open the file path as [ParamPrefix] join ctx.GetParam("*").
 //
@@ -264,7 +268,7 @@ func NewHandlerFileSystem(fs http.FileSystem) HandlerFunc {
 			http.ServeContent(w, ctx.Request(), stat.Name(), modtime, file)
 		case GetAnyByString[bool](ctx.GetParam(ParamAutoIndex)):
 			h := ctx.Response().Header()
-			h.Set(HeaderCacheControl, "no-cache")
+			h.Set(HeaderCacheControl, HeaderValueNoCache)
 			h.Set(HeaderLastModified, modtime.UTC().Format(http.TimeFormat))
 			handlerStaticDirs(ctx, "/"+ctx.GetParam("*"), file)
 		default:
@@ -332,8 +336,8 @@ func formatSize(n int64) string {
 // Combine multiple [http.FileSystem].
 type fileSystems []http.FileSystem
 
-// The NewFileSystems function creates a hybrid [http.FileSystem] object
-// that returns the first [http.File] from multiple [http.FileSystems].
+// NewFileSystems function creates a hybrid [http.FileSystem] object that
+// returns the first [http.File] from multiple [http.FileSystems].
 //
 // If the type is string and path exists, it will be converted to [http.Dir];
 // If the type is [iofs.FS] or [embed.FS] converted to [http.FS];
@@ -361,38 +365,43 @@ func NewFileSystems(dirs ...any) http.FileSystem {
 	return fs
 }
 
-// The Open method returns the first [http.File] from multiple
+// Open method returns the first [http.File] from multiple
 // [http.FileSystems].
-func (fs fileSystems) Open(name string) (file http.File, err error) {
-	err = os.ErrNotExist
+func (fs fileSystems) Open(name string) (http.File, error) {
+	var file http.File
+	err := os.ErrNotExist
 	for _, f := range fs {
 		file, err = f.Open(name)
 		if err == nil {
 			return file, nil
 		}
 	}
-	return
+	return nil, err
 }
 
 type fileSystemPrefix struct {
 	http.FileSystem
-	prefix string
-	trim   string
+	trim string
+	join string
 }
 
-func NewFileSystemPrefix(prefix, trim string, fs http.FileSystem) http.FileSystem {
-	if prefix == "" && trim == "" {
+// NewFileSystemPrefix creates wrapped [http.FileSystem] that adds or removes
+// path prefix.
+//
+// First trim the prefix, then add the directory in the join.
+func NewFileSystemPrefix(trim, join string, fs http.FileSystem) http.FileSystem {
+	if trim == "" && join == "" {
 		return fs
 	}
-	return &fileSystemPrefix{fs, prefix, trim}
+	return &fileSystemPrefix{fs, trim, join}
 }
 
-func (fs *fileSystemPrefix) Open(name string) (file http.File, err error) {
+func (fs *fileSystemPrefix) Open(name string) (http.File, error) {
 	if fs.trim != "" {
 		name = strings.TrimPrefix(name, fs.trim)
 	}
-	if fs.prefix != "" {
-		name = filepath.Join(fs.prefix, name)
+	if fs.join != "" {
+		name = filepath.Join(fs.join, name)
 	}
 	return fs.FileSystem.Open(name)
 }

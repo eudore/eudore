@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,8 +40,8 @@ func (h *loggerHandlerInit) HandlerEntry(entry *LoggerEntry) {
 	})
 }
 
-// The Unmount method get [ContextKeyLogger] from [context.Context] and outputs
-// the saved entry.
+// Unmount method get [ContextKeyLogger] from [context.Context] and outputs the
+// saved entry.
 //
 // If it cannot be get, use [NewLogger].
 func (h *loggerHandlerInit) Unmount(ctx context.Context) {
@@ -51,9 +52,10 @@ func (h *loggerHandlerInit) Unmount(ctx context.Context) {
 		logger = NewLogger(nil)
 	}
 
-	logger = logger.WithField("depth", "disable").WithField("logger", true)
+	logger = logger.WithField(FieldDepth, DefaultLoggerDepthKindDisable).
+		WithField(FieldLogger, true)
 	for _, data := range h.Entrys {
-		entry := logger.WithField("time", data.Time).
+		entry := logger.WithField(FieldTime, data.Time).
 			WithFields(data.Keys, data.Vals)
 		switch data.Level {
 		case LoggerDebug:
@@ -113,8 +115,8 @@ type loggerHookFilterFunc struct {
 	FuncRunner
 }
 
-// The NewLoggerHookFilter function creates [LoggerHandler] to implement
-// log filtering or modification.
+// NewLoggerHookFilter function creates [LoggerHandler] to implement log
+// filtering or modification.
 func NewLoggerHookFilter(rules [][]string) LoggerHandler {
 	for i := range rules {
 		rules[i] = sliceFilter(rules[i], func(t string) bool {
@@ -220,7 +222,7 @@ type loggerHookFatal struct {
 	Callback func(*LoggerEntry)
 }
 
-// The NewLoggerHookFatal function creates [LoggerHandler] to implement handle
+// NewLoggerHookFatal function creates [LoggerHandler] to implement handle
 // [LoggerFatal] logs.
 //
 // In Mount, get [ContextKeyAppCancel] as [context.CancelFunc].
@@ -254,6 +256,101 @@ func (h *loggerHookFatal) HandlerEntry(entry *LoggerEntry) {
 	}
 }
 
+type loggerHookCaller struct{}
+
+// NewLoggerHookCaller function creates a [LoggerHandler] that implements
+// logging of file line information (caller details).
+//
+// The output format can be specified as 'func-file' or 'stack'.
+func NewLoggerHookCaller() LoggerHandler {
+	return &loggerHookCaller{}
+}
+
+func (h *loggerHookCaller) HandlerPriority() int {
+	return DefaultLoggerPriorityHookCaller
+}
+
+func (h *loggerHookCaller) HandlerEntry(entry *LoggerEntry) {
+	switch entry.Depth >> 8 {
+	case 1:
+		fname, file := GetCallerFuncFile(int(entry.Depth&0xff) + 5)
+		if fname != "" {
+			entry.Keys = append(entry.Keys, FieldFunc)
+			entry.Vals = append(entry.Vals, fname)
+		}
+		if file != "" {
+			entry.Keys = append(entry.Keys, FieldFile)
+			entry.Vals = append(entry.Vals, file)
+		}
+	case 2, 3:
+		if sliceIndex(entry.Keys, FieldStack) == -1 {
+			entry.Keys = append(entry.Keys, FieldStack)
+			entry.Vals = append(entry.Vals,
+				GetCallerStacks(int(entry.Depth&0xff)+6),
+			)
+		}
+	}
+}
+
+// GetCallerFuncFile function obtains the called file location and function name.
+//
+// func name does not retain the package path, file name ignores the
+// $GOPATH path.
+func GetCallerFuncFile(depth int) (string, string) {
+	var pcs [1]uintptr
+	runtime.Callers(depth+1, pcs[:])
+	fs := runtime.CallersFrames(pcs[:])
+	f, _ := fs.Next()
+
+	return trimFuncName(f.Function),
+		trimFileName(f.File + ":" + strconv.Itoa(f.Line))
+}
+
+// GetCallerStacks function returns the caller stack information.
+//
+// func name does not retain the package path, file name ignores the
+// $GOPATH path.
+func GetCallerStacks(depth int) []string {
+	pc := make([]uintptr, DefaultLoggerDepthMaxStack)
+	n := runtime.Callers(depth, pc)
+	if n == 0 {
+		return nil
+	}
+
+	stack := make([]string, 0, n)
+	fs := runtime.CallersFrames(pc[:n])
+	f, more := fs.Next()
+	for more {
+		stack = append(stack,
+			trimFileName(f.File+":"+strconv.Itoa(f.Line))+
+				" "+
+				trimFuncName(f.Function),
+		)
+		f, more = fs.Next()
+	}
+	return stack
+}
+
+var works = [...]string{"/pkg/mod/", "/src/"}
+
+func trimFileName(name string) string {
+	for _, w := range works {
+		pos := strings.Index(name, w)
+		if pos != -1 {
+			name = name[pos+len(w):]
+		}
+	}
+	return name
+}
+
+func trimFuncName(name string) string {
+	pos := strings.LastIndexByte(name, '/')
+	if pos != -1 {
+		name = name[pos+1:]
+	}
+	return name
+}
+
 type loggerWriterAsync struct {
 	loggerHookMeta
 	Handlers []LoggerHandler
@@ -263,8 +360,8 @@ type loggerWriterAsync struct {
 	done     chan struct{}
 }
 
-// The NewLoggerWriterAsync function creates [LoggerHandler] to implement
-// async Writer for log processing.
+// NewLoggerWriterAsync function creates [LoggerHandler] to implement async
+// Writer for log processing.
 //
 // size specifies the asynchronous buffer size, after the timeout, the overflow
 // log will be discarded; buff specifies the length of the multiplexed []byte.
@@ -272,7 +369,7 @@ type loggerWriterAsync struct {
 // This [LoggerHandler] implements the Metadata method to
 // record the number of discarded logs.
 //
-// The [LoggerEntry] used by handlers only has Level and Buffer field data.
+// [LoggerEntry] used by handlers only has Level and Buffer field data.
 //
 // If you continue to use it after Unmount,
 // it will panic send on closed channel.
@@ -341,7 +438,7 @@ func (w *loggerWriterAsync) HandlerEntry(entry *LoggerEntry) {
 	select {
 	case w.async <- log:
 	case <-time.After(w.timeout):
-		atomic.AddUint64(&w.loggerHookMeta.Count[LoggerDiscard], 1)
+		atomic.AddUint64(&w.Count[LoggerDiscard], 1)
 		w.pool.Put(buf)
 	}
 }
@@ -353,7 +450,7 @@ type loggerWriterStdoutColor struct {
 	sync.Mutex
 }
 
-// The NewLoggerWriterStdout function creates [LoggerHandler] to output logs to
+// NewLoggerWriterStdout function creates [LoggerHandler] to output logs to
 // [os.Stdout].
 func NewLoggerWriterStdout(color bool) LoggerHandler {
 	if color {
@@ -387,7 +484,7 @@ func (w *loggerWriterStdoutColor) HandlerEntry(entry *LoggerEntry) {
 			entry.Buffer[pos+loggerLevelDefaultLen[entry.Level]:],
 		)
 	} else {
-		os.Stdout.Write(entry.Buffer)
+		_, _ = os.Stdout.Write(entry.Buffer)
 	}
 	w.Unlock()
 }
@@ -397,19 +494,27 @@ type loggerWriterFile struct {
 	File *os.File
 }
 
-// The NewLoggerWriterFile function creates [LoggerHandler] to write logs to
+// NewLoggerWriterFile function creates [LoggerHandler] to write logs to
 // [os.File].
 func NewLoggerWriterFile(name string) (LoggerHandler, error) {
-	err := os.MkdirAll(filepath.Dir(name), 0o755)
+	err := os.MkdirAll(filepath.Dir(name), 0o750)
 	if err != nil {
 		return nil, err
 	}
-	file, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	file, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, err
 	}
 
 	return &loggerWriterFile{File: file}, nil
+}
+
+func (w *loggerWriterFile) Unmount(context.Context) {
+	w.Lock()
+	defer w.Unlock()
+	_ = w.File.Sync()
+	_ = w.File.Close()
+	w.File, _ = os.OpenFile(os.DevNull, os.O_WRONLY, 0o600)
 }
 
 func (w *loggerWriterFile) HandlerPriority() int {
@@ -418,8 +523,8 @@ func (w *loggerWriterFile) HandlerPriority() int {
 
 func (w *loggerWriterFile) HandlerEntry(entry *LoggerEntry) {
 	w.Lock()
+	defer w.Unlock()
 	_, _ = w.File.Write(entry.Buffer)
-	w.Unlock()
 }
 
 type loggerWriterRotate struct {
@@ -436,7 +541,7 @@ type loggerWriterRotate struct {
 // max uint64, 9999-12-31 23:59:59 +0000 UTC.
 const roatteMaxSize, roatteMaxTime = 0xffffffffffffffff, 253402300799
 
-// The NewLoggerWriterRotate function creates [LoggerHandler] to write logs to
+// NewLoggerWriterRotate function creates [LoggerHandler] to write logs to
 // [os.File].
 //
 // If maxsize is set or name contains the string yyyy/yy/mm/dd/hh,
@@ -464,6 +569,14 @@ func NewLoggerWriterRotate(name string, maxsize uint64,
 	return h, h.rotateFile()
 }
 
+func (w *loggerWriterRotate) Unmount(context.Context) {
+	w.Lock()
+	defer w.Unlock()
+	w.name = os.DevNull
+	w.maxSize = roatteMaxSize
+	_ = w.rotateFile()
+}
+
 func (w *loggerWriterRotate) HandlerEntry(entry *LoggerEntry) {
 	w.Lock()
 	defer w.Unlock()
@@ -482,9 +595,9 @@ func (w *loggerWriterRotate) HandlerEntry(entry *LoggerEntry) {
 func (w *loggerWriterRotate) rotateFile() error {
 	for {
 		name := w.getRotateName()
-		_ = os.MkdirAll(filepath.Dir(name), 0o755)
+		_ = os.MkdirAll(filepath.Dir(name), 0o750)
 		file, err := os.OpenFile(
-			name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644,
+			name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600,
 		)
 		if err != nil {
 			return err
@@ -502,7 +615,7 @@ func (w *loggerWriterRotate) rotateFile() error {
 			}
 			return nil
 		}
-		file.Close()
+		_ = file.Close()
 	}
 }
 
@@ -511,12 +624,9 @@ func (w *loggerWriterRotate) getRotateName() string {
 	if w.nextTime.Unix() != roatteMaxTime {
 		name = fileFormatTime(name)
 	}
-	if w.maxSize != roatteMaxSize {
+	if w.maxSize != roatteMaxSize && name != os.DevNull {
 		ext := path.Ext(w.name)
-		name = name[:len(name)-len(ext)] +
-			"-" +
-			strconv.Itoa(w.nextIndex) +
-			ext
+		name = name[:len(name)-len(ext)] + "-" + strconv.Itoa(w.nextIndex) + ext
 	}
 	return name
 }
@@ -581,7 +691,7 @@ func getNextTime(name string) time.Time {
 }
 
 func hookFileLink(link string) func(string, string) {
-	_ = os.MkdirAll(filepath.Dir(link), 0o755)
+	_ = os.MkdirAll(filepath.Dir(link), 0o750)
 	return func(name, _ string) {
 		if !filepath.IsAbs(name) {
 			pwd, _ := os.Getwd()
@@ -613,7 +723,7 @@ func hookFileRecycle(age, count int) func(string, string) {
 			expr := time.Now().Add(time.Hour * time.Duration(-age))
 			for i := range files {
 				if files[i].ModTime.Before(expr) {
-					os.Remove(files[i].Name)
+					_ = os.Remove(files[i].Name)
 				}
 			}
 		}

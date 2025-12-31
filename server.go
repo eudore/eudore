@@ -100,6 +100,7 @@ type serverStd struct {
 	Counter      int64            `alias:"counter"`
 }
 
+// MetadataServer records the server port and error count.
 type MetadataServer struct {
 	Health     bool     `json:"health" protobuf:"1,name=health" yaml:"health"`
 	Name       string   `json:"name" protobuf:"2,name=name" yaml:"name"`
@@ -126,54 +127,40 @@ type ServerListenConfig struct {
 	Certificate *x509.Certificate `alias:"certificate" json:"certificate" yaml:"certificate"`
 }
 
-// The NewServer function creates a [Server] implemented by warp [http.Server].
+// NewServer function creates a [Server] implemented by warp [http.Server].
 func NewServer(config *ServerConfig) Server {
 	if config == nil {
 		config = &ServerConfig{}
 	}
-	srv := &serverStd{
+	fn := getServerTimeDuration
+	return &serverStd{
 		Server: &http.Server{
-			Handler: config.Handler,
-			ReadTimeout: GetAnyDefault(
-				time.Duration(config.ReadTimeout),
-				DefaultServerReadTimeout,
-			),
-			ReadHeaderTimeout: GetAnyDefault(
-				time.Duration(config.ReadHeaderTimeout),
-				DefaultServerReadHeaderTimeout,
-			),
-			WriteTimeout: GetAnyDefault(
-				time.Duration(config.WriteTimeout),
-				DefaultServerWriteTimeout,
-			),
-			IdleTimeout: GetAnyDefault(
-				time.Duration(config.IdleTimeout),
-				DefaultServerIdleTimeout,
-			),
-			MaxHeaderBytes: config.MaxHeaderBytes,
-			ErrorLog:       config.ErrorLog,
-			BaseContext:    config.BaseContext,
-			ConnContext:    config.ConnContext,
+			Handler:           config.Handler,
+			ReadTimeout:       fn(config.ReadTimeout, DefaultServerReadTimeout),
+			ReadHeaderTimeout: fn(config.ReadHeaderTimeout, DefaultServerReadHeaderTimeout),
+			WriteTimeout:      fn(config.WriteTimeout, DefaultServerWriteTimeout),
+			IdleTimeout:       fn(config.IdleTimeout, DefaultServerIdleTimeout),
+			MaxHeaderBytes:    config.MaxHeaderBytes,
+			ErrorLog:          config.ErrorLog,
+			BaseContext:       config.BaseContext,
+			ConnContext:       config.ConnContext,
 		},
 	}
-	// fix http2 server in golang ?-1.22
-	// https://github.com/golang/go/issues/65785
-	if srv.Server.ReadTimeout < 0 {
-		srv.Server.ReadTimeout = 0
-	}
-	if srv.Server.ReadHeaderTimeout < 0 {
-		srv.Server.ReadHeaderTimeout = 0
-	}
-	if srv.Server.WriteTimeout < 0 {
-		srv.Server.WriteTimeout = 0
-	}
-	if srv.Server.IdleTimeout < 0 {
-		srv.Server.IdleTimeout = 0
-	}
-	return srv
 }
 
-// The Mount method gets [ContextKeyHTTPHandler] or [ContextKeyApp] from
+func getServerTimeDuration(t1 TimeDuration, t2 time.Duration) time.Duration {
+	// fix http2 server in golang ?-1.22
+	// https://github.com/golang/go/issues/65785
+	if t1 < 0 {
+		return 0
+	}
+	if t1 == 0 {
+		return t2
+	}
+	return time.Duration(t1)
+}
+
+// Mount method gets [ContextKeyHTTPHandler] or [ContextKeyApp] from
 // [context.Context] as [http.Handler],
 //
 // Get [ContextKeyApp] or [ContextKeyLogger] as [Logger] to
@@ -218,7 +205,7 @@ func (srv *serverStd) Unmount(context.Context) {
 func (srv *serverStd) SetHandler(h http.Handler) {
 	srv.Mutex.Lock()
 	defer srv.Mutex.Unlock()
-	srv.Server.Handler = h
+	srv.Handler = h
 }
 
 func (srv *serverStd) Serve(ln net.Listener) error {
@@ -227,12 +214,12 @@ func (srv *serverStd) Serve(ln net.Listener) error {
 	srv.Mutex.Unlock()
 	err := srv.Server.Serve(ln)
 	if errors.Is(err, http.ErrServerClosed) {
-		err = nil
+		return nil
 	}
 	return err
 }
 
-// The ServeConn method handles a [net.Conn].
+// ServeConn method handles a [net.Conn].
 //
 // Implement [net.Listen] to pass [net.Conn] to [http.Servr].
 func (srv *serverStd) ServeConn(conn net.Conn) {
@@ -248,7 +235,7 @@ func (srv *serverStd) ServeConn(conn net.Conn) {
 	srv.listener.Ch <- conn
 }
 
-// The Metadata method returns [MetadataServer].
+// Metadata method returns [MetadataServer].
 func (srv *serverStd) Metadata() any {
 	srv.Mutex.Lock()
 	defer srv.Mutex.Unlock()
@@ -265,36 +252,33 @@ type serverLogger struct {
 	Counter *int64
 }
 
-func (srv *serverLogger) Write(p []byte) (n int, err error) {
+func (srv *serverLogger) Write(p []byte) (int, error) {
 	atomic.AddInt64(srv.Counter, 1)
-	log := srv.Logger.WithField(ParamDepth, DefaultLoggerDepthKindDisable).
-		WithField(ParamCaller, "serverStd.ErrorLog")
+	log := srv.Logger.WithField(FieldDepth, DefaultLoggerDepthKindDisable).
+		WithField(FieldCaller, "serverStd.ErrorLog")
 	strs := strings.Split(string(p), "\n")
-	if strings.HasPrefix(strs[0], "http: panic serving ") {
-		lines := []string{}
-		for i := 2; i < len(strs)-1; i += 2 {
-			if strings.HasPrefix(strs[i], "created by ") {
-				strs[i] = strs[i][11:]
-			} else {
-				end := strings.LastIndexByte(strs[i], '(')
-				if end != -1 {
-					strs[i] = strs[i][:end]
-				}
-			}
-			pos := strings.IndexByte(strs[i+1], ' ')
-			if pos != -1 {
-				strs[i+1] = strs[i+1][:pos]
-			}
-			lines = append(lines,
-				strings.TrimPrefix(strs[i+1], "\t")+" "+strs[i],
-			)
-		}
-		log.WithField("stack", lines).Errorf("%s %s",
-			strs[0], strs[1][:len(strs[1])-1],
-		)
-	} else {
+	if !strings.HasPrefix(strs[0], "http: panic serving ") {
 		log.Errorf(strs[0])
+		return 0, nil
 	}
+
+	lines := []string{}
+	for i := 2; i < len(strs)-1; i += 2 {
+		if strings.HasPrefix(strs[i], "created by ") {
+			strs[i] = strs[i][11:]
+		} else {
+			end := strings.LastIndexByte(strs[i], '(')
+			if end != -1 {
+				strs[i] = strs[i][:end]
+			}
+		}
+		pos := strings.IndexByte(strs[i+1], ' ')
+		if pos != -1 {
+			strs[i+1] = strs[i+1][:pos]
+		}
+		lines = append(lines, strings.TrimPrefix(strs[i+1], "\t")+" "+strs[i])
+	}
+	log.WithField(FieldStack, lines).Errorf("%s %s", strs[0], strs[1][:len(strs[1])-1])
 	return 0, nil
 }
 
@@ -326,12 +310,12 @@ func (ln *internalListener) Addr() net.Addr {
 	}
 }
 
-// The NewServerFcgi function creates a [Server] using [fcgi.Serve].
+// NewServerFcgi function creates a [Server] using [fcgi.Serve].
 func NewServerFcgi() Server {
 	return &serverFcgi{}
 }
 
-// The Mount method gets [ContextKeyHTTPHandler] or [ContextKeyApp] from
+// Mount method gets [ContextKeyHTTPHandler] or [ContextKeyApp] from
 // [context.Context] as [http.Handler].
 func (srv *serverFcgi) Mount(ctx context.Context) {
 	if srv.Handler == nil {
@@ -339,6 +323,7 @@ func (srv *serverFcgi) Mount(ctx context.Context) {
 			h, ok := ctx.Value(key).(http.Handler)
 			if ok {
 				srv.SetHandler(h)
+
 				break
 			}
 		}
@@ -366,20 +351,21 @@ func (srv *serverFcgi) Serve(ln net.Listener) error {
 	return fcgi.Serve(ln, srv.Handler)
 }
 
-// The Shutdown method shuts down all fcgi listeners.
+// Shutdown method shuts down all fcgi listeners.
 func (srv *serverFcgi) Shutdown(context.Context) error {
 	srv.Lock()
 	defer srv.Unlock()
 	var err error
 	for _, ln := range srv.listeners {
-		if cerr := ln.Close(); cerr != nil && err == nil {
+		cerr := ln.Close()
+		if cerr != nil && err == nil {
 			err = cerr
 		}
 	}
 	return err
 }
 
-// The Listen method uses the port configuration to create a listener,
+// Listen method uses the port configuration to create a listener,
 // and uses Certificate to save the parsed TLS certificate.
 //
 // If https is enabled but there is no certificate, a private certificate will
@@ -396,21 +382,18 @@ func (slc *ServerListenConfig) Listen() (net.Listener, error) {
 	if !slc.HTTPS {
 		return DefaultServerListen("tcp", slc.Addr)
 	}
-
-	// set tls
-	config := &tls.Config{
-		NextProtos:   []string{"http/1.1"},
-		Certificates: make([]tls.Certificate, 1),
-	}
-	if slc.HTTP2 {
-		config.NextProtos = []string{"h2"}
-	}
-
 	cert, ca, err := loadCertificate(slc.Certfile, slc.Keyfile)
 	if err != nil {
 		return nil, err
 	}
-	config.Certificates[0], slc.Certificate = cert, ca
+
+	// set tls
+	config := DefaultServerTLSConfig.Clone()
+	config.Certificates = append(config.Certificates, cert)
+	slc.Certificate = ca
+	if slc.HTTP2 {
+		config.NextProtos = []string{"h2"}
+	}
 
 	// set mutual tls
 	if slc.Mutual {
@@ -454,8 +437,7 @@ func loadCertificate(cret, key string) (tls.Certificate, *x509.Certificate,
 		NotAfter:              time.Now().AddDate(10, 0, 0),
 		SubjectKeyId:          []byte{1, 2, 3, 4, 5},
 		BasicConstraintsValid: true,
-
-		IsCA: true,
+		IsCA:                  true,
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageClientAuth,
 			x509.ExtKeyUsageServerAuth,

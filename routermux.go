@@ -43,7 +43,7 @@ type nodeMuxHandler struct {
 	funcs  []HandlerFunc
 }
 
-// The NewRouterCoreMux function creates the [RouterCore] implemented by radix.
+// NewRouterCoreMux function creates the [RouterCore] implemented by radix.
 //
 // The [DefaultRouterAnyMethod] [DefaultRouterAllMethod] data will be copied
 // when created.
@@ -74,49 +74,42 @@ func (mux *routerCoreMux) Mount(ctx context.Context) {
 //
 // The router matches the handlers available to the current path from
 // the middleware tree and adds them to the front of the handler.
-func (mux *routerCoreMux) HandleFunc(method string, path string,
-	handler []HandlerFunc,
-) {
+func (mux *routerCoreMux) HandleFunc(method, path string, hs []HandlerFunc) {
 	// Keep the handler as nil behavior,
 	// ignore and do not recommend using nil hander.
-	if handler == nil {
+	if hs == nil {
 		return
 	}
+
 	switch method {
-	case "NOTFOUND", "404":
+	case MethodNotFound:
 		mux.Params404 = NewParamsRoute(path)[2:]
-		mux.Handler404 = handler
-	case "METHODNOTALLOWED", "405":
+		mux.Handler404 = hs
+	case MethodNotAllowed:
 		mux.Params405 = NewParamsRoute(path)[2:]
-		mux.Handler405 = handler
-	case MethodAny:
-		mux.insertRoute(method, path, handler)
+		mux.Handler405 = hs
 	default:
-		for _, m := range mux.AllMethods {
-			if method == m {
-				mux.insertRoute(method, path, handler)
-				return
-			}
+		if method == MethodAny || sliceIndex(mux.AllMethods, method) != -1 {
+			mux.insertRoute(method, path, hs)
 		}
 	}
 }
 
 // Match a request, if the method does not allow direct return to node405,
 // no match returns node404.
-func (mux *routerCoreMux) Match(method, path string, params *Params,
-) []HandlerFunc {
-	node := mux.Root.lookNode(path, params)
+func (mux *routerCoreMux) Match(method, path string, p *Params) []HandlerFunc {
+	node := mux.Root.lookNode(path, p)
 	// 404
 	if node == nil {
-		*params = params.Add(mux.Params404...)
+		*p = p.Add(mux.Params404...)
 		return mux.Handler404
 	}
 
 	// no-any method
-	params.Set(ParamRoute, node.route)
+	p.Set(ParamRoute, node.route)
 	for _, h := range node.handlers {
 		if h.method == method {
-			*params = params.Add(h.params...)
+			*p = p.Add(h.params...)
 			return h.funcs
 		}
 	}
@@ -125,7 +118,7 @@ func (mux *routerCoreMux) Match(method, path string, params *Params,
 	if node.anyHandler != nil {
 		for _, m := range mux.AnyMethods {
 			if m == method {
-				*params = params.Add(node.anyParams...)
+				*p = p.Add(node.anyParams...)
 				return node.anyHandler
 			}
 		}
@@ -133,7 +126,7 @@ func (mux *routerCoreMux) Match(method, path string, params *Params,
 
 	// 405
 	allow := strings.Join(mux.getAllows(node), ", ")
-	*params = params.Add(ParamAllow, allow).Add(mux.Params405...)
+	*p = p.Add(ParamAllow, allow).Add(mux.Params405...)
 	return mux.Handler405
 }
 
@@ -159,7 +152,7 @@ func (mux *routerCoreMux) insertRoute(method, path string, val []HandlerFunc) {
 		next := &nodeMux{path: route}
 		switch route[0] {
 		case ':', '*':
-			next.name, next.check = mux.loadNameAndCheck(route)
+			next.name, next.check = mux.loadCheck(route)
 		}
 		node = node.insertNode(next)
 		if route[0] == '*' {
@@ -171,9 +164,7 @@ func (mux *routerCoreMux) insertRoute(method, path string, val []HandlerFunc) {
 }
 
 // Load the checksum function by name.
-func (mux *routerCoreMux) loadNameAndCheck(path string) (string,
-	func(string) bool,
-) {
+func (mux *routerCoreMux) loadCheck(path string) (string, func(string) bool) {
 	if len(path) == 1 {
 		return path, nil
 	}
@@ -196,26 +187,22 @@ func (mux *routerCoreMux) loadNameAndCheck(path string) (string,
 	return name, fn.(func(string) bool)
 }
 
-func (node *nodeMux) setHandler(method string, params Params,
-	handler []HandlerFunc,
-) {
+func (node *nodeMux) setHandler(method string, p Params, hs []HandlerFunc) {
 	if method == MethodAny {
-		node.anyHandler = handler
-		node.anyParams = params
+		node.anyHandler = hs
+		node.anyParams = p
 		return
 	}
 
 	for i, h := range node.handlers {
 		if h.method == method {
-			node.handlers[i].params = params
-			node.handlers[i].funcs = handler
+			node.handlers[i].params = p
+			node.handlers[i].funcs = hs
 			return
 		}
 	}
 
-	node.handlers = append(node.handlers, nodeMuxHandler{
-		method, params, handler,
-	})
+	node.handlers = append(node.handlers, nodeMuxHandler{method, p, hs})
 }
 
 // insertNode add a child node to the node.
@@ -280,7 +267,7 @@ func (node *nodeMux) insertNodeConst(next *nodeMux) *nodeMux {
 			if next.path == "" {
 				return node.childc[i]
 			}
-			return node.childc[i].insertNode(next)
+			return node.childc[i].insertNodeConst(next)
 		}
 	}
 
@@ -294,15 +281,14 @@ func (node *nodeMux) insertNodeConst(next *nodeMux) *nodeMux {
 	return next
 }
 
-//nolint:cyclop,gocyclo,gocognit
+//nolint:cyclop,gocyclo,gocognit,nestif
 func (node *nodeMux) lookNode(path string, params *Params) *nodeMux {
 	if path != "" {
 		// constant Node match
 		for _, child := range node.childc {
 			if child.path[0] >= path[0] {
-				length := len(child.path)
-				if len(path) >= length && path[:length] == child.path {
-					if n := child.lookNode(path[length:], params); n != nil {
+				if strings.HasPrefix(path, child.path) {
+					if n := child.lookNode(path[len(child.path):], params); n != nil {
 						return n
 					}
 				}

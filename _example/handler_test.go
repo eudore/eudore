@@ -316,11 +316,38 @@ func TestHandlerRegister(t *testing.T) {
 	app.Run()
 }
 
+//go:noinline
 func TestHandlerList(t *testing.T) {
+	names := []string{
+		"github.com/eudore/eudore.NewHandlerFunc(func())",
+		"github.com/eudore/eudore.NewHandlerFuncAny(func() interface {})",
+		"github.com/eudore/eudore.NewHandlerFuncError(func() error)",
+		"github.com/eudore/eudore.NewHandlerFuncAnyError(func() (interface {}, error))",
+		"github.com/eudore/eudore.NewHandlerFuncContextAny(func(eudore.Context) interface {})",
+		"github.com/eudore/eudore.NewHandlerFuncContextError(func(eudore.Context) error)",
+		"github.com/eudore/eudore.NewHandlerFuncContextAnyError(func(eudore.Context) (interface {}, error))",
+		"github.com/eudore/eudore.NewHandlerFuncContextMapAnyError(func(eudore.Context, map[string]interface {}) (interface {}, error))",
+		"github.com/eudore/eudore.NewHandlerHTTPFunc1(http.HandlerFunc)",
+		"github.com/eudore/eudore.NewHandlerHTTPFunc2(func(http.ResponseWriter, *http.Request))",
+		"github.com/eudore/eudore.NewHandlerFileEmbed(embed.FS)",
+		"github.com/eudore/eudore.NewHandlerHTTPHandler(http.Handler)",
+		"github.com/eudore/eudore.NewHandlerFileIOFS(fs.FS)",
+		"github.com/eudore/eudore.NewHandlerFileSystem(http.FileSystem)",
+		"github.com/eudore/eudore.NewHandlerAnyContextTypeAnyError(interface {})",
+		"/ github.com/eudore/eudore_test.TestHandlerList.func1(interface {})",
+		"/api/user github.com/eudore/eudore_test.TestHandlerList.func2(func())",
+		"/api/user github.com/eudore/eudore_test.TestHandlerList.func3(interface {})",
+		"/api/icon github.com/eudore/eudore_test.TestHandlerList.func4(interface {})",
+		"/api/ github.com/eudore/eudore_test.TestHandlerList.func5(interface {})",
+	}
 	app := NewApp()
-	app.SetValue(ContextKeyLogger, DefaultLoggerNull)
+	// app.SetValue(ContextKeyLogger, DefaultLoggerNull)
 	app.AddHandlerExtend("/", func(any) HandlerFunc {
 		return nil
+	})
+
+	app.AddHandlerExtend("/api/user", func(func()) HandlerFunc {
+		return HandlerEmpty
 	})
 	app.AddHandlerExtend("/api/user", func(any) HandlerFunc {
 		return HandlerEmpty
@@ -333,7 +360,16 @@ func TestHandlerList(t *testing.T) {
 		return nil
 	})
 	api.AnyFunc("/user/info", "hello")
-	t.Log(strings.Join(api.(HandlerExtender).List(), "\n"))
+	api.AnyFunc("/user/info", func() {})
+	api.AnyFunc("/user/index", root)
+	app.AnyFunc("/user/index", http.NotFoundHandler())
+	app.AnyFunc("/user/index", func() {})
+	for i, str := range api.(HandlerExtender).List() {
+		str = strings.ReplaceAll(str, "command-line-arguments_test", "github.com/eudore/eudore_test")
+		if i < len(names) && str != names[i] {
+			panic(str)
+		}
+	}
 
 	app.CancelFunc()
 	app.Run()

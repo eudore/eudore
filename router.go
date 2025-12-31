@@ -1,6 +1,6 @@
 package eudore
 
-// The Router object is used to define the router match.
+// Router object is used to define the router match.
 
 import (
 	"context"
@@ -19,7 +19,7 @@ const (
 	routerLoggerMetadata
 )
 
-// The Router interface provides wrap registration behavior,
+// Router interface provides wrap registration behavior,
 // setting route [Params], Group router, Middleware, [HandlerExtender],
 // and [Controller].
 type Router interface {
@@ -30,27 +30,27 @@ type Router interface {
 	// Group routing will completely copy Params and Middlewares,
 	// and HandlerExtender will wrap the parent.
 	//
-	// The [Router] [Logger] kind will be modified when the route parameter
+	// [Router] LoggerKind will be modified when the route parameter
 	// 'loggerkind' is present.
 	//
 	// example: app.Group(" loggerkind=~handler")
 	Group(path string) Router
 
-	// The Params method returns the current Router [Params],
+	// Params method returns the current Router [Params],
 	// which can be modified.
 	Params() *Params
 
 	// AddHandler method adds a new route,
 	// [HandlerExtender] will convert any type Handlers into []HandlerFunc.
 	//
-	// The registration method allows adding multiple methods separated by ',',
+	// registration method allows adding multiple methods separated by ',',
 	// but must be defined in [DefaultRouterAllMethod] or the value is
 	// ANY TEST 404 405 NotFound MethodNotAllowed.
 	//
 	// Use the current path to match the middleware [HandlerFuncs],
 	// and then add it before the Handler.
 	//
-	// The method is TEST, which will output the debug information related to
+	// method is MethodTest, which will output the debug information related to
 	// the route registration,
 	// but will not perform the registration behavior.
 	AddHandler(method string, path string, fn ...any) error
@@ -81,8 +81,8 @@ type Router interface {
 	// Any method route will be overwritten by the specified method route,
 	// but not vice versa.
 	//
-	// The Any method includes Get Post Put Delete Head Patch and is defined in
-	// the global variable [DefaultRouterAnyMethod].
+	// Anymethod is method set includes Get Post Put Delete Head Patch and is
+	// defined in the global variable [DefaultRouterAnyMethod].
 	AnyFunc(path string, fn ...any)
 	// refer AnyFunc
 	GetFunc(path string, fn ...any)
@@ -122,11 +122,12 @@ type routerStd struct {
 	Meta            *MetadataRouter `alias:"meta"`
 }
 
+// MetadataRouter records all methods and [HandlerFuncs] of [Router] registration.
 type MetadataRouter struct {
 	Health       bool       `json:"health" protobuf:"1,name=health" yaml:"health"`
 	Name         string     `json:"name" protobuf:"2,name=name" yaml:"name"`
 	Core         any        `json:"core" protobuf:"3,name=core" yaml:"core"`
-	AllMethod    any        `json:"allMethod" protobuf:"4,name=allMethod" yaml:"allMethod"`
+	AllMethod    []string   `json:"allMethod" protobuf:"4,name=allMethod" yaml:"allMethod"`
 	Errors       []string   `json:"errors,omitempty" protobuf:"5,name=errors" yaml:"errors,omitempty"`
 	Methods      []string   `json:"methods" protobuf:"6,name=methods" yaml:"methods"`
 	Paths        []string   `json:"paths" protobuf:"7,name=paths" yaml:"paths"`
@@ -141,7 +142,6 @@ func NewRouter(core RouterCore) Router {
 		core = NewRouterCoreMux()
 	}
 
-	all := append([]string{}, DefaultRouterAllMethod...)
 	return &routerStd{
 		RouterCore: core,
 		HandlerExtender: NewHandlerExtenderWrap(
@@ -151,15 +151,12 @@ func NewRouter(core RouterCore) Router {
 		GroupParams: Params{ParamRoute, ""},
 		Logger:      DefaultLoggerNull,
 		LoggerKind:  getRouterLoggerKind(0, DefaultRouterLoggerKind),
-		MethodAll:   all,
-		Meta: &MetadataRouter{
-			Name:      "eudore.routerStd",
-			AllMethod: all,
-		},
+		MethodAll:   append([]string{}, DefaultRouterAllMethod...),
+		Meta:        &MetadataRouter{},
 	}
 }
 
-// The Mount method causes routerStd to mount the [context.Context].
+// Mount method causes routerStd to mount the [context.Context].
 //
 // Get [ContextKeyApp] or [ContextKeyLogger] from [context.Context] as [Logger];
 // Get [ContextKeyHandlerExtender] from [context.Context] as [HandlerExtender].
@@ -179,20 +176,29 @@ func (r *routerStd) Mount(ctx context.Context) {
 	anyMount(ctx, r.RouterCore)
 }
 
-// The Unmount method causes routerStd to unload the [context.Context].
+// Unmount method causes routerStd to unload the [context.Context].
 func (r *routerStd) Unmount(ctx context.Context) {
 	anyUnmount(ctx, r.RouterCore)
 	r.Logger = DefaultLoggerNull
 }
 
-// The Metadata method returns the Metadata of RouterCore.
+// Metadata method returns the Metadata of RouterCore.
 func (r *routerStd) Metadata() any {
-	r.Meta.Health = len(r.Meta.Errors) == 0
-	r.Meta.Core = anyMetadata(r.RouterCore)
-	if r.Meta.Core == nil {
-		r.Meta.Core = fmt.Sprintf("%T", r.RouterCore)
+	core := anyMetadata(r.RouterCore)
+	if core == nil {
+		core = fmt.Sprintf("%T", r.RouterCore)
 	}
-	return *r.Meta
+	return MetadataRouter{
+		Health:       len(r.Meta.Errors) == 0,
+		Name:         "eudore.routerStd",
+		Core:         core,
+		AllMethod:    r.MethodAll,
+		Errors:       r.Meta.Errors,
+		Methods:      r.Meta.Methods,
+		Paths:        r.Meta.Paths,
+		Params:       r.Meta.Params,
+		HandlerNames: r.Meta.HandlerNames,
+	}
 }
 
 func (r *routerStd) Group(path string) Router {
@@ -221,7 +227,7 @@ func (r *routerStd) Params() *Params {
 	return &r.GroupParams
 }
 
-// The combineParams method merges the params data for route merging.
+// combineParams method merges the params data for route merging.
 func combineParams(p1, p2 Params) Params {
 	p1[1] += p2[1]
 	for i := 2; i < len(p2); i += 2 {
@@ -239,17 +245,17 @@ var formatRouterTestInfo = "test handlers params is %s, " +
 	"match middlewares is: %v, " +
 	"register handlers is: %v."
 
-// The addHandler method converts the handler into [HandlerFuncs],
+// addHandler method converts the handler into [HandlerFuncs],
 // adds the request middleware corresponding to the routing path,
 // and calls the [RouterCore] object to register the routing method.
-func (r *routerStd) addHandler(method, path string, hs ...any) (err error) {
+func (r *routerStd) addHandler(method, path string, handler ...any) (err error) {
 	defer func() {
 		// [NewRouterCoreMux] panics when registering unknown validation rules,
 		// or panics when registering other custom routes.
 		if rerr := recover(); rerr != nil {
 			err = fmt.Errorf(ErrRouterAddHandlerRecover, method, path, rerr)
 			r.getLoggerError(err, 0).
-				WithField(ParamDepth, DefaultLoggerDepthKindStack).
+				WithField(FieldDepth, DefaultLoggerDepthKindStack).
 				Error(err)
 		}
 	}()
@@ -258,24 +264,28 @@ func (r *routerStd) addHandler(method, path string, hs ...any) (err error) {
 	path = params.Get(ParamRoute)
 	fullpath := strings.TrimPrefix(params.String(), "route=")
 	depth := getRouterDepthWithFunc(2, 8, ".AddController")
-	handlers, err := r.newHandlerFuncs(path, hs, depth+1)
+	hs, err := r.newHandlerFuncs(path, handler, depth+1)
 	if err != nil {
 		return err
 	}
 
 	// If the registration method is TEST, then output routerStd debug info.
-	if method == "TEST" {
-		r.getLogger(routerLoggerHandler, depth).Debugf(formatRouterTestInfo,
-			params.String(), strings.Join(getSplitPath(path), "', '"),
-			r.Middlewares.Lookup(path), handlers,
-		)
+	switch method {
+	case MethodTest:
+		strs := strings.Join(getSplitPath(path), "', '")
+		midds := r.Middlewares.Lookup(path)
+		r.getLogger(routerLoggerHandler, depth).
+			Debugf(formatRouterTestInfo, params.String(), strs, midds, hs)
 		return nil
+	case "404":
+		method = MethodNotFound
+	case "405":
+		method = MethodNotAllowed
 	}
-	r.getLogger(routerLoggerHandler, depth).Info("register handler:",
-		method, strings.TrimPrefix(params.String(), "route="), handlers,
-	)
-	if handlers != nil {
-		handlers = NewHandlerFuncsCombine(r.Middlewares.Lookup(path), handlers)
+	r.getLogger(routerLoggerHandler, depth).
+		Info("register handler:", method, strings.TrimPrefix(params.String(), "route="), hs)
+	if hs != nil {
+		hs = NewHandlerFuncsCombine(r.Middlewares.Lookup(path), hs)
 	}
 
 	// Handle multiple methods
@@ -283,9 +293,9 @@ func (r *routerStd) addHandler(method, path string, hs ...any) (err error) {
 	for _, m := range strings.Split(method, ",") {
 		m = strings.TrimSpace(m)
 		if checkMethod(r.MethodAll, m) {
-			r.RouterCore.HandleFunc(m, fullpath, handlers)
+			r.HandleFunc(m, fullpath, hs)
 			if r.getLogger(routerLoggerMetadata, 0) != DefaultLoggerNull {
-				addMetadataRouter(r.Meta, m, fullpath, handlers)
+				addMetadataRouter(r.Meta, m, fullpath, hs)
 			}
 		} else {
 			err := fmt.Errorf(ErrRouterAddHandlerMethodInvalid, m, fullpath)
@@ -301,18 +311,13 @@ func (r *routerStd) addHandler(method, path string, hs ...any) (err error) {
 
 func checkMethod(all []string, method string) bool {
 	switch method {
-	case "ANY", "404", "405", "NOTFOUND", "METHODNOTALLOWED":
+	case MethodAny, MethodNotFound, MethodNotAllowed:
 		return true
 	}
-	for _, m := range all {
-		if m == method {
-			return true
-		}
-	}
-	return false
+	return sliceIndex(all, method) != -1
 }
 
-// The newHandlerFuncs method creates []HandlerFunc based on the path and
+// newHandlerFuncs method creates []HandlerFunc based on the path and
 // multiple parameters.
 //
 // first calls the current [HandlerExtender.NewHandlerFuncs] to
@@ -324,7 +329,7 @@ func (r *routerStd) newHandlerFuncs(path string, handlers []any, depth int,
 	var errs mulitError
 	// Conversion handlers
 	for i, fn := range handlers {
-		handler := r.HandlerExtender.CreateHandlers(path, fn)
+		handler := r.CreateHandlers(path, fn)
 		if len(handler) > 0 {
 			hs = NewHandlerFuncsCombine(hs, handler)
 		} else if _, ok := handlers[i].(HandlerFunc); !ok {
@@ -365,7 +370,7 @@ func (r *routerStd) AddController(controllers ...Controller) error {
 	return nil
 }
 
-// The getControllerPathName function gets the name of the [Controller].
+// getControllerPathName function gets the name of the [Controller].
 func getControllerPathName(ctl Controller) string {
 	u, ok := ctl.(interface{ Unwrap() Controller })
 	if ok {
@@ -395,7 +400,7 @@ func (r *routerStd) AddMiddleware(hs ...any) error {
 	}
 
 	r.Middlewares.Insert(path, handlers)
-	r.RouterCore.HandleFunc("Middlewares", path, handlers)
+	r.HandleFunc("Middlewares", path, handlers)
 	log := r.getLogger(routerLoggerMiddleware, depth)
 	if path != "" {
 		log.Info("register middleware:", path, handlers)
@@ -421,7 +426,7 @@ func (r *routerStd) AddHandlerExtend(handlers ...any) error {
 
 	var errs mulitError
 	for _, handler := range handlers {
-		err := r.HandlerExtender.RegisterExtender(path, handler)
+		err := r.RegisterExtender(path, handler)
 		if err != nil {
 			err = fmt.Errorf(ErrRouterAddHandlerExtender, path, err)
 			errs.Handle(err)
@@ -430,9 +435,8 @@ func (r *routerStd) AddHandlerExtend(handlers ...any) error {
 			v := reflect.ValueOf(handler)
 			if v.Kind() == reflect.Func {
 				name := runtime.FuncForPC(v.Pointer()).Name()
-				r.getLogger(routerLoggerExtend, 1).Info("register extend:",
-					name, v.Type().In(0).String(),
-				)
+				r.getLogger(routerLoggerExtend, 1).
+					Info("register extend:", name, v.Type().In(0).String())
 			}
 		}
 	}
@@ -472,7 +476,7 @@ func (r *routerStd) PatchFunc(path string, h ...any) {
 
 func (r *routerStd) getLogger(kind int, depth int) Logger {
 	if r.LoggerKind&kind == kind {
-		return r.Logger.WithField(ParamDepth, depth)
+		return r.Logger.WithField(FieldDepth, depth)
 	}
 	return DefaultLoggerNull
 }

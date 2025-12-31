@@ -39,7 +39,7 @@ type App struct {
 	Values             []any      `alias:"values"`
 }
 
-// The NewApp() function creates an App object, initializes various components
+// NewApp function creates an App object, initializes various components
 // of the application, and returns the App object.
 func NewApp() *App {
 	app := &App{}
@@ -55,7 +55,7 @@ func NewApp() *App {
 	return app
 }
 
-// The Run() method starts the application and blocks it until it is finished.
+// Run method starts the application and blocks it until it is finished.
 func (app *App) Run() error {
 	defer app.SetValue(ContextKeyLogger, nil)
 	defer app.SetValue(ContextKeyConfig, nil)
@@ -67,7 +67,7 @@ func (app *App) Run() error {
 			app.SetValue(app.Values[i], nil)
 		}
 
-		log := app.WithField(ParamDepth, 2)
+		log := app.WithField(FieldDepth, 2)
 		if errors.Is(app.Err(), context.Canceled) {
 			log.Info("eudore app context canceled")
 		} else {
@@ -192,7 +192,7 @@ func anyMetadata(i any) any {
 	return nil
 }
 
-// The ServeHTTP method implements the [http.Handler] interface to process
+// ServeHTTP method implements the [http.Handler] interface to process
 // http requests.
 //
 // Create and initialize a [Context], set [App.HandlerFuncs] as the
@@ -212,11 +212,11 @@ func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // serveContext Implement the request context function.
 func (app *App) serveContext(ctx Context) {
-	ctx.SetHandlers(-1, app.Router.Match(ctx.Method(), ctx.Path(), ctx.Params()))
+	ctx.SetHandlers(-1, app.Match(ctx.Method(), ctx.Path(), ctx.Params()))
 	ctx.Next()
 }
 
-// The AddMiddleware method implements registration of global Middleware,
+// AddMiddleware method implements registration of global Middleware,
 // which runs before the [router.Match].
 //
 // If the first parameter of the method is the string "global",
@@ -230,9 +230,8 @@ func (app *App) AddMiddleware(hs ...any) error {
 		name, ok := hs[0].(string)
 		if ok && name == "global" {
 			hs := NewHandlerExtenderWithContext(app).CreateHandlers("", hs[1:])
-			app.WithField(ParamDepth, 1).Info(
-				"register app global middleware:", hs,
-			)
+			app.WithField(FieldDepth, 1).Info(
+				"register app global middleware:", hs)
 			app.HandlerFuncs = NewHandlerFuncsCombine(
 				app.HandlerFuncs[0:len(app.HandlerFuncs)-1],
 				append(hs, app.HandlerFuncs[len(app.HandlerFuncs)-1]),
@@ -245,6 +244,11 @@ func (app *App) AddMiddleware(hs ...any) error {
 
 // Listen method listens to an http port.
 func (app *App) Listen(addr string) error {
+	select {
+	case <-app.Done():
+		return nil
+	default:
+	}
 	conf := ServerListenConfig{
 		Addr: addr,
 	}
@@ -253,16 +257,19 @@ func (app *App) Listen(addr string) error {
 		app.Error(err)
 		return err
 	}
-	app.WithField(ParamDepth, 1).Infof(
-		"listen http in %s %s",
-		ln.Addr().Network(), ln.Addr().String(),
-	)
+	app.WithField(FieldDepth, 1).Infof("listen http in %s %s",
+		ln.Addr().Network(), ln.Addr().String())
 	app.Serve(ln)
 	return nil
 }
 
 // ListenTLS method listens to an https port, if h2 is enabled by default.
 func (app *App) ListenTLS(addr, cert, key string) error {
+	select {
+	case <-app.Done():
+		return nil
+	default:
+	}
 	conf := ServerListenConfig{
 		Addr:     addr,
 		HTTPS:    true,
@@ -275,10 +282,8 @@ func (app *App) ListenTLS(addr, cert, key string) error {
 		app.Error(err)
 		return err
 	}
-	app.WithField(ParamDepth, 1).Infof(
-		"listen https in %s %s, host name: %v",
-		ln.Addr().Network(), ln.Addr().String(), conf.Certificate.DNSNames,
-	)
+	app.WithField(FieldDepth, 1).Infof("listen https in %s %s, host name: %v",
+		ln.Addr().Network(), ln.Addr().String(), conf.Certificate.DNSNames)
 	app.Serve(ln)
 	return nil
 }
@@ -292,10 +297,10 @@ func (app *App) Serve(ln net.Listener) {
 	}()
 }
 
-// The Parse method calls [Config].Parse and handles errors.
+// Parse method calls [Config].Parse and handles errors.
 // Use the current [App] as [context.Context].
 //
-// The Parse method executes all [ConfigParseFunc].
+// Parse method executes all [ConfigParseFunc].
 // If the parsing function returns error, it stops parsing and returns error.
 func (app *App) Parse() error {
 	err := app.Config.Parse(app)

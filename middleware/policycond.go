@@ -18,8 +18,8 @@ type conditionAnd struct {
 	Names      []string
 }
 
-// Match conditionAnd。
-func (cond conditionAnd) Match(ctx eudore.Context) bool {
+// Match conditionAnd.
+func (cond *conditionAnd) Match(ctx eudore.Context) bool {
 	for _, i := range cond.Conditions {
 		if !i.Match(ctx) {
 			return false
@@ -120,7 +120,7 @@ type conditionOr struct {
 	Names      []string
 }
 
-func (cond conditionOr) Match(ctx eudore.Context) bool {
+func (cond *conditionOr) Match(ctx eudore.Context) bool {
 	for _, i := range cond.Conditions {
 		if i.Match(ctx) {
 			return true
@@ -148,7 +148,7 @@ type conditionSourceIP struct {
 	SourceIP []*net.IPNet `json:"sourceip,omitempty"`
 }
 
-func (cond conditionSourceIP) Match(ctx eudore.Context) bool {
+func (cond *conditionSourceIP) Match(ctx eudore.Context) bool {
 	for _, ip := range cond.SourceIP {
 		if ip.Contains(net.ParseIP(ctx.RealIP())) {
 			return true
@@ -192,8 +192,8 @@ type conditionDate struct {
 	Before time.Time `json:"before"`
 }
 
-// Match 方法匹配当前时间范围。
-func (cond conditionDate) Match(eudore.Context) bool {
+// Match method matches the current Date range.
+func (cond *conditionDate) Match(eudore.Context) bool {
 	now := time.Now()
 	return (cond.After.IsZero() || now.After(cond.After)) &&
 		(cond.Before.IsZero() || now.Before(cond.Before))
@@ -268,8 +268,8 @@ type conditionTime struct {
 	Before int64 `json:"before"`
 }
 
-// Match 方法匹配当前时间范围。
-func (cond conditionTime) Match(eudore.Context) bool {
+// Match method matches the current time range.
+func (cond *conditionTime) Match(eudore.Context) bool {
 	now := time.Now()
 	curr := int64(now.Hour()*int(time.Hour) +
 		now.Minute()*int(time.Minute) +
@@ -403,7 +403,7 @@ func (cond *conditionRate) UnmarshalJSON(body []byte) error {
 }
 
 func (cond *conditionRate) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf(`{"speed":%d,"max":%d}`, cond.Speed, cond.Max)), nil
+	return fmt.Appendf(nil, `{"speed":%d,"max":%d}`, cond.Speed, cond.Max), nil
 }
 
 type conditionVersion struct {

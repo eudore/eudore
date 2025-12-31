@@ -1,6 +1,7 @@
 package eudore
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"html/template"
@@ -259,6 +260,7 @@ var (
 	// DefaultLoggerPriorityFormatter defines the log formatter priority.
 	// Text and JSON share this value.
 	DefaultLoggerPriorityFormatter    = 30
+	DefaultLoggerPriorityHookCaller   = 20
 	DefaultLoggerPriorityHookFatal    = 101
 	DefaultLoggerPriorityHookFilter   = 10
 	DefaultLoggerPriorityHookMeta     = 60
@@ -290,6 +292,11 @@ var (
 	// DefaultServerShutdownWait global defines the waiting time for the
 	// Server to exit gracefully.
 	DefaultServerShutdownWait = 30 * time.Second // non-fixed
+	// DefaultServerTLSConfig defines the default [tls.Config] used by [ServerListenConfig].
+	DefaultServerTLSConfig = &tls.Config{
+		NextProtos: []string{"http/1.1"},
+		MinVersion: tls.VersionTLS12,
+	}
 	// DefaultValueGetSetTags global defines the tags for
 	// [GetAnyByPath]/[SetAnyByPath].
 	DefaultValueGetSetTags = []string{"alias"} // non-fixed
@@ -372,8 +379,6 @@ var (
 	ErrValueSetStringUnknownType = "the SetValueString unknown type %s"
 	ErrValueSetValuePtr          = "the SetValuePtr method type %s cannot be assigned to type %s"
 
-	// ErrFuncCreatorNotFunc 定义FuncCreator无法获取或创建函数。
-	ErrFuncCreatorNotFunc = errors.New("not found or create func")
-	// ErrFormatFuncCreatorRegisterInvalidType fc注册函数类似是无效的。
+	ErrFuncCreatorNotFunc                   = errors.New("FuncCreator: not found or create func")
 	ErrFormatFuncCreatorRegisterInvalidType = "Register func '%s' type is %T, must 'func(T) bool' or 'func(string) (func(T) bool, error)'"
 )

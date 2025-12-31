@@ -23,16 +23,17 @@ const (
 	FuncCreateSetFloat
 	FuncCreateSetBool
 	FuncCreateSetAny
-	FuncCreateNumber = FuncCreateAny
 )
+const FuncCreateNumber = FuncCreateAny
 
-// FuncCreateKind 定义FuncCreator可以创建的函数类型。
+// FuncCreateKind defines the types of functions that can be created by [FuncCreator].
 type FuncCreateKind uint8
 
-// FuncCreator 定义校验函数构造器，默认由RouterStd、validate、filter使用。
+// FuncCreator defines a verification function constructor,
+// which is used by Router, Validate, and Filter by default.
 type FuncCreator interface {
-	RegisterFunc(string, ...any) error
-	CreateFunc(FuncCreateKind, string) (any, error)
+	RegisterFunc(name string, funcs ...any) error
+	CreateFunc(kind FuncCreateKind, name string) (any, error)
 	List() []string
 }
 
@@ -55,21 +56,23 @@ type funcCreatorBase struct {
 	Errors    map[string]string
 }
 
+// MetadataFuncCreator records all currently registered functions and errors.
 type MetadataFuncCreator struct {
-	Health bool     `alias:"health" json:"health" xml:"health" yaml:"health"`
-	Name   string   `alias:"name" json:"name" xml:"name" yaml:"name"`
-	Funcs  []string `alias:"funcs" json:"funcs" xml:"funcs" yaml:"funcs"`
-	Exprs  []string `alias:"exprs,omitempty" json:"exprs,omitempty" xml:"exprs,omitempty" yaml:"exprs,omitempty"`
-	Errors []string `alias:"errors,omitempty" json:"errors,omitempty" xml:"errors,omitempty" yaml:"errors,omitempty"`
+	Health bool     `json:"health" protobuf:"1,name=health" yaml:"health"`
+	Name   string   `json:"name" protobuf:"2,name=name" yaml:"name"`
+	Funcs  []string `json:"funcs" protobuf:"3,name=funcs" yaml:"funcs"`
+	Exprs  []string `json:"exprs,omitempty" protobuf:"4,name=exprs" yaml:"exprs,omitempty"`
+	Errors []string `json:"errors,omitempty" protobuf:"5,name=errors" yaml:"errors,omitempty"`
 }
 
-// FuncRunner 定义创建函数类型和地址信息。
+// FuncRunner defines and stores function type and address information.
 type FuncRunner struct {
 	Kind FuncCreateKind
 	Func any
 }
 
-// NewFuncCreator 函数创建默认FuncCreator并加载默认规则。
+// NewFuncCreator function creates default [FuncCreator] and loads the
+// default rules.
 func NewFuncCreator() FuncCreator {
 	fc := &funcCreatorBase{
 		String:    newTypeCreator[func(string) bool](),
@@ -89,7 +92,8 @@ func NewFuncCreator() FuncCreator {
 	return fc
 }
 
-// NewFuncCreatorExpr 函数创建一个支持AND OR NOT关系表达式解析的FuncCreator。
+// NewFuncCreatorExpr function creates [FuncCreator] that supports the parsing
+// of AND, OR, and NOT relational expressions.
 func NewFuncCreatorExpr() FuncCreator {
 	return &funcCreatorExpr{
 		data:   NewFuncCreator().(*funcCreatorBase),
@@ -97,7 +101,9 @@ func NewFuncCreatorExpr() FuncCreator {
 	}
 }
 
-// NewFuncCreatorWithContext 函数从环境上下文创建FuncCreator。
+// NewFuncCreatorWithContext function obtains the [ContextKeyFuncCreator]
+// value from the [context.Context] as the FuncCreator,
+// and defaults to returning the [DefaultFuncCreator].
 func NewFuncCreatorWithContext(ctx context.Context) FuncCreator {
 	fc, ok := ctx.Value(ContextKeyFuncCreator).(FuncCreator)
 	if ok {
@@ -166,7 +172,9 @@ func (fc *funcCreatorBase) RegisterFunc(name string, funcs ...any) error {
 // CreateFunc 方法感觉类型和名称创建校验函数。
 //
 // 不支持动态创建具有NOT AND OR关系表达式函数，闭包影响性能。
-func (fc *funcCreatorBase) CreateFunc(kind FuncCreateKind, name string) (fn any, err error) {
+func (fc *funcCreatorBase) CreateFunc(kind FuncCreateKind, name string) (any, error) {
+	var fn any
+	var err error
 	switch kind {
 	case FuncCreateString:
 		fn, err = fc.String.Create(name)
@@ -549,7 +557,7 @@ var defaultFuncCreateKindStrings = [...]string{
 	"setstring", "setint", "setuint", "setfloat", "setbool", "setany",
 }
 
-// NewFuncCreateKind 函数解析FuncCreateKind字符串。
+// NewFuncCreateKind function parses the [FuncCreateKind] string.
 func NewFuncCreateKind(s string) FuncCreateKind {
 	s = strings.ToLower(s)
 	for i, str := range defaultFuncCreateKindStrings {
@@ -560,7 +568,7 @@ func NewFuncCreateKind(s string) FuncCreateKind {
 	return FuncCreateInvalid
 }
 
-// NewFuncCreateKindWithType 函数类型创建FuncCreateKind。
+// NewFuncCreateKindWithType function creates [FuncCreateKind] based on [reflect.Type].
 func NewFuncCreateKindWithType(t reflect.Type) FuncCreateKind {
 	if t == nil {
 		return FuncCreateInvalid
@@ -595,8 +603,6 @@ func (kind FuncCreateKind) String() string {
 
 // RunPtr executes any function, dereferences the Ptr type,
 // and executes each value of Slice and Array.
-//
-// RunPtr 执行任意函数，对Ptr类型会解除引用，对Slice和Array每一个值进行执行。
 func (fn *FuncRunner) RunPtr(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Ptr:
@@ -616,7 +622,7 @@ func (fn *FuncRunner) RunPtr(v reflect.Value) bool {
 	}
 }
 
-// Run 执行任意函数。
+// Run execute any function.
 func (fn *FuncRunner) Run(v reflect.Value) bool {
 	switch fn.Kind {
 	case FuncCreateString:

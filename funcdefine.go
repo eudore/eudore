@@ -28,7 +28,7 @@ func loadDefaultFuncDefine(fc FuncCreator) {
 	_ = f("mail", fbStringMail)
 	_ = f("phone", fbStringPhone)
 	_ = f("regexp", fbStringRegexp)
-	_ = f("patten", fbStringpPatten)
+	_ = f("patten", fbStringPatten)
 	_ = f("prefix", fbStringFuncBool(strings.HasPrefix))   // prefix=string prefix!=string
 	_ = f("suffix", fbStringFuncBool(strings.HasSuffix))   // suffix=string
 	_ = f("contains", fbStringFuncBool(strings.Contains))  // contains=string
@@ -91,12 +91,13 @@ func fbNozero[T int | uint | float64 | string | bool](i T) bool {
 	return i != t
 }
 
-// fcAnyNozero 函数验证一个对象是否为零值，使用reflect.Value.IsZero函数实现。
+// fcAnyNozero function verifies whether an object is a zero value,
+// implemented using the [reflect.Value.IsZero] function.
 func fcAnyNozero(i any) bool {
 	return !fcAnyZero(i)
 }
 
-// fcgMin 函数生成一个验证value最小值的验证函数。
+// fcgMin function generates validation function to verify the min value of value.
 func fbMin[T int | uint | float64](s string) (func(T) bool, error) {
 	val, err := GetAnyByStringWithError[T](trimFuncOperate(s))
 	if err != nil {
@@ -107,7 +108,7 @@ func fbMin[T int | uint | float64](s string) (func(T) bool, error) {
 	}, nil
 }
 
-// fbMax 函数生成一个验证value最大值的验证函数。
+// fbMax function generates validation function to verify the max value of value.
 func fbMax[T int | uint | float64](s string) (func(T) bool, error) {
 	val, err := GetAnyByStringWithError[T](trimFuncOperate(s))
 	if err != nil {
@@ -118,13 +119,14 @@ func fbMax[T int | uint | float64](s string) (func(T) bool, error) {
 	}, nil
 }
 
-// fbStringMin 函数生成一个验证string最小值的验证函数。
+// fbStringMin function generates validation function to validate the min value
+// of string type.
 func fbStringMin(s string) (func(string) bool, error) {
-	min, err := strconv.ParseInt(trimFuncOperate(s), 10, 32)
+	val, err := strconv.ParseInt(trimFuncOperate(s), 10, 32)
 	if err != nil {
 		return nil, err
 	}
-	intmin := int(min)
+	intmin := int(val)
 	return func(arg string) bool {
 		num, err := strconv.Atoi(arg)
 		if err != nil {
@@ -134,13 +136,14 @@ func fbStringMin(s string) (func(string) bool, error) {
 	}, nil
 }
 
-// fbStringMax 函数生成一个验证string最大值的验证函数。
+// fbStringMax function generates verification function to validate the max value
+// of string type.
 func fbStringMax(s string) (func(string) bool, error) {
-	max, err := strconv.ParseInt(trimFuncOperate(s), 10, 32)
+	val, err := strconv.ParseInt(trimFuncOperate(s), 10, 32)
 	if err != nil {
 		return nil, err
 	}
-	intmax := int(max)
+	intmax := int(val)
 	return func(arg string) bool {
 		num, err := strconv.Atoi(arg)
 		if err != nil {
@@ -207,7 +210,8 @@ func integerCompare(op byte, a, b int) bool {
 	}
 }
 
-// fbStringLen 函数生一个验证字符串长度'>','<','='指定长度的验证函数。
+// fbStringLen function generates validation function that checks the length of
+// string value against the specified length of '>','<','='.
 func fbStringLen(s string) (func(s string) bool, error) {
 	length, err := strconv.ParseInt(trimFuncOperate(s), 10, 32)
 	if err != nil {
@@ -220,7 +224,8 @@ func fbStringLen(s string) (func(s string) bool, error) {
 	}, nil
 }
 
-// fbAnyLen 函数生一个验证字符串长度'>','<','='指定长度的验证函数。
+// fbAnyLen function generates validation function that checks the length of
+// any value against the specified length of '>','<','='.
 func fbAnyLen(s string) (func(i any) bool, error) {
 	length, err := strconv.ParseInt(trimFuncOperate(s), 10, 32)
 	if err != nil {
@@ -238,7 +243,7 @@ func fbAnyLen(s string) (func(i any) bool, error) {
 	}, nil
 }
 
-// fbStringNum 函数验证一个字符串是否为float64。
+// fbStringNum function verifies whether a string is float64 type.
 func fbStringNum(s string) bool {
 	_, err := strconv.ParseFloat(s, 64)
 	return err == nil
@@ -288,8 +293,8 @@ func fbStringPhone(s string) bool {
 	return false
 }
 
-// fbStringpPatten 模式匹配对象，允许使用带'*'的模式。
-func fbStringpPatten(str string) (func(string) bool, error) {
+// fbStringPatten pattern matching object, allowing patterns with '*' to be used.
+func fbStringPatten(str string) (func(string) bool, error) {
 	b := !strings.HasPrefix(str, "!=")
 	patten := trimFuncOperate(str)
 	return func(obj string) bool {
@@ -314,7 +319,7 @@ func fbStringpPatten(str string) (func(string) bool, error) {
 	}, nil
 }
 
-// fbStringRegexp 函数生成一个正则检测字符串的验证函数。
+// fbStringRegexp function generates validation function for [regexp] string detection.
 func fbStringRegexp(s string) (func(arg string) bool, error) {
 	b := !strings.HasPrefix(s, "!=")
 	re, err := regexp.Compile(trimFuncOperate(s))
@@ -402,7 +407,7 @@ func fsValue[T string | int | uint | float64 | bool](s string) (func(T) T, error
 	if err != nil {
 		return nil, err
 	}
-	return func(arg T) T {
+	return func(T) T {
 		return val
 	}, nil
 }
@@ -412,7 +417,7 @@ func fsTimeValue(s string) (func(i any) any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return func(i any) any {
+	return func(any) any {
 		return t
 	}, nil
 }

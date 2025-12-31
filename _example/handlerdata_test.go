@@ -122,6 +122,7 @@ func TestHandlerDataRender(*testing.T) {
 		}),
 	))
 	app.SetValue(ContextKeyContextPool, NewContextBasePool(app))
+	app.AddMiddleware("global", NewLoggerLevelFunc(func(Context) int { return 4 }))
 	app.AnyFunc("/data/*", func(ctx Context) interface{} {
 		return &Data{"eudore"}
 	})
@@ -145,9 +146,9 @@ func TestHandlerDataRender(*testing.T) {
 		return http.Header{HeaderAccept: {val}}
 	}
 
-	app.NewRequest("GET", "/err", accept(MimeTextPlain))
-	app.NewRequest("GET", "/data/quality", accept(MimeTextPlain+";q=0"))
-	app.NewRequest("GET", "/data/text", accept(MimeTextPlain))
+	app.NewRequest("GET", "/err", accept(MimeTextPlain), NewClientCheckStatus(200))
+	app.NewRequest("GET", "/data/quality", accept(MimeTextPlain+";q=0"), NewClientCheckStatus(406))
+	app.NewRequest("GET", "/data/text", accept(MimeTextPlain), NewClientCheckStatus(200))
 	app.NewRequest("GET", "/data/json", accept(MimeApplicationJSON))
 	app.NewRequest("GET", "/data/xml", accept(MimeApplicationXML))
 	app.NewRequest("GET", "/data/html", accept(MimeTextHTML))
@@ -183,6 +184,7 @@ func TestHandlerDataRenderTemplates(*testing.T) {
 	filepath := "handlerdata.tmpl"
 	tmpfile, _ := os.Create(filepath)
 	defer os.Remove(tmpfile.Name())
+	defer tmpfile.Close()
 	tmpfile.WriteString(`{{- define "index.html" -}}name: {{.name}} message: {{.message}}{{end}}`)
 	renders := [...]HandlerDataFunc{
 		NewHandlerDataRenderTemplates(nil, handlerdatafile, "handlerdata_test.go"),
@@ -191,6 +193,7 @@ func TestHandlerDataRenderTemplates(*testing.T) {
 	}
 
 	app := NewApp()
+	app.AddMiddleware(NewLoggerLevelFunc(func(Context) int { return 4 }))
 	app.GetFunc("/renders/:index", func(ctx Context) {
 		index := GetAny[int](ctx.GetParam("index")) % 3
 		renders[index](ctx, "body")
@@ -249,7 +252,7 @@ func TestHandlerDataValidate(*testing.T) {
 		NewHandlerDataValidate(),
 	)
 	app.SetValue(ContextKeyContextPool, NewContextBasePool(app))
-
+	app.AddMiddleware(NewLoggerLevelFunc(func(Context) int { return 4 }))
 	app.AnyFunc("/data/struct", func(ctx Context) {
 		var data dataValidate03
 		ctx.Bind(&data)
@@ -326,9 +329,9 @@ func TestHandlerDataValidateStruct(t *testing.T) {
 	fn("ptr1", []dataValidate01{{Name: "eudore"}}, "")
 	fn("any1", []dataValidate01{{Name: "eudore"}}, "")
 	fn("struct2", dataValidate02{}, "field ID check rule nozero fatal, value: (*int)(nil)")
-	fn("struct5", dataValidate03{ID: 32}, "field ID create rule not error: funcCreator create kind int func not err: not found or create func")
-	fn("struct4", dataValidate04{}, "field ID create rule not error: funcCreator create kind int func not err: not found or create func")
-	fn("struct4", dataValidate04{}, "field ID create rule not error: funcCreator create kind int func not err: not found or create func")
+	fn("struct5", dataValidate03{ID: 32}, "funcCreator create kind int func not err: "+ErrFuncCreatorNotFunc.Error())
+	fn("struct4", dataValidate04{}, "funcCreator create kind int func not err: "+ErrFuncCreatorNotFunc.Error())
+	fn("struct4", dataValidate04{}, "funcCreator create kind int func not err: "+ErrFuncCreatorNotFunc.Error())
 	fn("struct3", dataValidate05{}, "field ID check rule nozero fatal, value: 0")
 
 	app.CancelFunc()

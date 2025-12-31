@@ -7,7 +7,6 @@ import (
 
 	. "github.com/eudore/eudore"
 	. "github.com/eudore/eudore/middleware"
-	_ "golang.org/x/tools/cover"
 )
 
 func init() {
@@ -71,5 +70,7 @@ func TestAppListen(*testing.T) {
 	app.ListenTLS("localhost", "", "")
 
 	app.CancelFunc()
+	app.Listen(":8088")
+	app.ListenTLS(":8088", "", "")
 	app.Run()
 }

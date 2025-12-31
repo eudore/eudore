@@ -38,8 +38,8 @@ type ClientTrace struct {
 	HTTPStart             time.Time            `json:"httpStart" yaml:"httpStart"`
 	HTTPDone              time.Time            `json:"httpDone" yaml:"httpDone"`
 	HTTPDuration          time.Duration        `json:"httpDuration" yaml:"httpDuration"`
-	DNSStart              time.Time            `json:"dnsStart,omitempty" yaml:"dnsStart,omitempty"`
-	DNSDone               time.Time            `json:"dnsDone,omitempty" yaml:"dnsDone,omitempty"`
+	DNSStart              time.Time            `json:"dnsStart" yaml:"dnsStart,omitempty"`
+	DNSDone               time.Time            `json:"dnsDone" yaml:"dnsDone,omitempty"`
 	DNSDuration           time.Duration        `json:"dnsDuration,omitempty" yaml:"dnsDuration,omitempty"`
 	DNSHost               string               `json:"dnsHost,omitempty" yaml:"dnsHost,omitempty"`
 	DNSAddrs              []net.IPAddr         `json:"dnsAddrs,omitempty" yaml:"dnsAddrs,omitempty"`
@@ -51,14 +51,14 @@ type ClientTrace struct {
 	GotConnLocalAddr      net.Addr             `json:"gotConnLocalAddr" yaml:"gotConnLocalAddr"`
 	GotConnRemoteAddr     net.Addr             `json:"gotConnRemoteAddr" yaml:"gotConnRemoteAddr"`
 	GotFirstResponseByte  time.Time            `json:"gotFirstResponseByte" yaml:"gotFirstResponseByte"`
-	TLSHandshakeStart     time.Time            `json:"tlsHandshakeStart,omitempty" yaml:"tlsHandshakeStart,omitempty"`
-	TLSHandshakeDone      time.Time            `json:"tlsHandshakeDone,omitempty" yaml:"tlsHandshakeDone,omitempty"`
+	TLSHandshakeStart     time.Time            `json:"tlsHandshakeStart" yaml:"tlsHandshakeStart,omitempty"`
+	TLSHandshakeDone      time.Time            `json:"tlsHandshakeDone" yaml:"tlsHandshakeDone,omitempty"`
 	TLSHandshakeDuration  time.Duration        `json:"tlsHandshakeDuration,omitempty" yaml:"tlsHandshakeDuration,omitempty"`
 	TLSHandshakeError     error                `json:"tlsHandshakeError,omitempty" yaml:"tlsHandshakeError,omitempty"`
 	TLSHandshakeIssuer    string               `json:"tlsHandshakeIssuer,omitempty" yaml:"tlsHandshakeIssuer,omitempty"`
 	TLSHandshakeSubject   string               `json:"tlsHandshakeSubject,omitempty" yaml:"tlsHandshakeSubject,omitempty"`
-	TLSHandshakeNotBefore time.Time            `json:"tlsHandshakeNotBefore,omitempty" yaml:"tlsHandshakeNotBefore,omitempty"`
-	TLSHandshakeNotAfter  time.Time            `json:"tlsHandshakeNotAfter,omitempty" yaml:"tlsHandshakeNotAfter,omitempty"`
+	TLSHandshakeNotBefore time.Time            `json:"tlsHandshakeNotBefore" yaml:"tlsHandshakeNotBefore,omitempty"`
+	TLSHandshakeNotAfter  time.Time            `json:"tlsHandshakeNotAfter" yaml:"tlsHandshakeNotAfter,omitempty"`
 	TLSHandshakeDigest    string               `json:"tlsHandshakeDigest,omitempty" yaml:"tlsHandshakeDigest,omitempty"`
 	WroteHeaders          http.Header          `json:"wroteHeaders,omitempty" yaml:"wroteHeaders,omitempty"`
 }
@@ -69,12 +69,12 @@ type ClientTraceConnect struct {
 	Network  string        `json:"network" yaml:"network"`
 	Address  string        `json:"address" yaml:"address"`
 	Start    time.Time     `json:"start" yaml:"start"`
-	Done     time.Time     `json:"done,omitempty" yaml:"done,omitempty"`
+	Done     time.Time     `json:"done" yaml:"done,omitempty"`
 	Duration time.Duration `json:"duration,omitempty" yaml:"duration,omitempty"`
 	Error    error         `json:"error,omitempty" yaml:"error,omitempty"`
 }
 
-// The NewClientOption function creates [ClientOption] using any options.
+// NewClientOption function creates [ClientOption] using any options.
 //
 // If you add an unsupported type, it will panic [ErrClientOptionInvalidType].
 func NewClientOption(options []any) *ClientOption {
@@ -258,7 +258,7 @@ func (o *ClientOption) release(resp *http.Response) error {
 	return nil
 }
 
-// The NewClientOptionHost function creates [ClientOption] setting request Host.
+// NewClientOptionHost function creates [ClientOption] setting request Host.
 func NewClientOptionHost(host string) *ClientOption {
 	return &ClientOption{Host: strings.TrimSuffix(host, ":")}
 }
@@ -278,7 +278,7 @@ func NewClientOptionURL(host string) *ClientOption {
 	return &ClientOption{URL: u}
 }
 
-// The NewClientQuery function creates [ClientOption] set the request uri param.
+// NewClientQuery function creates [ClientOption] set the request uri param.
 func NewClientQuery(key, val string) url.Values {
 	if val == "" {
 		return nil
@@ -286,7 +286,7 @@ func NewClientQuery(key, val string) url.Values {
 	return url.Values{key: {val}}
 }
 
-// The NewClientHeader function creates [ClientOption] set the request Header.
+// NewClientHeader function creates [ClientOption] set the request Header.
 func NewClientHeader(key, val string) http.Header {
 	if val == "" {
 		return nil
@@ -294,8 +294,8 @@ func NewClientHeader(key, val string) http.Header {
 	return http.Header{key: []string{val}}
 }
 
-// NewClientOptionBasicauth function creates [ClientOption] set BasicAuth users.
-func NewClientOptionBasicauth(username, password string) http.Header {
+// NewClientOptionBasicAuth function creates [ClientOption] set BasicAuth users.
+func NewClientOptionBasicAuth(username, password string) http.Header {
 	auth := username + ":" + password
 	return NewClientHeader(
 		HeaderAuthorization,
@@ -303,20 +303,20 @@ func NewClientOptionBasicauth(username, password string) http.Header {
 	)
 }
 
-// The NewClientOptionBearer function creates [ClientOption] set
+// NewClientOptionBearerAuth function creates [ClientOption] set
 // request Bearer [HeaderAuthorization].
-func NewClientOptionBearer(bearer string) http.Header {
+func NewClientOptionBearerAuth(bearer string) http.Header {
 	return NewClientHeader(HeaderAuthorization, "Bearer "+bearer)
 }
 
-// The NewClientOptionUserAgent function creates [ClientOption] set
-// the request [HeaderUserAgent].
+// NewClientOptionUserAgent function creates [ClientOption] set the request
+// [HeaderUserAgent].
 func NewClientOptionUserAgent(ua string) http.Header {
 	return NewClientHeader(HeaderUserAgent, ua)
 }
 
-// The NewClientTraceWithContext function initializes and binds [ClientTrace] to
-// [ontext.Context].
+// NewClientTraceWithContext function initializes and binds [ClientTrace] to
+// [context.Context].
 //
 //nolint:funlen
 func NewClientTraceWithContext(ctx context.Context, trace *ClientTrace,
